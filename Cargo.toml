@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+  "outrun-parser"
+]
+
+resolver = "3"
+
