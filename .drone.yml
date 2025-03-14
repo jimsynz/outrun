@@ -1,3 +1,134 @@
-kind: template
-load: rust-lib.yaml
+kind: pipeline
+type: docker
+name: build
 
+environment:
+  ASDF_DATA_DIR: /drone/src/.asdf
+  ASDF_DIR: /root/.asdf
+  CARGO_HOME: /drone/src/.cargo
+
+steps:
+  - name: restore ASDF cache
+    image: meltwater/drone-cache
+    pull: always
+    settings:
+      restore: true
+      backend: filesystem
+      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}'
+      remote_root: asdf
+      mount:
+        - .asdf
+    volumes:
+      - name: cache
+        path: /tmp/cache
+
+  - name: install ASDF
+    image: harton.dev/james/asdf_container:latest
+    pull: always
+    depends_on:
+      - restore ASDF cache
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - asdf_install
+      - asdf reshim
+
+  - name: store ASDF cache
+    depends_on:
+      - install ASDF
+    image: meltwater/drone-cache
+    pull: never
+    settings:
+      rebuild: true
+      backend: filesystem
+      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}'
+      remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
+      mount:
+        - .asdf
+    volumes:
+      - name: cache
+        path: /tmp/cache
+
+  - name: restore build cache
+    image: meltwater/drone-cache
+    pull: never
+    settings:
+      restore: true
+      backend: filesystem
+      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}/{{ "{{" }} checksum "Cargo.lock" {{ "}}" }}'
+      remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
+      mount:
+        - .cargo
+        - target
+    volumes:
+      - name: cache
+        path: /tmp/cache
+
+  - name: setup
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - restore build cache
+      - install ASDF
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - rustup component add clippy
+      - (cd tree-sitter-outrun ; tree-sitter generate)
+
+  - name: build
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - setup
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cargo fetch
+      - cargo test --no-run --release
+
+  - name: store build cache
+    depends_on:
+      - build
+    image: meltwater/drone-cache
+    pull: never
+    settings:
+      rebuild: true
+      backend: filesystem
+      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}/{{ "{{" }} checksum "Cargo.lock" {{ "}}" }}'
+      remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
+      mount:
+        - .cargo
+        - target
+    volumes:
+      - name: cache
+        path: /tmp/cache
+
+  - name: cargo test
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - build
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cargo test --jobs 1 --release
+
+  - name: cargo clippy
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - build
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cargo clippy --all-targets --all-features -- -D warnings
+
+  - name: tree-sitter test
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - build
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - (cd tree-sitter-outrun ; tree-sitter test)
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/drone-cache

@@ -1,0 +1,289 @@
+[
+  {
+    "type": "sep_kw",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_colon",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sep_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_comma",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kw_type",
+          "named": true
+        },
+        {
+          "type": "type_def_fields",
+          "named": true
+        },
+        {
+          "type": "type_def_impl",
+          "named": true
+        },
+        {
+          "type": "type_name",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_def_field",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ident_name",
+          "named": true
+        },
+        {
+          "type": "sep_kw",
+          "named": true
+        },
+        {
+          "type": "type_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_def_fields",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_lparen",
+          "named": true
+        },
+        {
+          "type": "op_rparen",
+          "named": true
+        },
+        {
+          "type": "sep_list",
+          "named": true
+        },
+        {
+          "type": "type_def_field",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_def_impl",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_lbrace",
+          "named": true
+        },
+        {
+          "type": "op_rbrace",
+          "named": true
+        },
+        {
+          "type": "type_def_impl_elem",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_def_impl_elem",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "fn_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_generic",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_gt",
+          "named": true
+        },
+        {
+          "type": "op_lt",
+          "named": true
+        },
+        {
+          "type": "sep_list",
+          "named": true
+        },
+        {
+          "type": "type_name",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "constant_name",
+          "named": true
+        },
+        {
+          "type": "type_generic",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "constant_name",
+    "named": true
+  },
+  {
+    "type": "fn_def",
+    "named": true
+  },
+  {
+    "type": "ident_name",
+    "named": true
+  },
+  {
+    "type": "kw_type",
+    "named": true
+  },
+  {
+    "type": "op_colon",
+    "named": true
+  },
+  {
+    "type": "op_comma",
+    "named": true
+  },
+  {
+    "type": "op_gt",
+    "named": true
+  },
+  {
+    "type": "op_lbrace",
+    "named": true
+  },
+  {
+    "type": "op_lparen",
+    "named": true
+  },
+  {
+    "type": "op_lt",
+    "named": true
+  },
+  {
+    "type": "op_rbrace",
+    "named": true
+  },
+  {
+    "type": "op_rparen",
+    "named": true
+  },
+  {
+    "type": "ws",
+    "named": true
+  }
+]
