@@ -47,7 +47,100 @@
       "required": true,
       "types": [
         {
+          "type": "trait_def",
+          "named": true
+        },
+        {
           "type": "type_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trait_constraint",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "op_land",
+          "named": true
+        },
+        {
+          "type": "op_lor",
+          "named": true
+        },
+        {
+          "type": "op_qolon",
+          "named": true
+        },
+        {
+          "type": "type_name",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trait_constraints",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kw_when",
+          "named": true
+        },
+        {
+          "type": "op_colon",
+          "named": true
+        },
+        {
+          "type": "op_comma",
+          "named": true
+        },
+        {
+          "type": "trait_constraint",
+          "named": true
+        },
+        {
+          "type": "ws",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trait_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kw_trait",
+          "named": true
+        },
+        {
+          "type": "trait_constraints",
+          "named": true
+        },
+        {
+          "type": "type_name",
+          "named": true
+        },
+        {
+          "type": "ws",
           "named": true
         }
       ]
@@ -247,7 +340,15 @@
     "named": true
   },
   {
+    "type": "kw_trait",
+    "named": true
+  },
+  {
     "type": "kw_type",
+    "named": true
+  },
+  {
+    "type": "kw_when",
     "named": true
   },
   {
@@ -263,7 +364,15 @@
     "named": true
   },
   {
+    "type": "op_land",
+    "named": true
+  },
+  {
     "type": "op_lbrace",
+    "named": true
+  },
+  {
+    "type": "op_lor",
     "named": true
   },
   {
@@ -272,6 +381,10 @@
   },
   {
     "type": "op_lt",
+    "named": true
+  },
+  {
+    "type": "op_qolon",
     "named": true
   },
   {

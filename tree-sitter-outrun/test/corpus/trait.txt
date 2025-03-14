@@ -1,0 +1,52 @@
+===
+empty trait
+===
+
+trait Foo
+
+---
+
+(source_file
+  (trait_def
+    (kw_trait)
+    (ws)
+    (type_name (constant_name))
+  )
+)
+
+===
+trait with guards
+===
+
+trait Foo<T>, when: T :: String
+
+---
+
+(source_file
+  (trait_def
+    (kw_trait)
+    (ws)
+    (type_name
+      (constant_name)
+      (type_generic
+        (op_lt)
+        (type_name (constant_name))
+        (op_gt)
+      )
+    )
+    (trait_constraints
+      (op_comma)
+      (ws)
+      (kw_when)
+      (op_colon)
+      (ws)
+      (trait_constraint
+        (type_name (constant_name))
+        (ws)
+        (op_qolon)
+        (ws)
+        (type_name (constant_name))
+      )
+    )
+  )
+)

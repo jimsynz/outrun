@@ -15,7 +15,7 @@ module.exports = grammar({
   ],
 
   rules: {
-    source_file: ($) => $.type_def,
+    source_file: ($) => choice($.type_def, $.trait_def),
 
     type_def: ($) => seq(
       $.kw_type, 
@@ -48,6 +48,36 @@ module.exports = grammar({
       $.op_rbrace
     ),
     type_def_impl_elem: ($) => choice($.fn_def),
+
+    trait_def: ($) => seq(
+      $.kw_trait,
+      $.ws,
+      $.type_name,
+      optional(seq(
+        optional($.ws),
+        $.trait_constraints
+      ))
+    ),
+
+    trait_constraints: ($) => seq(
+      $.op_comma,
+      optional($.ws),
+      $.kw_when,
+      optional($.ws),
+      $.op_colon,
+      optional($.ws),
+      repeat($.trait_constraint)
+    ),
+
+    trait_constraint: ($) => seq(
+      $.type_name,
+      repeat(seq(
+        optional($.ws),
+        choice($.op_qolon, $.op_land, $.op_lor),
+        optional($.ws),
+        $.type_name
+      ))
+    ),
 
     type_name: ($) => seq($.constant_name, 
       optional(seq(
@@ -82,7 +112,12 @@ module.exports = grammar({
     op_rparen: ($) => ")",
     op_lbrace: ($) => "{",
     op_rbrace: ($) => "}",
+    op_qolon: ($) => "::",
+    op_land: ($) => "&&",
+    op_lor: ($) => "||",
     kw_type: ($) => "type",
+    kw_trait: ($) => "trait",
+    kw_when: ($) => "when",
     sep_list: ($) => seq(optional($.ws), $.op_comma, optional($.ws)),
     sep_kw: ($) => seq(optional($.ws), $.op_colon, optional($.ws))
   }
