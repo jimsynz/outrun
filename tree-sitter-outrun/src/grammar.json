@@ -269,7 +269,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "trait_constraints"
+                  "name": "trait_def_when"
                 }
               ]
             },
@@ -280,7 +280,7 @@
         }
       ]
     },
-    "trait_constraints": {
+    "trait_def_when": {
       "type": "SEQ",
       "members": [
         {
@@ -345,7 +345,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "type_name"
+          "name": "trait_constrait_expr"
         },
         {
           "type": "REPEAT",
@@ -369,7 +369,7 @@
                 "members": [
                   {
                     "type": "SYMBOL",
-                    "name": "op_qolon"
+                    "name": "op_quadrolon"
                   },
                   {
                     "type": "SYMBOL",
@@ -395,10 +395,60 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "type_name"
+                "name": "trait_constrait_expr"
               }
             ]
           }
+        }
+      ]
+    },
+    "trait_constrait_expr": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type_name"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "op_lbrace"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "ws"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "trait_constraint"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "ws"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "op_rbrace"
+            }
+          ]
         }
       ]
     },
@@ -558,7 +608,7 @@
       "type": "STRING",
       "value": "}"
     },
-    "op_qolon": {
+    "op_quadrolon": {
       "type": "STRING",
       "value": "::"
     },

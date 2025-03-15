@@ -15,7 +15,7 @@ trait Foo
 )
 
 ===
-trait with guards
+trait with guard
 ===
 
 trait Foo<T>, when: T :: String
@@ -43,10 +43,23 @@ trait Foo<T>, when: T :: String
       (trait_constraint
         (type_name (constant_name))
         (ws)
-        (op_qolon)
+        (op_quadrolon)
         (ws)
         (type_name (constant_name))
       )
     )
   )
+)
+
+===
+
+trait with guards
+
+===
+
+trait Foo, when: Foo :: String && Foo :: Inspect
+
+---
+
+(source_file
 )

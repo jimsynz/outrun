@@ -55,11 +55,11 @@ module.exports = grammar({
       $.type_name,
       optional(seq(
         optional($.ws),
-        $.trait_constraints
+        $.trait_def_when
       ))
     ),
 
-    trait_constraints: ($) => seq(
+    trait_def_when: ($) => seq(
       $.op_comma,
       optional($.ws),
       $.kw_when,
@@ -70,13 +70,28 @@ module.exports = grammar({
     ),
 
     trait_constraint: ($) => seq(
-      $.type_name,
+      $.trait_constrait_expr,
       repeat(seq(
         optional($.ws),
-        choice($.op_qolon, $.op_land, $.op_lor),
+        choice(
+          $.op_quadrolon,
+          $.op_land,
+          $.op_lor
+        ),
         optional($.ws),
-        $.type_name
-      ))
+        $.trait_constrait_expr
+      )),
+    ),
+
+    trait_constrait_expr: ($) => choice(
+      $.type_name,
+      seq(
+        $.op_lbrace,
+        optional($.ws),
+        $.trait_constraint,
+        optional($.ws),
+        $.op_rbrace
+      )
     ),
 
     type_name: ($) => seq($.constant_name, 
@@ -112,7 +127,7 @@ module.exports = grammar({
     op_rparen: ($) => ")",
     op_lbrace: ($) => "{",
     op_rbrace: ($) => "}",
-    op_qolon: ($) => "::",
+    op_quadrolon: ($) => "::",
     op_land: ($) => "&&",
     op_lor: ($) => "||",
     kw_type: ($) => "type",
