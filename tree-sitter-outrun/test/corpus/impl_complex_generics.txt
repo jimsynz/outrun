@@ -1,0 +1,108 @@
+================
+Complex trait implementation with multiple generics
+================
+
+impl<T, U> Converter<T, U> for Processor<T> when T: Serializable && U: Deserializable {
+    def convert(self: Self, input: T): Result<U, Error> {
+        let serialized = T.serialize(input: input)
+        U.deserialize(data: serialized)
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (generic_params
+        (generic_param
+          (type_identifier))
+        (generic_param
+          (type_identifier)))
+      (trait_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (type_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (trait_constraints
+        (constraint_expression
+          (binary_constraint_expression
+            (constraint_expression
+              (constraint_term
+                (type_constraint
+                  (type_identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier))))))
+            (constraint_expression
+              (constraint_term
+                (type_constraint
+                  (type_identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier)))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier)))
+              (type_annotation
+                (module_path
+                  (type_identifier))))))
+        (block
+          (statement
+            (let_binding
+              (identifier)
+              (expression
+                (primary_expression
+                  (function_call
+                    (module_path
+                      (type_identifier))
+                    (identifier)
+                    (argument_list
+                      (argument
+                        (named_argument
+                          (identifier)
+                          (expression
+                            (primary_expression
+                              (identifier)))))))))))
+          (statement
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier)))))))))))))))

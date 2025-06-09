@@ -1,0 +1,45 @@
+================
+Basic trait implementation for concrete type
+================
+
+impl Drawable for User {
+    def draw(self: Self): String {
+        "User(#{self.email})"
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (trait_spec
+        (module_path
+          (type_identifier)))
+      (type_spec
+        (module_path
+          (type_identifier)))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (literal
+                  (string
+                    (string_content)
+                    (interpolation
+                      (expression
+                        (primary_expression
+                          (identifier))
+                        (field_access
+                          (identifier))))
+                    (string_content)))))))))))

@@ -1,0 +1,21 @@
+================
+Logical operators with NOT
+================
+
+let result = !true && false
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_logical_and
+          (unary_not
+            (primary_expression
+              (literal
+                (boolean))))
+          (primary_expression
+            (literal
+              (boolean))))))))

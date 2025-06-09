@@ -1,0 +1,56 @@
+================
+Mixed qualified and unqualified function calls
+================
+
+def process_user(): User {
+    let data = fetch_data()
+    let user = User.create(name: extract_name(data: data))
+    user
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (primary_expression
+                (function_call
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (identifier)))))))))))))))))
+        (statement
+          (expression
+            (primary_expression
+              (identifier))))))))

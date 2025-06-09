@@ -1,0 +1,17 @@
+================
+Chained unary operators
+================
+
+let result = --x
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (unary_minus
+          (unary_minus
+            (primary_expression
+              (identifier))))))))

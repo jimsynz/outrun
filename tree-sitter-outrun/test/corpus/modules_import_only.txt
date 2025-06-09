@@ -1,0 +1,24 @@
+================
+Import with only clause
+================
+
+import Logger, only: [info: 1, debug: 2, error: 1]
+
+---
+
+(source_file
+  (item
+    (import_definition
+      (module_path
+        (type_identifier))
+      (import_spec
+        (import_list
+          (import_item
+            (identifier)
+            (integer))
+          (import_item
+            (identifier)
+            (integer))
+          (import_item
+            (identifier)
+            (integer)))))))

@@ -1,0 +1,59 @@
+================
+List literals
+================
+
+def numbers(): List<Integer> {
+    [1, 2, 3]
+}
+
+def empty(): List<String> {
+    []
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (list_literal
+                (expression
+                  (primary_expression
+                    (literal
+                      (integer))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (integer))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (integer)))))))))))
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (list_literal))))))))

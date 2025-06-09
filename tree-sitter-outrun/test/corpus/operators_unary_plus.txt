@@ -1,0 +1,17 @@
+================
+Unary plus operator
+================
+
+let result = +5
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (unary_plus
+          (primary_expression
+            (literal
+              (integer))))))))

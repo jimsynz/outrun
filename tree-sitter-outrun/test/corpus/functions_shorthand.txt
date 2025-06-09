@@ -1,0 +1,134 @@
+================
+Function call with shorthand arguments
+================
+
+def test(): String {
+    add(left, right)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))
+                  (argument
+                    (shorthand_argument
+                      (identifier))))))))))))
+
+================
+Function call with mixed shorthand and explicit arguments
+================
+
+def test(): String {
+    add(left, right: 10)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (literal
+                            (integer)))))))))))))))
+
+================
+Function call with all explicit arguments
+================
+
+def test(): String {
+    add(left: left, right: right)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))
+
+================
+Function call with single shorthand argument
+================
+
+def test(): String {
+    process(data)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier))))))))))))

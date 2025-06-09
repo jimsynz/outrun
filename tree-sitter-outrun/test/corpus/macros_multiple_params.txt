@@ -1,0 +1,43 @@
+================
+Macro with multiple parameters
+================
+
+macro unless(condition, do_block, else_block) {
+  if ^condition {
+    ^else_block
+  } else {
+    ^do_block
+  }
+}
+
+---
+
+(source_file
+  (item
+    (macro_definition
+      (identifier)
+      (macro_parameter_list
+        (identifier)
+        (identifier)
+        (identifier))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (if_expression
+                (expression
+                  (primary_expression
+                    (macro_injection
+                      (identifier))))
+                (block
+                  (statement
+                    (expression
+                      (primary_expression
+                        (macro_injection
+                          (identifier))))))
+                (block
+                  (statement
+                    (expression
+                      (primary_expression
+                        (macro_injection
+                          (identifier))))))))))))))

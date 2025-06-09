@@ -1,0 +1,77 @@
+================
+Complex guard expression with logical operators
+================
+
+def process(data: String): Result<ProcessedData, Error>
+when String.not_empty?(data) && String.valid_format?(data) {
+    Result.ok(value: process_data(data: data))
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier)))
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (binary_logical_and
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (shorthand_argument
+                        (identifier))))))
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (shorthand_argument
+                        (identifier))))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier))))))))))))))))))))

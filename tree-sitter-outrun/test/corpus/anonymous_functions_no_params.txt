@@ -1,0 +1,21 @@
+================
+Anonymous function with no parameters
+================
+
+let getter = fn { () -> 42 }
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params)
+              (expression
+                (primary_expression
+                  (literal
+                    (integer)))))))))))

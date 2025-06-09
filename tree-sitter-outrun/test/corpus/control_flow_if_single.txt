@@ -1,0 +1,38 @@
+================
+Single expression if/else
+================
+
+def check(): Integer {
+    if condition { 1 } else { 0 }
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (if_expression
+                (expression
+                  (primary_expression
+                    (identifier)))
+                (block
+                  (statement
+                    (expression
+                      (primary_expression
+                        (literal
+                          (integer))))))
+                (block
+                  (statement
+                    (expression
+                      (primary_expression
+                        (literal
+                          (integer))))))))))))))

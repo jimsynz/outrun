@@ -1,0 +1,232 @@
+================
+Nested case statements
+================
+
+def categorize_value(value: Any): String {
+    case value {
+        when Integer.type?(value) -> {
+            case value {
+                when value > 100 -> "large integer"
+                when value > 0 -> "positive integer"
+                when value == 0 -> "zero"
+                else -> "negative integer"
+            }
+        }
+        when String.type?(value) -> {
+            case String.length(value) {
+                when length > 20 -> {
+                    case String.contains?(value, char: " ") {
+                        when true -> "long multi-word string"
+                        else -> "long single-word string"
+                    }
+                }
+                when length > 0 -> "short string"
+                else -> "empty string"
+            }
+        }
+        else -> "unknown type"
+    }
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (case_expression
+                (expression
+                  (primary_expression
+                    (identifier)))
+                (case_clause
+                  (case_pattern
+                    (guard_expression
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (module_path
+                              (type_identifier))
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (shorthand_argument
+                                  (identifier)))))))))
+                  (block
+                    (statement
+                      (expression
+                        (primary_expression
+                          (case_expression
+                            (expression
+                              (primary_expression
+                                (identifier)))
+                            (case_clause
+                              (case_pattern
+                                (guard_expression
+                                  (expression
+                                    (binary_greater
+                                      (primary_expression
+                                        (identifier))
+                                      (primary_expression
+                                        (literal
+                                          (integer)))))))
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))
+                            (case_clause
+                              (case_pattern
+                                (guard_expression
+                                  (expression
+                                    (binary_greater
+                                      (primary_expression
+                                        (identifier))
+                                      (primary_expression
+                                        (literal
+                                          (integer)))))))
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))
+                            (case_clause
+                              (case_pattern
+                                (guard_expression
+                                  (expression
+                                    (binary_equal
+                                      (primary_expression
+                                        (identifier))
+                                      (primary_expression
+                                        (literal
+                                          (integer)))))))
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))
+                            (else_clause
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))))))))
+                (case_clause
+                  (case_pattern
+                    (guard_expression
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (module_path
+                              (type_identifier))
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (shorthand_argument
+                                  (identifier)))))))))
+                  (block
+                    (statement
+                      (expression
+                        (primary_expression
+                          (case_expression
+                            (expression
+                              (primary_expression
+                                (function_call
+                                  (module_path
+                                    (type_identifier))
+                                  (identifier)
+                                  (argument_list
+                                    (argument
+                                      (shorthand_argument
+                                        (identifier)))))))
+                            (case_clause
+                              (case_pattern
+                                (guard_expression
+                                  (expression
+                                    (binary_greater
+                                      (primary_expression
+                                        (identifier))
+                                      (primary_expression
+                                        (literal
+                                          (integer)))))))
+                              (block
+                                (statement
+                                  (expression
+                                    (primary_expression
+                                      (case_expression
+                                        (expression
+                                          (primary_expression
+                                            (function_call
+                                              (module_path
+                                                (type_identifier))
+                                              (identifier)
+                                              (argument_list
+                                                (argument
+                                                  (shorthand_argument
+                                                    (identifier)))
+                                                (argument
+                                                  (named_argument
+                                                    (identifier)
+                                                    (expression
+                                                      (primary_expression
+                                                        (literal
+                                                          (string
+                                                            (string_content)))))))))))
+                                        (case_clause
+                                          (case_pattern
+                                            (guard_expression
+                                              (expression
+                                                (primary_expression
+                                                  (literal
+                                                    (boolean))))))
+                                          (expression
+                                            (primary_expression
+                                              (literal
+                                                (string
+                                                  (string_content))))))
+                                        (else_clause
+                                          (expression
+                                            (primary_expression
+                                              (literal
+                                                (string
+                                                  (string_content))))))))))))
+                            (case_clause
+                              (case_pattern
+                                (guard_expression
+                                  (expression
+                                    (binary_greater
+                                      (primary_expression
+                                        (identifier))
+                                      (primary_expression
+                                        (literal
+                                          (integer)))))))
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))
+                            (else_clause
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (string
+                                      (string_content))))))))))))
+                (else_clause
+                  (expression
+                    (primary_expression
+                      (literal
+                        (string
+                          (string_content))))))))))))))

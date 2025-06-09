@@ -1,0 +1,306 @@
+================
+Function with guard and complex Result return type
+================
+
+def safe_divide(numerator: Integer, denominator: Integer): Result<Float, DivisionError>
+when Integer.non_zero?(denominator) {
+    Result.ok(value: Float.divide(numerator: numerator, denominator: denominator))
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier)))
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (module_path
+                              (type_identifier))
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier))))))))))))))))))))
+
+================
+Function with guard and nested generic return type
+================
+
+def fetch_user_data(user_id: Integer): Option<Map<String, List<UserPreference>>>
+when Integer.positive?(user_id) {
+    Database.query(user_id: user_id)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier)))
+                (type_annotation
+                  (module_path
+                    (type_identifier))
+                  (generic_args
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))))))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))
+
+================
+Function with guard and tuple of complex types
+================
+
+def process_batch(items: List<Item>): (Map<String, Integer>, List<Error>)
+when List.not_empty?(items) {
+    BatchProcessor.process(items: items)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (return_type
+        (type_annotation
+          (tuple_type
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier)))
+                (type_annotation
+                  (module_path
+                    (type_identifier)))))
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier))))))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))
+
+================
+Function with guard and deeply nested generics
+================
+
+def complex_transform(data: RawData): Option<Map<String, List<Tuple<Atom, Result<ParsedValue, ParseError>>>>>
+when RawData.valid?(data) {
+    DataProcessor.transform(data: data)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier)))
+                (type_annotation
+                  (module_path
+                    (type_identifier))
+                  (generic_args
+                    (type_annotation
+                      (module_path
+                        (type_identifier))
+                      (generic_args
+                        (type_annotation
+                          (module_path
+                            (type_identifier)))
+                        (type_annotation
+                          (module_path
+                            (type_identifier))
+                          (generic_args
+                            (type_annotation
+                              (module_path
+                                (type_identifier)))
+                            (type_annotation
+                              (module_path
+                                (type_identifier))))))))))))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))
+
+
+

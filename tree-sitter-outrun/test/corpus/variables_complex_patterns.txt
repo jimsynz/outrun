@@ -1,0 +1,33 @@
+================
+Complex variable patterns
+================
+
+def process_complex_patterns() {
+    # Multiple nested destructuring patterns
+    let User { name, profile } = fetch_user()
+    let UserProfile { preferences, settings } = profile
+    let UserPreferences { theme, language } = preferences
+    
+    # Tuple destructuring with nested structures
+    let ((x, y), (lat, lon)) = get_coordinates()
+    let (first, second, third) = calculate_positions()
+    
+    # List destructuring with rest patterns
+    let [head, ..tail] = process_items()
+    let [first_item, second_item, ..remaining] = inventory_list
+    
+    # Complex tuple patterns
+    let complex_tuple = ((user_id, session), [first_pref, other_prefs])
+    let ((extracted_id, extracted_session), preference_data) = complex_tuple
+    
+    # More nested destructuring
+    let [extracted_first, ..extracted_rest] = preference_data
+    
+    # Struct patterns in tuples
+    let config_data = (Config { database, cache }, Settings { logging, monitoring })
+    let (database_config, app_settings) = config_data
+    
+    extracted_id
+}
+
+---

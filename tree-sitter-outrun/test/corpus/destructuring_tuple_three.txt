@@ -1,0 +1,19 @@
+================
+Tuple destructuring with three elements
+================
+
+let (x, y, z) = some_tuple
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (destructure_pattern
+        (tuple_destructure
+          (identifier)
+          (identifier)
+          (identifier)))
+      (expression
+        (primary_expression
+          (identifier))))))

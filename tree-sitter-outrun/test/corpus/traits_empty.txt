@@ -1,0 +1,13 @@
+================
+Empty trait definition
+================
+
+trait Marker {
+}
+
+---
+
+(source_file
+  (item
+    (trait_definition
+      (type_identifier))))

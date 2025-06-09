@@ -1,0 +1,24 @@
+================
+Basic trait definition with function signature
+================
+
+trait Drawable {
+    def draw(self: Self): String
+}
+
+---
+
+(source_file
+  (item
+    (trait_definition
+      (type_identifier)
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))))))

@@ -1,0 +1,42 @@
+================
+Basic struct with single generic parameter
+================
+
+struct Container<T>(value: T) {
+    def get(self: Self): T {
+        self.value
+    }
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (type_identifier)
+      (generic_params
+        (generic_param
+          (type_identifier)))
+      (struct_fields
+        (struct_field
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (field_access
+                (identifier)))))))))

@@ -1,0 +1,22 @@
+================
+Generic struct with no functions
+================
+
+struct Wrapper<T>(value: T) {
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (type_identifier)
+      (generic_params
+        (generic_param
+          (type_identifier)))
+      (struct_fields
+        (struct_field
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))))))

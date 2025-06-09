@@ -1,0 +1,294 @@
+================
+Anonymous function with single parameter guard
+================
+
+let classifier = fn {
+    x: Integer when Integer.positive?(x) -> "positive"
+    x: Integer when Integer.negative?(x) -> "negative"
+    x: Integer when Integer.zero?(x) -> "zero"
+}
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))))))))
+
+================
+Anonymous function with multiple parameter guards
+================
+
+let comparer = fn {
+    (x: Integer, y: Integer) when Integer.greater?(x, y) -> "first is greater"
+    (x: Integer, y: Integer) when Integer.less?(x, y) -> "second is greater"
+    (x: Integer, y: Integer) when Integer.equal?(x, y) -> "equal"
+}
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (parameter_list
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (parameter_list
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (parameter_list
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))))))))
+
+================
+Anonymous function with complex guard expressions
+================
+
+let validator = fn {
+    data: String when String.not_empty?(data) && String.valid_format?(data) -> "valid"
+    data: String when String.empty?(data) -> "empty"
+    data: String -> "invalid"
+}
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (binary_logical_and
+                      (primary_expression
+                        (function_call
+                          (module_path
+                            (type_identifier))
+                          (identifier)
+                          (argument_list
+                            (argument
+                              (shorthand_argument
+                                (identifier))))))
+                      (primary_expression
+                        (function_call
+                          (module_path
+                            (type_identifier))
+                          (identifier)
+                          (argument_list
+                            (argument
+                              (shorthand_argument
+                                (identifier))))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (guard_clause
+                (guard_expression
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (shorthand_argument
+                              (identifier)))))))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content))))))))))))

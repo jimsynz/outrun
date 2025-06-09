@@ -1,0 +1,87 @@
+================
+Macro with complex injection patterns
+================
+
+macro assert_equal(left, right, message) {
+  let result = ^left == ^right
+  if !result {
+    Logger.error(message: ^message, left: ^left, right: ^right)
+    Process.exit(code: 1)
+  }
+}
+
+---
+
+(source_file
+  (item
+    (macro_definition
+      (identifier)
+      (macro_parameter_list
+        (identifier)
+        (identifier)
+        (identifier))
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_equal
+                (primary_expression
+                  (macro_injection
+                    (identifier)))
+                (primary_expression
+                  (macro_injection
+                    (identifier)))))))
+        (statement
+          (expression
+            (primary_expression
+              (if_expression
+                (expression
+                  (unary_not
+                    (primary_expression
+                      (identifier))))
+                (block
+                  (statement
+                    (expression
+                      (primary_expression
+                        (function_call
+                          (module_path
+                            (type_identifier))
+                          (identifier)
+                          (argument_list
+                            (argument
+                              (named_argument
+                                (identifier)
+                                (expression
+                                  (primary_expression
+                                    (macro_injection
+                                      (identifier))))))
+                            (argument
+                              (named_argument
+                                (identifier)
+                                (expression
+                                  (primary_expression
+                                    (macro_injection
+                                      (identifier))))))
+                            (argument
+                              (named_argument
+                                (identifier)
+                                (expression
+                                  (primary_expression
+                                    (macro_injection
+                                      (identifier)))))))))))
+                  (statement
+                    (expression
+                      (primary_expression
+                        (function_call
+                          (module_path
+                            (type_identifier))
+                          (identifier)
+                          (argument_list
+                            (argument
+                              (named_argument
+                                (identifier)
+                                (expression
+                                  (primary_expression
+                                    (literal
+                                      (integer))))))))))))))))))))

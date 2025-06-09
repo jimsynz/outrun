@@ -1,0 +1,28 @@
+================
+Complex logical expression
+================
+
+let result = (a && b) || (c && d)
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_logical_or
+          (primary_expression
+            (expression
+              (binary_logical_and
+                (primary_expression
+                  (identifier))
+                (primary_expression
+                  (identifier)))))
+          (primary_expression
+            (expression
+              (binary_logical_and
+                (primary_expression
+                  (identifier))
+                (primary_expression
+                  (identifier))))))))))

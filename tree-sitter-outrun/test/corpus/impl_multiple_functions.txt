@@ -1,0 +1,69 @@
+================
+Trait implementation with multiple functions
+================
+
+impl Container for Box {
+    def get(self: Self): T {
+        self.value
+    }
+    
+    def put(self: Self, value: T): Self {
+        Box { value: value }
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (trait_spec
+        (module_path
+          (type_identifier)))
+      (type_spec
+        (module_path
+          (type_identifier)))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (field_access
+                (identifier))))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier)))))
+        (return_type
+          (type_annotation))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (struct_literal
+                  (module_path
+                    (type_identifier))
+                  (struct_literal_fields
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier)))))))))))))))

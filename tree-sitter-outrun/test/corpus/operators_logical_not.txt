@@ -1,0 +1,20 @@
+================
+Logical NOT operator
+================
+
+const NOT_RESULT: Boolean = !true
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (unary_not
+          (primary_expression
+            (literal
+              (boolean))))))))

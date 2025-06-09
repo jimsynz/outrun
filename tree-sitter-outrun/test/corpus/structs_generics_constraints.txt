@@ -1,0 +1,56 @@
+================
+Struct with generic constraints
+================
+
+struct Processor<T>(data: T) when T: Serializable {
+    def process(self: Self): String {
+        self.data.serialize()
+    }
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (type_identifier)
+      (generic_params
+        (generic_param
+          (type_identifier)))
+      (struct_fields
+        (struct_field
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (trait_constraints
+        (constraint_expression
+          (constraint_term
+            (type_constraint
+              (type_identifier)
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (field_access
+                (identifier))
+              (field_access
+                (identifier))))
+          (statement
+            (expression
+              (primary_expression
+                (tuple_literal)))))))))

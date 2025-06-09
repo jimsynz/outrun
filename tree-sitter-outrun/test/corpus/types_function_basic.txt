@@ -1,0 +1,82 @@
+================
+Basic Function type with single parameter
+================
+
+def process(callback: Function<(x: Integer) -> String>) {}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (function_type
+              (function_type_params
+                (function_type_param
+                  (identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (block))))
+
+================
+Function type with no parameters
+================
+
+def run(task: Function<() -> Unit>) {}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (function_type
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (block))))
+
+================
+Function type with multiple parameters
+================
+
+def combine(merger: Function<(x: Integer, y: String) -> Boolean>) {}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (function_type
+              (function_type_params
+                (function_type_param
+                  (identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier))))
+                (function_type_param
+                  (identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (block))))

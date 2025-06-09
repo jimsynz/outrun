@@ -1,0 +1,20 @@
+================
+Function capture with arity
+================
+
+let logger = &Logger.log/2
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_capture
+            (qualified_function_ref
+              (module_path
+                (type_identifier))
+              (identifier)
+              (arity))))))))

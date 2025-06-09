@@ -1,0 +1,63 @@
+================
+Minimal Application implementation
+================
+
+struct App() {}
+
+impl Application for App {
+  def start(args: List<String>): Result<(), ApplicationError> {
+    Result.ok(value: ())
+  }
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (type_identifier)))
+  (item
+    (impl_block
+      (trait_spec
+        (module_path
+          (type_identifier)))
+      (type_spec
+        (module_path
+          (type_identifier)))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier)))))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (tuple_type))
+              (type_annotation
+                (module_path
+                  (type_identifier))))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (tuple_literal)))))))))))))))

@@ -1,0 +1,24 @@
+================
+Sigil with multiline string
+================
+
+let complex_query = ~SQL"""
+SELECT users.id, users.name, profiles.bio
+FROM users
+JOIN profiles ON users.id = profiles.user_id
+WHERE users.active = true
+"""
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (multiline_string
+                (multiline_string_content)))))))))

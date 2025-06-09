@@ -1,0 +1,16 @@
+================
+Simple alias with as clause
+================
+
+alias MyApp.User as User
+
+---
+
+(source_file
+  (item
+    (alias_definition
+      (module_path
+        (type_identifier)
+        (type_identifier))
+      (alias_spec
+        (type_identifier)))))

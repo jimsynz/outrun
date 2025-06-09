@@ -1,0 +1,24 @@
+================
+Nested module paths
+================
+
+alias Http.Client.Connection as Connection
+import Database.Postgres.Pool
+
+---
+
+(source_file
+  (item
+    (alias_definition
+      (module_path
+        (type_identifier)
+        (type_identifier)
+        (type_identifier))
+      (alias_spec
+        (type_identifier))))
+  (item
+    (import_definition
+      (module_path
+        (type_identifier)
+        (type_identifier)
+        (type_identifier)))))

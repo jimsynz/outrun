@@ -1,0 +1,19 @@
+================
+Bitwise operations with complement
+================
+
+let result = ~a & b
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_bitwise_and
+          (unary_complement
+            (primary_expression
+              (identifier)))
+          (primary_expression
+            (identifier)))))))

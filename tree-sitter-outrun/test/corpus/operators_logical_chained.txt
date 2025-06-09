@@ -1,0 +1,21 @@
+================
+Chained logical operators
+================
+
+let result = a && b || c
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_logical_or
+          (binary_logical_and
+            (primary_expression
+              (identifier))
+            (primary_expression
+              (identifier)))
+          (primary_expression
+            (identifier)))))))

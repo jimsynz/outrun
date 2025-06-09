@@ -1,0 +1,20 @@
+================
+Let rebinding with same variable name
+================
+
+let name: String = "James Neil"
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (primary_expression
+          (literal
+            (string
+              (string_content))))))))

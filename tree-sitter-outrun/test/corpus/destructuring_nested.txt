@@ -1,0 +1,19 @@
+================
+Nested destructuring (tuple in struct)
+================
+
+let User { profile } = get_user()
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (destructure_pattern
+        (struct_destructure
+          (type_identifier)
+          (identifier)))
+      (expression
+        (primary_expression
+          (function_call
+            (identifier)))))))

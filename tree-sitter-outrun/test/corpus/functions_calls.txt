@@ -1,0 +1,54 @@
+================
+Function call with named parameters
+================
+
+const RESULT: Integer = add(left: 5, right: 3)
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (primary_expression
+          (function_call
+            (identifier)
+            (argument_list
+              (argument
+                (named_argument
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (integer))))))
+              (argument
+                (named_argument
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (integer)))))))))))))
+
+================
+Function call without parameters
+================
+
+const GREETING: String = greet()
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (primary_expression
+          (function_call
+            (identifier)))))))

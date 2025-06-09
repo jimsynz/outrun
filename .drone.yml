@@ -14,7 +14,7 @@ steps:
     settings:
       restore: true
       backend: filesystem
-      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}'
+      cache_key: '{{ checksum ".tool-versions" }}'
       remote_root: asdf
       mount:
         - .asdf
@@ -40,8 +40,8 @@ steps:
     settings:
       rebuild: true
       backend: filesystem
-      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}'
-      remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
+      cache_key: '{{ checksum ".tool-versions" }}'
+      remote_root: asdf
       mount:
         - .asdf
     volumes:
@@ -54,7 +54,7 @@ steps:
     settings:
       restore: true
       backend: filesystem
-      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}/{{ "{{" }} checksum "Cargo.lock" {{ "}}" }}'
+      cache_key: '{{ checksum ".tool-versions" }}/{{ checksum "Cargo.lock" }}'
       remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
       mount:
         - .cargo
@@ -92,7 +92,7 @@ steps:
     settings:
       rebuild: true
       backend: filesystem
-      cache_key: '{{ "{{" }} checksum ".tool-versions" {{ "}}" }}/{{ "{{" }} checksum "Cargo.lock" {{ "}}" }}'
+      cache_key: '{{ checksum ".tool-versions" }}/{{ checksum "Cargo.lock" }}'
       remote_root: ${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}/build
       mount:
         - .cargo

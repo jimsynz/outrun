@@ -1,0 +1,38 @@
+================
+Basic qualified function call
+================
+
+const USER: User = User.create(name: "James", email: "test@example.com")
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (primary_expression
+          (function_call
+            (module_path
+              (type_identifier))
+            (identifier)
+            (argument_list
+              (argument
+                (named_argument
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (string
+                          (string_content)))))))
+              (argument
+                (named_argument
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (string
+                          (string_content))))))))))))))

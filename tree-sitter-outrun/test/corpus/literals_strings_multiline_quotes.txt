@@ -1,0 +1,24 @@
+================
+Multi-line string with quotes inside
+================
+
+let text = """
+This is a "quoted" string.
+It can contain 'single' and "double" quotes.
+"""
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (multiline_string
+              (multiline_string_content)
+              (multiline_string_content)
+              (multiline_string_content)
+              (multiline_string_content)
+              (multiline_string_content))))))))

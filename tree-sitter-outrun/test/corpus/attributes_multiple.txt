@@ -1,0 +1,57 @@
+================
+Multiple attributes on struct
+================
+
+@Derive(traits: [Debug, Clone])
+@Serializable
+@CustomAttribute(key: "value")
+struct User(name: String, age: Integer) {
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (attribute
+        (type_identifier)
+        (attribute_args
+          (argument
+            (named_argument
+              (identifier)
+              (expression
+                (primary_expression
+                  (list_literal
+                    (expression
+                      (primary_expression
+                        (module_path
+                          (type_identifier))))
+                    (expression
+                      (primary_expression
+                        (module_path
+                          (type_identifier)))))))))))
+      (attribute
+        (type_identifier))
+      (attribute
+        (type_identifier)
+        (attribute_args
+          (argument
+            (named_argument
+              (identifier)
+              (expression
+                (primary_expression
+                  (literal
+                    (string
+                      (string_content)))))))))
+      (type_identifier)
+      (struct_fields
+        (struct_field
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (struct_field
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))))))

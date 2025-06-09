@@ -1,0 +1,20 @@
+================
+Field access on function call result
+================
+
+let name = User.create().name
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_call
+            (module_path
+              (type_identifier))
+            (identifier)))
+        (field_access
+          (identifier))))))

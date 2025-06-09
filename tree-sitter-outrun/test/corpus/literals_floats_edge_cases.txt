@@ -1,0 +1,55 @@
+================
+Float edge cases (very small and large numbers)
+================
+
+def extreme_floats(): (Float, Float, Float, Float) {
+    (
+        1.7976931348623157e308,
+        2.2250738585072014e-308,
+        1.23456789012345678901234567890e100,
+        9.87654321098765432109876543210e-100
+    )
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (tuple_type
+            (type_annotation
+              (module_path
+                (type_identifier)))
+            (type_annotation
+              (module_path
+                (type_identifier)))
+            (type_annotation
+              (module_path
+                (type_identifier)))
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (tuple_literal
+                (expression
+                  (primary_expression
+                    (literal
+                      (float))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (float))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (float))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (float))))))))))))

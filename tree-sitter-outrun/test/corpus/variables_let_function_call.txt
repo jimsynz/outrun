@@ -1,0 +1,18 @@
+================
+Let binding with function call expression
+================
+
+let timestamp = DateTime.now()
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_call
+            (module_path
+              (type_identifier))
+            (identifier)))))))

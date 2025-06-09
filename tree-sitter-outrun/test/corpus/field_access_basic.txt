@@ -1,0 +1,17 @@
+================
+Basic field access
+================
+
+let email = user.email
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (identifier))
+        (field_access
+          (identifier))))))

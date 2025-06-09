@@ -1,0 +1,19 @@
+================
+Chained field access
+================
+
+let address = user.profile.address
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (identifier))
+        (field_access
+          (identifier))
+        (field_access
+          (identifier))))))

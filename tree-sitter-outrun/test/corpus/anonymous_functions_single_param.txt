@@ -1,0 +1,28 @@
+================
+Anonymous function with single parameter
+================
+
+let increment = fn { x: Integer -> x + 1 }
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (expression
+                (binary_add
+                  (primary_expression
+                    (identifier))
+                  (primary_expression
+                    (literal
+                      (integer))))))))))))

@@ -1,0 +1,49 @@
+================
+Trait with multiple function signatures
+================
+
+trait Container {
+    def get(self: Self): T
+    def put(self: Self, value: T): Self
+    def empty?(self: Self): Boolean
+}
+
+---
+
+(source_file
+  (item
+    (trait_definition
+      (type_identifier)
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier)))))
+        (return_type
+          (type_annotation)))
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))))))

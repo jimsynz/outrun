@@ -1,0 +1,20 @@
+================
+Bitwise XOR operator
+================
+
+let result = 5 ^ 3
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_bitwise_xor
+          (primary_expression
+            (literal
+              (integer)))
+          (primary_expression
+            (literal
+              (integer))))))))

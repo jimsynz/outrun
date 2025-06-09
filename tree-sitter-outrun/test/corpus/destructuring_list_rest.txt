@@ -1,0 +1,19 @@
+================
+List destructuring with rest pattern
+================
+
+let [first, second, ..rest] = list
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (destructure_pattern
+        (list_destructure
+          (identifier)
+          (identifier)
+          (identifier)))
+      (expression
+        (primary_expression
+          (identifier))))))

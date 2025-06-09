@@ -1,0 +1,47 @@
+================
+Multiline sigil with unescaped quotes
+================
+
+let json_template = ~JSON"""
+{
+  "users": [
+    { "name": "Alice", "role": "admin" },
+    { "name": "Bob", "role": "user" }
+  ],
+  "count": 2
+}
+"""
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (multiline_string
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)
+                (multiline_string_content)))))))))

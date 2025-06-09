@@ -1,0 +1,129 @@
+================
+Chained comparison operators
+================
+
+def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
+    let basic_chain = min <= value <= max
+    let mixed_chain = 0 < value < 100
+    let equality_chain = a == b == c
+    let inequality_chain = x < y <= z < w
+    let greater_chain = a > b >= c > d
+    let mixed_operators = x <= y < z >= w
+    
+    basic_chain
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_less_equal
+                (binary_less_equal
+                  (primary_expression
+                    (identifier))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_less
+                (binary_less
+                  (primary_expression
+                    (literal
+                      (integer)))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (literal
+                    (integer)))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_equal
+                (binary_equal
+                  (primary_expression
+                    (identifier))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_less
+                (binary_less_equal
+                  (binary_less
+                    (primary_expression
+                      (identifier))
+                    (primary_expression
+                      (identifier)))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_greater
+                (binary_greater_equal
+                  (binary_greater
+                    (primary_expression
+                      (identifier))
+                    (primary_expression
+                      (identifier)))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_greater_equal
+                (binary_less
+                  (binary_less_equal
+                    (primary_expression
+                      (identifier))
+                    (primary_expression
+                      (identifier)))
+                  (primary_expression
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (expression
+            (primary_expression
+              (identifier))))))))

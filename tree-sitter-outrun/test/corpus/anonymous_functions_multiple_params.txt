@@ -1,0 +1,34 @@
+================
+Anonymous function with multiple parameters
+================
+
+let add = fn { (x: Integer, y: Integer) -> x + y }
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (parameter_list
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))
+                  (parameter
+                    (identifier)
+                    (type_annotation
+                      (module_path
+                        (type_identifier))))))
+              (expression
+                (binary_add
+                  (primary_expression
+                    (identifier))
+                  (primary_expression
+                    (identifier)))))))))))

@@ -1,0 +1,19 @@
+================
+Basic struct destructuring
+================
+
+let User { name, email } = user
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (destructure_pattern
+        (struct_destructure
+          (type_identifier)
+          (identifier)
+          (identifier)))
+      (expression
+        (primary_expression
+          (identifier))))))

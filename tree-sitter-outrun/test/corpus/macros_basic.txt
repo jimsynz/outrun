@@ -1,0 +1,32 @@
+================
+Basic macro definition
+================
+
+macro debug(value) {
+  IO.puts(message: ^value)
+}
+
+---
+
+(source_file
+  (item
+    (macro_definition
+      (identifier)
+      (macro_parameter_list
+        (identifier))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (macro_injection
+                            (identifier)))))))))))))))

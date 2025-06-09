@@ -1,0 +1,62 @@
+================
+Function type with generic return type
+================
+
+def map_list(mapper: Function<(item: T) -> U>) {}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (function_type
+              (function_type_params
+                (function_type_param
+                  (identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (block))))
+
+================
+Function type with complex generic return type
+================
+
+def process(handler: Function<(data: String) -> Result<User, Error>>) {}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (function_type
+              (function_type_params
+                (function_type_param
+                  (identifier)
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))
+              (type_annotation
+                (module_path
+                  (type_identifier))
+                (generic_args
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))))))
+      (block))))

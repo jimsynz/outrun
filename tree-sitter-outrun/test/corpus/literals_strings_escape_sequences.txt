@@ -1,0 +1,80 @@
+================
+String escape sequences
+================
+
+def escaped_strings(): List<String> {
+    [
+        "Hello\nWorld",
+        "Tab\tSeparated",
+        "Carriage\rReturn",
+        "Quote: \"Hello\"",
+        "Backslash: \\",
+        "Unicode: \u0041\u0042\u0043"
+    ]
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))
+          (generic_args
+            (type_annotation
+              (module_path
+                (type_identifier))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (list_literal
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)
+                        (escape_sequence)))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)))))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)
+                        (escape_sequence)
+                        (string_content)))))))))))))

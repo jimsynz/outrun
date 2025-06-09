@@ -1,0 +1,23 @@
+================
+Mixed pipe operators
+================
+
+let result = data |> process() |? validate()
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (pipe_expression
+          (pipe_expression
+            (primary_expression
+              (identifier))
+            (primary_expression
+              (function_call
+                (identifier))))
+          (primary_expression
+            (function_call
+              (identifier))))))))

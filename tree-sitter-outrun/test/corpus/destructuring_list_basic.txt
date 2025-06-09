@@ -1,0 +1,18 @@
+================
+Basic list destructuring
+================
+
+let [first, second] = list
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (destructure_pattern
+        (list_destructure
+          (identifier)
+          (identifier)))
+      (expression
+        (primary_expression
+          (identifier))))))

@@ -1,0 +1,17 @@
+================
+Unary operators with floats
+================
+
+let result = -3.14
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (unary_minus
+          (primary_expression
+            (literal
+              (float))))))))

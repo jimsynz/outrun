@@ -1,0 +1,18 @@
+================
+Block comment
+================
+
+### This is a block comment ###
+let x = 5
+
+---
+
+(source_file
+  (block_comment)
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (integer)))))))

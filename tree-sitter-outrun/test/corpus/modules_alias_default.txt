@@ -1,0 +1,14 @@
+================
+Default alias without as clause
+================
+
+alias MyApp.User
+
+---
+
+(source_file
+  (item
+    (alias_definition
+      (module_path
+        (type_identifier)
+        (type_identifier)))))

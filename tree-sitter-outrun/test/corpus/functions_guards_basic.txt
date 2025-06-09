@@ -1,0 +1,64 @@
+================
+Basic function with guard clause
+================
+
+def divide(numerator: Integer, denominator: Integer): Float
+when Integer.non_zero?(denominator) {
+    Float.from_integer(numerator) / Float.from_integer(denominator)
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (parameter
+          (identifier)
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (guard_clause
+        (guard_expression
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
+      (block
+        (statement
+          (expression
+            (binary_divide
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (shorthand_argument
+                        (identifier))))))
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (shorthand_argument
+                        (identifier)))))))))))))

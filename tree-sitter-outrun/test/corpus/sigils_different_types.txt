@@ -1,0 +1,60 @@
+================
+Different sigil types
+================
+
+let regex_pattern = ~Regex"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+let html_template = ~HTML"<div class='user'>#{user.name}</div>"
+let json_data = ~JSON"{ 'name': '#{name}', 'age': #{age} }"
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (string
+                (string_content)
+                (escape_sequence)
+                (string_content))))))))
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (string
+                (string_content)
+                (interpolation
+                  (expression
+                    (primary_expression
+                      (identifier))
+                    (field_access
+                      (identifier))))
+                (string_content))))))))
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (string
+                (string_content)
+                (interpolation
+                  (expression
+                    (primary_expression
+                      (identifier))))
+                (string_content)
+                (interpolation
+                  (expression
+                    (primary_expression
+                      (identifier))))
+                (string_content)))))))))

@@ -1,0 +1,35 @@
+# Example Outrun program
+
+struct User(name: String, email: String) {
+    def greet(self: Self): String {
+        "Hello, #{self.name}!"
+    }
+    
+    defp validate_email(email: String): Boolean {
+        String.contains?(email, "@")
+    }
+}
+
+trait Drawable {
+    def draw(self: Self): String
+}
+
+impl Drawable for User {
+    def draw(self: Self): String {
+        "User: #{self.name} <#{self.email}>"
+    }
+}
+
+const MAX_USERS: Integer = 1000
+
+def main(): Result<(), Error> {
+    let user: User = User {
+        name: "James",
+        email: "james@example.com"
+    }
+    
+    let greeting = user.greet()
+    IO.puts(greeting)
+    
+    Ok(())
+}

@@ -1,0 +1,203 @@
+================
+Complex Application implementation with error handling
+================
+
+struct WebApp() {}
+
+impl Application for WebApp {
+  def start(args: List<String>): Result<(), ApplicationError> {
+    let config = Config.parse(args: args)
+    case config {
+      when Result.ok?(value) -> {
+        Logger.info(message: "Starting web application")
+        Server.listen(port: value.port)
+        Result.ok(value: ())
+      }
+      when Result.error?(error) -> {
+        Logger.error(message: "Failed to parse config", error: error)
+        Result.error(error: ApplicationError.config_error(details: error))
+      }
+    }
+  }
+}
+
+---
+
+(source_file
+  (item
+    (struct_definition
+      (type_identifier)))
+  (item
+    (impl_block
+      (trait_spec
+        (module_path
+          (type_identifier)))
+      (type_spec
+        (module_path
+          (type_identifier)))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier)))))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (tuple_type))
+              (type_annotation
+                (module_path
+                  (type_identifier))))))
+        (block
+          (statement
+            (let_binding
+              (identifier)
+              (expression
+                (primary_expression
+                  (function_call
+                    (module_path
+                      (type_identifier))
+                    (identifier)
+                    (argument_list
+                      (argument
+                        (named_argument
+                          (identifier)
+                          (expression
+                            (primary_expression
+                              (identifier)))))))))))
+          (statement
+            (expression
+              (primary_expression
+                (case_expression
+                  (expression
+                    (primary_expression
+                      (identifier)))
+                  (case_clause
+                    (case_pattern
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (shorthand_argument
+                                    (identifier)))))))))
+                    (block
+                      (statement
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content))))))))))))
+                      (statement
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (identifier))
+                                      (field_access
+                                        (identifier))))))))))
+                      (statement
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (tuple_literal))))))))))))
+                  (case_clause
+                    (case_pattern
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (shorthand_argument
+                                    (identifier)))))))))
+                    (block
+                      (statement
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (identifier))))))))))
+                      (statement
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (function_call
+                                          (module_path
+                                            (type_identifier))
+                                          (identifier)
+                                          (argument_list
+                                            (argument
+                                              (named_argument
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (identifier)))))))))))))))))))))))))))

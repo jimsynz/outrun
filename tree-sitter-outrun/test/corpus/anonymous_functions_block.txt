@@ -1,0 +1,29 @@
+================
+Anonymous function with block body
+================
+
+let logger = fn { message: String -> { let x = 1 } }
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (anonymous_function
+            (anonymous_clause
+              (anonymous_params
+                (identifier)
+                (type_annotation
+                  (module_path
+                    (type_identifier))))
+              (block
+                (statement
+                  (let_binding
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (literal
+                          (integer))))))))))))))

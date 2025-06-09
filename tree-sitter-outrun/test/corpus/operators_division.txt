@@ -1,0 +1,28 @@
+================
+Division operator
+================
+
+def calculate(): Float {
+    10.0 / 2.0
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (binary_divide
+              (primary_expression
+                (literal
+                  (float)))
+              (primary_expression
+                (literal
+                  (float))))))))))

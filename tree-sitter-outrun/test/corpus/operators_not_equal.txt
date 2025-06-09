@@ -1,0 +1,29 @@
+================
+Not equal operator
+================
+
+def test_not_equal() {
+    let result = a != b
+    result
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_not_equal
+                (primary_expression
+                  (identifier))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (expression
+            (primary_expression
+              (identifier))))))))

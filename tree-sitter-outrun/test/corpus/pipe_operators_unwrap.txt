@@ -1,0 +1,19 @@
+================
+Unwrap pipe operator
+================
+
+let result = maybe_data |? process()
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (pipe_expression
+          (primary_expression
+            (identifier))
+          (primary_expression
+            (function_call
+              (identifier))))))))

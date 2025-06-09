@@ -1,0 +1,240 @@
+================
+Trait implementation with deeply nested generics
+================
+
+impl<T, E> AsyncProcessor<Future<Result<T, E>>, E> for Handler<T> {
+    def process(self: Self, future: Future<Result<T, E>>): Future<Result<String, E>> {
+        Future.map(future: future, mapper: &convert_result)
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (generic_params
+        (generic_param
+          (type_identifier))
+        (generic_param
+          (type_identifier)))
+      (trait_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier))
+                (generic_args
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))))))
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (type_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier))
+              (generic_args
+                (type_annotation
+                  (module_path
+                    (type_identifier))
+                  (generic_args
+                    (type_annotation
+                      (module_path
+                        (type_identifier)))
+                    (type_annotation
+                      (module_path
+                        (type_identifier)))))))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier))
+                (generic_args
+                  (type_annotation
+                    (module_path
+                      (type_identifier)))
+                  (type_annotation
+                    (module_path
+                      (type_identifier))))))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier)))))
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (function_capture
+                              (qualified_function_ref
+                                (identifier)))))))))))))))))
+
+================
+Multiple functions in complex trait impl
+================
+
+impl<T> Repository<T> for DatabaseRepo<T> when T: Serializable {
+    def find(self: Self, id: String): Option<T> {
+        Database.query(table: self.table, id: id)
+    }
+    
+    def save(self: Self, entity: T): Result<T, DatabaseError> {
+        Database.insert(table: self.table, data: entity)
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (generic_params
+        (generic_param
+          (type_identifier)))
+      (trait_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (type_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (trait_constraints
+        (constraint_expression
+          (constraint_term
+            (type_constraint
+              (type_identifier)
+              (type_annotation
+                (module_path
+                  (type_identifier)))))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier)))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier))))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (field_access
+                            (identifier)))))
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier))))))))))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation))
+          (parameter
+            (identifier)
+            (type_annotation
+              (module_path
+                (type_identifier)))))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))
+            (generic_args
+              (type_annotation
+                (module_path
+                  (type_identifier)))
+              (type_annotation
+                (module_path
+                  (type_identifier))))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier)
+                  (argument_list
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (field_access
+                            (identifier)))))
+                    (argument
+                      (named_argument
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (identifier)))))))))))))))

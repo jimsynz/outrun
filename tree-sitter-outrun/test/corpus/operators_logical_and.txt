@@ -1,0 +1,20 @@
+================
+Logical AND operator
+================
+
+let result = true && false
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_logical_and
+          (primary_expression
+            (literal
+              (boolean)))
+          (primary_expression
+            (literal
+              (boolean))))))))

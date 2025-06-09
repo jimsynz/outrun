@@ -1,0 +1,169 @@
+================
+Constant with complex struct type
+================
+
+const MAX_RETRY_CONFIG: RetryConfig = RetryConfig {
+    max_attempts: 5,
+    timeout: Duration.seconds(seconds: 30),
+    backoff_strategy: :exponential
+}
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier)))
+      (expression
+        (primary_expression
+          (struct_literal
+            (module_path
+              (type_identifier))
+            (struct_literal_fields
+              (struct_literal_field
+                (struct_field_assignment
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (integer))))))
+              (struct_literal_field
+                (struct_field_assignment
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (function_call
+                        (module_path
+                          (type_identifier))
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (integer))))))))))))
+              (struct_literal_field
+                (struct_field_assignment
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (atom
+                          (identifier))))))))))))))
+
+================
+Constant with generic map type
+================
+
+const DEFAULT_HEADERS: Map<String, String> = {
+    "User-Agent": "Outrun/1.0",
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+}
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (expression
+        (primary_expression
+          (map_literal
+            (map_entry
+              (map_shorthand_pair
+                (string
+                  (string_content))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)))))))
+            (map_entry
+              (map_shorthand_pair
+                (string
+                  (string_content))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)))))))
+            (map_entry
+              (map_shorthand_pair
+                (string
+                  (string_content))
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)))))))))))))
+
+================
+Constant with generic list type
+================
+
+const FIBONACCI_SEQUENCE: List<Integer> = [1, 1, 2, 3, 5, 8, 13, 21]
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (expression
+        (primary_expression
+          (list_literal
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))))))))

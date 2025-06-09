@@ -1,0 +1,39 @@
+================
+Function captures in higher-order functions
+================
+
+const RESULT: List<String> = names |> List.map(func: &String.upcase)
+
+---
+
+(source_file
+  (item
+    (constant_definition
+      (type_identifier)
+      (type_annotation
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (expression
+        (pipe_expression
+          (primary_expression
+            (identifier))
+          (primary_expression
+            (function_call
+              (module_path
+                (type_identifier))
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (function_capture
+                          (qualified_function_ref
+                            (module_path
+                              (type_identifier))
+                            (identifier)))))))))))))))

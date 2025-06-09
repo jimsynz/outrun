@@ -1,0 +1,571 @@
+================
+Nested struct construction
+================
+
+def build_organization() {
+    let org = Organization {
+        id: UUID.generate(),
+        name: "Tech Corp",
+        headquarters: Address {
+            street: "123 Main St",
+            city: "San Francisco",
+            state: "CA",
+            zipcode: "94102",
+            country: Country {
+                code: "US",
+                name: "United States",
+                currency: Currency {
+                    code: "USD",
+                    symbol: "$",
+                    decimal_places: 2
+                }
+            },
+            coordinates: GeoPoint {
+                latitude: 37.7749,
+                longitude: -122.4194,
+                elevation: Elevation {
+                    meters: 16.0,
+                    unit: :meters,
+                    accuracy: MeasurementAccuracy {
+                        value: 1.5,
+                        confidence: 0.95
+                    }
+                }
+            }
+        },
+        departments: [
+            Department {
+                name: "Engineering",
+                head: Employee {
+                    id: 1001,
+                    name: "Alice Johnson",
+                    contact: ContactInfo {
+                        email: "alice@techcorp.com",
+                        phone: PhoneNumber {
+                            country_code: "+1",
+                            number: "555-0123",
+                            type: :work
+                        }
+                    },
+                    role: Role {
+                        title: "VP Engineering",
+                        level: :executive,
+                        permissions: PermissionSet {
+                            read: true,
+                            write: true,
+                            admin: true,
+                            scope: AccessScope {
+                                departments: [:engineering, :qa],
+                                resources: [:code, :infrastructure]
+                            }
+                        }
+                    }
+                },
+                budget: Budget {
+                    annual: Money {
+                        amount: 5000000,
+                        currency: "USD"
+                    },
+                    quarterly_breakdown: [
+                        QuarterlyBudget {
+                            quarter: 1,
+                            allocation: BudgetAllocation {
+                                salaries: 0.70,
+                                equipment: 0.15,
+                                training: 0.10,
+                                misc: 0.05
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    org
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (primary_expression
+                (struct_literal
+                  (module_path
+                    (type_identifier))
+                  (struct_literal_fields
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (module_path
+                                (type_identifier))
+                              (identifier))))))
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (literal
+                              (string
+                                (string_content)))))))
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (struct_literal
+                              (module_path
+                                (type_identifier))
+                              (struct_literal_fields
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (struct_literal
+                                          (module_path
+                                            (type_identifier))
+                                          (struct_literal_fields
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (literal
+                                                      (string
+                                                        (string_content)))))))
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (literal
+                                                      (string
+                                                        (string_content)))))))
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (struct_literal
+                                                      (module_path
+                                                        (type_identifier))
+                                                      (struct_literal_fields
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (literal
+                                                                  (string
+                                                                    (string_content)))))))
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (literal
+                                                                  (string
+                                                                    (string_content)))))))
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (literal
+                                                                  (integer))))))))))))))))))
+                                (struct_literal_field
+                                  (struct_field_assignment
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (struct_literal
+                                          (module_path
+                                            (type_identifier))
+                                          (struct_literal_fields
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (literal
+                                                      (float))))))
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (unary_minus
+                                                    (primary_expression
+                                                      (literal
+                                                        (float)))))))
+                                            (struct_literal_field
+                                              (struct_field_assignment
+                                                (identifier)
+                                                (expression
+                                                  (primary_expression
+                                                    (struct_literal
+                                                      (module_path
+                                                        (type_identifier))
+                                                      (struct_literal_fields
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (literal
+                                                                  (float))))))
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (literal
+                                                                  (atom
+                                                                    (identifier)))))))
+                                                        (struct_literal_field
+                                                          (struct_field_assignment
+                                                            (identifier)
+                                                            (expression
+                                                              (primary_expression
+                                                                (struct_literal
+                                                                  (module_path
+                                                                    (type_identifier))
+                                                                  (struct_literal_fields
+                                                                    (struct_literal_field
+                                                                      (struct_field_assignment
+                                                                        (identifier)
+                                                                        (expression
+                                                                          (primary_expression
+                                                                            (literal
+                                                                              (float))))))
+                                                                    (struct_literal_field
+                                                                      (struct_field_assignment
+                                                                        (identifier)
+                                                                        (expression
+                                                                          (primary_expression
+                                                                            (literal
+                                                                              (float))))))))))))))))))))))))))))))
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (primary_expression
+                            (list_literal
+                              (expression
+                                (primary_expression
+                                  (struct_literal
+                                    (module_path
+                                      (type_identifier))
+                                    (struct_literal_fields
+                                      (struct_literal_field
+                                        (struct_field_assignment
+                                          (identifier)
+                                          (expression
+                                            (primary_expression
+                                              (literal
+                                                (string
+                                                  (string_content)))))))
+                                      (struct_literal_field
+                                        (struct_field_assignment
+                                          (identifier)
+                                          (expression
+                                            (primary_expression
+                                              (struct_literal
+                                                (module_path
+                                                  (type_identifier))
+                                                (struct_literal_fields
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (literal
+                                                            (integer))))))
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (literal
+                                                            (string
+                                                              (string_content)))))))
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (struct_literal
+                                                            (module_path
+                                                              (type_identifier))
+                                                            (struct_literal_fields
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (literal
+                                                                        (string
+                                                                          (string_content)))))))
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (struct_literal
+                                                                        (module_path
+                                                                          (type_identifier))
+                                                                        (struct_literal_fields
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (string
+                                                                                      (string_content)))))))
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (string
+                                                                                      (string_content)))))))
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (atom
+                                                                                      (identifier)))))))))))))))))))
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (struct_literal
+                                                            (module_path
+                                                              (type_identifier))
+                                                            (struct_literal_fields
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (literal
+                                                                        (string
+                                                                          (string_content)))))))
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (literal
+                                                                        (atom
+                                                                          (identifier)))))))
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (struct_literal
+                                                                        (module_path
+                                                                          (type_identifier))
+                                                                        (struct_literal_fields
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (boolean))))))
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (boolean))))))
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (literal
+                                                                                    (boolean))))))
+                                                                          (struct_literal_field
+                                                                            (struct_field_assignment
+                                                                              (identifier)
+                                                                              (expression
+                                                                                (primary_expression
+                                                                                  (struct_literal
+                                                                                    (module_path
+                                                                                      (type_identifier))
+                                                                                    (struct_literal_fields
+                                                                                      (struct_literal_field
+                                                                                        (struct_field_assignment
+                                                                                          (identifier)
+                                                                                          (expression
+                                                                                            (primary_expression
+                                                                                              (list_literal
+                                                                                                (expression
+                                                                                                  (primary_expression
+                                                                                                    (literal
+                                                                                                      (atom
+                                                                                                        (identifier)))))
+                                                                                                (expression
+                                                                                                  (primary_expression
+                                                                                                    (literal
+                                                                                                      (atom
+                                                                                                        (identifier))))))))))
+                                                                                      (struct_literal_field
+                                                                                        (struct_field_assignment
+                                                                                          (identifier)
+                                                                                          (expression
+                                                                                            (primary_expression
+                                                                                              (list_literal
+                                                                                                (expression
+                                                                                                  (primary_expression
+                                                                                                    (literal
+                                                                                                      (atom
+                                                                                                        (identifier)))))
+                                                                                                (expression
+                                                                                                  (primary_expression
+                                                                                                    (literal
+                                                                                                      (atom
+                                                                                                        (identifier))))))))))))))))))))))))))))))))))
+                                      (struct_literal_field
+                                        (struct_field_assignment
+                                          (identifier)
+                                          (expression
+                                            (primary_expression
+                                              (struct_literal
+                                                (module_path
+                                                  (type_identifier))
+                                                (struct_literal_fields
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (struct_literal
+                                                            (module_path
+                                                              (type_identifier))
+                                                            (struct_literal_fields
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (literal
+                                                                        (integer))))))
+                                                              (struct_literal_field
+                                                                (struct_field_assignment
+                                                                  (identifier)
+                                                                  (expression
+                                                                    (primary_expression
+                                                                      (literal
+                                                                        (string
+                                                                          (string_content)))))))))))))
+                                                  (struct_literal_field
+                                                    (struct_field_assignment
+                                                      (identifier)
+                                                      (expression
+                                                        (primary_expression
+                                                          (list_literal
+                                                            (expression
+                                                              (primary_expression
+                                                                (struct_literal
+                                                                  (module_path
+                                                                    (type_identifier))
+                                                                  (struct_literal_fields
+                                                                    (struct_literal_field
+                                                                      (struct_field_assignment
+                                                                        (identifier)
+                                                                        (expression
+                                                                          (primary_expression
+                                                                            (literal
+                                                                              (integer))))))
+                                                                    (struct_literal_field
+                                                                      (struct_field_assignment
+                                                                        (identifier)
+                                                                        (expression
+                                                                          (primary_expression
+                                                                            (struct_literal
+                                                                              (module_path
+                                                                                (type_identifier))
+                                                                              (struct_literal_fields
+                                                                                (struct_literal_field
+                                                                                  (struct_field_assignment
+                                                                                    (identifier)
+                                                                                    (expression
+                                                                                      (primary_expression
+                                                                                        (literal
+                                                                                          (float))))))
+                                                                                (struct_literal_field
+                                                                                  (struct_field_assignment
+                                                                                    (identifier)
+                                                                                    (expression
+                                                                                      (primary_expression
+                                                                                        (literal
+                                                                                          (float))))))
+                                                                                (struct_literal_field
+                                                                                  (struct_field_assignment
+                                                                                    (identifier)
+                                                                                    (expression
+                                                                                      (primary_expression
+                                                                                        (literal
+                                                                                          (float))))))
+                                                                                (struct_literal_field
+                                                                                  (struct_field_assignment
+                                                                                    (identifier)
+                                                                                    (expression
+                                                                                      (primary_expression
+                                                                                        (literal
+                                                                                          (float))))))))))))))))))))))))))))))))))))))))))
+        (statement
+          (expression
+            (primary_expression
+              (identifier))))))))

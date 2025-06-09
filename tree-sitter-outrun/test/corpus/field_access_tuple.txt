@@ -1,0 +1,17 @@
+================
+Tuple field access
+================
+
+let first = tuple.0
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (identifier))
+        (tuple_access
+          (integer))))))

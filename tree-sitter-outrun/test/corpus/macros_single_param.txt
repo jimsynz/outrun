@@ -1,0 +1,74 @@
+================
+Macro with single parameter
+================
+
+macro benchmark(code) {
+  let start = Time.now()
+  let result = ^code
+  let duration = Time.now() - start
+  IO.puts(message: "Execution time: #{duration}ms")
+  result
+}
+
+---
+
+(source_file
+  (item
+    (macro_definition
+      (identifier)
+      (macro_parameter_list
+        (identifier))
+      (block
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (primary_expression
+                (function_call
+                  (module_path
+                    (type_identifier))
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (primary_expression
+                (macro_injection
+                  (identifier))))))
+        (statement
+          (let_binding
+            (identifier)
+            (expression
+              (binary_subtract
+                (primary_expression
+                  (function_call
+                    (module_path
+                      (type_identifier))
+                    (identifier)))
+                (primary_expression
+                  (identifier))))))
+        (statement
+          (expression
+            (primary_expression
+              (function_call
+                (module_path
+                  (type_identifier))
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (literal
+                            (string
+                              (string_content)
+                              (interpolation
+                                (expression
+                                  (primary_expression
+                                    (identifier))))
+                              (string_content))))))))))))
+        (statement
+          (expression
+            (primary_expression
+              (identifier))))))))

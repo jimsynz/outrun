@@ -1,0 +1,62 @@
+================
+Macro with nested blocks and control flow
+================
+
+macro try_catch(try_block, catch_block) {
+  case ^try_block {
+    when Result.ok?(value) -> value
+    when Result.error?(error) -> ^catch_block
+  }
+}
+
+---
+
+(source_file
+  (item
+    (macro_definition
+      (identifier)
+      (macro_parameter_list
+        (identifier)
+        (identifier))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (case_expression
+                (expression
+                  (primary_expression
+                    (macro_injection
+                      (identifier))))
+                (case_clause
+                  (case_pattern
+                    (guard_expression
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (module_path
+                              (type_identifier))
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (shorthand_argument
+                                  (identifier)))))))))
+                  (expression
+                    (primary_expression
+                      (identifier))))
+                (case_clause
+                  (case_pattern
+                    (guard_expression
+                      (expression
+                        (primary_expression
+                          (function_call
+                            (module_path
+                              (type_identifier))
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (shorthand_argument
+                                  (identifier)))))))))
+                  (expression
+                    (primary_expression
+                      (macro_injection
+                        (identifier)))))))))))))

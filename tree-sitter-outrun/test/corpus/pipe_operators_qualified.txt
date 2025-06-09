@@ -1,0 +1,21 @@
+================
+Pipe with qualified function call
+================
+
+let result = data |> Module.process()
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (pipe_expression
+          (primary_expression
+            (identifier))
+          (primary_expression
+            (function_call
+              (module_path
+                (type_identifier))
+              (identifier))))))))

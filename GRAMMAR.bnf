@@ -1,0 +1,331 @@
+# Outrun Language BNF Grammar
+
+## Lexical Elements
+
+```bnf
+# Comments
+COMMENT ::= "#" [^\n]* "\n"
+BLOCK_COMMENT ::= "###" .*? "###"
+
+# Identifiers and Keywords
+IDENTIFIER ::= [a-zA-Z_][a-zA-Z0-9_]*
+TYPE_IDENTIFIER ::= [A-Z][a-zA-Z0-9_]*
+MODULE_PATH ::= TYPE_IDENTIFIER ("." TYPE_IDENTIFIER)*
+
+# Keywords
+KEYWORDS ::= "struct" | "trait" | "impl" | "def" | "defp" | "let" | "const" | "fn" | "if" | "else" | "case" | "when" | "alias" | "true" | "false" | "for" | "Self"
+
+# Literals
+INTEGER ::= DECIMAL | BINARY | OCTAL | HEXADECIMAL
+DECIMAL ::= [0-9]+
+BINARY ::= "0b" [01]+
+OCTAL ::= "0o" [0-7]+
+HEXADECIMAL ::= "0x" [0-9a-fA-F]+
+
+FLOAT ::= [0-9]+ "." [0-9]+ (("e" | "E") ("+" | "-")? [0-9]+)?
+
+STRING ::= "\"" (CHAR | INTERPOLATION)* "\""
+MULTILINE_STRING ::= "\"\"\"" .*? "\"\"\""
+CHAR ::= [^"\\] | ESCAPE_SEQUENCE
+ESCAPE_SEQUENCE ::= "\\" ("n" | "t" | "r" | "\\" | "\"" | "u" [0-9a-fA-F]{4})
+INTERPOLATION ::= "#{" expression "}"
+
+ATOM ::= ":" (IDENTIFIER | STRING)
+
+SIGIL ::= "~" TYPE_IDENTIFIER STRING
+SIGIL_MULTILINE ::= "~" TYPE_IDENTIFIER MULTILINE_STRING
+
+# Operators
+BINARY_OP ::= "+" | "-" | "*" | "/" | "%" | "**" | "==" | ">" | ">=" | "<" | "<=" | "&&" | "||" | "&" | "|" | "^" | "<<" | ">>"
+UNARY_OP ::= "+" | "-" | "!" | "~"
+CAPTURE_OP ::= "&"  # Function capture operator
+PIPE_OP ::= "|>" | "|?"
+
+# Punctuation
+PUNCTUATION ::= "(" | ")" | "{" | "}" | "[" | "]" | ":" | "," | "." | ".." | "->" | "=>" | "=" | "@" | "?"
+```
+
+## Program Structure
+
+```bnf
+program ::= item*
+
+item ::= struct_definition
+       | trait_definition  
+       | impl_block
+       | function_definition
+       | constant_definition
+       | alias_definition
+       | macro_definition
+       | import_definition
+
+# Attributes
+attribute ::= "@" IDENTIFIER ("(" attribute_args ")")?
+attribute_args ::= expression ("," expression)*
+```
+
+## Type System
+
+```bnf
+# Struct Definition
+struct_definition ::= attribute* "struct" TYPE_IDENTIFIER generic_params? "(" struct_fields ")" trait_constraints? "{" struct_impl_block "}"
+
+struct_fields ::= (IDENTIFIER ":" type_annotation ("," IDENTIFIER ":" type_annotation)*)?
+
+struct_impl_block ::= function_definition*
+
+# Trait Definition  
+trait_definition ::= attribute* "trait" TYPE_IDENTIFIER generic_params? trait_constraints? "{" trait_body "}"
+
+trait_body ::= trait_function*
+trait_function ::= function_signature | function_definition
+
+# Implementation Block
+impl_block ::= "impl" generic_params? trait_spec "for" type_spec trait_constraints? "{" impl_body "}"
+
+impl_body ::= function_definition*
+
+trait_spec ::= MODULE_PATH generic_args?
+type_spec ::= MODULE_PATH generic_args?
+
+# Generic Parameters and Arguments
+generic_params ::= "<" generic_param ("," generic_param)* ">"
+generic_param ::= TYPE_IDENTIFIER
+
+generic_args ::= "<" type_annotation ("," type_annotation)* ">"
+
+trait_constraints ::= "when" constraint_expression
+constraint_expression ::= constraint_term (("&&" | "||") constraint_term)*
+constraint_term ::= guard_call | "(" constraint_expression ")"
+```
+
+## Functions
+
+```bnf
+# Function Definition
+function_definition ::= attribute* function_visibility? "def" IDENTIFIER "(" parameter_list ")" return_type? guard_clause? "{" function_body "}"
+
+function_visibility ::= "defp"
+
+function_signature ::= "def" IDENTIFIER "(" parameter_list ")" return_type?
+
+parameter_list ::= (parameter ("," parameter)*)?
+parameter ::= IDENTIFIER ":" type_annotation
+
+return_type ::= ":" type_annotation
+
+guard_clause ::= "when" guard_expression
+guard_expression ::= guard_term (("&&" | "||") guard_term)*
+guard_term ::= guard_call | "(" guard_expression ")"
+guard_call ::= expression
+
+function_body ::= statement*
+
+# Anonymous Functions
+anonymous_function ::= "fn" "{" anonymous_clause+ "}"
+anonymous_clause ::= anonymous_params guard_clause? "->" (expression | "{" function_body "}")
+anonymous_params ::= IDENTIFIER ":" type_annotation
+                    | "(" parameter_list ")"
+
+# Function Captures
+function_capture ::= CAPTURE_OP qualified_function_ref
+qualified_function_ref ::= (MODULE_PATH ".")? IDENTIFIER ("/" INTEGER)?
+```
+
+## Types
+
+```bnf
+type_annotation ::= MODULE_PATH generic_args?
+                  | "(" type_annotation ("," type_annotation)* ")"  # Tuple type
+                  | function_type
+                  | "Self"
+
+function_type ::= "Function" "<" "(" function_type_params? ")" "->" type_annotation ">"
+function_type_params ::= function_type_param ("," function_type_param)*
+function_type_param ::= IDENTIFIER ":" type_annotation
+```
+
+## Expressions
+
+```bnf
+expression ::= pipe_expression
+
+pipe_expression ::= logical_or_expression (PIPE_OP logical_or_expression)*
+
+logical_or_expression ::= logical_and_expression ("||" logical_and_expression)*
+
+logical_and_expression ::= equality_expression ("&&" equality_expression)*
+
+equality_expression ::= comparison_expression ("==" comparison_expression)*
+
+comparison_expression ::= bitwise_or_expression ((">" | ">=" | "<" | "<=") bitwise_or_expression)*
+
+bitwise_or_expression ::= bitwise_xor_expression ("|" bitwise_xor_expression)*
+
+bitwise_xor_expression ::= bitwise_and_expression ("^" bitwise_and_expression)*
+
+bitwise_and_expression ::= shift_expression ("&" shift_expression)*
+
+shift_expression ::= additive_expression (("<<" | ">>") additive_expression)*
+
+additive_expression ::= multiplicative_expression (("+" | "-") multiplicative_expression)*
+
+multiplicative_expression ::= exponentiation_expression (("*" | "/" | "%") exponentiation_expression)*
+
+exponentiation_expression ::= unary_expression ("**" unary_expression)*
+
+unary_expression ::= UNARY_OP unary_expression
+                   | function_capture
+                   | postfix_expression
+
+postfix_expression ::= primary_expression postfix_operator*
+postfix_operator ::= "." IDENTIFIER                    # Field access
+                   | "." INTEGER                        # Tuple access  
+                   | "(" argument_list ")"              # Function call
+                   | "[" expression "]"                 # Index access
+
+primary_expression ::= literal
+                     | IDENTIFIER
+                     | MODULE_PATH
+                     | "(" expression ")"
+                     | if_expression
+                     | case_expression
+                     | anonymous_function
+                     | struct_literal
+                     | list_literal
+                     | tuple_literal
+                     | map_literal
+                     | macro_injection
+
+# Function Calls
+argument_list ::= (argument ("," argument)*)?
+argument ::= named_argument | shorthand_argument
+named_argument ::= IDENTIFIER ":" expression
+shorthand_argument ::= IDENTIFIER
+```
+
+## Literals
+
+```bnf
+literal ::= INTEGER
+          | FLOAT  
+          | STRING
+          | MULTILINE_STRING
+          | ATOM
+          | SIGIL
+          | SIGIL_MULTILINE
+          | "true"
+          | "false"
+
+# Collection Literals
+list_literal ::= "[" (expression ("," expression)*)? "]"
+
+tuple_literal ::= "(" expression ("," expression)+ ")"    # Requires 2+ elements
+
+map_literal ::= "{" (map_entry ("," map_entry)*)? "}"
+map_entry ::= map_key_value_pair | map_shorthand_pair
+map_key_value_pair ::= expression "=>" expression  # General expression => expression
+map_shorthand_pair ::= IDENTIFIER ":" expression   # Shorthand identifier: expression (implicitly creates atom key)
+
+# Struct Literals
+struct_literal ::= MODULE_PATH "{" struct_fields "}"
+struct_fields ::= (struct_field ("," struct_field)* ","? struct_update?)?
+struct_field ::= struct_field_assignment | struct_field_shorthand
+struct_field_assignment ::= IDENTIFIER ":" expression
+struct_field_shorthand ::= IDENTIFIER
+struct_update ::= ".." expression
+```
+
+## Control Flow
+
+```bnf
+# If Expression
+if_expression ::= "if" expression "{" function_body "}" ("else" "{" function_body "}")?
+
+# Case Expression  
+case_expression ::= "case" expression "{" case_clause+ "}"
+case_clause ::= case_pattern "->" (expression | "{" function_body "}")
+case_pattern ::= "when" guard_expression | "else"
+```
+
+## Statements
+
+```bnf
+statement ::= expression
+            | let_binding
+            | constant_definition
+
+# Variable Binding
+let_binding ::= "let" (typed_binding | inferred_binding | destructure_binding)
+typed_binding ::= IDENTIFIER ":" type_annotation "=" expression
+inferred_binding ::= IDENTIFIER "=" expression
+destructure_binding ::= destructure_pattern "=" expression
+
+# Destructuring Patterns
+destructure_pattern ::= tuple_destructure | struct_destructure | list_destructure
+
+tuple_destructure ::= "(" IDENTIFIER ("," IDENTIFIER)* ","? ")"
+
+struct_destructure ::= TYPE_IDENTIFIER "{" IDENTIFIER ("," IDENTIFIER)* ","? "}"
+
+list_destructure ::= "[" IDENTIFIER ("," IDENTIFIER)* ("," ".." IDENTIFIER)? ","? "]"
+
+# Constants
+constant_definition ::= attribute* "const" TYPE_IDENTIFIER ":" type_annotation "=" expression
+
+# Aliases
+alias_definition ::= "alias" MODULE_PATH alias_spec?
+alias_spec ::= "as" TYPE_IDENTIFIER
+             | "." "{" alias_list "}"
+
+alias_list ::= alias_item ("," alias_item)*
+alias_item ::= TYPE_IDENTIFIER ("as" TYPE_IDENTIFIER)?
+
+# Macro Definitions
+macro_definition ::= "macro" IDENTIFIER "(" macro_parameter_list? ")" "{" function_body "}"
+macro_parameter_list ::= IDENTIFIER ("," IDENTIFIER)*
+
+# Macro Injection (used in expressions)
+macro_injection ::= "^" IDENTIFIER
+
+# Import Definitions
+import_definition ::= "import" MODULE_PATH import_spec?
+import_spec ::= "," "only" ":" "[" import_list "]"
+          | "," "except" ":" "[" import_list "]"
+
+import_list ::= import_item ("," import_item)*
+import_item ::= IDENTIFIER ":" INTEGER      # Function with arity
+```
+
+## Whitespace and Layout
+
+```bnf
+# Whitespace is generally insignificant except for:
+# 1. Separating tokens
+# 2. Line continuation rules (context-sensitive)
+
+WHITESPACE ::= [ \t\n\r]+
+
+# The parser uses context-sensitive rules to determine line continuation:
+# - Lines ending with operators, commas, opening braces/brackets continue
+# - Lines with unmatched braces/brackets continue  
+# - Complete expressions on their own line terminate
+```
+
+## Precedence Summary (Highest to Lowest)
+
+1. Postfix operators (`.`, `()`, `[]`)
+2. Unary operators (`+`, `-`, `!`, `~`)
+3. Exponentiation (`**`) 
+4. Multiplicative (`*`, `/`, `%`)
+5. Additive (`+`, `-`)
+6. Shift (`<<`, `>>`)
+7. Bitwise AND (`&`)
+8. Bitwise XOR (`^`)
+9. Bitwise OR (`|`)
+10. Comparison (`>`, `>=`, `<`, `<=`)
+11. Equality (`==`)
+12. Logical AND (`&&`)
+13. Logical OR (`||`)
+14. Pipe operators (`|>`, `|?`)
+15. Guards (`when`)

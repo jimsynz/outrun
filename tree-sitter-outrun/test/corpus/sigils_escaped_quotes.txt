@@ -1,0 +1,39 @@
+================
+Sigil with escaped quotes
+================
+
+let json_template = ~JSON"{ \"name\": \"#{name}\", \"age\": #{age} }"
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (sigil
+              (type_identifier)
+              (string
+                (string_content)
+                (escape_sequence)
+                (string_content)
+                (escape_sequence)
+                (string_content)
+                (escape_sequence)
+                (interpolation
+                  (expression
+                    (primary_expression
+                      (identifier))))
+                (escape_sequence)
+                (string_content)
+                (escape_sequence)
+                (string_content)
+                (escape_sequence)
+                (string_content)
+                (interpolation
+                  (expression
+                    (primary_expression
+                      (identifier))))
+                (string_content)))))))))

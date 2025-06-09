@@ -1,0 +1,65 @@
+================
+Trait with default implementations
+================
+
+trait Drawable {
+    def draw(self: Self): String
+    
+    def area(self: Self): Float {
+        0.0
+    }
+    
+    def description(self: Self): String {
+        "Default shape description"
+    }
+}
+
+---
+
+(source_file
+  (item
+    (trait_definition
+      (type_identifier)
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (literal
+                  (float)))))))
+      (trait_function
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (literal
+                  (string
+                    (string_content)))))))))))

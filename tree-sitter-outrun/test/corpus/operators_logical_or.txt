@@ -1,0 +1,20 @@
+================
+Logical OR operator
+================
+
+let result = true || false
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (binary_logical_or
+          (primary_expression
+            (literal
+              (boolean)))
+          (primary_expression
+            (literal
+              (boolean))))))))

@@ -1,0 +1,49 @@
+================
+Generic trait implementation with type parameters
+================
+
+impl<T> Container<T> for Box<T> {
+    def get(self: Self): T {
+        self.value
+    }
+}
+
+---
+
+(source_file
+  (item
+    (impl_block
+      (generic_params
+        (generic_param
+          (type_identifier)))
+      (trait_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (type_spec
+        (module_path
+          (type_identifier))
+        (generic_args
+          (type_annotation
+            (module_path
+              (type_identifier)))))
+      (function_definition
+        (identifier)
+        (parameter_list
+          (parameter
+            (identifier)
+            (type_annotation)))
+        (return_type
+          (type_annotation
+            (module_path
+              (type_identifier))))
+        (block
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (field_access
+                (identifier)))))))))

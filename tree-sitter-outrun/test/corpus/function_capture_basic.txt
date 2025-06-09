@@ -1,0 +1,19 @@
+================
+Basic function capture
+================
+
+let mapper = &String.upcase
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_capture
+            (qualified_function_ref
+              (module_path
+                (type_identifier))
+              (identifier))))))))

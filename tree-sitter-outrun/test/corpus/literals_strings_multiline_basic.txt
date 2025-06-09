@@ -1,0 +1,20 @@
+================
+Basic multi-line string
+================
+
+let text = """
+Multi-line string
+can span multiple lines
+"""
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (literal
+            (multiline_string
+              (multiline_string_content))))))))

@@ -1,0 +1,36 @@
+================
+Less than operators
+================
+
+def compare(): Boolean {
+    5 < 10 && 3 <= 5
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (binary_logical_and
+              (binary_less
+                (primary_expression
+                  (literal
+                    (integer)))
+                (primary_expression
+                  (literal
+                    (integer))))
+              (binary_less_equal
+                (primary_expression
+                  (literal
+                    (integer)))
+                (primary_expression
+                  (literal
+                    (integer)))))))))))

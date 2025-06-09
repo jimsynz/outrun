@@ -1,0 +1,12 @@
+================
+Comments with special characters
+================
+
+# TODO: implement feature with symbols !@#$%^&*()
+### Multi-line block comment with unicode: 🚀 αβγ ###
+
+---
+
+(source_file
+  (comment)
+  (block_comment))

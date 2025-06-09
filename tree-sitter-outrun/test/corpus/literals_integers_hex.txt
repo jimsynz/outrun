@@ -1,0 +1,24 @@
+================
+Hexadecimal integer
+================
+
+def color(): Integer {
+    0xFF00CC
+}
+
+---
+
+(source_file
+  (item
+    (function_definition
+      (identifier)
+      (return_type
+        (type_annotation
+          (module_path
+            (type_identifier))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (literal
+                (integer)))))))))

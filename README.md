@@ -1,313 +1,260 @@
 # Outrun
 
-Here's the content of our chat thread:
-
-
-    James Neil Harton:
-        yeah but what if you had a language where you didn’t have to write ash because all the modules have enough metadata to introspect them directly?
-        like yeah you’d have to write chunks of ash
-
-    Zach Daniel:
-        🤔what would that look like?
-
-    James Neil Harton:
-        I have no idea
-
-    Zach Daniel:
-        😂
-        It would be like “function templates”
-
-    James Neil Harton:
-        only one way to find out
-
-    Zach Daniel:
-        Or something. I guess that’s kind of like type classes but for the structure of functions? `function classes`?
-        God damnit James don’t do this to me haha
-
-    James Neil Harton:
-        So my idea with outrun is that I wanted “everything to be traits” where traits are like protocols in Elixir. So you can write something like `def echo(string: String) when String.contains?(“banana”)` and it’s more like duck typing where I don’t care what you pass in as the `string` argument as long as it implements the `String` type
-        basically any trait function ending in a `?` has to be side-effect free so it can be used as a guard
-
-    Zach Daniel:
-        I like the idea, but it can’t be protocol driven IMO, it has to be done while compiling as part of the type system
-        Like not based on values
-
-    James Neil Harton:
-        yeah, it still has to be statically typed
-        but the constraints are that you initially compile assuming that all concrete types match the trait constraints of the calls they’re used for, then you go back again and consolidate the traits which basically get erased in the process
-
-    Zach Daniel:
-        Right
-
-    James Neil Harton:
-        that may be a dumb idea but that’s kind of where my head was at
-
-    Zach Daniel:
-        Yeah, I mean it could work. Its an interesting question of what I would want out of a language to give me ash-y stuff w/o needing, well, this massive mondo framework
-
-    James Neil Harton:
-        I still think you’d need a massive mondo framework to do all the “derive the rest” stuff
-        but I want the language to “model your domain”
-
-    Zach Daniel:
-        🤔
-        You’ve got me thinking for sure
-
-    James Neil Harton:
-        imagine
-    ```
-    defstruct UserRegisterWithPasswordInput{email: String, name?: String, password: String} do
-     impl ActionInput …
-    end 
-
-    defstruct User{id: UUID, email: String, name: String} do
-
-     def register_with_password(input: UserRegisterWithPasswordInput): Result<User, SomeError>
-
-      impl ActionResult
-    end
-    ```
-    If the code itself is introspectable you have enough information to make something interesting happen
-        I mean that’s just one of many different ways it could work
-        I also had an idea of like a type algebra kind of thing where you can say “a number is (anything that implements ToNativeInteger && BinaryAddition, BinaryMultiplication && ..) or (anything that implements ToNativeFloat && BinaryAddititon && …)`
-
-    Zach Daniel:
-        Yeah, that sounds pretty cool
-        I’m having trouble converging on what I’d want out of a new language, but it has something to do with being able to give types actual functionality
-        Kind of like in `Ash` how `Ash.Type.Integer` has callbacks
-
-    James Neil Harton:
-        so then you have `deftrait Number((ToNativeInteger || ToNativeFloat) && BinaryAddition …)`
-
-    Zach Daniel:
-        I think that might be what you’re saying effectively?
-        But not on a value, on the type itself
-        That affect how type resolution happens
-
-    James Neil Harton:
-        yeah because a trait has functions that are implemented on it _and_ can be optionally overridden (like in rust or like in `use Iter.Iterator.DefaultImplementation`
-
-    Zach Daniel:
-        The other thing is like how actions work for example, they are just data. So perhaps a “value” format for real types
-        i.e `{name: String}` where `String` is both a type and a value and so I can switch on a type at runtime
-        So `validate(value, type)` is `type.validate(value)`. Its not really making sense to me yet
-
-    James Neil Harton:
-        right
-
-    Zach Daniel:
-        Also FWIW I love the name and theming of outrun ❤️ 
-
-    James Neil Harton:
-        so traits are also types
-
-    Zach Daniel:
-        I can already imagine the website haha
-
-    James Neil Harton:
-        so a trait may in compiler land turn into `deftype MyTrait(Unit)` where it basically has a unit value 
-
-    Zach Daniel:
-        I can’t tell if this cough medicine is making me have a more open mind or a more dumb one 😂
-
-    James Neil Harton:
-        why not both?
-
-    Zach Daniel:
-        Yes
-        **yis
-
-    James Neil Harton:
-        but imagine if you will a world where you can implement `BinaryAddition` for a type and then be allowed to call `myvalue + someothervalue` and have it just work!?
-
-    Zach Daniel:
-        Aw man
-
-    James Neil Harton:
-        no more `DateTime.cmp`
-
-    Zach Daniel:
-        You kinda just sold me but maybe not in the way intended
-
-    James Neil Harton:
-        for example
-
-    Zach Daniel:
-        What if you could implement a `to_sql` for your type that operates at a syntactic level
-
-    James Neil Harton:
-        right
-        technically you could do that with Ash now `AshSql.to_sql(record, dialect: AshPostgres)`
-        if `AshSql` were a protocol I mean
-
-    Zach Daniel:
-        It’s interesting because I think that Ash resources for the most part are effectively as concise as application logic can be. Like *for the most part*. Plenty of exceptions. So the real question is how the language can help me define those things and then how it can help me interpret it. I think a few things that come to mind is:
-
-    1. A built in data specification language, i.e first-class DSLs
-    2. The expression stuff we just talked about? Native transpilation? Gleam does this for js.
-    3. Perhaps some concept for projections from data structures matching a given specification. Like defining an interface and saying “anything that implements this data specification can be provided to this function"
-
-    James Neil Harton:
-        yeah but even better - if your language is built _on top_ of tree sitter then you can do:
-    ```
-    impl ToSql do
-      def to_sql(query) do
-        ~SQL”””
-          SELECT * FROM …
-        “””
-      end
-    end
-    ```
-    and have all the SQL language server stuff work in your editor
-
-    Zach Daniel:
-        Typescript has interfaces that you can do that kind of thing with. i.e “I accept anything that has a property X of type Y”
-        I don’t understand the tree sitter part of this yet
-
-    James Neil Harton:
-        yeah, except we never do structure field access without - instead we say it has to implement some trait which provides access to the fields
-        so you never say “anything that has property X of type Y” but you say “anything that has get me X of type Y”
-
-    Zach Daniel:
-        I feel like the first order of business would be to syntactic sugar that away TBH
-        Like for maps etc.
-
-    James Neil Harton:
-        sure
-
-    Zach Daniel:
-        But yes
-
-    James Neil Harton:
-        maps are shit though
-        like sometimes you can’t avoid them
-        but please use a concrete type
-
-    Zach Daniel:
-        Sure, but if we do the “structs are just maps” thing you get some nice properties
-
-    James Neil Harton:
-        well structs can derive map-like behaviour
-
-    Zach Daniel:
-        Like `@type thing(map: %{x: String}) :: …` or w/e
-        Right
-        So its really just that syntax in type constraints that has to desugar to “getKey” which both maps and structs implement
-
-    James Neil Harton:
-        where `Map` is a protocol and `Outrun.Native.HashMap` may be a concrete implementation of it but so may be `MyCrazyLinkedListOfTuples`
-
-    Zach Daniel:
-        You’re looking to build a BEAM language right?
-
-    James Neil Harton:
-        fuck no
-
-    Zach Daniel:
-        Aw man that’s like a hard pass for me dude
-        I’m not deploying stuff w/o the beam
-        I could live w/o Elixir
-
-    James Neil Harton:
-        I wanted to use something like the Rust bastion crate to get actor behavior
-
-    Zach Daniel:
-        Hrm...I dunno.
-        I’d have to be sold pretty hard on that actual behavior.
-
-    James Neil Harton:
-        like “in the spirit of the beam” but without all the baggage - until we make our own that is
-
-    Zach Daniel:
-        Why not just use Rust then? Rust has most of this stuff in its type system
-
-    James Neil Harton:
-        because rust is too low level
-
-    Zach Daniel:
-        They have traits etc.
-
-    James Neil Harton:
-        and it’s objects
-        and it’s immutable and stuff
-        but also why not make BEAM a compilation target as a first gut-check of the programming model?
-
-    Zach Daniel:
-        I mean, if we’re just doing this for fun, then I say we build our own runtime
-        Do what firefly/lumen couldn’t
-        And make WASM a target
-
-    James Neil Harton:
-        exactly right
-
-    Zach Daniel:
-        God damnit dude I don’t have time for this but it sounds really fun and like I’d learn a whole lot 😊 
-        Have you considered LLVM?
-
-    James Neil Harton:
-        yes, I have spent a long time down the LLVM rabbit hole
-        but then there’s the crane lift compiler
-        which has native and wasm targets
-        https://cranelift.dev/
-
-    Zach Daniel:
-        I’m pretty out of my depth in this regard. I wrote a compiler back in the day w/ LLVM for a toy language, but this was 10 years ago and I don’t remember much.
-
-    James Neil Harton:
-        yeah it’s been a while for me too
-
-    Zach Daniel:
-        So if we’re “starting from scratch”, I feel like a lot of syntactic decisions have to be made
-
-    James Neil Harton:
-        yes
-
-    Zach Daniel:
-        I also can’t really live w/o significant metaprogramming 😂
-
-    James Neil Harton:
-        I agree with you
-        which is why I think we need to start by writing an interpreter before a compiler
-
-    Zach Daniel:
-        So it needs to have Elixir’s “compile time is just a runtime” properties.
-        Right
-
-    James Neil Harton:
-        because we have to be able to evaluate code as part of the compiler it will have to be bootstrapped in itself
-
-    Zach Daniel:
-        We also still want addressable modules etc. 
-        I can live w/o `do/end` though
-
-    James Neil Harton:
-        yup, I think type names are global constants like beam/ruby
-
-    Zach Daniel:
-        What do you think about having no positional arguments?
-        Everything is named
-
-    James Neil Harton:
-        yes,. everything is named and typed
-
-    Zach Daniel:
-        So you’re down with `add(1, 2)` not being a thing?
-
-    James Neil Harton:
-        like maybe we can add type inference later, but it’s a whole lot easier to start without it
-
-    Zach Daniel:
-        `add(l: 1, r: 2)`
-
-    James Neil Harton:
-        yes
-        but really `BinaryAddition.add(l: 1, r: 2)`
-
-    Zach Daniel:
-        Word. It’s pretty wild but I’m down to try it out. Easy enough to back *out* of that
-
-    James Neil Harton:
-        I’m copying this chat thread into markdown
-
-    Zach Daniel:
-        Should we move this chat somewhere else for archivability?
+<div align="center">
+  <img src="logo.svg" alt="Outrun Logo" width="600">
+</div>
+
+> *A statically-typed, functional programming language where everything is a trait*
+
+## 🎵 About Outrun
+
+Outrun is a modern programming language designed around the principle that **everything is a trait**. Born from the desire to build elegant, type-safe systems without sacrificing expressiveness, Outrun brings together the best ideas from functional programming, trait-based polymorphism, and actor-model concurrency.
+
+Named after the retro-futuristic aesthetic of synthwave music and 80s culture, Outrun aims to capture that same sense of speed, style, and limitless possibility in code.
+
+## ✨ Key Features
+
+### 🎯 Everything is Traits
+```outrun
+# Operators are just trait method calls
+result = value |> transform() |? validate() |> save()
+# |> calls Pipe.pipe_into(), |? calls Maybe.maybe_pipe()
+
+# Even attributes are traits!
+@Derive(traits: [Debug, Clone])
+struct User(name: String, email: String) {}
+```
+
+### 🏷️ Named Parameters Only
+```outrun
+# Crystal clear function calls
+user = User.create(
+    name: "Neo", 
+    email: "neo@matrix.io"
+)
+
+# No confusion about argument order
+divide(numerator: 10, denominator: 2)
+```
+
+### 🛡️ Powerful Guard System
+```outrun
+def divide(a: Integer, b: Integer): Result<Float, Error>
+when Integer.non_zero?(b) {
+    Ok(Float.from_integer(a) / Float.from_integer(b))
+}
+
+def divide(a: Integer, b: Integer): Result<Float, Error>
+when Integer.zero?(b) {
+    Err(DivisionByZero("Cannot divide by zero"))
+}
+```
+
+### 🔮 Hygienic Macros
+```outrun
+macro unless(condition, do_block) {
+    if !^condition {        # ^ injects argument from call site
+        ^do_block          # Hygienic - no variable capture
+    }
+}
+
+unless(user.banned?, {
+    allow_login(user: user)
+})
+```
+
+### 🏗️ Module System
+Modules are types! The file system maps directly to the module hierarchy:
+
+```
+src/
+  user.outrun           → User module
+  http/
+    client.outrun       → Http.Client module
+    server.outrun       → Http.Server module
+```
+
+### 🎭 No Nulls, No Exceptions
+```outrun
+# Explicit error handling with Result and Option
+case maybe_user {
+    when Option.some?(maybe_user) -> {
+        let user = Option.unwrap(maybe_user)
+        process_user(user: user)
+    }
+    when Option.none?(maybe_user) -> handle_missing_user()
+}
+```
+
+## 🚀 Current Status
+
+**Alpha Development** - Core language design complete, parser implemented
+
+- ✅ **Language Specification** - Complete syntax and semantics defined
+- ✅ **BNF Grammar** - Formal grammar specification written
+- ✅ **Tree-sitter Parser** - Syntax highlighting and parsing implemented
+- ✅ **Example Programs** - Working code demonstrating features
+- 🔄 **Rust Compiler** - In development using Cranelift backend
+- 📋 **Standard Library** - Core traits being designed
+- 📋 **Language Server** - IDE support planned
+- 📋 **Package Manager** - Built-in dependency management planned
+
+## 📖 Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/outrun.git
+cd outrun
+
+# Generate the tree-sitter parser
+cd tree-sitter-outrun
+npm install
+npx tree-sitter generate
+
+# Run tests
+npx tree-sitter test
+```
+
+### Hello, World!
+
+```outrun
+# hello.outrun
+struct HelloApp() {}
+
+impl Application for HelloApp {
+    def start(args: List<String>): Result<(), ApplicationError> {
+        IO.puts("Hello, Outrun! 🌅")
+        Ok(())
+    }
+}
+```
+
+## 🎨 Syntax Highlights
+
+### Trait-Based Operators
+```outrun
+# All operators are trait implementations
+trait BinaryAddition<T> {
+    def add(left: Self, right: T): Self
+}
+
+# 1 + 2 becomes BinaryAddition.add(left: 1, right: 2)
+result = 1 + 2
+```
+
+### String Interpolation
+```outrun
+let name = "Outrun"
+let version = "0.1.0"
+let message = "Welcome to #{name} v#{version}!"
+```
+
+### Destructuring
+```outrun
+let (x, y, z) = coordinates
+let User { name, email } = user_data
+let [first, second, ..rest] = items
+```
+
+### Pipe Operators
+```outrun
+# Standard pipe for function composition
+result = data
+    |> validate()
+    |> transform()
+    |> save()
+
+# Maybe pipe for error handling
+user_profile = user_id
+    |? find_user()
+    |? load_profile()
+    |? apply_permissions()
+```
+
+### Anonymous Functions
+```outrun
+classifier = fn {
+    x: Integer when Integer.positive?(x) -> "positive"
+    x: Integer when Integer.negative?(x) -> "negative"
+    x: Integer when Integer.zero?(x) -> "zero"
+}
+```
+
+## 🏗️ Architecture
+
+Outrun is designed with modern compiler architecture in mind:
+
+- **Tree-sitter Frontend** - Fast, incremental parsing with error recovery
+- **Rust Compiler** - Type checking and optimization
+- **Cranelift Backend** - Native code generation with WASM support
+- **Actor Runtime** - Built for concurrent, distributed systems
+- **TOML Packaging** - Simple, readable configuration
+
+## 🎯 Design Goals
+
+1. **Type Safety** - Catch errors at compile time, not runtime
+2. **Expressiveness** - Say what you mean clearly and concisely
+3. **Performance** - Zero-cost abstractions and efficient compilation
+4. **Concurrency** - Actor model for fearless concurrent programming
+5. **Interoperability** - Easy integration with existing systems
+6. **Developer Experience** - Great tooling, clear error messages
+
+## 🤝 Contributing
+
+Outrun is in active development and we welcome contributions! Check out:
+
+- [`SYNTAX_SPEC.md`](SYNTAX_SPEC.md) - Complete language specification
+- [`GRAMMAR.bnf`](GRAMMAR.bnf) - Formal grammar definition
+- [`CLAUDE.md`](CLAUDE.md) - Development guide and project structure
+
+### Areas Needing Help
+
+- 🔧 **Compiler Implementation** - Rust-based compiler using Cranelift
+- 📚 **Standard Library** - Core traits and data structures
+- 🎨 **Language Server** - IDE support and tooling
+- 📝 **Documentation** - Tutorials and guides
+- 🧪 **Testing** - Comprehensive test suite
+
+## 📜 Philosophy
+
+> "The best way to predict the future is to invent it." - Alan Kay
+
+Outrun embraces the idea that programming languages should be:
+
+- **Predictable** - The same code should always do the same thing
+- **Composable** - Small pieces should combine into larger systems
+- **Readable** - Code should tell a story that humans can understand
+- **Safe** - The compiler should catch your mistakes
+- **Fast** - Performance should never be an afterthought
+
+## 🎵 Inspiration
+
+Outrun draws inspiration from:
+
+- **Rust** - Zero-cost abstractions and trait system
+- **Elixir** - Actor model and functional programming
+- **Haskell** - Type system and purity
+- **Swift** - Protocols and modern syntax design
+- **Synthwave** - Aesthetic and retro-futuristic vibes 🌅
+
+## 📄 License
+
+MIT License - see [`LICENSE`](LICENSE) for details.
+
+---
+
+*Built with 💜 for the future of programming*
+
+```
+┌─────────────────────────────────────┐
+│  "In the year 2025, the machines   │
+│   learned to code themselves...     │
+│   But they still couldn't catch     │
+│   the Outrun."                      │
+│                                     │
+│           - The Chronicles of       │
+│             Digital Rebellion       │
+└─────────────────────────────────────┘
+```
+
+[![Built with Outrun](https://img.shields.io/badge/Built%20with-Outrun-ff6b9d?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjRkY2QjlEIi8+Cjwvc3ZnPgo=)](https://github.com/your-org/outrun)
