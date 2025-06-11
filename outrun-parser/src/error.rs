@@ -129,10 +129,18 @@ impl ParseError {
             }
         };
 
+        // Enhanced error message with debugging details
+        let detailed_message = format!(
+            "{}\n\nDEBUG INFO:\n- Error variant: {:?}\n- Line/col: {:?}",
+            error,
+            error.variant,
+            error.line_col
+        );
+
         ParseError::PestError {
             src,
             span,
-            message: error.to_string(),
+            message: detailed_message,
         }
     }
 

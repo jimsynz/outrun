@@ -36,7 +36,7 @@ fn test_parse_program_api() {
     let input = "let x = 42\nlet y = true";
     let program = parse_program(input).unwrap();
 
-    assert_eq!(program.items.len(), 3); // Two let bindings + newline
+    assert_eq!(program.items.len(), 2); // Two let bindings (newline is whitespace)
 }
 
 #[test]

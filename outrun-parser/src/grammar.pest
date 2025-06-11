@@ -30,16 +30,33 @@ op_multiply = @{ "*" }
 op_divide = @{ "/" }
 op_modulo = @{ "%" }
 
+// Atomic rule containing all operators for controlled parsing
+op = _{
+    // Multi-character operators FIRST (longer patterns must come before shorter ones)
+    op_logical_and | op_logical_or |           // && ||
+    op_pipe | op_pipe_maybe |                  // |> |?
+    op_shift_left | op_shift_right |           // << >>
+    op_equal | op_not_equal |                  // == !=
+    op_less_equal | op_greater_equal |         // <= >=
+    op_exponent |                              // **
+    // Single-character operators AFTER multi-character ones
+    op_bitwise_and | op_bitwise_or | op_bitwise_xor |  // & | ^
+    op_less | op_greater |                     // < >
+    op_add | op_subtract |                     // + -
+    op_multiply | op_divide | op_modulo        // * / %
+}
+
 // === LEXICAL ELEMENTS ===
 
-// Whitespace handling (minimal - only for token separation)
-WHITESPACE = _{ " " | "\t" }
+// Whitespace handling (includes newlines for automatic insertion)
+WHITESPACE = _{ " " | "\t" | "\n" | "\r\n" }
 
-// Explicit newline tracking (preserved in AST)
-newline = { "\n" | "\r\n" }
+// Explicit newline tracking (preserved in AST) - includes surrounding whitespace  
+newline = @{ (" " | "\t")* ~ NEWLINE ~ (" " | "\t")* }
+
 
 // Comments (preserved in AST with spans) - atomic to prevent recursion
-comment = @{ "#" ~ (!newline ~ ANY)* }
+comment = @{ "#" ~ (!NEWLINE ~ ANY)* }
 block_comment = @{ "###" ~ (!"###" ~ ANY)* ~ "###" }
 
 // Magic COMMENT rule - non-silent so comments appear in parse tree
@@ -108,7 +125,7 @@ float = { float_scientific | float_standard }
 string_basic = ${ "\"" ~ string_content* ~ "\"" }
 string_multiline = ${ "\"\"\"" ~ multiline_content* ~ "\"\"\"" }
 string_content = { string_interpolation | escape_sequence | string_text }
-multiline_content = { string_interpolation | escape_sequence | newline | multiline_text }
+multiline_content = { string_interpolation | escape_sequence | multiline_text }
 string_text = { (!("\"" | "\\" | "#{") ~ ANY)+ }
 multiline_text = { (!(("\"\"\"") | "\\" | "#{") ~ ANY)+ }
 escape_sequence = @{ "\\" ~ ("n" | "t" | "r" | "\\" | "\"" | "u" ~ ASCII_HEX_DIGIT{4}) }
@@ -178,20 +195,7 @@ shorthand_argument = { identifier }
 
 // Simplified expression hierarchy using PrattParser
 // Binary operators ordered by length (longest first) to avoid tokenization conflicts
-expression = { postfix_expr ~ (
-    // Multi-character operators FIRST (longer patterns must come before shorter ones)
-    (op_logical_and | op_logical_or |           // && ||
-     op_pipe | op_pipe_maybe |                  // |> |?
-     op_shift_left | op_shift_right |           // << >>
-     op_equal | op_not_equal |                  // == !=
-     op_less_equal | op_greater_equal |         // <= >=
-     op_exponent |                              // **
-     // Single-character operators AFTER multi-character ones
-     op_bitwise_and | op_bitwise_or | op_bitwise_xor |  // & | ^
-     op_less | op_greater |                     // < >
-     op_add | op_subtract |                     // + -
-     op_multiply | op_divide | op_modulo)       // * / %
-    ~ postfix_expr)* }
+expression = { postfix_expr ~ (op ~ postfix_expr)* }
 
 postfix_expr = { primary_expr ~ postfix_op* }
 postfix_op = { function_call_postfix | field_access }
@@ -215,16 +219,16 @@ if_expression = { keyword_if ~ expression ~ block ~ (keyword_else ~ block)? }
 
 // Case expression: case value { when guard -> result ... else -> default }
 case_expression = { keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
-case_clauses = { newline* ~ case_when_clause ~ (newline* ~ case_when_clause)* ~ newline* ~ case_else_clause ~ newline* }
-case_when_clause = { keyword_when ~ expression ~ arrow ~ (block | expression) }
-case_else_clause = { keyword_else ~ arrow ~ (block | expression) }
+case_clauses = { case_when_clause+ ~ case_else_clause? }
+case_when_clause = !{ keyword_when ~ expression ~ arrow ~ (block | expression) }
+case_else_clause = !{ keyword_else ~ arrow ~ (block | expression) }
 
 arrow = { "->" }
 
 // === FUNCTION DEFINITIONS ===
 
 // Function definition with optional parameters, return type, guards and body
-function_definition = { (attribute ~ newline*)* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? ~ block }
+function_definition = { attribute* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? ~ block }
 
 // Function visibility (public or private)
 function_visibility = { keyword_def | keyword_defp }
@@ -252,9 +256,11 @@ guard_clause = { keyword_when ~ guard_expression }
 guard_expression = { expression }
 
 // Block statement: { statement1; statement2; ... }
-block = { "{" ~ newline* ~ statements? ~ newline* ~ "}" }
-statements = { statement ~ (newline+ ~ statement)* }
-statement = { let_binding | expression }
+block = { "{" ~ statement_sequence? ~ "}" }
+
+// Statement sequence - statements naturally separate at keywords  
+statement_sequence = { statement+ }
+statement = !{ let_binding | expression }
 
 // === PATTERNS ===
 
@@ -280,24 +286,24 @@ let_binding = { keyword_let ~ pattern ~ (":" ~ type_annotation)? ~ "=" ~ express
 // === TYPE SYSTEM ===
 
 // Struct definition: struct Name<T>(field1: Type1, field2: Type2) { methods }
-struct_definition = { (attribute ~ newline*)* ~ keyword_struct ~ type_identifier ~ generic_params? ~ "(" ~ struct_fields? ~ ")" ~ "{" ~ newline* ~ struct_methods? ~ newline* ~ "}" }
+struct_definition = { attribute* ~ keyword_struct ~ type_identifier ~ generic_params? ~ "(" ~ struct_fields? ~ ")" ~ "{" ~ struct_methods? ~ "}" }
 struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
 struct_field = { identifier ~ ":" ~ type_annotation }
-struct_methods = { struct_method_item ~ (newline+ ~ struct_method_item)* }
-struct_method_item = { function_definition }
+struct_methods = { struct_method_item+ }
+struct_method_item = !{ function_definition }
 
 // Trait definition: trait Name<T> { function signatures }
-trait_definition = { (attribute ~ newline*)* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ newline* ~ trait_functions? ~ newline* ~ "}" }
-trait_functions = { trait_item ~ (newline+ ~ trait_item)* }
-trait_item = { trait_function }
+trait_definition = { attribute* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
+trait_functions = { trait_item+ }
+trait_item = !{ trait_function }
 trait_function = { function_signature | function_definition }
 function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
 // Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }
-impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ newline* ~ impl_methods? ~ newline* ~ "}" }
+impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_methods? ~ "}" }
 trait_spec = { module_path ~ generic_args? }
 type_spec = { module_path ~ generic_args? }
-impl_methods = { impl_method_item ~ (newline+ ~ impl_method_item)* }
+impl_methods = { impl_method_item+ }
 impl_method_item = { function_definition }
 
 // Generic parameters: <T, U, V>
@@ -353,15 +359,15 @@ macro_injection = { "^" ~ identifier }
 // === ATTRIBUTES ===
 
 // Attribute decorations: @Name or @Name(args)
-attribute = { "@" ~ type_identifier ~ attribute_args? }
-attribute_args = { "(" ~ argument_list? ~ ")" }
+attribute = ${ "@" ~ type_identifier ~ attribute_args? }
+attribute_args = !{ "(" ~ argument_list? ~ ")" }
 
 // === ANONYMOUS FUNCTIONS & FUNCTION CAPTURES ===
 
 // Anonymous functions: fn { x: Integer -> x + 1 }
-anonymous_function = { keyword_fn ~ "{" ~ newline* ~ anonymous_clauses ~ newline* ~ "}" }
-anonymous_clauses = { anonymous_clause ~ (newline+ ~ anonymous_clause)* }
-anonymous_clause = { anonymous_params ~ guard_clause? ~ arrow ~ anonymous_body }
+anonymous_function = { keyword_fn ~ "{" ~ anonymous_clauses ~ "}" }
+anonymous_clauses = { anonymous_clause+ }
+anonymous_clause = !{ anonymous_params ~ guard_clause? ~ arrow ~ anonymous_body }
 
 // Anonymous function parameters  
 anonymous_params = { 
@@ -394,4 +400,4 @@ const_definition = { keyword_const ~ type_identifier ~ ":" ~ type_annotation ~ "
 // Note: let_binding comes before expression to match let bindings
 // Note: const_definition comes before expression to match constant definitions
 // Note: expression comes next to handle operators, then fallback to individual elements
-program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | newline | WHITESPACE)* ~ EOI }
+program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword)* ~ EOI }

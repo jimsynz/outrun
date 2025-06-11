@@ -223,10 +223,10 @@ fn test_parse_multiline_string_with_interpolation() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => {
             let string = extract_string_from_expression(expr);
-            assert_eq!(string.parts.len(), 6);
+            assert_eq!(string.parts.len(), 5);
             assert_eq!(string.format, StringFormat::Multiline);
 
-            // Check the structure: "Hello ", interpolation, newline, "You have ", interpolation, " messages"
+            // Check the structure: "Hello ", interpolation, "\nYou have ", interpolation, " messages"
             match &string.parts[0] {
                 StringPart::Text { content, .. } => assert_eq!(content, "Hello "),
                 _ => panic!("Expected text part"),
@@ -240,23 +240,18 @@ fn test_parse_multiline_string_with_interpolation() {
             }
 
             match &string.parts[2] {
-                StringPart::Text { content, .. } => assert_eq!(content, "\n"),
+                StringPart::Text { content, .. } => assert_eq!(content, "\nYou have "),
                 _ => panic!("Expected text part"),
             }
 
             match &string.parts[3] {
-                StringPart::Text { content, .. } => assert_eq!(content, "You have "),
-                _ => panic!("Expected text part"),
-            }
-
-            match &string.parts[4] {
                 StringPart::Interpolation { expression, .. } => {
                     assert_identifier_expression(expression, "count")
                 }
                 _ => panic!("Expected interpolation part"),
             }
 
-            match &string.parts[5] {
+            match &string.parts[4] {
                 StringPart::Text { content, .. } => assert_eq!(content, " messages"),
                 _ => panic!("Expected text part"),
             }

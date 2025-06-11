@@ -318,15 +318,37 @@ fn format_impl_block_with_indent(impl_block: &ImplBlock, indent: usize) -> Strin
     )
 }
 
-fn format_function_definition_with_indent(func_def: &FunctionDefinition, _indent: usize) -> String {
+fn format_function_definition_with_indent(func_def: &FunctionDefinition, indent: usize) -> String {
     let name = &func_def.name.name;
     let param_count = func_def.parameters.len();
     
-    format!(
-        "(function {} (params {}))",
-        name,
-        param_count
-    )
+    if func_def.body.statements.is_empty() {
+        format!(
+            "(function {} (params {}))",
+            name,
+            param_count
+        )
+    } else {
+        let body_statements: Vec<String> = func_def.body.statements.iter()
+            .map(|stmt| format_statement_with_indent(stmt, indent + 4))
+            .collect();
+        
+        format!(
+            "(function {} (params {})\n{}(body\n{}\n{}))",
+            name,
+            param_count,
+            " ".repeat(indent + 2),
+            body_statements.join(&format!("\n{}", " ".repeat(indent + 4))),
+            " ".repeat(indent + 2)
+        )
+    }
+}
+
+fn format_statement_with_indent(stmt: &Statement, indent: usize) -> String {
+    match &stmt.kind {
+        StatementKind::LetBinding(let_binding) => format_let_binding_with_indent(let_binding, indent),
+        StatementKind::Expression(expr) => format_expression_with_indent(expr, indent),
+    }
 }
 
 fn format_type_path(type_spec: &TypeSpec) -> String {

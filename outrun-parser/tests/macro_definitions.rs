@@ -10,12 +10,13 @@ macro debug() {
 "#;
     
     let result = parse_program(input).unwrap();
-    assert_eq!(result.items.len(), 3); // newline + macro + newline
+    assert_eq!(result.items.len(), 1); // Only the macro definition
 
-    if let ItemKind::Expression(expr) = &result.items[1].kind {
-        if let ExpressionKind::MacroInjection(_) = &expr.kind {
-            panic!("Expected macro definition, got macro injection");
-        }
+    if let ItemKind::MacroDefinition(macro_def) = &result.items[0].kind {
+        assert_eq!(macro_def.name.name, "debug");
+        assert_eq!(macro_def.parameters.len(), 0);
+    } else {
+        panic!("Expected macro definition");
     }
 
     // Check if we can find the macro definition in wrapped expressions

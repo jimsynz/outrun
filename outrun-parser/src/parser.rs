@@ -140,6 +140,9 @@ impl OutrunParser {
 
     /// Parse a complete program
     pub fn parse_program(input: &str) -> ParseResult<Program> {
+        // Enable detailed error reporting for debugging
+        pest::set_error_detail(true);
+        
         let mut pairs = Self::parse(Rule::program, input)
             .map_err(|e| ParseError::from_pest_error(e, input.to_string()))?;
 
@@ -722,8 +725,8 @@ impl OutrunParser {
         let mut statements = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::statements {
-                statements = Self::parse_statements(inner_pair)?;
+            if inner_pair.as_rule() == Rule::statement_sequence {
+                statements = Self::parse_statement_sequence(inner_pair)?;
                 break;
             }
         }
@@ -732,7 +735,7 @@ impl OutrunParser {
     }
 
     /// Parse statements within a block
-    fn parse_statements(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<Statement>> {
+    fn parse_statement_sequence(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<Statement>> {
         let mut statements = Vec::new();
 
         for inner_pair in pair.into_inner() {
