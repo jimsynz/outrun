@@ -1,14 +1,26 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+// Outrun Parser Library
+// Pest-based parser for the Outrun programming language
+
+pub mod ast;
+pub mod error;
+pub mod parser;
+
+pub use ast::*;
+pub use error::*;
+pub use parser::*;
+
+// Re-export parser rule for manual testing
+pub use parser::Rule;
+
+// Main parsing functions
+pub fn parse_program(input: &str) -> Result<Program, ParseError> {
+    parser::OutrunParser::parse_program(input)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub fn parse_expression(input: &str) -> Result<Expression, ParseError> {
+    parser::OutrunParser::parse_expression(input)
 }
+
+// Version and metadata
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const NAME: &str = env!("CARGO_PKG_NAME");

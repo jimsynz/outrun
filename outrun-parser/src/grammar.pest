@@ -1,0 +1,385 @@
+// Outrun Language Grammar
+// Pest PEG Grammar for the Outrun Programming Language
+
+// === CRITICAL OPERATORS (order matters for tokenization) ===
+
+// Multi-character operators MUST come before single-character ones
+op_logical_and = @{ "&&" }
+op_logical_or = @{ "||" }
+op_pipe = @{ "|>" }
+op_pipe_maybe = @{ "|?" }
+op_shift_left = @{ "<<" }
+op_shift_right = @{ ">>" }
+op_equal = @{ "==" }
+op_not_equal = @{ "!=" }
+op_less_equal = @{ "<=" }
+op_greater_equal = @{ ">=" }
+op_exponent = @{ "**" }
+
+// Single-character operators (after multi-character)
+op_bitwise_and = @{ "&" }
+op_bitwise_or = @{ "|" }
+op_bitwise_xor = @{ "^" }
+op_bitwise_not = @{ "~" }
+op_logical_not = @{ "!" }
+op_less = @{ "<" }
+op_greater = @{ ">" }
+op_add = @{ "+" }
+op_subtract = @{ "-" }
+op_multiply = @{ "*" }
+op_divide = @{ "/" }
+op_modulo = @{ "%" }
+
+// === LEXICAL ELEMENTS ===
+
+// Whitespace handling (minimal - only for token separation)
+WHITESPACE = _{ " " | "\t" }
+
+// Explicit newline tracking (preserved in AST)
+newline = { "\n" | "\r\n" }
+
+// Comments (preserved in AST with spans)
+comment = { "#" ~ (!newline ~ ANY)* }
+block_comment = { "###" ~ (!"###" ~ ANY)* ~ "###" }
+
+// === KEYWORDS ===
+// Keywords with exactly one representation each (with word boundaries)
+
+keyword_struct = @{ "struct" ~ !ASCII_ALPHANUMERIC }
+keyword_trait = @{ "trait" ~ !ASCII_ALPHANUMERIC }
+keyword_impl = @{ "impl" ~ !ASCII_ALPHANUMERIC }
+keyword_def = @{ "def" ~ !ASCII_ALPHANUMERIC }
+keyword_defp = @{ "defp" ~ !ASCII_ALPHANUMERIC }
+keyword_let = @{ "let" ~ !ASCII_ALPHANUMERIC }
+keyword_const = @{ "const" ~ !ASCII_ALPHANUMERIC }
+keyword_fn = @{ "fn" ~ !ASCII_ALPHANUMERIC }
+keyword_if = @{ "if" ~ !ASCII_ALPHANUMERIC }
+keyword_else = @{ "else" ~ !ASCII_ALPHANUMERIC }
+keyword_case = @{ "case" ~ !ASCII_ALPHANUMERIC }
+keyword_when = @{ "when" ~ !ASCII_ALPHANUMERIC }
+keyword_alias = @{ "alias" ~ !ASCII_ALPHANUMERIC }
+keyword_import = @{ "import" ~ !ASCII_ALPHANUMERIC }
+keyword_macro = @{ "macro" ~ !ASCII_ALPHANUMERIC }
+keyword_for = @{ "for" ~ !ASCII_ALPHANUMERIC }
+keyword_self = @{ "Self" ~ !ASCII_ALPHANUMERIC }
+keyword_function = @{ "Function" ~ !ASCII_ALPHANUMERIC }
+
+// All keywords combined
+keyword = {
+    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defp |
+    keyword_let | keyword_const | keyword_fn | keyword_if | keyword_else |
+    keyword_case | keyword_when | keyword_alias | keyword_import | keyword_macro |
+    keyword_for | keyword_self | keyword_function | keyword_as | keyword_only | keyword_except
+}
+
+// === IDENTIFIERS ===
+// Pattern-based, single format
+
+identifier = @{ !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ "?"? }
+type_identifier = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// === LITERALS ===
+
+// Boolean literals (exactly two representations)
+boolean_true = { "true" }
+boolean_false = { "false" }
+boolean = { boolean_true | boolean_false }
+
+// Integer literals with multiple formats
+integer_decimal = @{ ASCII_DIGIT+ }
+integer_binary = @{ "0b" ~ ASCII_BIN_DIGIT+ }
+integer_octal = @{ "0o" ~ ASCII_OCT_DIGIT+ }
+integer_hexadecimal = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+
+// Order matters: specific formats before general decimal
+integer = { integer_binary | integer_octal | integer_hexadecimal | integer_decimal }
+
+// Float literals with multiple formats
+float_scientific = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ (^"e" | ^"E") ~ ("+" | "-")? ~ ASCII_DIGIT+ }
+float_standard = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+
+// Order matters: scientific notation before standard (more specific first)
+float = { float_scientific | float_standard }
+
+// String literals with escape sequences and interpolation
+string_basic = ${ "\"" ~ string_content* ~ "\"" }
+string_multiline = ${ "\"\"\"" ~ multiline_content* ~ "\"\"\"" }
+string_content = { string_interpolation | escape_sequence | string_text }
+multiline_content = { string_interpolation | escape_sequence | newline | multiline_text }
+string_text = { (!("\"" | "\\" | "#{") ~ ANY)+ }
+multiline_text = { (!(("\"\"\"") | "\\" | "#{") ~ ANY)+ }
+escape_sequence = @{ "\\" ~ ("n" | "t" | "r" | "\\" | "\"" | "u" ~ ASCII_HEX_DIGIT{4}) }
+string_interpolation = { "#{" ~ interpolation_expr ~ "}" }
+interpolation_expr = !{ expression }
+
+// Order matters: multiline before basic to match triple quotes first
+string = { string_multiline | string_basic }
+
+// Atom literals with multiple formats
+atom_simple = @{ ":" ~ atom_name }
+atom_quoted = @{ ":\"" ~ (atom_char | escape_sequence)* ~ "\"" }
+atom_name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+atom_char = @{ !("\"" | "\\") ~ ANY }
+
+// Order matters: quoted atoms before simple atoms to match correctly
+atom = { atom_quoted | atom_simple }
+
+// Sigil literals with embedded DSL support
+sigil = { "~" ~ type_identifier ~ (string_multiline | string_basic) }
+
+// === COLLECTIONS ===
+
+// List literals [element1, element2, ...] with spread support
+list = { "[" ~ list_elements? ~ "]" }
+list_elements = { list_element ~ ("," ~ list_element)* ~ ","? }
+list_element = { spread_element | expression }
+spread_element = @{ ".." ~ identifier }
+
+// Map literals {key: value} or {key => value}
+map = { "{" ~ map_entries? ~ "}" }
+map_entries = { map_entry ~ ("," ~ map_entry)* ~ ","? }
+map_entry = { map_entry_spread | map_entry_shorthand | map_entry_explicit }
+map_entry_shorthand = { identifier ~ ":" ~ expression }
+map_entry_explicit = { expression ~ "=>" ~ expression }
+map_entry_spread = @{ ".." ~ identifier }
+
+// Tuple literals (element1, element2, ...)
+tuple = { "(" ~ tuple_elements? ~ ")" }
+tuple_elements = { expression ~ ("," ~ expression)* ~ ","? }
+
+// Struct literals TypeName { field: value, ..spread }
+struct_literal = { type_identifier ~ "{" ~ struct_literal_fields? ~ "}" }
+struct_literal_fields = { struct_literal_field ~ ("," ~ struct_literal_field)* ~ ","? }
+struct_literal_field = { struct_field_spread | struct_field_assignment | struct_field_shorthand }
+struct_field_assignment = { identifier ~ ":" ~ expression }
+struct_field_shorthand = { identifier }
+struct_field_spread = @{ ".." ~ identifier }
+
+// Unary operators (these don't have tokenization conflicts)
+op_unary_plus = { "+" }
+op_unary_minus = { "-" }
+
+// === FUNCTION CALLS ===
+
+// Function call with named parameters
+function_call = { function_path ~ "(" ~ argument_list? ~ ")" }
+function_path = { (type_identifier ~ ".")? ~ identifier }
+
+// Function arguments (named parameters only)
+argument_list = { argument ~ ("," ~ argument)* ~ ","? }
+argument = { named_argument | shorthand_argument }
+named_argument = { identifier ~ ":" ~ expression }
+shorthand_argument = { identifier }
+
+// === EXPRESSIONS WITH PRECEDENCE ===
+
+// Simplified expression hierarchy using PrattParser
+// Binary operators ordered by length (longest first) to avoid tokenization conflicts
+expression = { postfix_expr ~ (
+    // Multi-character operators FIRST (longer patterns must come before shorter ones)
+    (op_logical_and | op_logical_or |           // && ||
+     op_pipe | op_pipe_maybe |                  // |> |?
+     op_shift_left | op_shift_right |           // << >>
+     op_equal | op_not_equal |                  // == !=
+     op_less_equal | op_greater_equal |         // <= >=
+     op_exponent |                              // **
+     // Single-character operators AFTER multi-character ones
+     op_bitwise_and | op_bitwise_or | op_bitwise_xor |  // & | ^
+     op_less | op_greater |                     // < >
+     op_add | op_subtract |                     // + -
+     op_multiply | op_divide | op_modulo)       // * / %
+    ~ postfix_expr)* }
+
+postfix_expr = { primary_expr ~ postfix_op* }
+postfix_op = { function_call_postfix | field_access }
+field_access = { "." ~ identifier }
+function_call_postfix = { "(" ~ argument_list? ~ ")" }
+
+primary_expr = { 
+    (op_unary_minus | op_unary_plus | op_logical_not | op_bitwise_not) ~ primary_expr |
+    anonymous_function |
+    "(" ~ expression ~ ")" |
+    if_expression | case_expression | function_call | function_capture | macro_injection | struct_literal | boolean | float | integer | string | atom | qualified_identifier | identifier | type_identifier | list | map | tuple 
+}
+
+// Qualified identifier for module paths (e.g., String.upcase, Http.Client.get)
+qualified_identifier = { type_identifier ~ "." ~ identifier }
+
+// === CONTROL FLOW ===
+
+// If expression: if condition { body } else { body }
+if_expression = { keyword_if ~ expression ~ block ~ (keyword_else ~ block)? }
+
+// Case expression: case value { when guard -> result ... else -> default }
+case_expression = { keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
+case_clauses = { newline* ~ case_when_clause ~ (newline* ~ case_when_clause)* ~ newline* ~ case_else_clause ~ newline* }
+case_when_clause = { keyword_when ~ expression ~ arrow ~ (block | expression) }
+case_else_clause = { keyword_else ~ arrow ~ (block | expression) }
+
+arrow = { "->" }
+
+// === FUNCTION DEFINITIONS ===
+
+// Function definition with optional parameters, return type, guards and body
+function_definition = { (attribute ~ newline*)* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? ~ block }
+
+// Function visibility (public or private)
+function_visibility = { keyword_def | keyword_defp }
+
+// Parameter list: (param1: Type1, param2: Type2, ...)
+parameter_list = { "(" ~ parameters? ~ ")" }
+parameters = { parameter ~ ("," ~ parameter)* ~ ","? }
+parameter = { identifier ~ ":" ~ type_annotation }
+
+// Return type annotation: : ReturnType
+return_type = { ":" ~ type_annotation }
+
+// Type annotations (complete implementation with function types)
+type_annotation = { function_type | tuple_type | module_path ~ generic_args? }
+module_path = { type_identifier ~ ("." ~ type_identifier)* }
+tuple_type = { "(" ~ type_annotation ~ ("," ~ type_annotation)* ~ ","? ~ ")" }
+
+// Function type: Function<(param: Type) -> ReturnType>
+function_type = { keyword_function ~ "<" ~ "(" ~ function_type_params? ~ ")" ~ "->" ~ type_annotation ~ ">" }
+function_type_params = { function_type_param ~ ("," ~ function_type_param)* ~ ","? }
+function_type_param = { identifier ~ ":" ~ type_annotation }
+
+// Guard clause: when condition
+guard_clause = { keyword_when ~ guard_expression }
+guard_expression = { expression }
+
+// Block statement: { statement1; statement2; ... }
+block = { "{" ~ newline* ~ statements? ~ newline* ~ "}" }
+statements = { statement ~ (newline+ ~ statement)* }
+statement = { let_binding | expression }
+
+// === PATTERNS ===
+
+// Pattern for destructuring assignments
+pattern = { tuple_pattern | struct_pattern | list_pattern | identifier }
+
+// Tuple destructuring pattern: (x, y, z)
+tuple_pattern = { "(" ~ identifier ~ ("," ~ identifier)* ~ ","? ~ ")" }
+
+// Struct destructuring pattern: Type { field1, field2 }
+struct_pattern = { type_identifier ~ "{" ~ identifier ~ ("," ~ identifier)* ~ ","? ~ "}" }
+
+// List destructuring pattern: [x, y, ..rest]
+list_pattern = { "[" ~ list_pattern_elements ~ "]" }
+list_pattern_elements = { identifier ~ ("," ~ identifier)* ~ ("," ~ rest_pattern)? ~ ","? | rest_pattern ~ ","? }
+rest_pattern = @{ ".." ~ identifier }
+
+// === LET BINDINGS ===
+
+// Let binding with optional type annotation (supports destructuring)
+let_binding = { keyword_let ~ pattern ~ (":" ~ type_annotation)? ~ "=" ~ expression }
+
+// === TYPE SYSTEM ===
+
+// Struct definition: struct Name<T>(field1: Type1, field2: Type2) { methods }
+struct_definition = { (attribute ~ newline*)* ~ keyword_struct ~ type_identifier ~ generic_params? ~ "(" ~ struct_fields? ~ ")" ~ "{" ~ newline* ~ struct_methods? ~ newline* ~ "}" }
+struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
+struct_field = { identifier ~ ":" ~ type_annotation }
+struct_methods = { function_definition ~ (newline+ ~ function_definition)* }
+
+// Trait definition: trait Name<T> { function signatures }
+trait_definition = { (attribute ~ newline*)* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ newline* ~ trait_functions? ~ newline* ~ "}" }
+trait_functions = { trait_function ~ (newline+ ~ trait_function)* }
+trait_function = { function_signature | function_definition }
+function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
+
+// Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }
+impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ newline* ~ impl_methods? ~ newline* ~ "}" }
+trait_spec = { module_path ~ generic_args? }
+type_spec = { module_path ~ generic_args? }
+impl_methods = { function_definition ~ (newline+ ~ function_definition)* }
+
+// Generic parameters: <T, U, V>
+generic_params = { "<" ~ generic_param_list ~ ">" }
+generic_param_list = { generic_param ~ ("," ~ generic_param)* ~ ","? }
+generic_param = { type_identifier }
+
+// Generic arguments: <String, Integer>
+generic_args = { "<" ~ generic_arg_list ~ ">" }
+generic_arg_list = { generic_arg ~ ("," ~ generic_arg)* ~ ","? }
+generic_arg = { type_annotation }
+
+// Trait constraints: when T: Trait && U: OtherTrait
+trait_constraints = { keyword_when ~ constraint_expression }
+impl_constraints = { keyword_when ~ constraint_expression }
+constraint_expression = { constraint_and }
+constraint_and = { constraint_primary ~ ("&&" ~ constraint_primary)* }
+constraint_primary = { type_identifier ~ ":" ~ module_path | "(" ~ constraint_expression ~ ")" }
+
+// === MODULE SYSTEM ===
+
+// Alias statements: alias Module.Path as Name, alias Module.{Type1, Type2}
+alias_definition = { keyword_alias ~ alias_path ~ (keyword_as ~ type_identifier)? }
+alias_path = { alias_brace_expansion | alias_simple }
+alias_simple = { module_path }
+alias_brace_expansion = { module_path ~ "." ~ "{" ~ alias_brace_list ~ "}" }
+alias_brace_list = { alias_brace_item ~ ("," ~ alias_brace_item)* ~ ","? }
+alias_brace_item = { type_identifier ~ (keyword_as ~ type_identifier)? }
+
+// Import statements: import Module, import Module, only: [func: 1], import Module, except: [func: 1]
+import_definition = { keyword_import ~ module_path ~ import_clauses? }
+import_clauses = { "," ~ import_clause_list }
+import_clause_list = { import_clause ~ ("," ~ import_clause)* }
+import_clause = { import_only_clause | import_except_clause }
+import_only_clause = { "only" ~ ":" ~ import_function_list }
+import_except_clause = { "except" ~ ":" ~ import_function_list }
+import_function_list = { "[" ~ import_function_spec ~ ("," ~ import_function_spec)* ~ ","? ~ "]" }
+import_function_spec = { identifier ~ ":" ~ integer_decimal }
+
+keyword_as = @{ "as" ~ !ASCII_ALPHANUMERIC }
+keyword_only = @{ "only" ~ !ASCII_ALPHANUMERIC }
+keyword_except = @{ "except" ~ !ASCII_ALPHANUMERIC }
+
+// === MACROS ===
+
+// Macro definitions: macro name(param1, param2) { body }
+macro_definition = { keyword_macro ~ identifier ~ "(" ~ macro_parameter_list? ~ ")" ~ block }
+macro_parameter_list = { identifier ~ ("," ~ identifier)* ~ ","? }
+
+// Macro injection expressions: ^parameter
+macro_injection = { "^" ~ identifier }
+
+// === ATTRIBUTES ===
+
+// Attribute decorations: @Name or @Name(args)
+attribute = { "@" ~ type_identifier ~ attribute_args? }
+attribute_args = { "(" ~ argument_list? ~ ")" }
+
+// === ANONYMOUS FUNCTIONS & FUNCTION CAPTURES ===
+
+// Anonymous functions: fn { x: Integer -> x + 1 }
+anonymous_function = { keyword_fn ~ "{" ~ newline* ~ anonymous_clauses ~ newline* ~ "}" }
+anonymous_clauses = { anonymous_clause ~ (newline+ ~ anonymous_clause)* }
+anonymous_clause = { anonymous_params ~ guard_clause? ~ arrow ~ anonymous_body }
+
+// Anonymous function parameters  
+anonymous_params = { 
+    "(" ~ ")" |
+    "(" ~ parameter ~ ("," ~ parameter)* ~ ","? ~ ")" |
+    identifier ~ ":" ~ type_annotation
+}
+
+// Anonymous function body
+anonymous_body = { block | expression }
+
+// Function captures: &function, &Module.function, &function/2
+function_capture = { !"&&" ~ "&" ~ qualified_function_ref }
+qualified_function_ref = { (module_path ~ ".")? ~ identifier ~ ("/" ~ integer_decimal)? }
+
+// === BASIC PROGRAM STRUCTURE ===
+
+// Top-level program with module system support
+// Note: struct_definition, trait_definition, impl_block must come before expression
+// Note: type_identifier must come before identifier to match correctly
+// Note: float must come before integer to prevent decimal integers from matching float patterns
+// Note: atom must come before identifier to match `:` prefix correctly
+// Note: sigil comes before expression to prevent ~Type"..." from being parsed as bitwise NOT
+// Note: function_definition comes before expression to match function definitions
+// Note: let_binding comes before expression to match let bindings
+// Note: expression comes next to handle operators, then fallback to individual elements
+program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | block_comment | comment | newline | WHITESPACE)* ~ EOI }
