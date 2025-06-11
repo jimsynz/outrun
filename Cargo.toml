@@ -1,6 +1,6 @@
 [workspace]
 
-members = [
+members = [ "outrun",
   "outrun-parser",
   "tree-sitter-outrun"
 ]
