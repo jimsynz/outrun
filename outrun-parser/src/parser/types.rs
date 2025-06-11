@@ -163,9 +163,19 @@ impl OutrunParser {
         let mut methods = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::function_definition {
-                let method = Self::parse_function_definition(inner_pair)?;
-                methods.push(method);
+            if inner_pair.as_rule() == Rule::struct_method_item {
+                for method_item_pair in inner_pair.into_inner() {
+                    match method_item_pair.as_rule() {
+                        Rule::function_definition => {
+                            let method = Self::parse_function_definition(method_item_pair)?;
+                            methods.push(method);
+                        }
+                        Rule::comment => {
+                            // Comments are pre-collected at program level - skip
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -299,9 +309,19 @@ impl OutrunParser {
         let mut methods = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::function_definition {
-                let method = Self::parse_function_definition(inner_pair)?;
-                methods.push(method);
+            if inner_pair.as_rule() == Rule::impl_method_item {
+                for method_item_pair in inner_pair.into_inner() {
+                    match method_item_pair.as_rule() {
+                        Rule::function_definition => {
+                            let method = Self::parse_function_definition(method_item_pair)?;
+                            methods.push(method);
+                        }
+                        Rule::comment => {
+                            // Comments are pre-collected at program level - skip
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 

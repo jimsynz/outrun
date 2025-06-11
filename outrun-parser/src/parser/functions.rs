@@ -305,9 +305,19 @@ impl OutrunParser {
         let mut functions = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::trait_function {
-                let trait_function = Self::parse_trait_function(inner_pair)?;
-                functions.push(trait_function);
+            if inner_pair.as_rule() == Rule::trait_item {
+                for trait_item_pair in inner_pair.into_inner() {
+                    match trait_item_pair.as_rule() {
+                        Rule::trait_function => {
+                            let trait_function = Self::parse_trait_function(trait_item_pair)?;
+                            functions.push(trait_function);
+                        }
+                        Rule::comment => {
+                            // Comments are pre-collected at program level - skip
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 

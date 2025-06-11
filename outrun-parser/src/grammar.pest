@@ -38,9 +38,12 @@ WHITESPACE = _{ " " | "\t" }
 // Explicit newline tracking (preserved in AST)
 newline = { "\n" | "\r\n" }
 
-// Comments (preserved in AST with spans)
-comment = { "#" ~ (!newline ~ ANY)* }
-block_comment = { "###" ~ (!"###" ~ ANY)* ~ "###" }
+// Comments (preserved in AST with spans) - atomic to prevent recursion
+comment = @{ "#" ~ (!newline ~ ANY)* }
+block_comment = @{ "###" ~ (!"###" ~ ANY)* ~ "###" }
+
+// Magic COMMENT rule - non-silent so comments appear in parse tree
+COMMENT = ${ block_comment | comment }
 
 // === KEYWORDS ===
 // Keywords with exactly one representation each (with word boundaries)
@@ -280,11 +283,13 @@ let_binding = { keyword_let ~ pattern ~ (":" ~ type_annotation)? ~ "=" ~ express
 struct_definition = { (attribute ~ newline*)* ~ keyword_struct ~ type_identifier ~ generic_params? ~ "(" ~ struct_fields? ~ ")" ~ "{" ~ newline* ~ struct_methods? ~ newline* ~ "}" }
 struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
 struct_field = { identifier ~ ":" ~ type_annotation }
-struct_methods = { function_definition ~ (newline+ ~ function_definition)* }
+struct_methods = { struct_method_item ~ (newline+ ~ struct_method_item)* }
+struct_method_item = { function_definition }
 
 // Trait definition: trait Name<T> { function signatures }
 trait_definition = { (attribute ~ newline*)* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ newline* ~ trait_functions? ~ newline* ~ "}" }
-trait_functions = { trait_function ~ (newline+ ~ trait_function)* }
+trait_functions = { trait_item ~ (newline+ ~ trait_item)* }
+trait_item = { trait_function }
 trait_function = { function_signature | function_definition }
 function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
@@ -292,7 +297,8 @@ function_signature = { function_visibility ~ identifier ~ parameter_list? ~ retu
 impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ newline* ~ impl_methods? ~ newline* ~ "}" }
 trait_spec = { module_path ~ generic_args? }
 type_spec = { module_path ~ generic_args? }
-impl_methods = { function_definition ~ (newline+ ~ function_definition)* }
+impl_methods = { impl_method_item ~ (newline+ ~ impl_method_item)* }
+impl_method_item = { function_definition }
 
 // Generic parameters: <T, U, V>
 generic_params = { "<" ~ generic_param_list ~ ">" }
@@ -388,4 +394,4 @@ const_definition = { keyword_const ~ type_identifier ~ ":" ~ type_annotation ~ "
 // Note: let_binding comes before expression to match let bindings
 // Note: const_definition comes before expression to match constant definitions
 // Note: expression comes next to handle operators, then fallback to individual elements
-program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | block_comment | comment | newline | WHITESPACE)* ~ EOI }
+program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | newline | WHITESPACE)* ~ EOI }

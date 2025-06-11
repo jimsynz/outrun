@@ -8,21 +8,71 @@ pub fn format_program_as_sexpr(program: &Program) -> String {
 }
 
 fn format_program_with_indent(program: &Program, indent: usize) -> String {
-    let items: Vec<String> = program.items
+    // Interleave comments with items based on spans for proper source order
+    let mixed_items = interleave_comments_with_items(&program.items, &program.debug_info.comments);
+    
+    let formatted_items: Vec<String> = mixed_items
         .iter()
-        .map(|item| format_item_with_indent(item, indent + 2))
+        .map(|item| format_mixed_item_with_indent(item, indent + 2))
         .collect();
     
-    if items.is_empty() {
+    if formatted_items.is_empty() {
         "(program)".to_string()
-    } else if items.len() == 1 {
-        format!("(program {})", items[0])
+    } else if formatted_items.len() == 1 {
+        format!("(program {})", formatted_items[0])
     } else {
         format!(
             "(program\n{}\n{})",
-            items.join(&format!("\n{}", " ".repeat(indent + 2))),
+            formatted_items.join(&format!("\n{}", " ".repeat(indent + 2))),
             " ".repeat(indent)
         )
+    }
+}
+
+// Mixed item type to represent either an AST item or a comment in source order
+#[derive(Debug)]
+enum MixedItem<'a> {
+    Item(&'a Item),
+    Comment(&'a Comment),
+}
+
+impl<'a> MixedItem<'a> {
+    fn span(&self) -> &Span {
+        match self {
+            MixedItem::Item(item) => &item.span,
+            MixedItem::Comment(comment) => &comment.span,
+        }
+    }
+}
+
+// Interleave comments with items based on their spans to maintain source order
+fn interleave_comments_with_items<'a>(
+    items: &'a [Item], 
+    comments: &'a [Comment]
+) -> Vec<MixedItem<'a>> {
+    let mut mixed_items = Vec::new();
+    
+    // Add all items
+    for item in items {
+        mixed_items.push(MixedItem::Item(item));
+    }
+    
+    // Add all comments
+    for comment in comments {
+        mixed_items.push(MixedItem::Comment(comment));
+    }
+    
+    // Sort by span start position to maintain source order
+    mixed_items.sort_by_key(|item| item.span().start);
+    
+    mixed_items
+}
+
+// Format either an item or a comment
+fn format_mixed_item_with_indent(mixed_item: &MixedItem, indent: usize) -> String {
+    match mixed_item {
+        MixedItem::Item(item) => format_item_with_indent(item, indent),
+        MixedItem::Comment(comment) => format_comment_with_indent(comment, indent),
     }
 }
 
@@ -30,6 +80,10 @@ fn format_item_with_indent(item: &Item, indent: usize) -> String {
     match &item.kind {
         ItemKind::LetBinding(let_binding) => format_let_binding_with_indent(let_binding, indent),
         ItemKind::ConstDefinition(const_def) => format_const_definition_with_indent(const_def, indent),
+        ItemKind::StructDefinition(struct_def) => format_struct_definition_with_indent(struct_def, indent),
+        ItemKind::TraitDefinition(trait_def) => format_trait_definition_with_indent(trait_def, indent),
+        ItemKind::ImplBlock(impl_block) => format_impl_block_with_indent(impl_block, indent),
+        ItemKind::FunctionDefinition(func_def) => format_function_definition_with_indent(func_def, indent),
         ItemKind::Expression(expr) => format_expression_with_indent(expr, indent),
         ItemKind::Comment(comment) => format_comment_with_indent(comment, indent),
         ItemKind::Newline => "(newline)".to_string(),
@@ -216,4 +270,66 @@ fn format_function_path(path: &FunctionPath) -> String {
         FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
         FunctionPath::Expression { expression } => format!("({})", format_expression_with_indent(expression, 0)),
     }
+}
+
+fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: usize) -> String {
+    let name = &struct_def.name.name;
+    let methods_count = struct_def.methods.len();
+    
+    if methods_count == 0 {
+        format!("(struct {})", name)
+    } else {
+        format!(
+            "(struct {}\n{}(methods {}))",
+            name,
+            " ".repeat(indent + 2),
+            methods_count
+        )
+    }
+}
+
+fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usize) -> String {
+    let name = &trait_def.name.name;
+    let functions_count = trait_def.functions.len();
+    
+    if functions_count == 0 {
+        format!("(trait {})", name)
+    } else {
+        format!(
+            "(trait {}\n{}(functions {}))",
+            name,
+            " ".repeat(indent + 2),
+            functions_count
+        )
+    }
+}
+
+fn format_impl_block_with_indent(impl_block: &ImplBlock, indent: usize) -> String {
+    let trait_name = format_type_path(&impl_block.trait_spec);
+    let type_name = format_type_path(&impl_block.type_spec);
+    let methods_count = impl_block.methods.len();
+    
+    format!(
+        "(impl {} for {}\n{}(methods {}))",
+        trait_name,
+        type_name,
+        " ".repeat(indent + 2),
+        methods_count
+    )
+}
+
+fn format_function_definition_with_indent(func_def: &FunctionDefinition, _indent: usize) -> String {
+    let name = &func_def.name.name;
+    let param_count = func_def.parameters.len();
+    
+    format!(
+        "(function {} (params {}))",
+        name,
+        param_count
+    )
+}
+
+fn format_type_path(type_spec: &TypeSpec) -> String {
+    let path_names: Vec<String> = type_spec.path.iter().map(|t| t.name.clone()).collect();
+    path_names.join(".")
 }

@@ -126,17 +126,14 @@ fn test_parse_line_comment() {
     let input = "# This is a comment\n";
     let result = parse_program(input).unwrap();
 
-    assert_eq!(result.items.len(), 2); // comment + newline
+    assert_eq!(result.items.len(), 1); // just newline (comment now in debug_info)
+    
+    // Comment should be in debug_info
+    assert_eq!(result.debug_info.comments.len(), 1);
+    assert_eq!(result.debug_info.comments[0].kind, CommentKind::Line);
+    assert!(result.debug_info.comments[0].content.contains("This is a comment"));
 
     match &result.items[0].kind {
-        ItemKind::Comment(comment) => {
-            assert_eq!(comment.kind, CommentKind::Line);
-            assert!(comment.content.contains("This is a comment"));
-        }
-        _ => panic!("Expected comment"),
-    }
-
-    match &result.items[1].kind {
         ItemKind::Newline => {}
         _ => panic!("Expected newline after comment"),
     }
@@ -147,15 +144,12 @@ fn test_parse_block_comment() {
     let input = "###Block comment content###";
     let result = parse_program(input).unwrap();
 
-    assert_eq!(result.items.len(), 1);
-
-    match &result.items[0].kind {
-        ItemKind::Comment(comment) => {
-            assert_eq!(comment.kind, CommentKind::Block);
-            assert!(comment.content.contains("Block comment content"));
-        }
-        _ => panic!("Expected block comment"),
-    }
+    assert_eq!(result.items.len(), 0); // no items (comment now in debug_info)
+    
+    // Comment should be in debug_info
+    assert_eq!(result.debug_info.comments.len(), 1);
+    assert_eq!(result.debug_info.comments[0].kind, CommentKind::Block);
+    assert!(result.debug_info.comments[0].content.contains("Block comment content"));
 }
 
 #[test]

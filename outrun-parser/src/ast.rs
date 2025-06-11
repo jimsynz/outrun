@@ -14,10 +14,24 @@ impl Span {
     }
 }
 
+/// Debug information for source preservation and tooling
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DebugInfo {
+    pub comments: Vec<Comment>,
+    // Future: source_text, line_directives, source_maps, etc.
+}
+
+impl DebugInfo {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Top-level program containing all items
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub items: Vec<Item>,
+    pub debug_info: DebugInfo,
     pub span: Span,
 }
 
