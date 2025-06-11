@@ -44,6 +44,7 @@ pub enum ItemKind {
     Identifier(Identifier),
     TypeIdentifier(TypeIdentifier),
     FunctionDefinition(FunctionDefinition),
+    ConstDefinition(ConstDefinition),
     LetBinding(LetBinding),
     StructDefinition(StructDefinition),
     TraitDefinition(TraitDefinition),
@@ -520,6 +521,15 @@ pub struct ListPattern {
     pub span: Span,
 }
 
+/// Constant definition with required type annotation
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstDefinition {
+    pub name: TypeIdentifier,
+    pub type_annotation: TypeAnnotation,
+    pub expression: Expression,
+    pub span: Span,
+}
+
 /// Let binding with optional type annotation for inference
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetBinding {
@@ -630,6 +640,7 @@ impl std::fmt::Display for Item {
             ItemKind::Identifier(id) => write!(f, "{}", id),
             ItemKind::TypeIdentifier(id) => write!(f, "{}", id),
             ItemKind::FunctionDefinition(func) => write!(f, "{}", func),
+            ItemKind::ConstDefinition(const_def) => write!(f, "{}", const_def),
             ItemKind::LetBinding(let_binding) => write!(f, "{}", let_binding),
             ItemKind::StructDefinition(struct_def) => write!(f, "{}", struct_def),
             ItemKind::TraitDefinition(trait_def) => write!(f, "{}", trait_def),
@@ -1139,6 +1150,12 @@ impl std::fmt::Display for ListPattern {
             write!(f, "..{}", rest)?;
         }
         write!(f, "]")
+    }
+}
+
+impl std::fmt::Display for ConstDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "const {}: {} = {}", self.name, self.type_annotation, self.expression)
     }
 }
 

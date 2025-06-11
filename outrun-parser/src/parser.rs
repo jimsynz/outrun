@@ -179,6 +179,9 @@ impl OutrunParser {
                             Rule::macro_definition => {
                                 parse_and_wrap_item!(items, inner_pair, pair_span, parse_macro_definition, MacroDefinition);
                             }
+                            Rule::const_definition => {
+                                parse_and_wrap_item!(items, inner_pair, pair_span, parse_const_definition, ConstDefinition);
+                            }
                             Rule::let_binding => {
                                 parse_and_wrap_item!(items, inner_pair, pair_span, parse_let_binding, LetBinding);
                             }
@@ -637,9 +640,48 @@ impl OutrunParser {
         })
     }
 
+    /// Parse a constant definition: const NAME: Type = expression
+    fn parse_const_definition(pair: pest::iterators::Pair<Rule>) -> ParseResult<ConstDefinition> {
+        let span = Self::span_from_pair(&pair);
+        let mut inner_pairs = pair.into_inner();
 
+        // First pair should be the "const" keyword, skip it
+        let _const_keyword = inner_pairs.next().unwrap();
 
+        // Second pair should be the constant name (type identifier)
+        let name_pair = inner_pairs.next().unwrap();
+        let name = Self::parse_type_identifier(name_pair)?;
 
+        // Third pair should be the type annotation
+        let type_annotation_pair = inner_pairs.next().unwrap();
+        let type_annotation = Self::parse_type_annotation(type_annotation_pair)?;
+
+        // Find the expression (skip the "=" token)
+        let mut expression_pair = None;
+        for remaining_pair in inner_pairs {
+            if remaining_pair.as_rule() == Rule::expression {
+                expression_pair = Some(remaining_pair);
+                break;
+            }
+        }
+
+        let expression_pair = expression_pair.ok_or_else(|| {
+            ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(span.start..span.end),
+                "Constant definition missing expression".to_string(),
+            )
+        })?;
+
+        let expression = Self::parse_expression_from_pair(expression_pair)?;
+
+        Ok(ConstDefinition {
+            name,
+            type_annotation,
+            expression,
+            span,
+        })
+    }
 
     // === MODULE SYSTEM PARSING ===
 

@@ -29,7 +29,9 @@ fn format_program_with_indent(program: &Program, indent: usize) -> String {
 fn format_item_with_indent(item: &Item, indent: usize) -> String {
     match &item.kind {
         ItemKind::LetBinding(let_binding) => format_let_binding_with_indent(let_binding, indent),
+        ItemKind::ConstDefinition(const_def) => format_const_definition_with_indent(const_def, indent),
         ItemKind::Expression(expr) => format_expression_with_indent(expr, indent),
+        ItemKind::Comment(comment) => format_comment_with_indent(comment, indent),
         ItemKind::Newline => "(newline)".to_string(),
         _ => "(unknown-item)".to_string(),
     }
@@ -54,6 +56,36 @@ fn format_let_binding_with_indent(let_binding: &LetBinding, indent: usize) -> St
             expression
         )
     }
+}
+
+fn format_const_definition_with_indent(const_def: &ConstDefinition, indent: usize) -> String {
+    let name = &const_def.name.name;
+    let type_annotation = format_type_with_indent(&const_def.type_annotation, indent + 2);
+    let expression = format_expression_with_indent(&const_def.expression, indent + 2);
+    
+    format!(
+        "(const {}\n{}(type {})\n{}{})",
+        name,
+        " ".repeat(indent + 2),
+        type_annotation,
+        " ".repeat(indent + 2),
+        expression
+    )
+}
+
+fn format_comment_with_indent(comment: &Comment, _indent: usize) -> String {
+    match comment.kind {
+        CommentKind::Line => format!("(comment \"{}\")", escape_string_content(&comment.content)),
+        CommentKind::Block => format!("(block-comment \"{}\")", escape_string_content(&comment.content)),
+    }
+}
+
+fn escape_string_content(content: &str) -> String {
+    content
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
 }
 
 fn format_pattern_with_indent(pattern: &Pattern, _indent: usize) -> String {
@@ -83,6 +115,7 @@ fn format_expression_with_indent(expr: &Expression, indent: usize) -> String {
         ExpressionKind::Atom(atom_lit) => format!("(atom :{})", atom_lit.name),
         ExpressionKind::Identifier(id) => id.name.clone(),
         ExpressionKind::BinaryOp(bin_op) => format_binary_op_with_indent(bin_op, indent),
+        ExpressionKind::FunctionCall(call) => format_function_call_with_indent(call, indent),
         _ => "(unknown-expr)".to_string(),
     }
 }
@@ -152,4 +185,35 @@ fn format_binary_operator_as_sexpr(op: &BinaryOperator) -> String {
         BinaryOperator::PipeMaybe => "|?",
         BinaryOperator::Pipe => "|>",
     }.to_string()
+}
+
+fn format_function_call_with_indent(call: &FunctionCall, indent: usize) -> String {
+    let function_name = format_function_path(&call.path);
+    
+    if call.arguments.is_empty() {
+        format!("(call {})", function_name)
+    } else {
+        let args: Vec<String> = call.arguments.iter()
+            .map(|arg| format!("({}: {})", arg.name.name, format_expression_with_indent(&arg.expression, indent + 2)))
+            .collect();
+        
+        if args.len() == 1 && args[0].len() < 50 {
+            format!("(call {} {})", function_name, args[0])
+        } else {
+            format!(
+                "(call {}\n{}\n{})",
+                function_name,
+                args.join(&format!("\n{}", " ".repeat(indent + 2))),
+                " ".repeat(indent)
+            )
+        }
+    }
+}
+
+fn format_function_path(path: &FunctionPath) -> String {
+    match path {
+        FunctionPath::Simple { name } => name.name.clone(),
+        FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+        FunctionPath::Expression { expression } => format!("({})", format_expression_with_indent(expression, 0)),
+    }
 }

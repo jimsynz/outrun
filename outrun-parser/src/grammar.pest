@@ -371,6 +371,11 @@ anonymous_body = { block | expression }
 function_capture = { !"&&" ~ "&" ~ qualified_function_ref }
 qualified_function_ref = { (module_path ~ ".")? ~ identifier ~ ("/" ~ integer_decimal)? }
 
+// === CONSTANTS ===
+
+// Constant definition: const NAME: Type = expression
+const_definition = { keyword_const ~ type_identifier ~ ":" ~ type_annotation ~ "=" ~ expression }
+
 // === BASIC PROGRAM STRUCTURE ===
 
 // Top-level program with module system support
@@ -381,5 +386,6 @@ qualified_function_ref = { (module_path ~ ".")? ~ identifier ~ ("/" ~ integer_de
 // Note: sigil comes before expression to prevent ~Type"..." from being parsed as bitwise NOT
 // Note: function_definition comes before expression to match function definitions
 // Note: let_binding comes before expression to match let bindings
+// Note: const_definition comes before expression to match constant definitions
 // Note: expression comes next to handle operators, then fallback to individual elements
-program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | block_comment | comment | newline | WHITESPACE)* ~ EOI }
+program = { SOI ~ (alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword | block_comment | comment | newline | WHITESPACE)* ~ EOI }
