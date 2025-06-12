@@ -6,4 +6,21 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 outrun-parser = { path = "../outrun-parser" }
-miette = { version = "7.0", features = ["fancy"] }
+miette = { version = "7.0", features = ["fancy", "syntect-highlighter"] }
+syntect = "5.2"
+
+[features]
+default = ["embedded-syntax"]
+embedded-syntax = []
+file-syntax = []  # For development/debugging - uses outrun_syntax.dump file
+
+[build-dependencies]
+syntect = "5.2"
+
+[[bin]]
+name = "outrun"
+path = "src/main.rs"
+
+[[bin]]
+name = "build_syntax"
+path = "build_syntax.rs"

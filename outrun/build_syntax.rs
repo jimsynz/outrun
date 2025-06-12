@@ -1,0 +1,231 @@
+// Build script to pre-compile Outrun syntax definition for fast CLI startup
+//
+// Usage:
+//   cargo run --bin build_syntax
+//
+// This creates outrun_syntax.dump which is required for:
+// 1. Embedded in binary (default): cargo build
+// 2. Loaded from file: cargo build --no-default-features --features file-syntax
+//
+// The embedded approach gives fastest startup (~0.17s) with no external dependencies.
+//
+// NOTE: outrun_syntax.dump is a build artifact and should not be committed to git.
+// Run this script before building if the file doesn't exist.
+
+use std::fs;
+use syntect::parsing::SyntaxSet;
+
+fn main() {
+    println!("Building pre-compiled Outrun syntax set...");
+
+    // Create the Outrun syntax definition
+    let outrun_syntax = r#"%YAML 1.2
+---
+name: Outrun
+file_extensions: [outrun]
+scope: source.outrun
+
+variables:
+  identifier: '[a-zA-Z_][a-zA-Z0-9_]*'
+  type_identifier: '[A-Z][a-zA-Z0-9_]*'
+  module_path: '{{type_identifier}}(\.{{type_identifier}})*'
+
+contexts:
+  main:
+    - include: comments
+    - include: keywords
+    - include: types
+    - include: literals
+    - include: operators
+    - include: punctuation
+
+  # Comments
+  comments:
+    - match: '###'
+      scope: punctuation.definition.comment.begin.outrun
+      push:
+        - meta_scope: comment.block.outrun
+        - match: '###'
+          scope: punctuation.definition.comment.end.outrun
+          pop: true
+    - match: '#'
+      scope: punctuation.definition.comment.outrun
+      push:
+        - meta_scope: comment.line.outrun
+        - match: $
+          pop: true
+
+  # Keywords and control flow
+  keywords:
+    - match: \b(def|let|const|if|else|case|when|struct|trait|impl|macro|alias|import|except|only)\b
+      scope: keyword.control.outrun
+    - match: \b(true|false)\b
+      scope: constant.language.boolean.outrun
+    - match: \b(Self)\b
+      scope: keyword.other.self.outrun
+
+  # Type annotations and definitions
+  types:
+    - match: '{{type_identifier}}'
+      scope: support.type.outrun
+    - match: '{{module_path}}'
+      scope: support.type.module.outrun
+    - match: ':(?=\s*{{type_identifier}})'
+      scope: punctuation.separator.type.outrun
+
+  # String literals with interpolation
+  literals:
+    - include: multiline-strings
+    - include: basic-strings
+    - include: sigils
+    - include: atoms
+    - include: numbers
+
+  # Multiline strings with interpolation
+  multiline-strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.outrun
+      push:
+        - meta_scope: string.quoted.triple.outrun
+        - include: string-interpolation
+        - match: '"""'
+          scope: punctuation.definition.string.end.outrun
+          pop: true
+
+  # Basic strings with interpolation
+  basic-strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.outrun
+      push:
+        - meta_scope: string.quoted.double.outrun
+        - include: string-interpolation
+        - include: string-escapes
+        - match: '"'
+          scope: punctuation.definition.string.end.outrun
+          pop: true
+
+  # String interpolation #{...}
+  string-interpolation:
+    - match: '#\{'
+      scope: punctuation.definition.interpolation.begin.outrun
+      push:
+        - meta_scope: meta.interpolation.outrun
+        - include: main
+        - match: '\}'
+          scope: punctuation.definition.interpolation.end.outrun
+          pop: true
+
+  # String escape sequences
+  string-escapes:
+    - match: '\\[ntr\\"]'
+      scope: constant.character.escape.outrun
+    - match: '\\u[0-9a-fA-F]{4}'
+      scope: constant.character.escape.unicode.outrun
+    - match: '\\.'
+      scope: invalid.illegal.escape.outrun
+
+  # Sigil literals ~Type"content"
+  sigils:
+    - match: '~{{type_identifier}}"'
+      scope: string.other.sigil.outrun punctuation.definition.string.begin.outrun
+      push:
+        - meta_scope: string.other.sigil.outrun
+        - include: string-interpolation
+        - match: '"'
+          scope: punctuation.definition.string.end.outrun
+          pop: true
+
+  # Atom literals
+  atoms:
+    - match: ':{{identifier}}'
+      scope: constant.other.symbol.atom.outrun
+    - match: ':"'
+      scope: punctuation.definition.symbol.begin.outrun
+      push:
+        - meta_scope: constant.other.symbol.quoted.outrun
+        - include: string-escapes
+        - match: '"'
+          scope: punctuation.definition.symbol.end.outrun
+          pop: true
+
+  # Numeric literals
+  numbers:
+    # Hexadecimal integers
+    - match: '\b0x[0-9a-fA-F]+'
+      scope: constant.numeric.integer.hexadecimal.outrun
+    # Binary integers
+    - match: '\b0b[01]+'
+      scope: constant.numeric.integer.binary.outrun
+    # Octal integers
+    - match: '\b0o[0-7]+'
+      scope: constant.numeric.integer.octal.outrun
+    # Scientific notation floats
+    - match: '\b\d+\.\d+[eE][+-]?\d+'
+      scope: constant.numeric.float.scientific.outrun
+    # Regular floats
+    - match: '\b\d+\.\d+'
+      scope: constant.numeric.float.outrun
+    # Decimal integers
+    - match: '\b\d+'
+      scope: constant.numeric.integer.decimal.outrun
+
+  # Operators
+  operators:
+    # Pipe operators (special highlighting)
+    - match: '\|\>|\|\?'
+      scope: keyword.operator.pipe.outrun
+    # Logical operators
+    - match: '&&|\|\||!'
+      scope: keyword.operator.logical.outrun
+    # Comparison operators
+    - match: '==|!=|<=|>=|<|>'
+      scope: keyword.operator.comparison.outrun
+    # Bitwise operators
+    - match: '&|\||\^|~|<<|>>'
+      scope: keyword.operator.bitwise.outrun
+    # Arithmetic operators
+    - match: '\+|-|\*|/|%|\*\*'
+      scope: keyword.operator.arithmetic.outrun
+    # Assignment and spread
+    - match: '=|\.\.\.'
+      scope: keyword.operator.assignment.outrun
+    # Field access and function capture
+    - match: '\.|&'
+      scope: keyword.operator.accessor.outrun
+
+  # Punctuation and delimiters
+  punctuation:
+    - match: '[(){}\[\]]'
+      scope: punctuation.definition.group.outrun
+    - match: '[,;]'
+      scope: punctuation.separator.outrun
+    - match: '=>'
+      scope: punctuation.separator.mapping.outrun
+"#;
+
+    // Write the syntax file temporarily
+    fs::write("outrun.sublime-syntax", outrun_syntax).expect("Failed to write syntax file");
+
+    // Build syntax set with defaults + Outrun
+    let syntax_set = SyntaxSet::load_defaults_newlines();
+    let mut builder = syntax_set.into_builder();
+
+    // Add our Outrun syntax
+    builder
+        .add_from_folder(".", true)
+        .expect("Failed to load Outrun syntax");
+    let final_syntax_set = builder.build();
+
+    // Clean up temporary file
+    fs::remove_file("outrun.sublime-syntax").expect("Failed to remove temp file");
+
+    // Serialize to binary format
+    syntect::dumps::dump_to_uncompressed_file(&final_syntax_set, "outrun_syntax.dump")
+        .expect("Failed to serialize syntax set");
+
+    println!("✅ Pre-compiled syntax set saved to outrun_syntax.dump");
+    println!(
+        "   Size: {} bytes",
+        fs::metadata("outrun_syntax.dump").unwrap().len()
+    );
+}

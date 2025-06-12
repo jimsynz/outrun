@@ -109,7 +109,7 @@ impl OutrunParser {
                 // Create an identifier expression with the same name
                 let expression = Expression {
                     kind: ExpressionKind::Identifier(name.clone()),
-                    span: name.span.clone(),
+                    span: name.span,
                 };
 
                 Ok(Argument::Named {

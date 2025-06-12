@@ -104,7 +104,7 @@ impl OutrunParser {
                             left: Box::new(left),
                             operator,
                             right: Box::new(right),
-                            span: span.clone(),
+                            span,
                         }),
                         span,
                     })
@@ -231,7 +231,7 @@ impl OutrunParser {
                             kind: ExpressionKind::FieldAccess(FieldAccess {
                                 object: Box::new(expr),
                                 field,
-                                span: span.clone(),
+                                span,
                             }),
                             span,
                         };
@@ -260,7 +260,7 @@ impl OutrunParser {
                                     expression: Box::new(expr),
                                 },
                                 arguments,
-                                span: span.clone(),
+                                span,
                             }),
                             span,
                         };
@@ -300,7 +300,7 @@ impl OutrunParser {
                     kind: ExpressionKind::UnaryOp(UnaryOperation {
                         operator,
                         operand: Box::new(operand),
-                        span: span.clone(),
+                        span,
                     }),
                     span,
                 })
@@ -495,7 +495,7 @@ impl OutrunParser {
             kind: ExpressionKind::UnaryOp(UnaryOperation {
                 operator,
                 operand: Box::new(operand),
-                span: span.clone(),
+                span,
             }),
             span,
         })

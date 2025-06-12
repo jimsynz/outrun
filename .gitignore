@@ -1,3 +1,6 @@
 target
 .DS_Store
 
+# Build artifacts
+outrun/outrun_syntax.dump
+
