@@ -1,9 +1,9 @@
 // Literal parsing functions for the Outrun parser
 // Handles boolean, integer, float, string, atom, and sigil literals
 
+use super::{OutrunParser, Rule};
 use crate::ast::*;
 use crate::error::*;
-use super::{Rule, OutrunParser};
 
 impl OutrunParser {
     /// Parse a boolean literal from a Pest pair
@@ -155,8 +155,7 @@ impl OutrunParser {
                             });
                         }
                         Rule::string_interpolation => {
-                            let interpolation_span =
-                                Self::span_from_pair(&part_pair);
+                            let interpolation_span = Self::span_from_pair(&part_pair);
 
                             // Parse the expression inside #{...}
                             let expr_pair = part_pair.into_inner().next().unwrap();
@@ -201,16 +200,8 @@ impl OutrunParser {
                                 raw_content: raw_content.to_string(),
                             });
                         }
-                        Rule::newline => {
-                            let text = part_pair.as_str();
-                            parts.push(StringPart::Text {
-                                content: text.to_string(),
-                                raw_content: text.to_string(),
-                            });
-                        }
                         Rule::string_interpolation => {
-                            let interpolation_span =
-                                Self::span_from_pair(&part_pair);
+                            let interpolation_span = Self::span_from_pair(&part_pair);
 
                             // Parse the expression inside #{...}
                             let expr_pair = part_pair.into_inner().next().unwrap();
@@ -251,7 +242,7 @@ impl OutrunParser {
                                 hex_digits.push(hex_digit);
                             } else {
                                 return Err(Self::invalid_string_escape_error(
-                                    "Incomplete unicode escape sequence"
+                                    "Incomplete unicode escape sequence",
                                 ));
                             }
                         }
@@ -260,24 +251,27 @@ impl OutrunParser {
                             if let Some(unicode_char) = char::from_u32(code_point) {
                                 result.push(unicode_char);
                             } else {
-                                return Err(Self::invalid_string_escape_error(
-                                    &format!("Invalid unicode code point: {}", hex_digits)
-                                ));
+                                return Err(Self::invalid_string_escape_error(&format!(
+                                    "Invalid unicode code point: {}",
+                                    hex_digits
+                                )));
                             }
                         } else {
-                            return Err(Self::invalid_string_escape_error(
-                                &format!("Invalid hex digits in unicode escape: {}", hex_digits)
-                            ));
+                            return Err(Self::invalid_string_escape_error(&format!(
+                                "Invalid hex digits in unicode escape: {}",
+                                hex_digits
+                            )));
                         }
                     }
                     Some(other) => {
-                        return Err(Self::invalid_string_escape_error(
-                            &format!("Unknown escape sequence: \\{}", other)
-                        ));
+                        return Err(Self::invalid_string_escape_error(&format!(
+                            "Unknown escape sequence: \\{}",
+                            other
+                        )));
                     }
                     None => {
                         return Err(Self::invalid_string_escape_error(
-                            "Incomplete escape sequence"
+                            "Incomplete escape sequence",
                         ));
                     }
                 }

@@ -145,15 +145,13 @@ fn test_const_definition_with_module_type() {
 
             // Check function call expression
             match &const_def.expression.kind {
-                ExpressionKind::FunctionCall(call) => {
-                    match &call.path {
-                        FunctionPath::Qualified { module, name } => {
-                            assert_eq!(module.name, "Duration");
-                            assert_eq!(name.name, "seconds");
-                        }
-                        _ => panic!("Expected qualified function call"),
+                ExpressionKind::FunctionCall(call) => match &call.path {
+                    FunctionPath::Qualified { module, name } => {
+                        assert_eq!(module.name, "Duration");
+                        assert_eq!(name.name, "seconds");
                     }
-                }
+                    _ => panic!("Expected qualified function call"),
+                },
                 _ => panic!("Expected function call"),
             }
         }
@@ -195,7 +193,12 @@ fn test_const_definition_with_scientific_notation() {
 
             match &const_def.expression.kind {
                 ExpressionKind::Float(float_lit) => {
-                    assert_eq!(float_lit.format, FloatFormat::Scientific { exponent_case: ExponentCase::Lowercase });
+                    assert_eq!(
+                        float_lit.format,
+                        FloatFormat::Scientific {
+                            exponent_case: ExponentCase::Lowercase
+                        }
+                    );
                     assert!((float_lit.value - 6.626e-34).abs() < f64::EPSILON);
                 }
                 _ => panic!("Expected float literal"),
@@ -255,7 +258,7 @@ fn test_const_definition_with_arithmetic_expression() {
             match &const_def.expression.kind {
                 ExpressionKind::BinaryOp(op) => {
                     assert_eq!(op.operator, BinaryOperator::Multiply);
-                    
+
                     // Check left operand
                     match &op.left.kind {
                         ExpressionKind::Integer(int_lit) => {
@@ -263,7 +266,7 @@ fn test_const_definition_with_arithmetic_expression() {
                         }
                         _ => panic!("Expected integer literal on left"),
                     }
-                    
+
                     // Check right operand
                     match &op.right.kind {
                         ExpressionKind::Integer(int_lit) => {
@@ -362,10 +365,7 @@ fn test_const_definition_display_formatting() {
             "const MAX_USERS: Integer = 1000",
             "const MAX_USERS: Integer = 1000",
         ),
-        (
-            "const PI: Float = 3.14",
-            "const PI: Float = 3.14",
-        ),
+        ("const PI: Float = 3.14", "const PI: Float = 3.14"),
         (
             "const DEBUG: Boolean = false",
             "const DEBUG: Boolean = false",
@@ -392,7 +392,7 @@ fn test_const_definition_display_formatting() {
 fn test_const_vs_let_binding_difference() {
     let const_input = "const VALUE: Integer = 42";
     let let_input = "let value: Integer = 42";
-    
+
     let const_program = OutrunParser::parse_program(const_input).unwrap();
     let let_program = OutrunParser::parse_program(let_input).unwrap();
 
@@ -406,12 +406,10 @@ fn test_const_vs_let_binding_difference() {
 
     // Verify let creates LetBinding
     match &let_program.items[0].kind {
-        ItemKind::LetBinding(let_binding) => {
-            match &let_binding.pattern {
-                Pattern::Identifier(identifier) => assert_eq!(identifier.name, "value"),
-                _ => panic!("Expected identifier pattern"),
-            }
-        }
+        ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
+            Pattern::Identifier(identifier) => assert_eq!(identifier.name, "value"),
+            _ => panic!("Expected identifier pattern"),
+        },
         _ => panic!("Expected let binding"),
     }
 }

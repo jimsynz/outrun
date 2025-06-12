@@ -7,13 +7,17 @@ use crate::parser::{OutrunParser, Rule};
 
 impl OutrunParser {
     /// Parse return type annotation
-    pub(crate) fn parse_return_type(pair: pest::iterators::Pair<Rule>) -> ParseResult<TypeAnnotation> {
+    pub(crate) fn parse_return_type(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TypeAnnotation> {
         let inner = pair.into_inner().next().unwrap();
         Self::parse_type_annotation(inner)
     }
 
     /// Parse type annotation (module path with optional generic args)
-    pub(crate) fn parse_type_annotation(pair: pest::iterators::Pair<Rule>) -> ParseResult<TypeAnnotation> {
+    pub(crate) fn parse_type_annotation(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TypeAnnotation> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
         let inner_pair = inner_pairs.next().unwrap();
@@ -32,7 +36,7 @@ impl OutrunParser {
             Rule::module_path => {
                 // Parse simple type with optional generic args
                 let path = Self::parse_module_path(inner_pair)?;
-                
+
                 // Check if there are any more inner pairs for generic args
                 let mut generic_args = None;
                 if let Some(args_pair) = inner_pairs.next() {
@@ -40,19 +44,28 @@ impl OutrunParser {
                         generic_args = Some(Self::parse_generic_args(args_pair)?);
                     }
                 }
-                
-                Ok(TypeAnnotation::Simple { path, generic_args, span })
+
+                Ok(TypeAnnotation::Simple {
+                    path,
+                    generic_args,
+                    span,
+                })
             }
             Rule::function_type => {
                 // Parse function type: Function<(param: Type) -> ReturnType>
                 Self::parse_function_type(inner_pair, span)
             }
-            _ => Err(Self::unexpected_token_from_pair(&inner_pair, "Expected type annotation")),
+            _ => Err(Self::unexpected_token_from_pair(
+                &inner_pair,
+                "Expected type annotation",
+            )),
         }
     }
 
     /// Parse module path (Type or Module.Type)
-    pub(crate) fn parse_module_path(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<TypeIdentifier>> {
+    pub(crate) fn parse_module_path(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<TypeIdentifier>> {
         let mut path = Vec::new();
 
         for inner_pair in pair.into_inner() {
@@ -66,7 +79,9 @@ impl OutrunParser {
     }
 
     /// Parse a struct definition
-    pub(crate) fn parse_struct_definition(pair: pest::iterators::Pair<Rule>) -> ParseResult<StructDefinition> {
+    pub(crate) fn parse_struct_definition(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StructDefinition> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -125,7 +140,9 @@ impl OutrunParser {
     }
 
     /// Parse struct fields
-    pub(crate) fn parse_struct_fields(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<StructField>> {
+    pub(crate) fn parse_struct_fields(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<StructField>> {
         let mut fields = Vec::new();
 
         for inner_pair in pair.into_inner() {
@@ -139,7 +156,9 @@ impl OutrunParser {
     }
 
     /// Parse a single struct field
-    pub(crate) fn parse_struct_field(pair: pest::iterators::Pair<Rule>) -> ParseResult<StructField> {
+    pub(crate) fn parse_struct_field(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StructField> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -183,7 +202,9 @@ impl OutrunParser {
     }
 
     /// Parse a trait definition
-    pub(crate) fn parse_trait_definition(pair: pest::iterators::Pair<Rule>) -> ParseResult<TraitDefinition> {
+    pub(crate) fn parse_trait_definition(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TraitDefinition> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -329,7 +350,9 @@ impl OutrunParser {
     }
 
     /// Parse generic parameters
-    pub(crate) fn parse_generic_params(pair: pest::iterators::Pair<Rule>) -> ParseResult<GenericParams> {
+    pub(crate) fn parse_generic_params(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<GenericParams> {
         let span = Self::span_from_pair(&pair);
         let mut params = Vec::new();
 
@@ -348,7 +371,9 @@ impl OutrunParser {
     }
 
     /// Parse a generic parameter
-    pub(crate) fn parse_generic_param(pair: pest::iterators::Pair<Rule>) -> ParseResult<GenericParam> {
+    pub(crate) fn parse_generic_param(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<GenericParam> {
         let span = Self::span_from_pair(&pair);
         let inner = pair.into_inner().next().unwrap();
         let name = Self::parse_type_identifier(inner)?;
@@ -357,7 +382,9 @@ impl OutrunParser {
     }
 
     /// Parse generic arguments
-    pub(crate) fn parse_generic_args(pair: pest::iterators::Pair<Rule>) -> ParseResult<GenericArgs> {
+    pub(crate) fn parse_generic_args(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<GenericArgs> {
         let span = Self::span_from_pair(&pair);
         let mut args = Vec::new();
 

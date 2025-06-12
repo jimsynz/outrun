@@ -21,7 +21,7 @@ struct User(name: String, email: String, age: Integer) {
 
     # Method to check if user is adult
     def is_adult?(self: Self): Boolean 
-    when Integer.greater_than_or_equal?(self.age, target: 18) {
+    when Integer.greater_than_or_equal?(value: self.age, target: 18) {
         true
     }
 
@@ -62,7 +62,7 @@ struct Product(name: String, price: Float, in_stock: Boolean, categories: List) 
 
     # Method to add category
     def add_category(self: Self, category: String): Product {
-        let updated_categories = List.append(self.categories, item: category)
+        let updated_categories = List.append(list: self.categories, item: category)
         Product { ..self, categories: updated_categories }
     }
 }
@@ -70,7 +70,7 @@ struct Product(name: String, price: Float, in_stock: Boolean, categories: List) 
 # Implement Display for Product
 impl Display for Product {
     def to_string(self: Self): String {
-        "#{self.name} - $#{Float.to_string(self.price)}"
+        "#{self.name} - $#{Float.to_string(float: self.price)}"
     }
 
     def debug_string(self: Self): String {
@@ -106,14 +106,14 @@ def main(): Integer {
     let discounted_laptop_price = Product.discounted_price(laptop_with_categories, discount: 0.1)
     
     # Display information using trait methods
-    IO.puts(Display.to_string(alice))
-    IO.puts(Display.to_string(bob))
-    IO.puts(Display.debug_string(laptop_with_categories))
+    IO.puts(message: Display.to_string(value: alice))
+    IO.puts(message: Display.to_string(value: bob))
+    IO.puts(message: Display.debug_string(value: laptop_with_categories))
     
     # Print results
-    IO.puts("Alice is adult: #{Boolean.to_string(alice_adult)}")
-    IO.puts("Bob is adult: #{Boolean.to_string(bob_adult)}")
-    IO.puts("Discounted laptop price: $#{Float.to_string(discounted_laptop_price)}")
+    IO.puts(message: "Alice is adult: #{Boolean.to_string(value: alice_adult)}")
+    IO.puts(message: "Bob is adult: #{Boolean.to_string(value: bob_adult)}")
+    IO.puts(message: "Discounted laptop price: $#{Float.to_string(value: discounted_laptop_price)}")
     
     0
 }

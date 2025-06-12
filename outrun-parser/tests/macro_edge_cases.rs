@@ -1,4 +1,4 @@
-use outrun_parser::{parse_program, ItemKind, ExpressionKind, StatementKind};
+use outrun_parser::{parse_program, ExpressionKind, ItemKind, StatementKind};
 
 #[test]
 fn test_macro_with_nested_injections() {
@@ -8,15 +8,15 @@ macro nested(outer, inner) {
     nested_call(value: ^inner)
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "nested");
             assert_eq!(macro_def.parameters.len(), 2);
-            
+
             // Should have two statements: let binding and function call
             assert_eq!(macro_def.body.statements.len(), 2);
             found_macro = true;
@@ -33,16 +33,16 @@ macro calc(a, b, c) {
     ^a + ^b * ^c
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "calc");
             assert_eq!(macro_def.parameters.len(), 3);
-            
-            // Should have an expression in the body  
+
+            // Should have an expression in the body
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
                 // Should be a binary operation (addition)
@@ -68,9 +68,9 @@ macro check(left, right) {
     ^left == ^right
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -90,9 +90,9 @@ macro with_underscore(param_name) {
     IO.puts(message: ^param_name)
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -113,37 +113,40 @@ macro log_debug(var) {
     IO.puts(message: "Debug: #{^var}")
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "log_debug");
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "var");
-            
+
             // Check that we can parse a function call with string interpolation containing macro injection
             assert_eq!(macro_def.body.statements.len(), 1);
             found_macro = true;
             break;
         }
     }
-    assert!(found_macro, "Should parse macro injection in string interpolation");
+    assert!(
+        found_macro,
+        "Should parse macro injection in string interpolation"
+    );
 }
 
 #[test]
 fn test_macro_with_simple_expression_body() {
     let input = r#"macro simple() { 42 }"#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "simple");
             assert_eq!(macro_def.parameters.len(), 0);
-            
+
             // Should have a single expression statement
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
@@ -159,16 +162,22 @@ fn test_macro_with_simple_expression_body() {
             break;
         }
     }
-    assert!(found_macro, "Should parse macro with simple expression body");
+    assert!(
+        found_macro,
+        "Should parse macro with simple expression body"
+    );
 }
 
 #[test]
 fn test_macro_injection_display_format() {
     let input = r#"macro test(x) { ^x }"#;
-    
+
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
-    
+
     // Should preserve the macro injection syntax
-    assert!(reconstructed.contains("^x"), "Should preserve macro injection syntax in display");
+    assert!(
+        reconstructed.contains("^x"),
+        "Should preserve macro injection syntax in display"
+    );
 }

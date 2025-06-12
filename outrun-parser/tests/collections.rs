@@ -504,7 +504,7 @@ fn test_list_with_multiple_spreads() {
             // Check spread elements
             let expected_spreads = ["start", "middle", "end"];
             let spread_indices = [0, 2, 4];
-            
+
             for (index, expected_name) in spread_indices.iter().zip(expected_spreads.iter()) {
                 match &list.elements[*index] {
                     ListElement::Spread(id) => assert_eq!(id.name, *expected_name),
@@ -583,7 +583,7 @@ fn test_nested_list_with_spread() {
             for element in &list.elements {
                 match element {
                     ListElement::Expression(expr) => match &expr.kind {
-                        ExpressionKind::List(_) => {}, // Expected nested list
+                        ExpressionKind::List(_) => {} // Expected nested list
                         _ => panic!("Expected nested list"),
                     },
                     ListElement::Spread(_) => panic!("Expected expression, not spread"),

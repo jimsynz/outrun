@@ -1,5 +1,5 @@
 // Tests for struct literal parsing
-use outrun_parser::{parse_program, ast::*};
+use outrun_parser::{ast::*, parse_program};
 
 #[test]
 fn test_struct_literal_basic() {
@@ -22,7 +22,9 @@ fn test_struct_literal_basic() {
                                 ExpressionKind::String(string_lit) => {
                                     assert_eq!(string_lit.parts.len(), 1);
                                     match &string_lit.parts[0] {
-                                        StringPart::Text { content, .. } => assert_eq!(content, "John"),
+                                        StringPart::Text { content, .. } => {
+                                            assert_eq!(content, "John")
+                                        }
                                         _ => panic!("Expected text part"),
                                     }
                                 }
@@ -109,7 +111,7 @@ fn test_struct_literal_with_spread() {
                         StructLiteralField::Assignment { name, value } => {
                             assert_eq!(name.name, "name");
                             match &value.kind {
-                                ExpressionKind::String(_) => {}, // Expected string
+                                ExpressionKind::String(_) => {} // Expected string
                                 _ => panic!("Expected string"),
                             }
                         }

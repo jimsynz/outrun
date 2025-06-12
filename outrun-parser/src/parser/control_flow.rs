@@ -7,7 +7,9 @@ use crate::parser::{OutrunParser, Rule};
 
 impl OutrunParser {
     /// Parse an if expression from a Pest pair
-    pub(crate) fn parse_if_expression(pair: pest::iterators::Pair<Rule>) -> ParseResult<IfExpression> {
+    pub(crate) fn parse_if_expression(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<IfExpression> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -39,7 +41,9 @@ impl OutrunParser {
     }
 
     /// Parse a case expression from a Pest pair
-    pub(crate) fn parse_case_expression(pair: pest::iterators::Pair<Rule>) -> ParseResult<CaseExpression> {
+    pub(crate) fn parse_case_expression(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<CaseExpression> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -84,14 +88,20 @@ impl OutrunParser {
 
         let else_clause = else_clause.ok_or_else(|| {
             let placeholder_span = Self::span_from_range(0, 1);
-            Self::unexpected_token_from_span(&placeholder_span, "", "Case expression missing else clause")
+            Self::unexpected_token_from_span(
+                &placeholder_span,
+                "",
+                "Case expression missing else clause",
+            )
         })?;
 
         Ok((when_clauses, else_clause))
     }
 
     /// Parse a when clause in a case expression
-    pub(crate) fn parse_case_when_clause(pair: pest::iterators::Pair<Rule>) -> ParseResult<CaseWhenClause> {
+    pub(crate) fn parse_case_when_clause(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<CaseWhenClause> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -117,7 +127,9 @@ impl OutrunParser {
     }
 
     /// Parse an else clause in a case expression
-    pub(crate) fn parse_case_else_clause(pair: pest::iterators::Pair<Rule>) -> ParseResult<CaseElseClause> {
+    pub(crate) fn parse_case_else_clause(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<CaseElseClause> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 

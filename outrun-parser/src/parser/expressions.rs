@@ -442,6 +442,14 @@ impl OutrunParser {
                             span,
                         })
                     }
+                    Rule::unary_expr => {
+                        // Parse unary expression using the new grammar structure
+                        Self::parse_unary_expr(first_inner)
+                    }
+                    Rule::braced_expr => {
+                        // Parse parenthesized expression using the new grammar structure
+                        Self::parse_braced_expr(first_inner)
+                    }
                     _ => Err(ParseError::unexpected_token(
                         "".to_string(),
                         miette::SourceSpan::from(span.start..span.end),
@@ -453,5 +461,67 @@ impl OutrunParser {
                 }
             }
         }
+    }
+
+    /// Parse unary expression using new grammar structure
+    /// Grammar: unary_expr = ${ (op_unary_minus | op_unary_plus | op_logical_not | op_bitwise_not) ~ primary_expr }
+    pub(crate) fn parse_unary_expr(pair: pest::iterators::Pair<Rule>) -> ParseResult<Expression> {
+        let span = Self::span_from_pair(&pair);
+        let mut inner_pairs = pair.into_inner();
+
+        // First pair is the unary operator
+        let operator_pair = inner_pairs.next().unwrap();
+        let operator = match operator_pair.as_rule() {
+            Rule::op_unary_plus => UnaryOperator::Plus,
+            Rule::op_unary_minus => UnaryOperator::Minus,
+            Rule::op_logical_not => UnaryOperator::LogicalNot,
+            Rule::op_bitwise_not => UnaryOperator::BitwiseNot,
+            _ => {
+                return Err(ParseError::unexpected_token(
+                    operator_pair.as_str().to_string(),
+                    miette::SourceSpan::from(
+                        operator_pair.as_span().start()..operator_pair.as_span().end(),
+                    ),
+                    "Expected unary operator".to_string(),
+                ))
+            }
+        };
+
+        // Second pair is the operand (primary_expr)
+        let operand_pair = inner_pairs.next().unwrap();
+        let operand = Self::parse_primary_expr(operand_pair)?;
+
+        Ok(Expression {
+            kind: ExpressionKind::UnaryOp(UnaryOperation {
+                operator,
+                operand: Box::new(operand),
+                span: span.clone(),
+            }),
+            span,
+        })
+    }
+
+    /// Parse braced (parenthesized) expression using new grammar structure
+    /// Grammar: braced_expr = ${ "(" ~ ws_comment* ~ expression ~ ws_comment* ~ ")"}
+    pub(crate) fn parse_braced_expr(pair: pest::iterators::Pair<Rule>) -> ParseResult<Expression> {
+        let span = Self::span_from_pair(&pair);
+        let pair_str = pair.as_str().to_string();
+
+        // Find the inner expression, skipping whitespace/comments and parentheses
+        for inner_pair in pair.into_inner() {
+            if inner_pair.as_rule() == Rule::expression {
+                let inner_expr = Self::parse_expression_from_pair(inner_pair)?;
+                return Ok(Expression {
+                    kind: ExpressionKind::Parenthesized(Box::new(inner_expr)),
+                    span,
+                });
+            }
+        }
+
+        Err(ParseError::unexpected_token(
+            pair_str,
+            miette::SourceSpan::from(span.start..span.end),
+            "Expected expression in parentheses".to_string(),
+        ))
     }
 }

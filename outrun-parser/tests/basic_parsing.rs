@@ -129,7 +129,7 @@ fn test_parse_comment_with_code() {
 
     // Should have one let binding
     assert_eq!(result.items.len(), 1);
-    
+
     if let ItemKind::LetBinding(let_binding) = &result.items[0].kind {
         if let Pattern::Identifier(id) = &let_binding.pattern {
             assert_eq!(id.name, "x");
@@ -139,7 +139,7 @@ fn test_parse_comment_with_code() {
     } else {
         panic!("Expected let binding");
     }
-    
+
     // Comments are handled automatically by Pest's COMMENT rule for display
     // The test passes if parsing succeeds without errors
 }
@@ -150,11 +150,13 @@ fn test_parse_block_comment() {
     let result = parse_program(input).unwrap();
 
     assert_eq!(result.items.len(), 0); // no items (comment now in debug_info)
-    
+
     // Comment should be in debug_info
     assert_eq!(result.debug_info.comments.len(), 1);
     assert_eq!(result.debug_info.comments[0].kind, CommentKind::Block);
-    assert!(result.debug_info.comments[0].content.contains("Block comment content"));
+    assert!(result.debug_info.comments[0]
+        .content
+        .contains("Block comment content"));
 }
 
 #[test]

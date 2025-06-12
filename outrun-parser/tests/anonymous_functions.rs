@@ -1,17 +1,17 @@
-use outrun_parser::{parse_program, ItemKind, ExpressionKind};
-use outrun_parser::ast::{Pattern, ListElement};
+use outrun_parser::ast::{ListElement, Pattern};
+use outrun_parser::{parse_program, ExpressionKind, ItemKind};
 
 #[test]
 fn test_anonymous_function_single_param() {
     let input = r#"fn { x: Integer -> x + 1 }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
             // Check parameters - should be single parameter
             match &clause.parameters {
@@ -28,10 +28,10 @@ fn test_anonymous_function_single_param() {
                 }
                 _ => panic!("Expected single parameter"),
             }
-            
+
             // Should have no guard
             assert!(clause.guard.is_none());
-            
+
             // Body should be an expression (x + 1)
             match &clause.body {
                 outrun_parser::ast::AnonymousBody::Expression(expr) => {
@@ -54,14 +54,14 @@ fn test_anonymous_function_single_param() {
 #[test]
 fn test_anonymous_function_no_params() {
     let input = r#"fn { () -> 42 }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
             // Check parameters - should be no parameters
             match &clause.parameters {
@@ -70,7 +70,7 @@ fn test_anonymous_function_no_params() {
                 }
                 _ => panic!("Expected no parameters"),
             }
-            
+
             // Body should be integer literal 42
             match &clause.body {
                 outrun_parser::ast::AnonymousBody::Expression(expr) => {
@@ -93,20 +93,20 @@ fn test_anonymous_function_no_params() {
 #[test]
 fn test_anonymous_function_multiple_params() {
     let input = r#"fn { (x: Integer, y: String) -> x + y.length() }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
             // Check parameters - should be multiple parameters
             match &clause.parameters {
                 outrun_parser::ast::AnonymousParameters::Multiple { parameters, .. } => {
                     assert_eq!(parameters.len(), 2);
-                    
+
                     assert_eq!(parameters[0].name.name, "x");
                     match &parameters[0].type_annotation {
                         outrun_parser::ast::TypeAnnotation::Simple { path, .. } => {
@@ -114,7 +114,7 @@ fn test_anonymous_function_multiple_params() {
                         }
                         _ => panic!("Expected simple type annotation"),
                     }
-                    
+
                     assert_eq!(parameters[1].name.name, "y");
                     match &parameters[1].type_annotation {
                         outrun_parser::ast::TypeAnnotation::Simple { path, .. } => {
@@ -136,16 +136,16 @@ fn test_anonymous_function_multiple_params() {
 #[test]
 fn test_anonymous_function_with_guard() {
     let input = r#"fn { x: Integer when Integer.positive?(x) -> x * 2 }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
-            
+
             // Should have a guard
             assert!(clause.guard.is_some());
             if let Some(guard_expr) = &clause.guard {
@@ -170,16 +170,16 @@ fn test_anonymous_function_block_body() {
         let processed = String.upcase(x)
         processed
     } }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
-            
+
             // Body should be a block
             match &clause.body {
                 outrun_parser::ast::AnonymousBody::Block(block) => {
@@ -203,20 +203,20 @@ fn test_anonymous_function_multiple_clauses() {
         x: Integer when Integer.negative?(x) -> x * -1
         x: Integer -> 0
     }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 3);
-            
+
             // First clause should have a guard
             assert!(anon_fn.clauses[0].guard.is_some());
-            
+
             // Second clause should have a guard
             assert!(anon_fn.clauses[1].guard.is_some());
-            
+
             // Third clause should have no guard (fallback)
             assert!(anon_fn.clauses[2].guard.is_none());
         } else {
@@ -230,16 +230,16 @@ fn test_anonymous_function_multiple_clauses() {
 #[test]
 fn test_anonymous_function_complex_expression() {
     let input = r#"fn { (a: Integer, b: Integer) -> a + b * 2 == 10 }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 1);
-            
+
             let clause = &anon_fn.clauses[0];
-            
+
             // Body should be a complex expression (comparison)
             match &clause.body {
                 outrun_parser::ast::AnonymousBody::Expression(expr) => {
@@ -262,10 +262,10 @@ fn test_anonymous_function_complex_expression() {
 #[test]
 fn test_anonymous_function_source_reconstruction() {
     let input = r#"fn { x: Integer -> x + 1 }"#;
-    
+
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
-    
+
     // Should preserve the basic structure
     assert!(reconstructed.contains("fn { x: Integer -> x + 1 }"));
 }
@@ -273,7 +273,7 @@ fn test_anonymous_function_source_reconstruction() {
 #[test]
 fn test_anonymous_function_in_variable_binding() {
     let input = r#"let processor = fn { x: Integer -> x * 2 }"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
@@ -282,7 +282,7 @@ fn test_anonymous_function_in_variable_binding() {
             Pattern::Identifier(identifier) => assert_eq!(identifier.name, "processor"),
             _ => panic!("Expected identifier pattern"),
         }
-        
+
         // Expression should be anonymous function
         if let ExpressionKind::AnonymousFunction(_) = &let_binding.expression.kind {
             // Expected anonymous function
@@ -297,14 +297,14 @@ fn test_anonymous_function_in_variable_binding() {
 #[test]
 fn test_anonymous_function_nested_in_collection() {
     let input = r#"[fn { x: Integer -> x + 1 }, fn { y: String -> y.length() }]"#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::Expression(expr) = &result.items[0].kind {
         if let ExpressionKind::List(list) = &expr.kind {
             assert_eq!(list.elements.len(), 2);
-            
+
             // Both elements should be anonymous functions
             for element in &list.elements {
                 match element {

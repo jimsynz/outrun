@@ -67,7 +67,6 @@ pub enum ItemKind {
     ImportDefinition(ImportDefinition),
     MacroDefinition(MacroDefinition),
     Comment(Comment),
-    Newline,
 }
 
 /// Keywords with their exact source representation
@@ -663,7 +662,6 @@ impl std::fmt::Display for Item {
             ItemKind::ImportDefinition(import_def) => write!(f, "{}", import_def),
             ItemKind::MacroDefinition(macro_def) => write!(f, "{}", macro_def),
             ItemKind::Comment(comment) => write!(f, "{}", comment),
-            ItemKind::Newline => writeln!(f),
         }
     }
 }
@@ -1000,7 +998,7 @@ impl std::fmt::Display for FunctionDefinition {
         for attr in &self.attributes {
             writeln!(f, "{}", attr)?;
         }
-        
+
         // Display function visibility
         match self.visibility {
             FunctionVisibility::Public => write!(f, "def")?,
@@ -1044,7 +1042,9 @@ impl std::fmt::Display for Parameter {
 impl std::fmt::Display for TypeAnnotation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TypeAnnotation::Simple { path, generic_args, .. } => {
+            TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
                 for (i, part) in path.iter().enumerate() {
                     if i > 0 {
                         write!(f, ".")?;
@@ -1066,7 +1066,11 @@ impl std::fmt::Display for TypeAnnotation {
                 }
                 write!(f, ")")
             }
-            TypeAnnotation::Function { params, return_type, .. } => {
+            TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
                 write!(f, "Function<(")?;
                 for (i, param) in params.iter().enumerate() {
                     if i > 0 {
@@ -1169,7 +1173,11 @@ impl std::fmt::Display for ListPattern {
 
 impl std::fmt::Display for ConstDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "const {}: {} = {}", self.name, self.type_annotation, self.expression)
+        write!(
+            f,
+            "const {}: {} = {}",
+            self.name, self.type_annotation, self.expression
+        )
     }
 }
 
@@ -1349,7 +1357,7 @@ impl std::fmt::Display for StructDefinition {
         for attr in &self.attributes {
             writeln!(f, "{}", attr)?;
         }
-        
+
         write!(f, "struct {}", self.name)?;
         if let Some(generics) = &self.generic_params {
             write!(f, "{}", generics)?;
@@ -1381,7 +1389,7 @@ impl std::fmt::Display for TraitDefinition {
         for attr in &self.attributes {
             writeln!(f, "{}", attr)?;
         }
-        
+
         write!(f, "trait {}", self.name)?;
         if let Some(generics) = &self.generic_params {
             write!(f, "{}", generics)?;
@@ -1736,10 +1744,7 @@ pub enum AnonymousParameters {
     /// No parameters: ()
     None { span: Span },
     /// Single parameter: x: Type
-    Single {
-        parameter: Parameter,
-        span: Span,
-    },
+    Single { parameter: Parameter, span: Span },
     /// Multiple parameters: (x: Type1, y: Type2)
     Multiple {
         parameters: Vec<Parameter>,

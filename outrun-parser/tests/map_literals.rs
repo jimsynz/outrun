@@ -1,5 +1,5 @@
 // Tests for map literal parsing with spread operators
-use outrun_parser::{parse_program, ast::*};
+use outrun_parser::{ast::*, parse_program};
 
 #[test]
 fn test_map_literal_basic() {
@@ -18,7 +18,7 @@ fn test_map_literal_basic() {
                         MapEntry::Shorthand { name, value } => {
                             assert_eq!(name.name, "name");
                             match &value.kind {
-                                ExpressionKind::String(_) => {}, // Expected string
+                                ExpressionKind::String(_) => {} // Expected string
                                 _ => panic!("Expected string"),
                             }
                         }
@@ -64,7 +64,7 @@ fn test_map_literal_explicit() {
                                 _ => panic!("Expected integer key"),
                             }
                             match &value.kind {
-                                ExpressionKind::String(_) => {}, // Expected string
+                                ExpressionKind::String(_) => {} // Expected string
                                 _ => panic!("Expected string value"),
                             }
                         }
@@ -79,7 +79,7 @@ fn test_map_literal_explicit() {
                                 _ => panic!("Expected integer key"),
                             }
                             match &value.kind {
-                                ExpressionKind::String(_) => {}, // Expected string
+                                ExpressionKind::String(_) => {} // Expected string
                                 _ => panic!("Expected string value"),
                             }
                         }
@@ -110,7 +110,7 @@ fn test_map_literal_with_spread() {
                         MapEntry::Shorthand { name, value } => {
                             assert_eq!(name.name, "name");
                             match &value.kind {
-                                ExpressionKind::String(_) => {}, // Expected string
+                                ExpressionKind::String(_) => {} // Expected string
                                 _ => panic!("Expected string"),
                             }
                         }
@@ -146,12 +146,10 @@ fn test_map_literal_mixed() {
 
                     // Check explicit entry
                     match &map_lit.entries[0] {
-                        MapEntry::Assignment { key, value: _ } => {
-                            match &key.kind {
-                                ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
-                                _ => panic!("Expected integer key"),
-                            }
-                        }
+                        MapEntry::Assignment { key, value: _ } => match &key.kind {
+                            ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
+                            _ => panic!("Expected integer key"),
+                        },
                         _ => panic!("Expected assignment entry"),
                     }
 

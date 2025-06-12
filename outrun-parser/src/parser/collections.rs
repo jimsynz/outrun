@@ -1,9 +1,9 @@
 // Collection parsing functions for the Outrun parser
 // Handles list, map, tuple, and struct literal parsing
 
+use super::{OutrunParser, Rule};
 use crate::ast::*;
 use crate::error::*;
-use super::{Rule, OutrunParser};
 
 impl OutrunParser {
     /// Parse a list literal from a Pest pair
@@ -25,10 +25,12 @@ impl OutrunParser {
         Ok(ListLiteral { elements, span })
     }
 
-    pub(super) fn parse_list_element(pair: pest::iterators::Pair<Rule>) -> ParseResult<ListElement> {
+    pub(super) fn parse_list_element(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<ListElement> {
         let rule = pair.as_rule();
         let span = Self::extract_span(&pair);
-        
+
         for inner_pair in pair.into_inner() {
             match inner_pair.as_rule() {
                 Rule::expression => {
@@ -49,7 +51,9 @@ impl OutrunParser {
         })
     }
 
-    pub(super) fn parse_spread_element(pair: pest::iterators::Pair<Rule>) -> ParseResult<Identifier> {
+    pub(super) fn parse_spread_element(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Identifier> {
         // spread_element is atomic: ".." ~ identifier
         let text = pair.as_str();
         if let Some(identifier_text) = text.strip_prefix("..") {
@@ -88,7 +92,7 @@ impl OutrunParser {
     /// Parse a map entry from a Pest pair
     pub(super) fn parse_map_entry(pair: pest::iterators::Pair<Rule>) -> ParseResult<MapEntry> {
         let inner_pair = pair.into_inner().next().unwrap();
-        
+
         match inner_pair.as_rule() {
             Rule::map_entry_shorthand => {
                 let mut inner_pairs = inner_pair.into_inner();
@@ -125,7 +129,10 @@ impl OutrunParser {
                     Err(Self::invalid_spread_element_error(&inner_pair))
                 }
             }
-            _ => Err(Self::unexpected_rule_error(&inner_pair, "map entry shorthand, explicit, or spread")),
+            _ => Err(Self::unexpected_rule_error(
+                &inner_pair,
+                "map entry shorthand, explicit, or spread",
+            )),
         }
     }
 
@@ -149,15 +156,17 @@ impl OutrunParser {
     }
 
     /// Parse a struct literal from a Pest pair
-    pub(super) fn parse_struct_literal(pair: pest::iterators::Pair<Rule>) -> ParseResult<StructLiteral> {
+    pub(super) fn parse_struct_literal(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StructLiteral> {
         let span = Self::extract_span(&pair);
         let mut inner_pairs = pair.into_inner();
-        
+
         // First should be the type identifier
         let type_name = Self::parse_type_identifier(inner_pairs.next().unwrap())?;
-        
+
         let mut fields = Vec::new();
-        
+
         // Parse struct fields if present
         for inner_pair in inner_pairs {
             if inner_pair.as_rule() == Rule::struct_literal_fields {
@@ -169,7 +178,7 @@ impl OutrunParser {
                 }
             }
         }
-        
+
         Ok(StructLiteral {
             type_name,
             fields,
@@ -177,9 +186,11 @@ impl OutrunParser {
         })
     }
 
-    pub(super) fn parse_struct_literal_field(pair: pest::iterators::Pair<Rule>) -> ParseResult<StructLiteralField> {
+    pub(super) fn parse_struct_literal_field(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StructLiteralField> {
         let inner_pair = pair.into_inner().next().unwrap();
-        
+
         match inner_pair.as_rule() {
             Rule::struct_field_assignment => {
                 let mut assignment_pairs = inner_pair.into_inner();
@@ -206,7 +217,10 @@ impl OutrunParser {
                     Err(Self::invalid_spread_element_error(&inner_pair))
                 }
             }
-            _ => Err(Self::unexpected_rule_error(&inner_pair, "struct field assignment, shorthand, or spread")),
+            _ => Err(Self::unexpected_rule_error(
+                &inner_pair,
+                "struct field assignment, shorthand, or spread",
+            )),
         }
     }
 }

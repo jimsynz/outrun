@@ -7,12 +7,15 @@ use crate::parser::{OutrunParser, Rule};
 
 impl OutrunParser {
     /// Parse a function call from a Pest pair (expands shorthand arguments)
-    pub(crate) fn parse_function_call(pair: pest::iterators::Pair<Rule>) -> ParseResult<FunctionCall> {
+    pub(crate) fn parse_function_call(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<FunctionCall> {
         let span = Self::extract_span(&pair);
         let mut inner_pairs = pair.into_inner();
 
-        // Parse function path
-        let path_pair = inner_pairs.next().unwrap();
+        // Parse function path from function_call_prefix
+        let prefix_pair = inner_pairs.next().unwrap();
+        let path_pair = prefix_pair.into_inner().next().unwrap(); // Extract function_path from prefix
         let path = Self::parse_function_path(path_pair)?;
 
         // Parse arguments (optional)
@@ -36,7 +39,9 @@ impl OutrunParser {
     }
 
     /// Parse a function path (simple or qualified)
-    pub(crate) fn parse_function_path(pair: pest::iterators::Pair<Rule>) -> ParseResult<FunctionPath> {
+    pub(crate) fn parse_function_path(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<FunctionPath> {
         let mut inner_pairs = pair.into_inner();
 
         // Check if we have a module prefix
@@ -187,7 +192,9 @@ impl OutrunParser {
     }
 
     /// Parse parameter list from a Pest pair
-    pub(crate) fn parse_parameter_list(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<Parameter>> {
+    pub(crate) fn parse_parameter_list(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<Parameter>> {
         let mut parameters = Vec::new();
 
         for inner_pair in pair.into_inner() {
@@ -223,15 +230,18 @@ impl OutrunParser {
     }
 
     /// Parse function type: Function<(param: Type) -> ReturnType>
-    pub(crate) fn parse_function_type(pair: pest::iterators::Pair<Rule>, span: Span) -> ParseResult<TypeAnnotation> {
+    pub(crate) fn parse_function_type(
+        pair: pest::iterators::Pair<Rule>,
+        span: Span,
+    ) -> ParseResult<TypeAnnotation> {
         let inner = pair.into_inner();
-        
+
         // Skip "Function" keyword (already consumed by grammar)
-        
+
         // Look for function_type_params and return type
         let mut params = Vec::new();
         let mut return_type = None;
-        
+
         for inner_pair in inner {
             match inner_pair.as_rule() {
                 Rule::function_type_params => {
@@ -244,7 +254,7 @@ impl OutrunParser {
                 _ => {} // Skip other tokens like "<", "(", ")", "->", ">"
             }
         }
-        
+
         let return_type = return_type.ok_or_else(|| {
             ParseError::unexpected_token(
                 "missing return type".to_string(),
@@ -252,28 +262,36 @@ impl OutrunParser {
                 "Function type must have a return type".to_string(),
             )
         })?;
-        
-        Ok(TypeAnnotation::Function { params, return_type, span })
+
+        Ok(TypeAnnotation::Function {
+            params,
+            return_type,
+            span,
+        })
     }
 
     /// Parse function type parameters list
-    pub(crate) fn parse_function_type_params(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<FunctionTypeParam>> {
+    pub(crate) fn parse_function_type_params(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<FunctionTypeParam>> {
         let mut params = Vec::new();
-        
+
         for inner_pair in pair.into_inner() {
             if inner_pair.as_rule() == Rule::function_type_param {
                 params.push(Self::parse_function_type_param(inner_pair)?);
             }
         }
-        
+
         Ok(params)
     }
 
     /// Parse individual function type parameter: name: Type
-    pub(crate) fn parse_function_type_param(pair: pest::iterators::Pair<Rule>) -> ParseResult<FunctionTypeParam> {
+    pub(crate) fn parse_function_type_param(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<FunctionTypeParam> {
         let span = Self::extract_span(&pair);
         let mut inner = pair.into_inner();
-        
+
         let name_pair = inner.next().ok_or_else(|| {
             ParseError::unexpected_token(
                 "missing parameter name".to_string(),
@@ -281,7 +299,7 @@ impl OutrunParser {
                 "Function type parameter must have a name".to_string(),
             )
         })?;
-        
+
         let type_pair = inner.next().ok_or_else(|| {
             ParseError::unexpected_token(
                 "missing parameter type".to_string(),
@@ -289,10 +307,10 @@ impl OutrunParser {
                 "Function type parameter must have a type annotation".to_string(),
             )
         })?;
-        
+
         let name = Self::parse_identifier(name_pair)?;
         let type_annotation = Self::parse_type_annotation(type_pair)?;
-        
+
         Ok(FunctionTypeParam {
             name,
             type_annotation,
@@ -301,7 +319,9 @@ impl OutrunParser {
     }
 
     /// Parse trait functions
-    pub(crate) fn parse_trait_functions(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<TraitFunction>> {
+    pub(crate) fn parse_trait_functions(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<TraitFunction>> {
         let mut functions = Vec::new();
 
         for inner_pair in pair.into_inner() {
@@ -325,7 +345,9 @@ impl OutrunParser {
     }
 
     /// Parse a trait function (signature or definition)
-    pub(crate) fn parse_trait_function(pair: pest::iterators::Pair<Rule>) -> ParseResult<TraitFunction> {
+    pub(crate) fn parse_trait_function(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TraitFunction> {
         let inner = pair.into_inner().next().unwrap();
 
         match inner.as_rule() {
@@ -450,19 +472,13 @@ impl OutrunParser {
                         }
                     }
                 }
-                Rule::newline => {
-                    // Skip newlines
-                }
                 _ => {
                     // Ignore other tokens
                 }
             }
         }
 
-        Ok(AnonymousFunction { 
-            clauses, 
-            span 
-        })
+        Ok(AnonymousFunction { clauses, span })
     }
 
     /// Parse a single anonymous function clause
@@ -499,7 +515,10 @@ impl OutrunParser {
                         miette::SourceSpan::from(
                             inner_pair.as_span().start()..inner_pair.as_span().end(),
                         ),
-                        format!("Unexpected rule in anonymous clause: {:?}", inner_pair.as_rule()),
+                        format!(
+                            "Unexpected rule in anonymous clause: {:?}",
+                            inner_pair.as_rule()
+                        ),
                     ));
                 }
             }
@@ -529,7 +548,7 @@ impl OutrunParser {
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<AnonymousBody> {
         let inner = pair.into_inner().next().unwrap();
-        
+
         match inner.as_rule() {
             Rule::block => {
                 let block = Self::parse_block(inner)?;
@@ -539,15 +558,11 @@ impl OutrunParser {
                 let expr = Self::parse_expression_from_pair(inner)?;
                 Ok(AnonymousBody::Expression(Box::new(expr)))
             }
-            _ => {
-                Err(ParseError::unexpected_token(
-                    "".to_string(),
-                    miette::SourceSpan::from(
-                        inner.as_span().start()..inner.as_span().end(),
-                    ),
-                    format!("Unexpected rule in anonymous body: {:?}", inner.as_rule()),
-                ))
-            }
+            _ => Err(ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(inner.as_span().start()..inner.as_span().end()),
+                format!("Unexpected rule in anonymous body: {:?}", inner.as_rule()),
+            )),
         }
     }
 
@@ -557,19 +572,19 @@ impl OutrunParser {
     ) -> ParseResult<AnonymousParameters> {
         let span = Self::extract_span(&pair);
         let input_str = pair.as_str();
-        
+
         // Handle the special case of empty parentheses
         if input_str == "()" {
             return Ok(AnonymousParameters::None { span });
         }
-        
+
         let inner_pairs = pair.into_inner();
-        
+
         // Check if it starts with a parenthesis (multiple parameters)
         if input_str.starts_with("(") {
             // Multiple parameters: (param1, param2, ...)
             let mut parameters = Vec::new();
-            
+
             for inner_pair in inner_pairs {
                 match inner_pair.as_rule() {
                     Rule::parameter => {
@@ -581,12 +596,12 @@ impl OutrunParser {
                     }
                 }
             }
-            
+
             Ok(AnonymousParameters::Multiple { parameters, span })
         } else {
             // Single parameter: identifier : type_annotation
             let mut inner_pairs = inner_pairs;
-            
+
             let identifier_pair = inner_pairs.next().ok_or_else(|| {
                 ParseError::unexpected_token(
                     "".to_string(),
@@ -596,9 +611,9 @@ impl OutrunParser {
             })?;
             let identifier_span = Self::extract_span(&identifier_pair);
             let identifier = Self::parse_identifier(identifier_pair)?;
-            
+
             // Skip colon (it's a literal, not a pair)
-            
+
             // Parse type annotation
             let type_pair = inner_pairs.next().ok_or_else(|| {
                 ParseError::unexpected_token(
@@ -629,7 +644,8 @@ impl OutrunParser {
 
         // Skip the '&' symbol (first token)
         let qualified_ref_pair = inner_pairs.next().unwrap();
-        let (module_path, function_name, arity) = Self::parse_qualified_function_ref(qualified_ref_pair)?;
+        let (module_path, function_name, arity) =
+            Self::parse_qualified_function_ref(qualified_ref_pair)?;
 
         Ok(FunctionCapture {
             module_path,

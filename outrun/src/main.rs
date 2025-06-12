@@ -28,7 +28,7 @@ enum Commands {
         /// Outrun source files to parse (use '-' to read from stdin)
         #[arg(required = true, value_name = "FILE")]
         files: Vec<PathBuf>,
-        
+
         /// Show detailed span information in output
         #[arg(short, long)]
         spans: bool,
@@ -37,7 +37,7 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     match cli.command {
         Some(Commands::Parse { files, spans }) => {
             handle_parse_command(files, spans);
@@ -49,18 +49,17 @@ fn main() {
     }
 }
 
-
 fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
     let mut success = true;
     let multiple_files = files.len() > 1;
-    
+
     for file_path in files {
         let display_name = if file_path.to_str() == Some("-") {
             "<stdin>".to_string()
         } else {
             file_path.display().to_string()
         };
-        
+
         match parse_single_file(&file_path, spans) {
             Ok(()) => {
                 if multiple_files {
@@ -74,16 +73,13 @@ fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
             }
         }
     }
-    
+
     if !success {
         process::exit(1);
     }
 }
 
-fn parse_single_file(
-    file_path: &PathBuf, 
-    spans: bool
-) -> Result<()> {
+fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
     let (source, _source_name) = if file_path.to_str() == Some("-") {
         // Read from stdin
         let mut buffer = String::new();
@@ -94,16 +90,19 @@ fn parse_single_file(
         if !file_path.exists() {
             return Err(miette::miette!("File not found: {}", file_path.display()));
         }
-        
+
         if file_path.extension().and_then(|s| s.to_str()) != Some("outrun") {
-            return Err(miette::miette!("Expected .outrun file, got: {}", file_path.display()));
+            return Err(miette::miette!(
+                "Expected .outrun file, got: {}",
+                file_path.display()
+            ));
         }
-        
+
         // Read file contents
         let source = fs::read_to_string(file_path).into_diagnostic()?;
         (source, file_path.display().to_string())
     };
-    
+
     // Parse with outrun-parser - this will use miette's beautiful error reporting
     match parse_program(&source) {
         Ok(ast) => {
@@ -130,4 +129,3 @@ fn print_ast(ast: &outrun_parser::Program, spans: bool) {
 fn format_ast_clean(ast: &outrun_parser::Program) -> String {
     sexpr::format_program_as_sexpr(ast)
 }
-

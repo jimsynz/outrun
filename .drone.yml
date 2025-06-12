@@ -119,6 +119,15 @@ steps:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - cargo clippy --all-targets --all-features -- -D warnings
 
+  - name: cargo fmt
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - build
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cargo fmt --check
+
   - name: tree-sitter test
     image: harton.dev/james/asdf_container:latest
     pull: never

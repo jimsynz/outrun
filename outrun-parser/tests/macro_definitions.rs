@@ -1,5 +1,5 @@
-use outrun_parser::{parse_program, ItemKind, ExpressionKind, StatementKind};
 use outrun_parser::ast::Pattern;
+use outrun_parser::{parse_program, ExpressionKind, ItemKind, StatementKind};
 
 #[test]
 fn test_macro_basic_no_params() {
@@ -8,7 +8,7 @@ macro debug() {
     IO.puts(message: "Debug!")
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
     assert_eq!(result.items.len(), 1); // Only the macro definition
 
@@ -39,16 +39,16 @@ macro log(message) {
     IO.puts(message: ^message)
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "log");
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "message");
-            
+
             // Check the body contains statements
             assert!(!macro_def.body.statements.is_empty());
             found_macro = true;
@@ -68,9 +68,9 @@ macro assert_equal(left, right, message) {
     }
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -79,14 +79,17 @@ macro assert_equal(left, right, message) {
             assert_eq!(macro_def.parameters[0].name, "left");
             assert_eq!(macro_def.parameters[1].name, "right");
             assert_eq!(macro_def.parameters[2].name, "message");
-            
+
             // Check that the body has statements
             assert_eq!(macro_def.body.statements.len(), 2); // let + if
             found_macro = true;
             break;
         }
     }
-    assert!(found_macro, "Should find macro definition with multiple parameters");
+    assert!(
+        found_macro,
+        "Should find macro definition with multiple parameters"
+    );
 }
 
 #[test]
@@ -96,16 +99,16 @@ macro capture(var) {
     let captured = ^var
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             assert_eq!(macro_def.name.name, "capture");
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "var");
-            
+
             // Check the let binding contains a macro injection
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::LetBinding(let_binding) = &macro_def.body.statements[0].kind {
@@ -125,7 +128,10 @@ macro capture(var) {
             break;
         }
     }
-    assert!(found_macro, "Should find macro definition with injection in let binding");
+    assert!(
+        found_macro,
+        "Should find macro definition with injection in let binding"
+    );
 }
 
 #[test]
@@ -137,9 +143,9 @@ macro unless(condition, do_block) {
     }
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -147,7 +153,7 @@ macro unless(condition, do_block) {
             assert_eq!(macro_def.parameters.len(), 2);
             assert_eq!(macro_def.parameters[0].name, "condition");
             assert_eq!(macro_def.parameters[1].name, "do_block");
-            
+
             // Check the if expression structure
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
@@ -164,7 +170,10 @@ macro unless(condition, do_block) {
             break;
         }
     }
-    assert!(found_macro, "Should find macro definition with complex body");
+    assert!(
+        found_macro,
+        "Should find macro definition with complex body"
+    );
 }
 
 #[test]
@@ -174,9 +183,9 @@ macro test(a, b, c,) {
     ^a + ^b + ^c
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -189,7 +198,10 @@ macro test(a, b, c,) {
             break;
         }
     }
-    assert!(found_macro, "Should handle trailing comma in macro parameters");
+    assert!(
+        found_macro,
+        "Should handle trailing comma in macro parameters"
+    );
 }
 
 #[test]
@@ -199,9 +211,9 @@ macro use_var(value) {
     ^value
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -228,10 +240,10 @@ fn test_macro_source_reconstruction() {
     let input = r#"macro debug(msg) {
     IO.puts(message: ^msg)
 }"#;
-    
+
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
-    
+
     // Should contain the basic structure
     assert!(reconstructed.contains("macro debug(msg)"));
     assert!(reconstructed.contains("IO.puts(message: ^msg)"));
@@ -248,13 +260,13 @@ macro second(x) {
     ^x + 1
 }
 "#;
-    
+
     let result = parse_program(input).unwrap();
-    
+
     let mut macro_count = 0;
     let mut found_first = false;
     let mut found_second = false;
-    
+
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
             macro_count += 1;
@@ -272,7 +284,10 @@ macro second(x) {
             }
         }
     }
-    
+
     assert_eq!(macro_count, 2);
-    assert!(found_first && found_second, "Should find both macro definitions");
+    assert!(
+        found_first && found_second,
+        "Should find both macro definitions"
+    );
 }

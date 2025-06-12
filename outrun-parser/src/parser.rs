@@ -42,14 +42,6 @@ impl OutrunParser {
         });
     }
 
-    /// Helper for newline items (no parsing needed)
-    fn wrap_newline_item(items: &mut Vec<Item>, span: Span) {
-        items.push(Item {
-            kind: ItemKind::Newline,
-            span,
-        });
-    }
-
     /// Extract span from a Pest pair
     fn extract_span(pair: &pest::iterators::Pair<Rule>) -> Span {
         Span::new(pair.as_span().start(), pair.as_span().end())
@@ -142,7 +134,7 @@ impl OutrunParser {
     pub fn parse_program(input: &str) -> ParseResult<Program> {
         // Enable detailed error reporting for debugging
         pest::set_error_detail(true);
-        
+
         let mut pairs = Self::parse(Rule::program, input)
             .map_err(|e| ParseError::from_pest_error(e, input.to_string()))?;
 
@@ -158,222 +150,237 @@ impl OutrunParser {
                     let comments = Self::extract_all_comments(&pair);
 
                     for inner_pair in pair.into_inner() {
-                        let pair_span = Self::span_from_pair(&inner_pair);
-
                         match inner_pair.as_rule() {
-                            Rule::keyword => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_keyword,
-                                    Keyword
-                                );
+                            Rule::program_item => {
+                                // Unwrap program_item to get the actual item
+                                for item_pair in inner_pair.into_inner() {
+                                    let pair_span = Self::span_from_pair(&item_pair);
+
+                                    match item_pair.as_rule() {
+                                        Rule::keyword => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_keyword,
+                                                Keyword
+                                            );
+                                        }
+                                        Rule::function_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_function_definition,
+                                                FunctionDefinition
+                                            );
+                                        }
+                                        Rule::struct_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_struct_definition,
+                                                StructDefinition
+                                            );
+                                        }
+                                        Rule::trait_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_trait_definition,
+                                                TraitDefinition
+                                            );
+                                        }
+                                        Rule::impl_block => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_impl_block,
+                                                ImplBlock
+                                            );
+                                        }
+                                        Rule::alias_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_alias_definition,
+                                                AliasDefinition
+                                            );
+                                        }
+                                        Rule::import_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_import_definition,
+                                                ImportDefinition
+                                            );
+                                        }
+                                        Rule::macro_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_macro_definition,
+                                                MacroDefinition
+                                            );
+                                        }
+                                        Rule::const_definition => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_const_definition,
+                                                ConstDefinition
+                                            );
+                                        }
+                                        Rule::let_binding => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_let_binding,
+                                                LetBinding
+                                            );
+                                        }
+                                        Rule::if_expression => {
+                                            let if_expr = Self::parse_if_expression(item_pair)?;
+                                            let expression = Expression {
+                                                kind: ExpressionKind::IfExpression(if_expr),
+                                                span: pair_span.clone(),
+                                            };
+                                            Self::wrap_expression_item(
+                                                &mut items, expression, pair_span,
+                                            );
+                                        }
+                                        Rule::case_expression => {
+                                            let case_expr = Self::parse_case_expression(item_pair)?;
+                                            let expression = Expression {
+                                                kind: ExpressionKind::CaseExpression(case_expr),
+                                                span: pair_span.clone(),
+                                            };
+                                            Self::wrap_expression_item(
+                                                &mut items, expression, pair_span,
+                                            );
+                                        }
+                                        Rule::expression => {
+                                            let expression =
+                                                Self::parse_expression_from_pair(item_pair)?;
+                                            Self::wrap_expression_item(
+                                                &mut items, expression, pair_span,
+                                            );
+                                        }
+                                        Rule::boolean => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_boolean,
+                                                BooleanLiteral
+                                            );
+                                        }
+                                        Rule::float => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_float,
+                                                FloatLiteral
+                                            );
+                                        }
+                                        Rule::string => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_string,
+                                                StringLiteral
+                                            );
+                                        }
+                                        Rule::atom => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_atom,
+                                                AtomLiteral
+                                            );
+                                        }
+                                        Rule::sigil => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_sigil,
+                                                SigilLiteral
+                                            );
+                                        }
+                                        Rule::list => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_list,
+                                                ListLiteral
+                                            );
+                                        }
+                                        Rule::map => {
+                                            parse_and_wrap_item!(
+                                                items, item_pair, pair_span, parse_map, MapLiteral
+                                            );
+                                        }
+                                        Rule::tuple => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_tuple,
+                                                TupleLiteral
+                                            );
+                                        }
+                                        Rule::integer => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_integer,
+                                                IntegerLiteral
+                                            );
+                                        }
+                                        Rule::identifier => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_identifier,
+                                                Identifier
+                                            );
+                                        }
+                                        Rule::type_identifier => {
+                                            parse_and_wrap_item!(
+                                                items,
+                                                item_pair,
+                                                pair_span,
+                                                parse_type_identifier,
+                                                TypeIdentifier
+                                            );
+                                        }
+                                        Rule::COMMENT | Rule::comment | Rule::block_comment => {
+                                            // Skip comments - they're already collected in debug_info
+                                        }
+                                        _ => {} // Ignore other elements
+                                    }
+                                }
                             }
-                            Rule::function_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_function_definition,
-                                    FunctionDefinition
-                                );
-                            }
-                            Rule::struct_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_struct_definition,
-                                    StructDefinition
-                                );
-                            }
-                            Rule::trait_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_trait_definition,
-                                    TraitDefinition
-                                );
-                            }
-                            Rule::impl_block => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_impl_block,
-                                    ImplBlock
-                                );
-                            }
-                            Rule::alias_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_alias_definition,
-                                    AliasDefinition
-                                );
-                            }
-                            Rule::import_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_import_definition,
-                                    ImportDefinition
-                                );
-                            }
-                            Rule::macro_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_macro_definition,
-                                    MacroDefinition
-                                );
-                            }
-                            Rule::const_definition => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_const_definition,
-                                    ConstDefinition
-                                );
-                            }
-                            Rule::let_binding => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_let_binding,
-                                    LetBinding
-                                );
-                            }
-                            Rule::if_expression => {
-                                let if_expr = Self::parse_if_expression(inner_pair)?;
-                                let expression = Expression {
-                                    kind: ExpressionKind::IfExpression(if_expr),
-                                    span: pair_span.clone(),
-                                };
-                                Self::wrap_expression_item(&mut items, expression, pair_span);
-                            }
-                            Rule::case_expression => {
-                                let case_expr = Self::parse_case_expression(inner_pair)?;
-                                let expression = Expression {
-                                    kind: ExpressionKind::CaseExpression(case_expr),
-                                    span: pair_span.clone(),
-                                };
-                                Self::wrap_expression_item(&mut items, expression, pair_span);
-                            }
-                            Rule::expression => {
-                                let expression = Self::parse_expression_from_pair(inner_pair)?;
-                                Self::wrap_expression_item(&mut items, expression, pair_span);
-                            }
-                            Rule::boolean => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_boolean,
-                                    BooleanLiteral
-                                );
-                            }
-                            Rule::float => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_float,
-                                    FloatLiteral
-                                );
-                            }
-                            Rule::string => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_string,
-                                    StringLiteral
-                                );
-                            }
-                            Rule::atom => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_atom,
-                                    AtomLiteral
-                                );
-                            }
-                            Rule::sigil => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_sigil,
-                                    SigilLiteral
-                                );
-                            }
-                            Rule::list => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_list,
-                                    ListLiteral
-                                );
-                            }
-                            Rule::map => {
-                                parse_and_wrap_item!(
-                                    items, inner_pair, pair_span, parse_map, MapLiteral
-                                );
-                            }
-                            Rule::tuple => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_tuple,
-                                    TupleLiteral
-                                );
-                            }
-                            Rule::integer => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_integer,
-                                    IntegerLiteral
-                                );
-                            }
-                            Rule::identifier => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_identifier,
-                                    Identifier
-                                );
-                            }
-                            Rule::type_identifier => {
-                                parse_and_wrap_item!(
-                                    items,
-                                    inner_pair,
-                                    pair_span,
-                                    parse_type_identifier,
-                                    TypeIdentifier
-                                );
-                            }
-                            Rule::COMMENT | Rule::comment | Rule::block_comment => {
-                                // Skip comments - they're already collected in debug_info
-                            }
-                            Rule::newline => {
-                                Self::wrap_newline_item(&mut items, pair_span);
+                            Rule::ws_comment | Rule::item_separator => {
+                                // Skip separators - they're for structure only
                             }
                             Rule::EOI => {} // End of input, ignore
-                            _ => {}         // Ignore whitespace and other tokens for now
+                            _ => {}         // Ignore other tokens
                         }
                     }
 

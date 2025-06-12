@@ -193,12 +193,12 @@ cd tree-sitter-outrun && npm run generate
 # Test tree-sitter grammar  
 cd tree-sitter-outrun && npm test
 
-# Build Rust parser
-cd outrun-parser && cargo build
+# Format all code across all rust subprojects.
+cargo fmt
 
-# Format files (when formatter exists)
-outrun fmt
+# Run tests across all rust subprojects.
+cargo test
 
-# Run tests (when test framework exists)  
-outrun test
+# Run lints across all rust subprojects
+cargo clippy --all-targets --all-features -- -D warnings
 ```

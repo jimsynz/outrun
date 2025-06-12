@@ -114,9 +114,7 @@ pub enum ParseError {
         code(outrun::parse::invalid_spread),
         help("Spread elements must be '..identifier'")
     )]
-    InvalidSpreadElement {
-        span: crate::ast::Span,
-    },
+    InvalidSpreadElement { span: crate::ast::Span },
 }
 
 impl ParseError {
@@ -132,9 +130,7 @@ impl ParseError {
         // Enhanced error message with debugging details
         let detailed_message = format!(
             "{}\n\nDEBUG INFO:\n- Error variant: {:?}\n- Line/col: {:?}",
-            error,
-            error.variant,
-            error.line_col
+            error, error.variant, error.line_col
         );
 
         ParseError::PestError {

@@ -290,9 +290,9 @@ fn test_let_binding_in_function_body() {
             match &func.body.statements[0].kind {
                 StatementKind::LetBinding(let_binding) => {
                     match &let_binding.pattern {
-                Pattern::Identifier(identifier) => assert_eq!(identifier.name, "x"),
-                _ => panic!("Expected identifier pattern"),
-            }
+                        Pattern::Identifier(identifier) => assert_eq!(identifier.name, "x"),
+                        _ => panic!("Expected identifier pattern"),
+                    }
                     assert!(let_binding.type_annotation.is_none()); // Inferred
                 }
                 _ => panic!("Expected let binding"),
@@ -302,9 +302,9 @@ fn test_let_binding_in_function_body() {
             match &func.body.statements[1].kind {
                 StatementKind::LetBinding(let_binding) => {
                     match &let_binding.pattern {
-                Pattern::Identifier(identifier) => assert_eq!(identifier.name, "y"),
-                _ => panic!("Expected identifier pattern"),
-            }
+                        Pattern::Identifier(identifier) => assert_eq!(identifier.name, "y"),
+                        _ => panic!("Expected identifier pattern"),
+                    }
                     assert!(let_binding.type_annotation.is_some()); // Explicit
                 }
                 _ => panic!("Expected let binding"),
