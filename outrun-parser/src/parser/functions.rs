@@ -59,12 +59,33 @@ impl OutrunParser {
         }
     }
 
-    /// Parse a function argument (expanding shorthand to named form)
+    /// Parse a function argument (named, shorthand, or spread)
     pub(crate) fn parse_argument(pair: pest::iterators::Pair<Rule>) -> ParseResult<Argument> {
         let span = Self::extract_span(&pair);
         let inner = pair.into_inner().next().unwrap();
 
         match inner.as_rule() {
+            Rule::spread_argument => {
+                // Spread argument: ..expr or ..?expr
+                let mut inner_pairs = inner.into_inner();
+                let spread_op_pair = inner_pairs.next().unwrap();
+                let expr_pair = inner_pairs.next().unwrap();
+
+                // Determine spread kind based on operator
+                let kind = match spread_op_pair.as_str() {
+                    ".." => SpreadKind::Strict,
+                    "..?" => SpreadKind::Lenient,
+                    _ => unreachable!("Invalid spread operator"),
+                };
+
+                let expression = Self::parse_expression_from_pair(expr_pair)?;
+
+                Ok(Argument::Spread {
+                    expression,
+                    kind,
+                    span,
+                })
+            }
             Rule::named_argument => {
                 // Explicit argument: name: expression
                 let mut inner_pairs = inner.into_inner();
@@ -74,7 +95,7 @@ impl OutrunParser {
                 let name = Self::parse_identifier(name_pair)?;
                 let expression = Self::parse_expression_from_pair(expr_pair)?;
 
-                Ok(Argument {
+                Ok(Argument::Named {
                     name,
                     expression,
                     format: ArgumentFormat::Explicit,
@@ -91,7 +112,7 @@ impl OutrunParser {
                     span: name.span.clone(),
                 };
 
-                Ok(Argument {
+                Ok(Argument::Named {
                     name,
                     expression,
                     format: ArgumentFormat::Shorthand,

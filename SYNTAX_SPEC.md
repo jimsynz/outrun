@@ -258,6 +258,58 @@ user = User.create(email: "test@example.com", name: Some("James"))
 current_time = DateTime.now()
 ```
 
+### Spread Arguments
+
+Spread arguments allow passing struct fields as named parameters using the `..` operator:
+
+```outrun
+# Basic spread - pass all compatible struct fields as arguments
+let login_result = LoginResult { user: user, session: session, created_at: timestamp }
+process_user(..login_result)
+
+# Mixed spread and explicit arguments (explicit arguments override spread)
+process_user(..login_result, timestamp: custom_time)
+
+# Multiple spreads (later spreads override earlier ones)
+create_account(..signup_data, ..preferences, ..metadata)
+
+# Lenient spread with ..? - ignores non-matching fields
+let user_data = UserData { user: user, session: session, extra_field: "ignored" }
+process_user(..?user_data, timestamp: explicit_time)
+```
+
+**Spread Mechanism:**
+
+Spread arguments work through automatic trait derivation:
+
+```outrun
+# For this function definition:
+def process_user(user: User, session: Session, timestamp: DateTime): Result<(), Error> {
+    # Function implementation
+}
+
+# The compiler auto-generates:
+struct ProcessUserInput(user: User, session: Session, timestamp: DateTime)
+
+# And automatically implements Spreadable<ProcessUserInput> for compatible structs:
+trait Spreadable<T> {
+    def spread(self: Self): T
+}
+```
+
+**Conflict Resolution:**
+
+When multiple sources provide the same parameter:
+1. **Explicit arguments** override spread arguments
+2. **Later spreads** override earlier spreads  
+3. **Lenient spreads** (`..?`) ignore mismatched fields
+
+**Type Requirements:**
+
+- Source struct fields must have matching names and compatible types
+- Missing fields are filled using `Default.default()` if available
+- Lenient spread (`..?`) ignores extra fields and missing fields without defaults
+
 ### Anonymous Functions
 
 ```outrun

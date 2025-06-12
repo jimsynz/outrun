@@ -1,0 +1,31 @@
+================
+Spread in qualified function call
+================
+
+let user = User.create(..signup_data, active: true)
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_call
+            (module_path
+              (type_identifier))
+            (identifier)
+            (argument_list
+              (argument
+                (spread_argument
+                  (expression
+                    (primary_expression
+                      (identifier)))))
+              (argument
+                (named_argument
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (boolean)))))))))))))

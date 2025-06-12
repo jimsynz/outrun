@@ -147,6 +147,10 @@
         {
           "type": "shorthand_argument",
           "named": true
+        },
+        {
+          "type": "spread_argument",
+          "named": true
         }
       ]
     }
@@ -3200,6 +3204,21 @@
     }
   },
   {
+    "type": "spread_argument",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "statement",
     "named": true,
     "fields": {},
@@ -3902,6 +3921,10 @@
   },
   {
     "type": "..",
+    "named": false
+  },
+  {
+    "type": "..?",
     "named": false
   },
   {

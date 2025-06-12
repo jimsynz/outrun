@@ -2464,11 +2464,49 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "spread_argument"
+        },
+        {
+          "type": "SYMBOL",
           "name": "named_argument"
         },
         {
           "type": "SYMBOL",
           "name": "shorthand_argument"
+        }
+      ]
+    },
+    "spread_argument": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ".."
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "TOKEN",
+              "content": {
+                "type": "STRING",
+                "value": "..?"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          ]
         }
       ]
     },

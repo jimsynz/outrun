@@ -182,9 +182,11 @@ function_call = !{ function_call_prefix ~ argument_list? ~ ")" }
 function_call_prefix = ${ function_path ~ "(" }
 function_path = !{ (type_identifier ~ ".")? ~ identifier }
 
-// Function arguments (named parameters only)
+// Function arguments (named parameters and spread arguments)
 argument_list = { argument ~ ("," ~ argument)* ~ ","? }
-argument = { named_argument | shorthand_argument }
+argument = { spread_argument | named_argument | shorthand_argument }
+spread_argument = { spread_operator ~ expression }
+spread_operator = @{ "..?" | ".." }
 named_argument = { identifier ~ ":" ~ expression }
 shorthand_argument = { identifier }
 

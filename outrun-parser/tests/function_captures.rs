@@ -1,4 +1,4 @@
-use outrun_parser::ast::{ListElement, Pattern};
+use outrun_parser::ast::{Argument, ListElement, Pattern};
 use outrun_parser::{parse_program, ExpressionKind, ItemKind};
 
 #[test]
@@ -201,9 +201,19 @@ fn test_function_capture_in_function_call() {
             // Check that one of the arguments is a function capture
             let mut found_capture = false;
             for arg in &call.arguments {
-                if let ExpressionKind::FunctionCapture(_) = &arg.expression.kind {
-                    found_capture = true;
-                    break;
+                match arg {
+                    Argument::Named { expression, .. } => {
+                        if let ExpressionKind::FunctionCapture(_) = &expression.kind {
+                            found_capture = true;
+                            break;
+                        }
+                    }
+                    Argument::Spread { expression, .. } => {
+                        if let ExpressionKind::FunctionCapture(_) = &expression.kind {
+                            found_capture = true;
+                            break;
+                        }
+                    }
                 }
             }
             assert!(found_capture, "Should find function capture in arguments");

@@ -299,12 +299,29 @@ fn format_function_call_with_indent(call: &FunctionCall, indent: usize) -> Strin
         let args: Vec<String> = call
             .arguments
             .iter()
-            .map(|arg| {
-                format!(
-                    "({}: {})",
-                    arg.name.name,
-                    format_expression_with_indent(&arg.expression, indent + 2)
-                )
+            .map(|arg| match arg {
+                Argument::Named {
+                    name, expression, ..
+                } => {
+                    format!(
+                        "({}: {})",
+                        name.name,
+                        format_expression_with_indent(expression, indent + 2)
+                    )
+                }
+                Argument::Spread {
+                    expression, kind, ..
+                } => {
+                    let spread_type = match kind {
+                        SpreadKind::Strict => "spread",
+                        SpreadKind::Lenient => "spread?",
+                    };
+                    format!(
+                        "({} {})",
+                        spread_type,
+                        format_expression_with_indent(expression, indent + 2)
+                    )
+                }
             })
             .collect();
 

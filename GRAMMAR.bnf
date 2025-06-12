@@ -42,7 +42,7 @@ CAPTURE_OP ::= "&"  # Function capture operator
 PIPE_OP ::= "|>" | "|?"
 
 # Punctuation
-PUNCTUATION ::= "(" | ")" | "{" | "}" | "[" | "]" | ":" | "," | "." | ".." | "->" | "=>" | "=" | "@" | "?"
+PUNCTUATION ::= "(" | ")" | "{" | "}" | "[" | "]" | ":" | "," | "." | ".." | "..?" | "->" | "=>" | "=" | "@" | "?"
 ```
 
 ## Program Structure
@@ -199,7 +199,8 @@ primary_expression ::= literal
 
 # Function Calls
 argument_list ::= (argument ("," argument)*)?
-argument ::= named_argument | shorthand_argument
+argument ::= spread_argument | named_argument | shorthand_argument
+spread_argument ::= ".." expression | "..?" expression
 named_argument ::= IDENTIFIER ":" expression
 shorthand_argument ::= IDENTIFIER
 ```

@@ -393,20 +393,34 @@ pub enum FunctionPath {
     },
 }
 
-/// Function argument (always expanded to named form)
+/// Function argument (named, shorthand, or spread)
 #[derive(Debug, Clone, PartialEq)]
-pub struct Argument {
-    pub name: Identifier,       // Parameter name
-    pub expression: Expression, // Argument expression
-    pub format: ArgumentFormat, // Original format (shorthand or explicit)
-    pub span: Span,
+pub enum Argument {
+    Named {
+        name: Identifier,
+        expression: Expression,
+        format: ArgumentFormat,
+        span: Span,
+    },
+    Spread {
+        expression: Expression,
+        kind: SpreadKind,
+        span: Span,
+    },
 }
 
-/// Format tracking for arguments
+/// Format tracking for named arguments
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArgumentFormat {
     Shorthand, // `func(arg)` - shorthand where variable name matches parameter
     Explicit,  // `func(arg: expr)` - explicit parameter name
+}
+
+/// Spread argument kind
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpreadKind {
+    Strict,  // `..expr` - requires exact field matches
+    Lenient, // `..?expr` - ignores mismatched fields
 }
 
 /// Function definitions (def/defp)
@@ -979,14 +993,32 @@ impl std::fmt::Display for FunctionPath {
 
 impl std::fmt::Display for Argument {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.format {
-            ArgumentFormat::Shorthand => {
-                // For shorthand, just display the identifier (no colon)
-                write!(f, "{}", self.name)
+        match self {
+            Argument::Named {
+                name,
+                expression,
+                format,
+                ..
+            } => {
+                match format {
+                    ArgumentFormat::Shorthand => {
+                        // For shorthand, just display the identifier (no colon)
+                        write!(f, "{}", name)
+                    }
+                    ArgumentFormat::Explicit => {
+                        // For explicit, display name: expression
+                        write!(f, "{}: {}", name, expression)
+                    }
+                }
             }
-            ArgumentFormat::Explicit => {
-                // For explicit, display name: expression
-                write!(f, "{}: {}", self.name, self.expression)
+            Argument::Spread {
+                expression, kind, ..
+            } => {
+                let spread_op = match kind {
+                    SpreadKind::Strict => "..",
+                    SpreadKind::Lenient => "..?",
+                };
+                write!(f, "{}{}", spread_op, expression)
             }
         }
     }

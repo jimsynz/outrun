@@ -477,8 +477,14 @@ module.exports = grammar({
     ),
 
     argument: $ => choice(
+      $.spread_argument,
       $.named_argument,
       $.shorthand_argument
+    ),
+
+    spread_argument: $ => choice(
+      seq('..', $.expression),
+      seq(token('..?'), $.expression)
     ),
 
     named_argument: $ => seq(

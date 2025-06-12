@@ -2,6 +2,19 @@
 
 use outrun_parser::*;
 
+// Helper function to extract named argument fields for tests
+fn extract_named_arg(arg: &Argument) -> (&Identifier, &Expression, &ArgumentFormat) {
+    match arg {
+        Argument::Named {
+            name,
+            expression,
+            format,
+            ..
+        } => (name, expression, format),
+        _ => panic!("Expected named argument"),
+    }
+}
+
 #[test]
 fn test_function_call_no_arguments() {
     let input = "greet()";
@@ -49,9 +62,10 @@ fn test_function_call_explicit_arguments() {
                 assert_eq!(call.arguments.len(), 2);
 
                 // First argument: left: 5
-                assert_eq!(call.arguments[0].name.name, "left");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Explicit);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "left");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::Integer(int) => {
                         assert_eq!(int.value, 5);
                     }
@@ -59,9 +73,10 @@ fn test_function_call_explicit_arguments() {
                 }
 
                 // Second argument: right: 3
-                assert_eq!(call.arguments[1].name.name, "right");
-                assert_eq!(call.arguments[1].format, ArgumentFormat::Explicit);
-                match &call.arguments[1].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[1]);
+                assert_eq!(name.name, "right");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::Integer(int) => {
                         assert_eq!(int.value, 3);
                     }
@@ -95,9 +110,10 @@ fn test_function_call_shorthand_arguments() {
                 assert_eq!(call.arguments.len(), 2);
 
                 // First argument: left (expanded to left: left)
-                assert_eq!(call.arguments[0].name.name, "left");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Shorthand);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "left");
+                assert_eq!(*format, ArgumentFormat::Shorthand);
+                match &expression.kind {
                     ExpressionKind::Identifier(id) => {
                         assert_eq!(id.name, "left");
                     }
@@ -105,9 +121,10 @@ fn test_function_call_shorthand_arguments() {
                 }
 
                 // Second argument: right (expanded to right: right)
-                assert_eq!(call.arguments[1].name.name, "right");
-                assert_eq!(call.arguments[1].format, ArgumentFormat::Shorthand);
-                match &call.arguments[1].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[1]);
+                assert_eq!(name.name, "right");
+                assert_eq!(*format, ArgumentFormat::Shorthand);
+                match &expression.kind {
                     ExpressionKind::Identifier(id) => {
                         assert_eq!(id.name, "right");
                     }
@@ -141,9 +158,10 @@ fn test_function_call_mixed_arguments() {
                 assert_eq!(call.arguments.len(), 2);
 
                 // First argument: data (shorthand)
-                assert_eq!(call.arguments[0].name.name, "data");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Shorthand);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "data");
+                assert_eq!(*format, ArgumentFormat::Shorthand);
+                match &expression.kind {
                     ExpressionKind::Identifier(id) => {
                         assert_eq!(id.name, "data");
                     }
@@ -151,9 +169,10 @@ fn test_function_call_mixed_arguments() {
                 }
 
                 // Second argument: timeout: 30 (explicit)
-                assert_eq!(call.arguments[1].name.name, "timeout");
-                assert_eq!(call.arguments[1].format, ArgumentFormat::Explicit);
-                match &call.arguments[1].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[1]);
+                assert_eq!(name.name, "timeout");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::Integer(int) => {
                         assert_eq!(int.value, 30);
                     }
@@ -186,9 +205,10 @@ fn test_qualified_function_call() {
 
                 // Check argument
                 assert_eq!(call.arguments.len(), 1);
-                assert_eq!(call.arguments[0].name.name, "table");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Explicit);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "table");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::String(string) => {
                         // Verify string content - should be "users"
                         assert_eq!(string.format, StringFormat::Basic);
@@ -228,11 +248,12 @@ fn test_nested_function_calls() {
 
                 // Check argument - should contain nested function call
                 assert_eq!(call.arguments.len(), 1);
-                assert_eq!(call.arguments[0].name.name, "message");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Explicit);
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "message");
+                assert_eq!(*format, ArgumentFormat::Explicit);
 
                 // Check nested function call
-                match &call.arguments[0].expression.kind {
+                match &expression.kind {
                     ExpressionKind::FunctionCall(nested_call) => {
                         match &nested_call.path {
                             FunctionPath::Simple { name } => {
@@ -243,9 +264,11 @@ fn test_nested_function_calls() {
 
                         // Check nested argument
                         assert_eq!(nested_call.arguments.len(), 1);
-                        assert_eq!(nested_call.arguments[0].name.name, "text");
-                        assert_eq!(nested_call.arguments[0].format, ArgumentFormat::Shorthand);
-                        match &nested_call.arguments[0].expression.kind {
+                        let (name, expression, format) =
+                            extract_named_arg(&nested_call.arguments[0]);
+                        assert_eq!(name.name, "text");
+                        assert_eq!(*format, ArgumentFormat::Shorthand);
+                        match &expression.kind {
                             ExpressionKind::Identifier(id) => {
                                 assert_eq!(id.name, "text");
                             }
@@ -282,9 +305,10 @@ fn test_function_call_with_complex_expressions() {
                 assert_eq!(call.arguments.len(), 2);
 
                 // First argument: x: a + b
-                assert_eq!(call.arguments[0].name.name, "x");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Explicit);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "x");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::BinaryOp(binop) => {
                         assert_eq!(binop.operator, BinaryOperator::Add);
                         // Check left operand
@@ -306,9 +330,10 @@ fn test_function_call_with_complex_expressions() {
                 }
 
                 // Second argument: y: list
-                assert_eq!(call.arguments[1].name.name, "y");
-                assert_eq!(call.arguments[1].format, ArgumentFormat::Explicit);
-                match &call.arguments[1].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[1]);
+                assert_eq!(name.name, "y");
+                assert_eq!(*format, ArgumentFormat::Explicit);
+                match &expression.kind {
                     ExpressionKind::Identifier(id) => {
                         assert_eq!(id.name, "list");
                     }
@@ -340,9 +365,10 @@ fn test_function_call_single_shorthand_argument() {
 
                 // Check single shorthand argument
                 assert_eq!(call.arguments.len(), 1);
-                assert_eq!(call.arguments[0].name.name, "data");
-                assert_eq!(call.arguments[0].format, ArgumentFormat::Shorthand);
-                match &call.arguments[0].expression.kind {
+                let (name, expression, format) = extract_named_arg(&call.arguments[0]);
+                assert_eq!(name.name, "data");
+                assert_eq!(*format, ArgumentFormat::Shorthand);
+                match &expression.kind {
                     ExpressionKind::Identifier(id) => {
                         assert_eq!(id.name, "data");
                     }

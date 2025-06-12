@@ -1,0 +1,22 @@
+================
+Lenient spread argument
+================
+
+let result = process_user(..?user_data)
+
+---
+
+(source_file
+  (item
+    (let_binding
+      (identifier)
+      (expression
+        (primary_expression
+          (function_call
+            (identifier)
+            (argument_list
+              (argument
+                (spread_argument
+                  (expression
+                    (primary_expression
+                      (identifier))))))))))))
