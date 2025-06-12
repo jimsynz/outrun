@@ -42,12 +42,20 @@ impl OutrunParser {
         });
     }
 
-    /// Extract span from a Pest pair
+    /// Extract span from a Pest pair with line/column information
     fn extract_span(pair: &pest::iterators::Pair<Rule>) -> Span {
-        Span::new(pair.as_span().start(), pair.as_span().end())
+        let pest_span = pair.as_span();
+        let start = pest_span.start();
+        let end = pest_span.end();
+
+        // Get line/column information from the pest pair
+        let start_line_col = pest_span.start_pos().line_col();
+        let end_line_col = pest_span.end_pos().line_col();
+
+        Span::with_line_col(start, end, start_line_col, end_line_col)
     }
 
-    /// Create span from start and end positions
+    /// Create span from start and end positions (without line/col info)
     fn span_from_range(start: usize, end: usize) -> Span {
         Span::new(start, end)
     }
@@ -132,6 +140,14 @@ impl OutrunParser {
 
     /// Parse a complete program
     pub fn parse_program(input: &str) -> ParseResult<Program> {
+        Self::parse_program_with_source(input, None)
+    }
+
+    /// Parse a complete program with source file tracking
+    pub fn parse_program_with_source(
+        input: &str,
+        source_file: Option<String>,
+    ) -> ParseResult<Program> {
         // Enable detailed error reporting for debugging
         pest::set_error_detail(true);
 
@@ -386,7 +402,10 @@ impl OutrunParser {
 
                     return Ok(Program {
                         items,
-                        debug_info: DebugInfo { comments },
+                        debug_info: DebugInfo {
+                            comments,
+                            source_file: source_file.clone(),
+                        },
                         span: Self::span_from_range(start, end),
                     });
                 }
@@ -399,6 +418,7 @@ impl OutrunParser {
             items: Vec::new(),
             debug_info: DebugInfo {
                 comments: Vec::new(),
+                source_file,
             },
             span: Self::span_from_range(0, 0),
         })
@@ -764,14 +784,14 @@ impl OutrunParser {
             Rule::expression => {
                 let expression = Self::parse_expression_from_pair(inner)?;
                 Ok(Statement {
-                    kind: StatementKind::Expression(expression),
+                    kind: StatementKind::Expression(Box::new(expression)),
                     span,
                 })
             }
             Rule::let_binding => {
                 let let_binding = Self::parse_let_binding(inner)?;
                 Ok(Statement {
-                    kind: StatementKind::LetBinding(let_binding),
+                    kind: StatementKind::LetBinding(Box::new(let_binding)),
                     span,
                 })
             }

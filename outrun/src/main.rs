@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, Result};
-use outrun_parser::parse_program;
+use outrun_parser::parse_program_with_source;
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -80,7 +80,7 @@ fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
 }
 
 fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
-    let (source, _source_name) = if file_path.to_str() == Some("-") {
+    let (source, source_name) = if file_path.to_str() == Some("-") {
         // Read from stdin
         let mut buffer = String::new();
         io::stdin().read_to_string(&mut buffer).into_diagnostic()?;
@@ -103,8 +103,8 @@ fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
         (source, file_path.display().to_string())
     };
 
-    // Parse with outrun-parser - this will use miette's beautiful error reporting
-    match parse_program(&source) {
+    // Parse with outrun-parser including source file tracking
+    match parse_program_with_source(&source, Some(source_name)) {
         Ok(ast) => {
             print_ast(&ast, spans);
             Ok(())

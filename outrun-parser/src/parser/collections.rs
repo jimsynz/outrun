@@ -35,7 +35,7 @@ impl OutrunParser {
             match inner_pair.as_rule() {
                 Rule::expression => {
                     let expr = Self::parse_expression_from_pair(inner_pair)?;
-                    return Ok(ListElement::Expression(expr));
+                    return Ok(ListElement::Expression(Box::new(expr)));
                 }
                 Rule::spread_element => {
                     let spread = Self::parse_spread_element(inner_pair)?;
@@ -102,7 +102,10 @@ impl OutrunParser {
                 let name = Self::parse_identifier(identifier_pair)?;
                 let value = Self::parse_expression_from_pair(value_pair)?;
 
-                Ok(MapEntry::Shorthand { name, value })
+                Ok(MapEntry::Shorthand {
+                    name,
+                    value: Box::new(value),
+                })
             }
             Rule::map_entry_explicit => {
                 let mut inner_pairs = inner_pair.into_inner();
@@ -112,7 +115,10 @@ impl OutrunParser {
                 let key = Self::parse_expression_from_pair(key_pair)?;
                 let value = Self::parse_expression_from_pair(value_pair)?;
 
-                Ok(MapEntry::Assignment { key, value })
+                Ok(MapEntry::Assignment {
+                    key: Box::new(key),
+                    value: Box::new(value),
+                })
             }
             Rule::map_entry_spread => {
                 let text = inner_pair.as_str();
@@ -196,7 +202,10 @@ impl OutrunParser {
                 let mut assignment_pairs = inner_pair.into_inner();
                 let name = Self::parse_identifier(assignment_pairs.next().unwrap())?;
                 let value = Self::parse_expression_from_pair(assignment_pairs.next().unwrap())?;
-                Ok(StructLiteralField::Assignment { name, value })
+                Ok(StructLiteralField::Assignment {
+                    name,
+                    value: Box::new(value),
+                })
             }
             Rule::struct_field_shorthand => {
                 let name = Self::parse_identifier(inner_pair.into_inner().next().unwrap())?;

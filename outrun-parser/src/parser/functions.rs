@@ -652,7 +652,10 @@ impl OutrunParser {
                 span: Self::span_from_range(identifier_span.start, type_span.end),
             };
 
-            Ok(AnonymousParameters::Single { parameter, span })
+            Ok(AnonymousParameters::Single {
+                parameter: Box::new(parameter),
+                span,
+            })
         }
     }
 

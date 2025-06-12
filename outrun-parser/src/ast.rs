@@ -6,11 +6,32 @@
 pub struct Span {
     pub start: usize,
     pub end: usize,
+    pub start_line_col: Option<(usize, usize)>,
+    pub end_line_col: Option<(usize, usize)>,
 }
 
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
+        Self {
+            start,
+            end,
+            start_line_col: None,
+            end_line_col: None,
+        }
+    }
+
+    pub fn with_line_col(
+        start: usize,
+        end: usize,
+        start_line_col: (usize, usize),
+        end_line_col: (usize, usize),
+    ) -> Self {
+        Self {
+            start,
+            end,
+            start_line_col: Some(start_line_col),
+            end_line_col: Some(end_line_col),
+        }
     }
 }
 
@@ -18,12 +39,20 @@ impl Span {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DebugInfo {
     pub comments: Vec<Comment>,
+    pub source_file: Option<String>,
     // Future: source_text, line_directives, source_maps, etc.
 }
 
 impl DebugInfo {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_source_file(source_file: Option<String>) -> Self {
+        Self {
+            comments: Vec::new(),
+            source_file,
+        }
     }
 }
 
@@ -197,7 +226,7 @@ pub struct SigilLiteral {
 /// List element that can be either a regular expression or a spread
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListElement {
-    Expression(Expression),
+    Expression(Box<Expression>),
     Spread(Identifier),
 }
 
@@ -218,8 +247,14 @@ pub struct MapLiteral {
 /// Map entry that can be assignment, shorthand, or spread
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapEntry {
-    Assignment { key: Expression, value: Expression },
-    Shorthand { name: Identifier, value: Expression },
+    Assignment {
+        key: Box<Expression>,
+        value: Box<Expression>,
+    },
+    Shorthand {
+        name: Identifier,
+        value: Box<Expression>,
+    },
     Spread(Identifier),
 }
 
@@ -239,7 +274,10 @@ pub struct TupleLiteral {
 /// Struct literal field that can be assignment, shorthand, or spread
 #[derive(Debug, Clone, PartialEq)]
 pub enum StructLiteralField {
-    Assignment { name: Identifier, value: Expression },
+    Assignment {
+        name: Identifier,
+        value: Box<Expression>,
+    },
     Shorthand(Identifier),
     Spread(Identifier),
 }
@@ -510,8 +548,8 @@ pub struct Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementKind {
-    Expression(Expression),
-    LetBinding(LetBinding),
+    Expression(Box<Expression>),
+    LetBinding(Box<LetBinding>),
 }
 
 // === PATTERNS ===
@@ -1776,7 +1814,10 @@ pub enum AnonymousParameters {
     /// No parameters: ()
     None { span: Span },
     /// Single parameter: x: Type
-    Single { parameter: Parameter, span: Span },
+    Single {
+        parameter: Box<Parameter>,
+        span: Span,
+    },
     /// Multiple parameters: (x: Type1, y: Type2)
     Multiple {
         parameters: Vec<Parameter>,
