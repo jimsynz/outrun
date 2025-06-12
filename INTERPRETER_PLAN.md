@@ -1,8 +1,8 @@
 # Outrun Tree-Walking Interpreter Implementation Plan
 
 **Project**: Milestone 1.3 - Tree-walking interpreter for testing and development  
-**Started**: December 6, 2025  
-**Status**: Planning Complete, Ready for Implementation  
+**Started**: June 12, 2025  
+**Status**: Phase 1 Complete, Ready for Semantics Review  
 
 ## 📋 Project Overview
 
@@ -60,12 +60,20 @@ outrun-interpreter/
 
 ## 📊 Implementation Progress
 
-### Phase 1: Foundation (Sessions 1-2) ⏳
-- [ ] **1.1** Create `outrun-interpreter` crate structure
-- [ ] **1.2** Implement `Value` enum with basic operations
-- [ ] **1.3** Implement `RuntimeError` types with miette integration
-- [ ] **1.4** Create basic `Environment` for variable management
-- [ ] **1.5** Implement literal evaluation (integers, floats, booleans, strings, atoms)
+### Phase 1: Foundation (Sessions 1-2) ✅
+- [x] **1.1** Create `outrun-interpreter` crate structure
+- [x] **1.2** Implement `Value` enum with basic operations
+- [x] **1.3** Implement `RuntimeError` types with miette integration
+- [x] **1.4** Create basic `Environment` for variable management
+- [x] **1.5** Implement literal evaluation (integers, floats, booleans, strings, atoms)
+
+### Phase 1.1: Language Semantics Review (Session 2) ⏳
+- [ ] **1.1.1** Review and correct core type names and remove non-core types
+- [ ] **1.1.2** Fix `is_truthy()` logic to match Outrun language semantics
+- [ ] **1.1.3** Implement proper `to_display_string()` for future `Inspect` trait compatibility
+- [ ] **1.1.4** Remove binary operations for incompatible types (strict type checking)
+- [ ] **1.1.5** Discuss and rewrite built-in functions to match language design
+- [ ] **1.1.6** Update tests to reflect corrected semantics
 
 ### Phase 2: Core Evaluation (Sessions 2-3) ⏳
 - [ ] **2.1** Implement arithmetic operators (+, -, *, /, %)
@@ -166,42 +174,66 @@ println(message: "Status: #{status}")
 
 ## 📝 Session Notes
 
-### Session 1 (December 6, 2025)
-**Status**: Planning Complete ✅
+### Session 1 (June 12, 2025)
+**Status**: Phase 1 Foundation Complete ✅
 
 **Completed**:
-- ✅ Comprehensive architecture design
-- ✅ Value system specification
-- ✅ Environment management design
-- ✅ Expression evaluation strategy
+- ✅ Comprehensive architecture design and planning
+- ✅ Value system specification and planning
+- ✅ Environment management design and planning
+- ✅ Expression evaluation strategy and planning
 - ✅ Built-in function planning
-- ✅ Error handling design
-- ✅ REPL specification
-- ✅ Testing strategy
-- ✅ Performance considerations
-- ✅ Future extension points
+- ✅ Error handling design and planning
+- ✅ REPL specification and planning
+- ✅ Testing strategy and planning
+- ✅ Performance considerations and planning
+- ✅ Future extension points and planning
 - ✅ Created comprehensive tracking plan file (INTERPRETER_PLAN.md)
+- ✅ **IMPLEMENTATION: Complete Phase 1 Foundation**
+  - ✅ Created `outrun-interpreter` crate with proper workspace integration
+  - ✅ Implemented comprehensive `Value` enum with all operations
+  - ✅ Implemented `RuntimeError` types with beautiful miette integration
+  - ✅ Created `Environment` with scope management and built-in registry
+  - ✅ Implemented literal evaluation (integers, floats, booleans, strings, atoms)
+  - ✅ Implemented string interpolation with expression evaluation
+  - ✅ Created 13 built-in functions (I/O, type conversion, collections, predicates)
+  - ✅ Added comprehensive test coverage (20 unit tests + 1 doctest, all passing)
+  - ✅ Fixed all clippy warnings and formatting issues
 
 **Next Session Goals**:
-- Create `outrun-interpreter` crate
-- Implement `Value` enum with basic operations
-- Implement `RuntimeError` types
-- Start basic expression evaluation
+- **PRIORITY: Phase 1.1 Language Semantics Review**
+- Review and correct core type names (remove non-core types)
+- Fix `is_truthy()` logic to match proper Outrun semantics
+- Implement proper `to_display_string()` for future `Inspect` trait
+- Remove binary operations for incompatible types (strict typing)
+- Discuss and rewrite built-in functions to match language design
+- Update all tests to reflect corrected semantics
 
 **Key Decisions Made**:
-- Use IndexMap for ordered collections
-- Integrate with existing miette error system
-- Build on outrun-parser AST without modifications
-- Start with hard-coded operators, trait system later
-- REPL with rustyline for professional UX
-- Track progress across sessions with dedicated plan file
+- Use IndexMap for ordered collections ✅
+- Integrate with existing miette error system ✅
+- Build on outrun-parser AST without modifications ✅
+- Start with hard-coded operators, trait system later ✅
+- REPL with rustyline for professional UX (deferred to CLI)
+- Track progress across sessions with dedicated plan file ✅
+- Pure library crate approach for clean separation ✅
+- Renamed `to_string()` to `to_string_repr()` to avoid Display shadowing ✅
 
 ### Session 2 (TBD)
-**Goals**: Foundation implementation
-- [ ] Crate structure and dependencies
-- [ ] Value system implementation
-- [ ] Error handling with miette
-- [ ] Basic environment management
+**Goals**: Language Semantics Review (Phase 1.1)
+- [ ] **CRITICAL**: Review Value enum - correct core type names, remove non-core types
+- [ ] **CRITICAL**: Fix `is_truthy()` semantics to match Outrun language design
+- [ ] **IMPORTANT**: Reimplement `to_display_string()` for future `Inspect` trait compatibility
+- [ ] **IMPORTANT**: Remove binary operations for incompatible types (enforce strict typing)
+- [ ] **DISCUSSION**: Review and correct all 13 built-in functions
+- [ ] **TESTING**: Update all tests to reflect corrected language semantics
+
+**Key Questions for Discussion**:
+- Which types should be core vs library-defined?
+- What should Outrun's truthiness rules be?
+- How should `to_display_string()` work for future `Inspect` trait?
+- Which binary operations should be allowed between which types?
+- What built-in functions are appropriate for the core interpreter?
 
 ### Session 3 (TBD)
 **Goals**: Core evaluation engine
@@ -228,12 +260,19 @@ println(message: "Status: #{status}")
 
 ## 🔄 Change Log
 
-### 2025-12-06 - Initial Plan Creation
+### 2025-06-12 - Phase 1.1 Semantics Review Added
+- **IMPORTANT**: Added Phase 1.1 for language semantics review
+- Identified need to correct assumptions made in initial implementation
+- Added critical tasks for type system, truthiness, display formatting, and built-ins
+- Prioritized semantic correctness before proceeding with operators
+
+### 2025-06-12 - Initial Plan Creation and Foundation Implementation
 - Created comprehensive implementation plan
 - Defined 6-phase development approach
 - Specified success criteria and demo programs
 - Established testing strategy and session structure
+- **COMPLETED**: Full Phase 1 Foundation implementation with comprehensive Value system
 
 ---
 
-**Next Action**: Begin Phase 1 implementation with crate creation and Value system
+**Next Action**: Begin Phase 1.1 language semantics review and corrections

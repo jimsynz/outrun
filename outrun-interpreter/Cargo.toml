@@ -1,0 +1,23 @@
+[package]
+name = "outrun-interpreter"
+version = "0.1.0"
+edition = "2024"
+description = "Tree-walking interpreter for the Outrun programming language"
+authors = ["James Harton <james@harton.nz>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jimsynz/outrun"
+
+[dependencies]
+# Core parser integration
+outrun-parser = { path = "../outrun-parser" }
+
+# Collections with order preservation
+indexmap = "2.1"
+
+# Error handling and beautiful diagnostics
+miette = { version = "7.0", features = ["fancy"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+# Property-based testing
+proptest = "1.4"
