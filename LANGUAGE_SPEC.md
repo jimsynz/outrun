@@ -1,8 +1,8 @@
-# Outrun Language Syntax Specification
+# Outrun Language Specification
 
 ## Overview
 
-Outrun is a statically-typed, functional programming language built around the concept of traits (similar to protocols in Elixir). The language emphasises immutability, named parameters, and a powerful guard system for control flow.
+Outrun is a statically-typed, functional programming language built around the concept of traits. The language emphasises immutability, named parameters, explicit error handling, and a powerful type system designed for concurrent, distributed systems.
 
 ## Core Design Principles
 
@@ -10,8 +10,172 @@ Outrun is a statically-typed, functional programming language built around the c
 - **Named arguments only** - No positional arguments in function calls
 - **Static typing** with trait constraints and guards
 - **Immutable and functional** - No mutation, rebinding allowed
-- **Actor model runtime** - Built for concurrent, distributed systems
-- **Tree-sitter based** - Enables embedded DSLs with full language server support
+- **Actor model runtime** - Built for concurrent, distributed systems with fault isolation
+- **Explicit error handling** - `Option<T>` and `Result<T, E>` for expected failures, panics for exceptional cases
+- **Pest-based parser** - With tree-sitter grammar for future IDE support and embedded DSLs
+
+## Type System and Runtime Model
+
+### Concrete Types vs Traits
+
+Outrun distinguishes between **concrete types** (actual runtime values) and **traits** (behaviour interfaces):
+
+- **Concrete types**: `Outrun.Core.Integer64`, `Outrun.Core.Float64`, `Outrun.Core.Boolean`, `Outrun.Core.String`, `Outrun.Core.Atom`
+- **Traits**: `Integer`, `Float`, `Boolean`, `String` define behaviour interface
+- **Runtime dispatch**: Integer literals default to `Outrun.Core.Integer64` but other concrete types can implement `Integer`
+- **Type checking**: The type checker maintains trait implementation mappings, not the interpreter
+- **Static analysis**: All trait compatibility validated at compile time, not runtime
+
+### Interning System
+
+For performance and memory efficiency, atoms and types use interning:
+
+- **AtomId**: Interned atom names like `:hello` - any two atoms with same name are identical objects
+- **TypeId**: Interned type names like `Outrun.Core.Integer64`, `Outrun.Core.List<Outrun.Core.String>`
+- **Fast equality**: Atoms and types compared by ID, not string comparison
+- **Collections store types**: `List { element_type: TypeId, ... }`, `Tuple { element_types: Vec<TypeId>, ... }`
+
+### Collection Types
+
+All collections are strongly typed and store their element type information:
+
+- **Lists**: `Outrun.Core.List<T>` - homogeneous linked lists (not vectors) for functional programming
+- **Tuples**: `Outrun.Core.Tuple<T1, T2, ...>` - statically-typed product types with fixed arity
+- **Maps**: `Outrun.Core.Map<K, V>` - core type with literal syntax and spread operations
+
+### Option and Result Types
+
+Core types for explicit error handling:
+
+- **Option**: `Outrun.Option.Some<T>{ value: T }` and `Outrun.Option.None{}`
+- **Result**: `Outrun.Result.Ok<T>{ value: T }` and `Outrun.Result.Err<E>{ error: E }`
+- **Creation**: `Option.some(value: T)` and `Option.none()`, `Result.ok(value: T)` and `Result.err(error: E)`
+
+### Error Handling Strategy
+
+Outrun uses explicit error handling with no exceptions or implicit failures:
+
+- **Expected failures**: Use `Option<T>` for potentially missing values, `Result<T, E>` for operations that can fail
+- **Guard-based validation**: Functions use guards to catch error conditions explicitly
+- **Example**: `def div(lhs: Integer64, rhs: Integer64): Result<Integer64, Error> when Integer.zero?(rhs) { RuntimeError }`
+- **Actor panics**: Reserve for truly unexpected situations (VM errors, assertion failures, impossible states)
+- **Fault isolation**: Panics only terminate the failing actor, not the whole system
+- **No truthiness**: Only values implementing the `Boolean` trait can be used in conditionals
+
+## Module System and Function Dispatch
+
+Outrun's module system is based on types, with clear separation between static functions and trait dispatch.
+
+### Types ARE Modules
+
+- **Module definition**: Each type (struct/trait) defines its own module namespace
+- **File organization**: File structure is conventional - module names come from type definitions
+- **Example**: `struct Http.Client(...)` creates the `Http.Client` module
+- **Multiple types per file**: Each type has its own module namespace, even in the same file
+
+### Two Types of Function Calls
+
+1. **Static module functions**: `Integer64.parse(value: "123")` - direct module function lookup
+2. **Trait functions**: `let x: Integer64 = Parseable.parse(value: "123")` - explicit type annotation guides dispatch
+
+### Module Privacy
+
+- **Private functions**: `defp` functions only visible within their containing module (type)
+- **Module boundaries**: Each type defines its own private function namespace
+- **Cross-module isolation**: Private functions cannot be called from other modules, even in same file
+- **File independence**: Privacy is module-scoped, not file-scoped
+
+### Trait Implementation Dispatch
+
+- **Type checker responsibility**: Builds `(TraitId, TypeId) -> OpaqueModule` lookup table
+- **Runtime dispatch**: `Display.to_string(value: int)` becomes module lookup + function call within module
+- **Opaque trait modules**: Named like "impl TraitName for TypeName", separate from type's own module
+- **No naming conflicts**: Static functions in type module vs trait functions in separate impl modules
+
+### Module Resolution
+
+- **No dynamic module lookup**: All calls are either static module functions or trait dispatch
+- **No implicit imports**: `String.length()` is trait function dispatch, not implicit `Outrun.Core.String`
+- **Alias resolution**: All aliases expanded to fully qualified names before runtime
+- **No type inference initially**: Trait calls require explicit type annotations during early development
+- **Clean separation**: Parser handles aliases, interpreter does module dispatch with qualified names
+
+### Function Types and Named Parameters
+
+Functions store parameter and return type information:
+
+```rust
+Value::Function { 
+    param_types: Vec<(AtomId, TypeId)>,  // (param_name, type)
+    return_type: TypeId,
+    body: FunctionBody,
+}
+```
+
+- **Parameter names as AtomId**: Consistent with atom interning system
+- **Unique parameter validation**: At load/compile time, not runtime (set-like semantics)
+- **Type annotations required**: No type inference initially - trait calls always require explicit type annotations
+
+### Function Call Semantics
+
+Outrun enforces strict function call requirements with no magical partial application:
+
+- **All required parameters must be provided**: Compile-time error if missing arguments
+- **Optional parameters**: Can use `Default.default()` for missing optional arguments
+- **No partial application**: If you want currying behavior, create explicit wrapper functions
+- **Clear function signatures**: What you see is what you get - no hidden partial application behavior
+- **Named parameter enforcement**: All function calls use named parameters, no positional arguments
+
+### Closure Semantics
+
+Closures use capture-by-value with efficient reference counting optimization:
+
+- **Simple mental model**: Closures "copy" all captured variables from their environment
+- **No lifetime management**: No complex borrowing rules or lifetime annotations needed
+- **Reference counting optimization**: Within an actor, "copies" are actually reference count increments
+- **Immutable safety**: Safe to share references since values cannot be mutated
+- **Actor isolation**: Each actor has its own memory arena - no cross-actor reference sharing
+
+## Actor Model and Message Passing
+
+Outrun is designed for the actor model but starts with a simplified single-actor approach:
+
+### Single-Actor Development Model
+
+- **Initial scope**: Interpreter runs as single actor in sole-actor system
+- **Simplification**: Avoids multi-actor complexity during language development
+- **Pragmatic approach**: Get core language working first, add actor complexity later
+- **Future evolution**: Design allows later expansion to multi-actor system
+
+### Message Passing Semantics
+
+- **Within actor**: Reference counting for efficient sharing within single actor's memory arena
+- **Between actors**: Deep copy/serialization when sending messages between actors
+- **Isolation guarantee**: No shared state across actor boundaries - each actor owns its data
+- **Performance trade-off**: Efficient intra-actor operations, explicit cost for inter-actor communication
+
+### Actor Primitives
+
+- **Message primitives**: `send` and `receive` implemented as NIFs (Native Implemented Functions)
+- **NIF implementation**: Allows testing actor semantics without implementing full actor system
+- **Future integration**: NIFs can be replaced with native actor runtime later
+
+## Macro System
+
+### Development Strategy
+
+- **Chicken-and-egg problem**: Need working interpreter to expand macros, but building interpreter to run language with macros
+- **Pragmatic deferral**: Focus on core language features first
+- **Future implementation**: Add macro support once core interpreter is stable
+- **Runtime expansion approach**: When implemented, macros will likely expand during interpretation
+
+## Display and Inspect Formatting
+
+Two separate formatting traits with different semantics:
+
+- **Display trait**: Clean, user-facing formatting for end users
+- **Inspect trait**: REPL pretty-printing with structure/debug info for developers
+- **String interpolation**: `"Hello #{expr}"` uses Display trait on expression result
 
 ## Basic Syntax Elements
 
@@ -71,7 +235,7 @@ can span multiple lines
 ```outrun
 [1, 2, 3]                         # List
 (42, "hello", true)               # Tuple
-{name: "James", age: 35}          # Map
+%{name: "James", age: 35}         # Map
 
 # List construction with head|tail syntax (similar to Elixir's [head | tail])
 [head, ..tail]                   # Prepend element(s) to existing list
@@ -384,21 +548,52 @@ value = if check { 1 } else { 0 }
 
 ### Case Statements
 
+Case statements support pattern matching with optional guards:
+
 ```outrun
-result = case value {
-    when Integer.positive?(value) -> "positive"
-    when Integer.negative?(value) -> {
-        Logger.warn("Negative value encountered")
+result = case user {
+    User { name } when String.equal?(name, "Marty") -> :is_marty
+    User { name } when String.length(name) > 10 -> :long_name  
+    User { name } -> :other_user
+    Guest { session_id } -> :guest
+    Admin { permissions } when List.contains?(permissions, :admin) -> :admin_user
+    else -> :unknown_user
+}
+
+# Pattern matching with complex destructuring
+result = case data {
+    (User { name }, Session { active }) when Boolean.and?(active, String.not_empty?(name)) -> {
+        Logger.info("Active user session")
+        :valid_session
+    }
+    (User { name }, Session { active: false }) -> :inactive_session
+    (Guest { id }, _) -> :guest_session
+    else -> :invalid_data
+}
+
+# Simple value matching (guard-only, no destructuring)
+result = case number {
+    n when Integer.positive?(n) -> "positive"
+    n when Integer.negative?(n) -> {
+        Logger.warn("Negative value encountered")  
         "negative"
     }
-    when Integer.zero?(value) -> "zero"
+    n when Integer.zero?(n) -> "zero"
     else -> "unknown"
 }
 ```
 
 ## Operators
 
-All operators are trait-based and follow Ruby's precedence rules:
+All operators are trait-based and follow Ruby's precedence rules. Operators are syntactic sugar for trait function calls with strict type requirements:
+
+### Binary Operations and Type Safety
+
+Binary operations like `a + b` are syntactic sugar for trait function calls:
+- `a + b` becomes `BinaryAddition.add(lhs: a, rhs: b)`
+- Trait functions defined as `def add(lhs: Self, rhs: Self): Self`
+- **Both operands must be same concrete type**, result is same concrete type
+- **No implicit conversions** - requires explicit type conversion for mixed operations
 
 ### Arithmetic
 - `+` Addition (BinaryAddition trait)
@@ -549,33 +744,35 @@ first_element = tuple.0
 
 ### Module Organization
 
-Outrun uses a file-based module system where:
-- Each `.outrun` file represents a module namespace
-- Directory structure maps to module hierarchy with dots
-- Types (structs/traits) within a file belong to that module namespace
+Outrun uses a type-based module system where:
+- **Types (structs/traits) ARE modules** - each type defines its own module namespace
+- **File structure is conventional** - file names and directory structure are for organization, not module definition
+- **Module names come from type definitions** - `struct Http.Client(...)` creates the `Http.Client` module
 
 ```
 src/
-  user.outrun               # User module
-  auth_token.outrun         # AuthToken module  
+  user.outrun               # Contains User struct/module (conventional)
+  auth_token.outrun         # Contains AuthToken struct/module (conventional)
   http/
-    client.outrun           # Http.Client module
-    server.outrun           # Http.Server module
+    client.outrun           # Contains Http.Client struct/module (conventional)
+    server.outrun           # Contains Http.Server struct/module (conventional)
   user/
-    preferences.outrun      # User.Preferences module
-    profile.outrun          # User.Profile module
+    preferences.outrun      # Contains User.Preferences struct/module (conventional)
+    profile.outrun          # Contains User.Profile struct/module (conventional)
 ```
 
 ### Module References
 
 ```outrun
-# Direct references using full module path
-let user = User.create(name: "James")
-let client = Http.Client.new(timeout: 5000)
+# Type names define module paths - each type IS a module
+let user = User.create(name: "James")                    # User module
+let client = Http.Client.new(timeout: 5000)             # Http.Client module  
+let preferences = User.Preferences.default()            # User.Preferences module
 
-# Multiple types in same module namespace
-let client = Http.Client.HttpClient.new()
-let request = Http.Client.HttpRequest.new()
+# Multiple types can be defined in the same file for organization
+# but each has its own module namespace based on its name
+struct Http.Client(...)     # Defines Http.Client module
+struct Http.Request(...)    # Defines Http.Request module (separate from Http.Client)
 ```
 
 ### Aliases
@@ -869,20 +1066,75 @@ let with_header = [header_item, ..body_items]
 - The resulting list type is inferred from all elements
 - Only supports head|tail pattern (prepending to lists)
 
-**Destructuring in Case Expressions:**
+**Case Expressions with Pattern Matching:**
 
-Destructuring patterns can be used in case expressions for powerful pattern matching:
+Case expressions support pattern matching with optional guards, where bound variables are available in both guards and results:
 
 ```outrun
 let result = case user_data {
-    when User { name, email } -> {
+    User { name, email } when String.contains?(email, "@") -> {
         process_user(name: name, email: email)
     }
-    when Guest { session_id } -> {
+    User { name } -> {
+        # email not available in this pattern
+        process_user_without_email(name: name)
+    }
+    Guest { session_id } when String.not_empty?(session_id) -> {
         process_guest(id: session_id)
     }
+    Guest { session_id } -> handle_invalid_guest()
     else -> handle_unknown()
 }
+```
+
+## Interning System and Performance
+
+### Atom and Type Interning
+
+Outrun uses a sophisticated interning system for performance and memory efficiency:
+
+```rust
+// Interpreter context manages interning (not global state)
+struct InterpreterContext {
+    atom_interner: AtomInterner,
+    type_interner: TypeInterner,
+    environment: Environment,
+}
+
+// Atoms are interned like symbols in other languages
+// Any two atoms with same name are identical objects
+let user_id_1 = :user_id  // AtomId(42)
+let user_id_2 = :user_id  // AtomId(42) - same instance
+
+// Types are interned for fast equality checks
+// Collection types store their element types
+Value::List { element_type: TypeId("Outrun.Core.String"), nodes: ... }
+Value::Tuple { element_types: vec![TypeId("Outrun.Core.Integer64"), TypeId("Outrun.Core.String")], values: ... }
+```
+
+**Interning Benefits:**
+- **Fast equality**: Compare by ID instead of string comparison
+- **Memory efficiency**: Single instance per unique atom/type name
+- **Collection optimization**: Element types stored efficiently
+- **Function signatures**: Parameter names and types use interned IDs
+
+**Implementation Notes:**
+- Interning managed by interpreter context, not global state
+- Thread-safe design for future multi-threaded execution
+- String interning crates provide efficient implementation
+
+### Reference Counting Within Actors
+
+Within a single actor, values use reference counting for efficient sharing:
+
+```rust
+// Within actor: reference counting for efficiency
+let shared_data = expensive_computation()
+let closure1 = fn { -> process(shared_data) }  // Reference count increment
+let closure2 = fn { -> validate(shared_data) } // Reference count increment
+
+// No copying within actor boundaries
+// Immutability ensures safe reference sharing
 ```
 
 ## Return Values
@@ -896,6 +1148,116 @@ def calculate(x: Integer): Integer {
     incremented  # This is returned
 }
 ```
+
+## Type System Implementation Details
+
+### Concrete Type Hierarchy
+
+The runtime type system distinguishes between concrete types and trait abstractions:
+
+```rust
+// Concrete types used at runtime
+enum Value {
+    Integer64(i64),           // Outrun.Core.Integer64
+    Float64(f64),             // Outrun.Core.Float64 
+    Boolean(bool),            // Outrun.Core.Boolean
+    String(String),           // Outrun.Core.String
+    Atom(AtomId),             // Outrun.Core.Atom
+    List { 
+        element_type: TypeId, 
+        nodes: LinkedList<Value> 
+    },                        // Outrun.Core.List<T>
+    Tuple { 
+        element_types: Vec<TypeId>, 
+        values: Vec<Value> 
+    },                        // Outrun.Core.Tuple<T1, T2, ...>
+    Map { 
+        key_type: TypeId, 
+        value_type: TypeId, 
+        entries: IndexMap<Value, Value> 
+    },                        // Outrun.Core.Map<K, V>
+    Option(OptionValue),      // Outrun.Option.Some<T>, Outrun.Option.None
+    Result(ResultValue),      // Outrun.Result.Ok<T>, Outrun.Result.Err<E>
+}
+
+// Trait abstractions define behaviour
+// Integer trait can be implemented by Integer64, Integer32, BigInteger, etc.
+// Float trait can be implemented by Float64, Float32, Decimal, etc.
+```
+
+### Type Checking Strategy
+
+Type checking happens at compile time, not runtime:
+
+```rust
+// Type checker builds trait implementation lookup tables
+struct TypeChecker {
+    trait_impls: HashMap<(TraitId, TypeId), OpaqueModuleId>,
+    type_registry: HashMap<TypeId, TypeInfo>,
+    module_registry: HashMap<ModuleId, ModuleInfo>,
+}
+
+// Runtime uses pre-computed dispatch tables
+// No dynamic type checking during interpretation
+// All trait compatibility validated at compile time
+```
+
+### Function Type Representation
+
+Functions store complete type information for validation:
+
+```rust
+Value::Function {
+    param_types: Vec<(AtomId, TypeId)>,  // (param_name, type)
+    return_type: TypeId,
+    body: FunctionBody,
+    captures: Vec<(AtomId, Value)>,      // Captured variables
+}
+
+// Parameter validation at load time
+// Set-like semantics ensure unique parameter names
+// Type annotations required initially (no inference)
+```
+
+## Development and Evolution Strategy
+
+### Interpreter Development Phases
+
+1. **Single-Actor Foundation**: Start with simplified actor model
+2. **Core Language Features**: Implement all basic language constructs
+3. **Type System Integration**: Add full trait dispatch and type checking
+4. **Multi-Actor Evolution**: Expand to full actor model with message passing
+5. **Performance Optimization**: Reference counting, interning, and compilation
+6. **Macro System**: Add macro expansion once core language is stable
+
+### Future Type Inference
+
+The language is designed to support type inference in the future:
+
+```outrun
+// Current requirement: explicit type annotations
+let name: String = "James"
+let numbers: List<Integer> = [1, 2, 3]
+let result: Result<User, Error> = User.create(name: name)
+
+// Future: type inference where unambiguous
+let name = "James"              // Infers String
+let numbers = [1, 2, 3]         // Infers List<Integer>
+let result = User.create(...)   // Infers Result<User, Error>
+
+// Trait calls always require explicit type annotations
+let parsed: Integer = Parseable.parse(value: "123")  // Required
+```
+
+### Compilation Strategy
+
+While starting as an interpreter, Outrun is designed for eventual compilation:
+
+- **AST preservation**: Parser maintains all source information
+- **Type erasure preparation**: Runtime types can be optimized away
+- **Trait dispatch optimization**: Static dispatch where possible
+- **Actor model compilation**: Efficient message passing and scheduling
+- **Memory management**: Reference counting can be optimized to stack allocation
 
 ## Whitespace and Parsing
 
