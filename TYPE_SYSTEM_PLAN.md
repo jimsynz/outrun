@@ -9,9 +9,11 @@
 - ✅ Full AST with type annotations, patterns, expressions
 - ✅ All language features parsed (traits, structs, functions, etc.)
 - ✅ **Phase 1 Complete**: Type system foundation with interning, concrete types, and CLI integration
-- ✅ **52 passing typechecker tests** with comprehensive error system
+- ✅ **57 passing typechecker tests** with comprehensive error system
 - ✅ **Working typecheck CLI command** with beautiful error reporting
-- ⏳ Ready for Phase 2: Core type checking implementation
+- ✅ **Core expression type checking**: literals, binary ops, identifiers, basic function calls
+- ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
+- ⏳ **Phase 2 In Progress**: Expression type checking foundation complete, expanding to collections and control flow
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -84,16 +86,20 @@
 **Goal**: Type check all expression types with proper error reporting
 
 **Tasks**:
-- [ ] Implement literal type checking (integers, strings, atoms, etc.)
-- [ ] Add binary operation type checking with trait dispatch
-- [ ] Implement function call parameter validation
+- [✅] Implement literal type checking (integers, strings, atoms, etc.)
+- [✅] Add binary operation type checking with trait dispatch
+- [✅] Implement function call parameter validation (basic framework)
 - [ ] Add struct literal field validation
 - [ ] Handle collection type checking (lists, maps, tuples)
+- [ ] Add if/case expression type checking with branch validation
+- [ ] Implement let binding type checking and scope updates
 
 **Deliverables**:
-- `checker/expressions.rs` with complete expression checking
-- Proper type propagation and validation
-- Clear error messages for type mismatches
+- [✅] `checker/expressions.rs` with core expression checking
+- [✅] Proper type propagation and validation for basic expressions
+- [✅] Clear error messages for type mismatches
+- [✅] Full qualified type names (`Outrun.Core.*`) for built-in types
+- [✅] Integration with main TypeChecker pipeline
 
 ### 2.3 Pattern Type Checking
 **Goal**: Validate destructuring patterns match their target types
@@ -265,7 +271,12 @@
 - [✅] All concrete types defined and validatable
 
 ### Phase 2 Success
-- [ ] Expression type checking works for all expression types
+- [✅] **Core expression type checking** works for literals, binary ops, identifiers, basic function calls
+- [✅] **Built-in type system** uses proper `Outrun.Core.*` namespace
+- [✅] **Type error reporting** with clear messages and source spans
+- [ ] Collection type checking (lists, maps, tuples)
+- [ ] Control flow expression type checking (if/case)
+- [ ] Let binding type checking with scope updates
 - [ ] Pattern matching validation handles all pattern types
 - [ ] Scope management works correctly with proper isolation
 

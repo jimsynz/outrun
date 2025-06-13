@@ -76,14 +76,14 @@ impl TypeContext {
         context
     }
 
-    /// Register built-in types (Integer64, String, etc.)
+    /// Register built-in types (Outrun.Core.Integer64, etc.)
     fn register_builtin_types(&mut self) {
         let builtin_types = [
-            ("Integer64", ConcreteType::Integer64),
-            ("Float64", ConcreteType::Float64),
-            ("Boolean", ConcreteType::Boolean),
-            ("String", ConcreteType::String),
-            ("Atom", ConcreteType::Atom),
+            ("Outrun.Core.Integer64", ConcreteType::Integer64),
+            ("Outrun.Core.Float64", ConcreteType::Float64),
+            ("Outrun.Core.Boolean", ConcreteType::Boolean),
+            ("Outrun.Core.String", ConcreteType::String),
+            ("Outrun.Core.Atom", ConcreteType::Atom),
         ];
 
         for (name, concrete_type) in builtin_types {
@@ -315,9 +315,9 @@ mod tests {
         assert!(!context.in_function_scope());
 
         // Built-in types should be registered
-        assert!(context.interner.get_type("Integer64").is_some());
-        assert!(context.interner.get_type("String").is_some());
-        assert!(context.interner.get_type("Boolean").is_some());
+        assert!(context.interner.get_type("Outrun.Core.Integer64").is_some());
+        assert!(context.interner.get_type("Outrun.Core.String").is_some());
+        assert!(context.interner.get_type("Outrun.Core.Boolean").is_some());
     }
 
     #[test]
