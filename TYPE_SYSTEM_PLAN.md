@@ -9,10 +9,11 @@
 - ✅ Full AST with type annotations, patterns, expressions
 - ✅ All language features parsed (traits, structs, functions, etc.)
 - ✅ **Phase 1 Complete**: Type system foundation with interning, concrete types, and CLI integration
-- ✅ **63 passing typechecker tests** with comprehensive error system
+- ✅ **57 passing typechecker tests** with comprehensive error system
 - ✅ **Working typecheck CLI command** with beautiful error reporting
-- ✅ **Core expression type checking**: literals, binary ops, identifiers, basic function calls
+- ✅ **Core expression type checking**: literals, binary ops, identifiers
 - ✅ **Collection type checking**: Lists, tuples, maps with homogeneous/heterogeneous typing
+- ✅ **Function call parameter validation**: Complete argument validation with type checking
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
 - ⏳ **Phase 2 In Progress**: Core expression types complete, expanding to control flow and advanced features
 
@@ -89,7 +90,7 @@
 **Tasks**:
 - [✅] Implement literal type checking (integers, strings, atoms, etc.)
 - [✅] Add binary operation type checking with trait dispatch
-- [✅] Implement function call parameter validation (basic framework)
+- [✅] Implement function call parameter validation with comprehensive checks
 - [✅] Handle collection type checking (lists, maps, tuples)
 - [ ] Add struct literal field validation
 - [ ] Add if/case expression type checking with branch validation

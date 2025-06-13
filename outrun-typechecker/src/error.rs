@@ -107,6 +107,30 @@ pub enum TypeError {
         name: String,
     },
 
+    #[error("Missing parameter {parameter_name} for function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::missing_parameter),
+        help("Function {function_name} requires parameter {parameter_name}")
+    )]
+    MissingParameter {
+        #[label("missing required parameter")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+    },
+
+    #[error("Unexpected parameter {parameter_name} for function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::unexpected_parameter),
+        help("Function {function_name} does not accept parameter {parameter_name}")
+    )]
+    UnexpectedParameter {
+        #[label("unexpected parameter")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+    },
+
     #[error("Invalid condition type")]
     #[diagnostic(
         code(outrun::typechecker::invalid_condition),
@@ -261,6 +285,32 @@ impl TypeError {
     /// Create an undefined function error
     pub fn undefined_function(name: String, span: SourceSpan) -> Self {
         Self::UndefinedFunction { span, name }
+    }
+
+    /// Create a missing parameter error
+    pub fn missing_parameter(
+        function_name: String,
+        parameter_name: String,
+        span: SourceSpan,
+    ) -> Self {
+        Self::MissingParameter {
+            span,
+            function_name,
+            parameter_name,
+        }
+    }
+
+    /// Create an unexpected parameter error
+    pub fn unexpected_parameter(
+        function_name: String,
+        parameter_name: String,
+        span: SourceSpan,
+    ) -> Self {
+        Self::UnexpectedParameter {
+            span,
+            function_name,
+            parameter_name,
+        }
     }
 
     /// Create an invalid condition type error
