@@ -47,7 +47,9 @@ impl ExpressionChecker {
             ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
             ExpressionKind::Struct(struct_lit) => Self::check_struct_literal(context, struct_lit),
             ExpressionKind::IfExpression(if_expr) => Self::check_if_expression(context, if_expr),
-            ExpressionKind::CaseExpression(case_expr) => Self::check_case_expression(context, case_expr),
+            ExpressionKind::CaseExpression(case_expr) => {
+                Self::check_case_expression(context, case_expr)
+            }
             _ => {
                 // TODO: Implement other expression types
                 Err(TypeError::UnimplementedFeature {
@@ -934,7 +936,7 @@ impl ExpressionChecker {
         for when_clause in &case_expr.when_clauses {
             // Type check the guard - must be Boolean
             let typed_guard = Self::check_expression(context, &when_clause.guard)?;
-            
+
             let bool_type = context.interner.intern_type("Outrun.Core.Boolean");
             if typed_guard.type_id != bool_type {
                 return Err(TypeError::type_mismatch(
@@ -1020,7 +1022,9 @@ impl ExpressionChecker {
             }
             outrun_parser::CaseResult::Expression(expr) => {
                 let typed_expr = Self::check_expression(context, expr)?;
-                Ok(crate::checker::TypedCaseResult::Expression(Box::new(typed_expr)))
+                Ok(crate::checker::TypedCaseResult::Expression(Box::new(
+                    typed_expr,
+                )))
             }
         }
     }
@@ -1130,7 +1134,9 @@ impl ExpressionChecker {
                     };
 
                     typed_statements.push(crate::checker::TypedStatement {
-                        kind: crate::checker::TypedStatementKind::LetBinding(Box::new(typed_let_binding)),
+                        kind: crate::checker::TypedStatementKind::LetBinding(Box::new(
+                            typed_let_binding,
+                        )),
                         span: statement.span,
                     });
 
@@ -2286,36 +2292,44 @@ mod tests {
             when_clauses: vec![
                 outrun_parser::CaseWhenClause {
                     guard: Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
-                            value: true,
-                            span: Span::new(13, 17),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: true,
+                                span: Span::new(13, 17),
+                            },
+                        ),
                         span: Span::new(13, 17),
                     },
                     result: outrun_parser::CaseResult::Expression(Box::new(Expression {
-                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
-                            value: 42,
-                            format: outrun_parser::IntegerFormat::Decimal,
-                            span: Span::new(21, 23),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 42,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(21, 23),
+                            },
+                        ),
                         span: Span::new(21, 23),
                     })),
                     span: Span::new(8, 23),
                 },
                 outrun_parser::CaseWhenClause {
                     guard: Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
-                            value: false,
-                            span: Span::new(29, 34),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: false,
+                                span: Span::new(29, 34),
+                            },
+                        ),
                         span: Span::new(29, 34),
                     },
                     result: outrun_parser::CaseResult::Expression(Box::new(Expression {
-                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
-                            value: 24,
-                            format: outrun_parser::IntegerFormat::Decimal,
-                            span: Span::new(38, 40),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 24,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(38, 40),
+                            },
+                        ),
                         span: Span::new(38, 40),
                     })),
                     span: Span::new(24, 40),
@@ -2486,28 +2500,34 @@ mod tests {
             when_clauses: vec![
                 outrun_parser::CaseWhenClause {
                     guard: Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
-                            value: true,
-                            span: Span::new(13, 17),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: true,
+                                span: Span::new(13, 17),
+                            },
+                        ),
                         span: Span::new(13, 17),
                     },
                     result: outrun_parser::CaseResult::Expression(Box::new(Expression {
-                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
-                            value: 42,
-                            format: outrun_parser::IntegerFormat::Decimal,
-                            span: Span::new(21, 23),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 42,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(21, 23),
+                            },
+                        ),
                         span: Span::new(21, 23),
                     })),
                     span: Span::new(8, 23),
                 },
                 outrun_parser::CaseWhenClause {
                     guard: Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
-                            value: false,
-                            span: Span::new(29, 34),
-                        }),
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: false,
+                                span: Span::new(29, 34),
+                            },
+                        ),
                         span: Span::new(29, 34),
                     },
                     result: outrun_parser::CaseResult::Expression(Box::new(Expression {

@@ -21,7 +21,7 @@
 - ✅ **TypedBlock, TypedStatement structures**: Full typed AST support for blocks and statements
 - ✅ **Case expression type checking**: Guard validation (Boolean), compatible branch types, and block/expression results
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
-- ⏳ **Phase 2 In Progress**: Core expression types complete, expanding to control flow and advanced features
+- ⏳ **Phase 2 Near Complete**: Core expression and control flow type checking complete, pipe operators remaining
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
