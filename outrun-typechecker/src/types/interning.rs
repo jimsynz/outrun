@@ -80,6 +80,21 @@ impl TypeInterner {
     pub fn get_trait(&self, name: &str) -> Option<TraitId> {
         self.trait_names.get(name).map(TraitId)
     }
+
+    /// Get the name of a type by its ID
+    pub fn type_name(&self, type_id: TypeId) -> Option<String> {
+        self.type_names.resolve(type_id.0).map(|s| s.to_string())
+    }
+
+    /// Get the name of an atom by its ID
+    pub fn atom_name(&self, atom_id: AtomId) -> Option<String> {
+        self.atom_names.resolve(atom_id.0).map(|s| s.to_string())
+    }
+
+    /// Get the name of a trait by its ID
+    pub fn trait_name(&self, trait_id: TraitId) -> Option<String> {
+        self.trait_names.resolve(trait_id.0).map(|s| s.to_string())
+    }
 }
 
 impl Default for TypeInterner {

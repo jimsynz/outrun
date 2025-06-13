@@ -113,6 +113,11 @@ pub enum TypedExpressionKind {
         when_clauses: Vec<TypedCaseWhenClause>,
         else_clause: TypedCaseElseClause,
     },
+    TraitCaseExpression {
+        expression: Box<TypedExpression>,
+        trait_name: String,
+        type_clauses: Vec<TypedTraitCaseClause>,
+    },
     // TODO: Add all expression kinds with type information
 }
 
@@ -154,6 +159,14 @@ impl TypedCaseResult {
             TypedCaseResult::Expression(expr) => expr.type_id,
         }
     }
+}
+
+/// Typed trait case clause
+#[derive(Debug, Clone)]
+pub struct TypedTraitCaseClause {
+    pub type_id: TypeId,
+    pub result_type: TypeId,
+    pub span: Span,
 }
 
 /// Typed statement

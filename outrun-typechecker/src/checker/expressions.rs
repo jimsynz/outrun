@@ -7,7 +7,7 @@
 //! - Collection literals (lists, maps, tuples)
 
 // use crate::types::{TypeId, ConcreteType}; // TODO: Use when needed
-use crate::checker::{TypeContext, TypedExpression, TypedExpressionKind};
+use crate::checker::{TypeContext, TypedExpression, TypedExpressionKind, TypedTraitCaseClause};
 use crate::error::{TypeError, TypeResult};
 use crate::types::TypeId;
 use outrun_parser::{Expression, ExpressionKind};
@@ -1039,18 +1039,168 @@ impl ExpressionChecker {
     }
 
     /// Type check trait case expression
-    fn check_trait_case_expression(
+    pub fn check_trait_case_expression(
         context: &mut TypeContext,
         trait_case: &outrun_parser::TraitCaseExpression,
     ) -> TypeResult<TypedExpression> {
         // Type check the expression being matched
-        let _typed_expression = Self::check_expression(context, &trait_case.expression)?;
+        let typed_expression = Self::check_expression(context, &trait_case.expression)?;
 
-        // TODO: Implement trait case type checking with exhaustiveness checking
-        // For now, return an unimplemented error
-        Err(TypeError::UnimplementedFeature {
-            feature: "Trait case expression type checking".to_string(),
-            span: crate::error::span_to_source_span(trait_case.span),
+        // Resolve the trait name to a trait ID
+        let trait_name = &trait_case.trait_name.name;
+        let trait_id =
+            context
+                .interner
+                .get_trait(trait_name)
+                .ok_or_else(|| TypeError::UndefinedType {
+                    span: crate::error::span_to_source_span(trait_case.trait_name.span),
+                    name: trait_name.clone(),
+                })?;
+
+        // Verify the expression type implements the trait
+        if !context.implements_trait(typed_expression.type_id, trait_id) {
+            return Err(TypeError::TraitNotImplemented {
+                span: crate::error::span_to_source_span(trait_case.expression.span),
+                trait_name: trait_name.clone(),
+                type_name: context
+                    .interner
+                    .type_name(typed_expression.type_id)
+                    .unwrap_or("Unknown".to_string()),
+            });
+        }
+
+        // Type check each trait case clause and collect covered types
+        let mut typed_clauses = Vec::new();
+        let mut covered_types = Vec::new();
+        let mut result_type: Option<TypeId> = None;
+
+        for clause in &trait_case.type_clauses {
+            let typed_clause = Self::check_trait_case_clause(context, clause)?;
+
+            // Collect the type being covered in this clause
+            let clause_type_name = &clause.type_name.name;
+            if let Some(clause_type_id) = context.interner.get_type(clause_type_name) {
+                covered_types.push(clause_type_id);
+            }
+
+            // Ensure all clauses return compatible types
+            if let Some(existing_type) = result_type {
+                if typed_clause.result_type != existing_type {
+                    return Err(TypeError::TypeMismatch {
+                        span: crate::error::span_to_source_span(clause.span),
+                        expected: context
+                            .interner
+                            .type_name(existing_type)
+                            .unwrap_or("Unknown".to_string()),
+                        found: context
+                            .interner
+                            .type_name(typed_clause.result_type)
+                            .unwrap_or("Unknown".to_string()),
+                    });
+                }
+            } else {
+                result_type = Some(typed_clause.result_type);
+            }
+
+            typed_clauses.push(typed_clause);
+        }
+
+        // Check exhaustiveness using orphan rule analysis
+        let exhaustiveness_result = context
+            .trait_registry
+            .check_trait_case_exhaustiveness(trait_id, &covered_types);
+
+        if let crate::types::traits::ExhaustivenessResult::Missing(missing_types) =
+            exhaustiveness_result
+        {
+            let missing_type_names: Vec<String> = missing_types
+                .iter()
+                .map(|&type_id| {
+                    context
+                        .interner
+                        .type_name(type_id)
+                        .unwrap_or("Unknown".to_string())
+                })
+                .collect();
+
+            return Err(TypeError::CaseNotExhaustive {
+                span: crate::error::span_to_source_span(trait_case.span),
+                trait_name: trait_name.clone(),
+                missing_types: missing_type_names.join(", "),
+            });
+        }
+
+        let final_type = result_type.unwrap_or_else(|| {
+            // Should not happen with valid syntax, but fallback to Unit
+            context.interner.get_type("Unit").unwrap()
+        });
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::TraitCaseExpression {
+                expression: Box::new(typed_expression),
+                trait_name: trait_name.clone(),
+                type_clauses: typed_clauses,
+            },
+            type_id: final_type,
+            span: trait_case.span,
+        })
+    }
+
+    /// Type check a trait case clause
+    fn check_trait_case_clause(
+        context: &mut TypeContext,
+        clause: &outrun_parser::TraitCaseClause,
+    ) -> TypeResult<TypedTraitCaseClause> {
+        // Resolve the type name to a type ID
+        let type_name = &clause.type_name.name;
+        let type_id =
+            context
+                .interner
+                .get_type(type_name)
+                .ok_or_else(|| TypeError::UndefinedType {
+                    span: crate::error::span_to_source_span(clause.type_name.span),
+                    name: type_name.clone(),
+                })?;
+
+        // Create a new scope for pattern variables if there's a pattern
+        context.push_scope(false);
+
+        // Type check the pattern if present
+        if let Some(pattern) = &clause.pattern {
+            let _bound_variables = crate::checker::patterns::PatternChecker::check_pattern(
+                context,
+                &outrun_parser::Pattern::Struct(pattern.clone()),
+                type_id,
+            )?;
+        }
+
+        // Type check the guard if present
+        if let Some(guard) = &clause.guard {
+            let typed_guard = Self::check_expression(context, guard)?;
+            let boolean_type = context.interner.get_type("Boolean").unwrap();
+
+            if typed_guard.type_id != boolean_type {
+                context.pop_scope();
+                return Err(TypeError::TypeMismatch {
+                    span: crate::error::span_to_source_span(guard.span),
+                    expected: "Boolean".to_string(),
+                    found: context
+                        .interner
+                        .type_name(typed_guard.type_id)
+                        .unwrap_or("Unknown".to_string()),
+                });
+            }
+        }
+
+        // Type check the result
+        let typed_result = Self::check_case_result(context, &clause.result)?;
+
+        context.pop_scope();
+
+        Ok(TypedTraitCaseClause {
+            type_id,
+            result_type: typed_result.result_type(),
+            span: clause.span,
         })
     }
 

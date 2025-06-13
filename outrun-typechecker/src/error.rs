@@ -244,6 +244,18 @@ pub enum TypeError {
         parameter_name: String,
     },
 
+    #[error("Case statement is not exhaustive")]
+    #[diagnostic(
+        code(outrun::types::case_not_exhaustive),
+        help("Add cases for missing types: {missing_types}")
+    )]
+    CaseNotExhaustive {
+        #[label("missing cases for trait {trait_name}")]
+        span: SourceSpan,
+        trait_name: String,
+        missing_types: String,
+    },
+
     #[error("Feature not yet implemented: {feature}")]
     #[diagnostic(
         code(outrun::typechecker::unimplemented),

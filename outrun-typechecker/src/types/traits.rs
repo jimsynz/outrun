@@ -51,6 +51,15 @@ pub struct TraitImplementation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub u32);
 
+/// Result of exhaustiveness checking for trait case statements
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExhaustivenessResult {
+    /// All possible trait implementations are covered
+    Exhaustive,
+    /// Some trait implementations are missing from the case statement
+    Missing(Vec<TypeId>),
+}
+
 impl TraitDefinition {
     /// Create a new trait definition
     pub fn new(id: TraitId, name: String, functions: Vec<TraitFunction>, span: Span) -> Self {
@@ -231,6 +240,37 @@ impl TraitRegistry {
             .filter(|((_, t_id), _)| *t_id == type_id)
             .map(|(_, impl_)| impl_)
             .collect()
+    }
+
+    /// Get all concrete types that implement a trait (for exhaustiveness checking)
+    pub fn get_trait_implementors(&self, trait_id: TraitId) -> Vec<TypeId> {
+        self.implementations
+            .iter()
+            .filter(|((t_id, _), _)| *t_id == trait_id)
+            .map(|((_, type_id), _)| *type_id)
+            .collect()
+    }
+
+    /// Check if a trait case statement is exhaustive by verifying all implementors are covered
+    pub fn check_trait_case_exhaustiveness(
+        &self,
+        trait_id: TraitId,
+        covered_types: &[TypeId],
+    ) -> ExhaustivenessResult {
+        let all_implementors = self.get_trait_implementors(trait_id);
+
+        // Find missing implementations
+        let missing_types: Vec<TypeId> = all_implementors
+            .iter()
+            .filter(|&type_id| !covered_types.contains(type_id))
+            .copied()
+            .collect();
+
+        if missing_types.is_empty() {
+            ExhaustivenessResult::Exhaustive
+        } else {
+            ExhaustivenessResult::Missing(missing_types)
+        }
     }
 }
 
