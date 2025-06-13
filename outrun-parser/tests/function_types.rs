@@ -1,5 +1,5 @@
-// Tests for function type parsing - matching tree-sitter test coverage
-// Based on types_function_basic.txt, types_function_complex.txt, and types_function_struct_fields.txt
+// Tests for function type parsing
+// Covers basic function types, complex nested functions, and function types in struct fields
 
 use outrun_parser::ast::*;
 use outrun_parser::{parse_program, ExpressionKind, ItemKind};

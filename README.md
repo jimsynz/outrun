@@ -92,7 +92,6 @@ case maybe_user {
 
 - ✅ **Language Specification** - Complete syntax and semantics defined
 - ✅ **BNF Grammar** - Formal grammar specification written
-- ✅ **Tree-sitter Parser** - Syntax highlighting and parsing implemented
 - ✅ **Example Programs** - Working code demonstrating features
 - 🔄 **Rust Compiler** - In development using Cranelift backend
 - 📋 **Standard Library** - Core traits being designed
@@ -106,13 +105,12 @@ case maybe_user {
 git clone https://github.com/your-org/outrun.git
 cd outrun
 
-# Generate the tree-sitter parser
-cd tree-sitter-outrun
-npm install
-npx tree-sitter generate
+# Build the parser
+cd outrun-parser
+cargo build
 
 # Run tests
-npx tree-sitter test
+cargo test
 ```
 
 ### Hello, World!
@@ -184,7 +182,6 @@ classifier = fn {
 
 Outrun is designed with modern compiler architecture in mind:
 
-- **Tree-sitter Frontend** - Fast, incremental parsing with error recovery
 - **Rust Compiler** - Type checking and optimization
 - **Cranelift Backend** - Native code generation with WASM support
 - **Actor Runtime** - Built for concurrent, distributed systems
@@ -203,7 +200,7 @@ Outrun is designed with modern compiler architecture in mind:
 
 Outrun is in active development and we welcome contributions! Check out:
 
-- [`SYNTAX_SPEC.md`](SYNTAX_SPEC.md) - Complete language specification
+- [`LANGUAGE_SPEC.md`](LANGUAGE_SPEC.md) - Complete language specification
 - [`GRAMMAR.bnf`](GRAMMAR.bnf) - Formal grammar definition
 - [`CLAUDE.md`](CLAUDE.md) - Development guide and project structure
 

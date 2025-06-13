@@ -214,8 +214,8 @@ fn parse_with_errors(input: &str) -> Result<Program, miette::Report> {
 
 ## Testing Strategy
 
-### Tree-sitter Compatibility
-Convert the existing 178 tree-sitter test cases to validate equivalent parsing behaviour:
+### Comprehensive Testing
+Write comprehensive tests to validate parsing behaviour:
 ```rust
 #[test]
 fn test_integer_literals_positive() {
@@ -375,7 +375,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 - ✅ **Struct literals**: `TypeName { field: value, shorthand, ..spread }` with all three field types
 
 #### **Destructuring Patterns (June 2025)**
-- ✅ **Recursive destructuring patterns**: Full recursive pattern system matching tree-sitter capabilities
+- ✅ **Recursive destructuring patterns**: Full recursive pattern system with comprehensive coverage
 - ✅ **Literal patterns**: `42`, `:status`, `"exact"` for exact value matching in destructuring
 - ✅ **Tuple patterns**: `(x, [a, b], y)` with unlimited recursive nesting 
 - ✅ **List patterns**: `[1, name, :status]` with mixed pattern types and recursive elements

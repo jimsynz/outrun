@@ -72,7 +72,6 @@ steps:
     commands:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - rustup component add clippy
-      - (cd tree-sitter-outrun ; tree-sitter generate)
 
   - name: build
     image: harton.dev/james/asdf_container:latest
@@ -128,14 +127,6 @@ steps:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - cargo fmt --check
 
-  - name: tree-sitter test
-    image: harton.dev/james/asdf_container:latest
-    pull: never
-    depends_on:
-      - build
-    commands:
-      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
-      - (cd tree-sitter-outrun ; tree-sitter test)
 
 volumes:
   - name: cache

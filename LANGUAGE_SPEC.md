@@ -12,7 +12,7 @@ Outrun is a statically-typed, functional programming language built around the c
 - **Immutable and functional** - No mutation, rebinding allowed
 - **Actor model runtime** - Built for concurrent, distributed systems with fault isolation
 - **Explicit error handling** - `Option<T>` and `Result<T, E>` for expected failures, panics for exceptional cases
-- **Pest-based parser** - With tree-sitter grammar for future IDE support and embedded DSLs
+- **Pest-based parser** - Complete parsing implementation with comprehensive error reporting
 
 ## Type System and Runtime Model
 

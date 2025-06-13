@@ -9,29 +9,13 @@ Outrun is a statically-typed, functional programming language built around the c
 ```
 outrun/
 ├── README.md                    # Project discussion and background
-├── SYNTAX_SPEC.md              # Complete language syntax specification
+├── LANGUAGE_SPEC.md             # Complete language syntax specification
 ├── GRAMMAR.bnf                 # Formal BNF grammar
 ├── outrun.toml                 # Package manifest (when created)
-├── outrun-parser/              # Parser implementation (Rust)
-│   ├── Cargo.toml
-│   └── src/
-│       └── lib.rs
-└── tree-sitter-outrun/         # Tree-sitter grammar implementation ✅ COMPLETE
-    ├── grammar.js              # Tree-sitter grammar definition
-    ├── src/
-    │   ├── grammar.json
-    │   ├── node-types.json
-    │   └── parser.c
-    └── test/
-        └── corpus/             # 254 comprehensive test files (100% pass rate)
-            ├── literals_*.txt  # All literal types
-            ├── operators_*.txt # All operators with precedence
-            ├── functions_*.txt # Function definitions and calls
-            ├── control_flow_*.txt # If/else, case statements
-            ├── types_*.txt     # Structs, traits, implementations
-            ├── macros_*.txt    # Macro definitions with injection
-            ├── modules_*.txt   # Module system (alias/import)
-            └── application_*.txt # Application entry point pattern
+└── outrun-parser/              # Parser implementation (Rust)
+    ├── Cargo.toml
+    └── src/
+        └── lib.rs
 ```
 
 ## Core Design Principles
@@ -41,7 +25,6 @@ outrun/
 - **Static typing** with trait constraints and guards
 - **Immutable and functional** - No mutation, rebinding allowed
 - **Actor model runtime** - Built for concurrent, distributed systems
-- **Tree-sitter based** - Enables embedded DSLs with full language server support
 
 ## Key Language Features
 
@@ -82,22 +65,10 @@ macro unless(condition, do_block) {
 
 ### Adding New Syntax
 
-1. **Update SYNTAX_SPEC.md** with examples and explanation
+1. **Update LANGUAGE_SPEC.md** with examples and explanation
 2. **Update GRAMMAR.bnf** with formal grammar rules
-3. **Update tree-sitter grammar** in `tree-sitter-outrun/grammar.js`
-4. **Add test cases** in `tree-sitter-outrun/test/corpus/`
-5. **Regenerate parser** with `npm run generate` in tree-sitter-outrun
-
-### Working with Tree-sitter
-
-```bash
-cd tree-sitter-outrun
-npm install
-npm run generate              # Generate parser from grammar.js
-npm test                     # Run all 254 corpus tests (100% pass rate)
-tree-sitter test --update    # Update AST expectations automatically
-tree-sitter parse file.outrun # Test parsing specific files
-```
+3. **Add test cases** in `outrun-parser/tests/`
+4. **Update Pest grammar** if needed
 
 ### Parser Development
 
@@ -131,44 +102,13 @@ alias Outrun.Result as Result
 
 ## Testing Syntax Ideas
 
-Create test files in `tree-sitter-outrun/test/corpus/` to validate syntax:
-
-```
-================
-Basic struct definition
-================
-
-struct User(name: String, email: String) {
-    def greet(self: Self): String {
-        "Hello, #{self.name}!"
-    }
-}
-
----
-
-(source_file
-  (struct_definition
-    (type_identifier)
-    (struct_fields
-      (parameter (identifier) (type_annotation))
-      (parameter (identifier) (type_annotation)))
-    (struct_impl_block
-      (function_definition
-        (identifier)
-        (parameter_list
-          (parameter (identifier) (type_annotation)))
-        (return_type (type_annotation))
-        (function_body
-          (string_literal))))))
-```
+Create test files in `outrun-parser/tests/` to validate syntax using Rust unit tests.
 
 ## Current Status
 
 - ✅ Core syntax specification complete
 - ✅ BNF grammar written
-- ✅ Tree-sitter grammar implemented
-- ✅ **COMPLETE: Comprehensive test coverage with 254 tests (100% pass rate)**
-- ✅ **All SYNTAX_SPEC.md features implemented and tested**
+- ✅ **All LANGUAGE_SPEC.md features implemented and tested**
 - ✅ **Pest parser implementation**: Complete string interpolation with expression parsing
 - ✅ **CLI tool**: Parse command with pretty-printed s-expressions and stdin support
 - ✅ **Recursive destructuring patterns**: Fully implemented with unified pattern system across let bindings, case statements, and function parameters
@@ -179,8 +119,8 @@ struct User(name: String, email: String) {
 
 When working on the language:
 
-1. **Syntax changes** require updates to both SYNTAX_SPEC.md and GRAMMAR.bnf
-2. **Test thoroughly** with tree-sitter corpus tests
+1. **Syntax changes** require updates to both LANGUAGE_SPEC.md and GRAMMAR.bnf
+2. **Test thoroughly** with Rust unit tests
 3. **Keep "everything is traits"** philosophy consistent
 4. **Maintain immutability** and functional approach
 5. **Document design decisions** in commit messages
@@ -188,12 +128,6 @@ When working on the language:
 ## Useful Commands
 
 ```bash
-# Generate tree-sitter parser
-cd tree-sitter-outrun && npm run generate
-
-# Test tree-sitter grammar  
-cd tree-sitter-outrun && npm test
-
 # Format all code across all rust subprojects.
 cargo fmt
 
@@ -202,4 +136,10 @@ cargo test
 
 # Run lints across all rust subprojects
 cargo clippy --all-targets --all-features -- -D warnings
+
+# Create pull request with fj CLI tool
+fj pr create "PR title" --body "PR description"
+
+# Push branch and create PR in one go
+git push -u origin branch-name && fj pr create "Title" --body "Description"
 ```
