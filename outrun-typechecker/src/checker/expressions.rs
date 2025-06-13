@@ -258,7 +258,7 @@ impl ExpressionChecker {
             }
 
             outrun_parser::BinaryOperator::PipeMaybe => {
-                // |? calls Maybe.maybe_pipe(left_value, right_function)  
+                // |? calls Maybe.maybe_pipe(left_value, right_function)
                 // The left side should be an Option type, right side a function
                 Self::check_pipe_maybe_operation(context, &typed_left, &typed_right, left, right)?
             }
@@ -1052,16 +1052,16 @@ impl ExpressionChecker {
     ) -> TypeResult<TypeId> {
         // For now, implement basic pipe type checking
         // TODO: Enhance with proper function type analysis when function types are implemented
-        
+
         // In a proper implementation:
         // 1. Right side should be a function type that accepts left's type as input
         // 2. Result type should be the function's return type
         // 3. Should validate through Pipe trait dispatch
-        
+
         // For basic implementation, we'll handle simple cases:
         // - Function calls on the right side
         // - Method calls (future feature)
-        
+
         match &typed_right.kind {
             TypedExpressionKind::FunctionCall { .. } => {
                 // Right side is a function call - return its type
@@ -1100,18 +1100,18 @@ impl ExpressionChecker {
     ) -> TypeResult<TypeId> {
         // For now, implement basic pipe maybe type checking
         // TODO: Enhance with proper Option/Maybe type analysis when implemented
-        
+
         // In a proper implementation:
         // 1. Left side should be Option<T> type
         // 2. Right side should be a function T -> U
         // 3. Result should be Option<U>
         // 4. Should validate through Maybe trait dispatch
-        
+
         // For basic implementation, check if left side looks like an Option type
         let left_type_name = context
             .get_type_name(typed_left.type_id)
             .unwrap_or("Unknown");
-            
+
         if !left_type_name.contains("Option") && !left_type_name.contains("Maybe") {
             return Err(TypeError::TypeMismatch {
                 span: crate::error::span_to_source_span(left_expr.span),
@@ -1119,7 +1119,7 @@ impl ExpressionChecker {
                 found: left_type_name.to_string(),
             });
         }
-        
+
         match &typed_right.kind {
             TypedExpressionKind::FunctionCall { .. } => {
                 // Right side is a function call
@@ -3010,7 +3010,9 @@ mod tests {
 
         // Create an Option<Integer64> variable
         context.push_scope(false);
-        let option_int_type = context.interner.intern_type("Outrun.Core.Option<Outrun.Core.Integer64>");
+        let option_int_type = context
+            .interner
+            .intern_type("Outrun.Core.Option<Outrun.Core.Integer64>");
         let variable = crate::checker::context::Variable {
             name: "maybe_value".to_string(),
             type_id: option_int_type,
