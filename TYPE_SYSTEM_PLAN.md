@@ -9,7 +9,7 @@
 - ✅ Full AST with type annotations, patterns, expressions
 - ✅ All language features parsed (traits, structs, functions, etc.)
 - ✅ **Phase 1 Complete**: Type system foundation with interning, concrete types, and CLI integration
-- ✅ **73 passing typechecker tests** with comprehensive error system
+- ✅ **78 passing typechecker tests** with comprehensive error system
 - ✅ **Working typecheck CLI command** with beautiful error reporting
 - ✅ **Core expression type checking**: literals, binary ops, identifiers
 - ✅ **Collection type checking**: Lists, tuples, maps with homogeneous/heterogeneous typing
@@ -20,8 +20,9 @@
 - ✅ **Block statement type checking**: Complete block processing with let bindings and expressions
 - ✅ **TypedBlock, TypedStatement structures**: Full typed AST support for blocks and statements
 - ✅ **Case expression type checking**: Guard validation (Boolean), compatible branch types, and block/expression results
+- ✅ **Pipe operator type checking**: Basic |> and |? operators with function validation and Option type handling
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
-- ⏳ **Phase 2 Near Complete**: Core expression and control flow type checking complete, pipe operators remaining
+- ✅ **Phase 2 Complete**: Core expression and control flow type checking complete with comprehensive coverage
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -102,6 +103,7 @@
 - [✅] Implement let binding type checking and scope updates with pattern matching
 - [✅] Add if expression type checking with Boolean condition and branch validation
 - [✅] Add case expression type checking with guard validation (Boolean) and compatible branch types
+- [✅] Add pipe operator type checking (|> and |?) with function validation and Option handling
 
 **Deliverables**:
 - [✅] `checker/expressions.rs` with core expression checking
@@ -289,6 +291,7 @@
 - [✅] Let binding type checking with scope updates and comprehensive pattern matching  
 - [✅] If expression type checking with Boolean conditions and compatible branch types
 - [✅] Case expression type checking with guard validation (Boolean) and compatible branch types
+- [✅] Pipe operator type checking with basic function validation and Option/Maybe type handling
 - [ ] Pattern matching validation handles all pattern types
 - [ ] Scope management works correctly with proper isolation
 

@@ -250,6 +250,19 @@ impl ExpressionChecker {
                 bool_type
             }
 
+            // Pipe operators - trait-based operations
+            outrun_parser::BinaryOperator::Pipe => {
+                // |> calls Pipe.pipe_into(left_value, right_function)
+                // The right side should be a function that accepts the left side's type
+                Self::check_pipe_operation(context, &typed_left, &typed_right, left, right)?
+            }
+
+            outrun_parser::BinaryOperator::PipeMaybe => {
+                // |? calls Maybe.maybe_pipe(left_value, right_function)  
+                // The left side should be an Option type, right side a function
+                Self::check_pipe_maybe_operation(context, &typed_left, &typed_right, left, right)?
+            }
+
             _ => {
                 return Err(TypeError::UnimplementedFeature {
                     feature: format!("Binary operator {:?}", operator),
@@ -1025,6 +1038,118 @@ impl ExpressionChecker {
                 Ok(crate::checker::TypedCaseResult::Expression(Box::new(
                     typed_expr,
                 )))
+            }
+        }
+    }
+
+    /// Type check pipe operation (|>)
+    fn check_pipe_operation(
+        context: &mut TypeContext,
+        typed_left: &TypedExpression,
+        typed_right: &TypedExpression,
+        _left_expr: &Expression,
+        right_expr: &Expression,
+    ) -> TypeResult<TypeId> {
+        // For now, implement basic pipe type checking
+        // TODO: Enhance with proper function type analysis when function types are implemented
+        
+        // In a proper implementation:
+        // 1. Right side should be a function type that accepts left's type as input
+        // 2. Result type should be the function's return type
+        // 3. Should validate through Pipe trait dispatch
+        
+        // For basic implementation, we'll handle simple cases:
+        // - Function calls on the right side
+        // - Method calls (future feature)
+        
+        match &typed_right.kind {
+            TypedExpressionKind::FunctionCall { .. } => {
+                // Right side is a function call - return its type
+                // In the future, we should validate that the function accepts left's type
+                Ok(typed_right.type_id)
+            }
+            TypedExpressionKind::Identifier(_) => {
+                // Right side is an identifier - could be a function reference
+                // For now, return the left type as a conservative approximation
+                // TODO: Look up function signature and validate parameter types
+                Ok(typed_left.type_id)
+            }
+            _ => {
+                // Right side is not a valid function-like expression
+                Err(TypeError::TypeMismatch {
+                    span: crate::error::span_to_source_span(right_expr.span),
+                    expected: "function or function call".to_string(),
+                    found: format!(
+                        "expression of type {}",
+                        context
+                            .get_type_name(typed_right.type_id)
+                            .unwrap_or("Unknown")
+                    ),
+                })
+            }
+        }
+    }
+
+    /// Type check pipe maybe operation (|?)
+    fn check_pipe_maybe_operation(
+        context: &mut TypeContext,
+        typed_left: &TypedExpression,
+        typed_right: &TypedExpression,
+        left_expr: &Expression,
+        right_expr: &Expression,
+    ) -> TypeResult<TypeId> {
+        // For now, implement basic pipe maybe type checking
+        // TODO: Enhance with proper Option/Maybe type analysis when implemented
+        
+        // In a proper implementation:
+        // 1. Left side should be Option<T> type
+        // 2. Right side should be a function T -> U
+        // 3. Result should be Option<U>
+        // 4. Should validate through Maybe trait dispatch
+        
+        // For basic implementation, check if left side looks like an Option type
+        let left_type_name = context
+            .get_type_name(typed_left.type_id)
+            .unwrap_or("Unknown");
+            
+        if !left_type_name.contains("Option") && !left_type_name.contains("Maybe") {
+            return Err(TypeError::TypeMismatch {
+                span: crate::error::span_to_source_span(left_expr.span),
+                expected: "Option or Maybe type".to_string(),
+                found: left_type_name.to_string(),
+            });
+        }
+        
+        match &typed_right.kind {
+            TypedExpressionKind::FunctionCall { .. } => {
+                // Right side is a function call
+                // For Option<T> |? f, if f returns U, result should be Option<U>
+                // For now, return an Option type wrapping the function result
+                let result_type_name = format!(
+                    "Outrun.Core.Option<{}>",
+                    context
+                        .get_type_name(typed_right.type_id)
+                        .unwrap_or("Unknown")
+                );
+                Ok(context.interner.intern_type(&result_type_name))
+            }
+            TypedExpressionKind::Identifier(_) => {
+                // Right side is an identifier - could be a function reference
+                // For now, return the left type (Option is preserved)
+                Ok(typed_left.type_id)
+            }
+            _ => {
+                // Right side is not a valid function-like expression
+                Err(TypeError::TypeMismatch {
+                    span: crate::error::span_to_source_span(right_expr.span),
+                    expected: "function or function call".to_string(),
+                    found: format!(
+                        "expression of type {}",
+                        context
+                            .get_type_name(typed_right.type_id)
+                            .unwrap_or("Unknown")
+                    ),
+                })
             }
         }
     }
@@ -2691,5 +2816,334 @@ mod tests {
         // Overall expression should have Integer64 type
         let type_name = context.get_type_name(typed_expr.type_id);
         assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+    }
+
+    #[test]
+    fn test_pipe_operation_with_function_call() {
+        let mut context = TypeContext::new();
+
+        // Register a function that takes Integer64 and returns String
+        let param1 = context.interner.intern_atom("value");
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+
+        let function_sig = crate::checker::context::FunctionSignature::new(
+            "to_string".to_string(),
+            vec![(param1, int_type)],
+            string_type,
+            false,
+            Span::new(0, 10),
+        );
+        context.register_function(function_sig).unwrap();
+
+        // Create 42 |> to_string(value: _)
+        let pipe_expr = Expression {
+            kind: ExpressionKind::BinaryOp(outrun_parser::BinaryOperation {
+                left: Box::new(Expression {
+                    kind: ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                }),
+                operator: outrun_parser::BinaryOperator::Pipe,
+                right: Box::new(Expression {
+                    kind: ExpressionKind::FunctionCall(outrun_parser::FunctionCall {
+                        path: outrun_parser::FunctionPath::Simple {
+                            name: outrun_parser::Identifier {
+                                name: "to_string".to_string(),
+                                span: Span::new(6, 15),
+                            },
+                        },
+                        arguments: vec![outrun_parser::Argument::Named {
+                            name: outrun_parser::Identifier {
+                                name: "value".to_string(),
+                                span: Span::new(16, 21),
+                            },
+                            expression: Expression {
+                                kind: ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                                    value: 42,
+                                    format: outrun_parser::IntegerFormat::Decimal,
+                                    span: Span::new(23, 25),
+                                }),
+                                span: Span::new(23, 25),
+                            },
+                            format: outrun_parser::ArgumentFormat::Explicit,
+                            span: Span::new(16, 25),
+                        }],
+                        span: Span::new(6, 26),
+                    }),
+                    span: Span::new(6, 26),
+                }),
+                span: Span::new(0, 26),
+            }),
+            span: Span::new(0, 26),
+        };
+
+        let result = ExpressionChecker::check_expression(&mut context, &pipe_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        match typed_expr.kind {
+            TypedExpressionKind::BinaryOp {
+                left,
+                operator,
+                right,
+            } => {
+                // Left should be Integer64
+                let left_type_name = context.get_type_name(left.type_id);
+                assert_eq!(left_type_name, Some("Outrun.Core.Integer64"));
+
+                // Operator should be Pipe
+                assert_eq!(operator, outrun_parser::BinaryOperator::Pipe);
+
+                // Right should be the function call with String return type
+                let right_type_name = context.get_type_name(right.type_id);
+                assert_eq!(right_type_name, Some("Outrun.Core.String"));
+            }
+            _ => panic!("Expected binary operation"),
+        }
+
+        // Overall expression should have String type (result of the function)
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.String"));
+    }
+
+    #[test]
+    fn test_pipe_operation_with_identifier() {
+        let mut context = TypeContext::new();
+
+        // Register a variable and a function
+        context.push_scope(false);
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "transform".to_string(),
+            type_id: int_type, // Simplified - should be function type
+            is_mutable: false,
+            span: Span::new(0, 9),
+        };
+        context.register_variable(variable).unwrap();
+
+        // Create 42 |> transform
+        let pipe_expr = Expression {
+            kind: ExpressionKind::BinaryOp(outrun_parser::BinaryOperation {
+                left: Box::new(Expression {
+                    kind: ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                }),
+                operator: outrun_parser::BinaryOperator::Pipe,
+                right: Box::new(Expression {
+                    kind: ExpressionKind::Identifier(outrun_parser::Identifier {
+                        name: "transform".to_string(),
+                        span: Span::new(6, 15),
+                    }),
+                    span: Span::new(6, 15),
+                }),
+                span: Span::new(0, 15),
+            }),
+            span: Span::new(0, 15),
+        };
+
+        let result = ExpressionChecker::check_expression(&mut context, &pipe_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        // Should return left type (conservative approximation)
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+    }
+
+    #[test]
+    fn test_pipe_operation_invalid_right_side() {
+        let mut context = TypeContext::new();
+
+        // Create 42 |> "invalid" (string is not a function)
+        let pipe_expr = Expression {
+            kind: ExpressionKind::BinaryOp(outrun_parser::BinaryOperation {
+                left: Box::new(Expression {
+                    kind: ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                }),
+                operator: outrun_parser::BinaryOperator::Pipe,
+                right: Box::new(Expression {
+                    kind: ExpressionKind::String(outrun_parser::StringLiteral {
+                        parts: vec![outrun_parser::StringPart::Text {
+                            content: "invalid".to_string(),
+                            raw_content: "invalid".to_string(),
+                        }],
+                        format: outrun_parser::StringFormat::Basic,
+                        span: Span::new(6, 15),
+                    }),
+                    span: Span::new(6, 15),
+                }),
+                span: Span::new(0, 15),
+            }),
+            span: Span::new(0, 15),
+        };
+
+        let result = ExpressionChecker::check_expression(&mut context, &pipe_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "function or function call");
+                assert!(found.contains("Outrun.Core.String"));
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_pipe_maybe_operation_with_option() {
+        let mut context = TypeContext::new();
+
+        // Create an Option<Integer64> variable
+        context.push_scope(false);
+        let option_int_type = context.interner.intern_type("Outrun.Core.Option<Outrun.Core.Integer64>");
+        let variable = crate::checker::context::Variable {
+            name: "maybe_value".to_string(),
+            type_id: option_int_type,
+            is_mutable: false,
+            span: Span::new(0, 11),
+        };
+        context.register_variable(variable).unwrap();
+
+        // Register a function that transforms integers
+        let param1 = context.interner.intern_atom("value");
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+
+        let function_sig = crate::checker::context::FunctionSignature::new(
+            "to_string".to_string(),
+            vec![(param1, int_type)],
+            string_type,
+            false,
+            Span::new(0, 10),
+        );
+        context.register_function(function_sig).unwrap();
+
+        // Create maybe_value |? to_string(value: _)
+        let pipe_maybe_expr = Expression {
+            kind: ExpressionKind::BinaryOp(outrun_parser::BinaryOperation {
+                left: Box::new(Expression {
+                    kind: ExpressionKind::Identifier(outrun_parser::Identifier {
+                        name: "maybe_value".to_string(),
+                        span: Span::new(0, 11),
+                    }),
+                    span: Span::new(0, 11),
+                }),
+                operator: outrun_parser::BinaryOperator::PipeMaybe,
+                right: Box::new(Expression {
+                    kind: ExpressionKind::FunctionCall(outrun_parser::FunctionCall {
+                        path: outrun_parser::FunctionPath::Simple {
+                            name: outrun_parser::Identifier {
+                                name: "to_string".to_string(),
+                                span: Span::new(15, 24),
+                            },
+                        },
+                        arguments: vec![outrun_parser::Argument::Named {
+                            name: outrun_parser::Identifier {
+                                name: "value".to_string(),
+                                span: Span::new(25, 30),
+                            },
+                            expression: Expression {
+                                kind: ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                                    value: 42,
+                                    format: outrun_parser::IntegerFormat::Decimal,
+                                    span: Span::new(32, 34),
+                                }),
+                                span: Span::new(32, 34),
+                            },
+                            format: outrun_parser::ArgumentFormat::Explicit,
+                            span: Span::new(25, 34),
+                        }],
+                        span: Span::new(15, 35),
+                    }),
+                    span: Span::new(15, 35),
+                }),
+                span: Span::new(0, 35),
+            }),
+            span: Span::new(0, 35),
+        };
+
+        let result = ExpressionChecker::check_expression(&mut context, &pipe_maybe_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        // Should return Option<String> (Option wrapping the function result)
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Option<Outrun.Core.String>"));
+    }
+
+    #[test]
+    fn test_pipe_maybe_operation_non_option_error() {
+        let mut context = TypeContext::new();
+
+        // Create a non-Option variable
+        context.push_scope(false);
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "regular_value".to_string(),
+            type_id: int_type,
+            is_mutable: false,
+            span: Span::new(0, 13),
+        };
+        context.register_variable(variable).unwrap();
+
+        // Also register the transform variable
+        let transform_variable = crate::checker::context::Variable {
+            name: "transform".to_string(),
+            type_id: int_type, // Simplified - should be function type
+            is_mutable: false,
+            span: Span::new(17, 26),
+        };
+        context.register_variable(transform_variable).unwrap();
+
+        // Create regular_value |? transform (should error because left side is not Option)
+        let pipe_maybe_expr = Expression {
+            kind: ExpressionKind::BinaryOp(outrun_parser::BinaryOperation {
+                left: Box::new(Expression {
+                    kind: ExpressionKind::Identifier(outrun_parser::Identifier {
+                        name: "regular_value".to_string(),
+                        span: Span::new(0, 13),
+                    }),
+                    span: Span::new(0, 13),
+                }),
+                operator: outrun_parser::BinaryOperator::PipeMaybe,
+                right: Box::new(Expression {
+                    kind: ExpressionKind::Identifier(outrun_parser::Identifier {
+                        name: "transform".to_string(),
+                        span: Span::new(17, 26),
+                    }),
+                    span: Span::new(17, 26),
+                }),
+                span: Span::new(0, 26),
+            }),
+            span: Span::new(0, 26),
+        };
+
+        let result = ExpressionChecker::check_expression(&mut context, &pipe_maybe_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Option or Maybe type");
+                assert_eq!(found, "Outrun.Core.Integer64");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
     }
 }
