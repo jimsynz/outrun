@@ -9,11 +9,12 @@
 - ✅ Full AST with type annotations, patterns, expressions
 - ✅ All language features parsed (traits, structs, functions, etc.)
 - ✅ **Phase 1 Complete**: Type system foundation with interning, concrete types, and CLI integration
-- ✅ **57 passing typechecker tests** with comprehensive error system
+- ✅ **63 passing typechecker tests** with comprehensive error system
 - ✅ **Working typecheck CLI command** with beautiful error reporting
 - ✅ **Core expression type checking**: literals, binary ops, identifiers, basic function calls
+- ✅ **Collection type checking**: Lists, tuples, maps with homogeneous/heterogeneous typing
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
-- ⏳ **Phase 2 In Progress**: Expression type checking foundation complete, expanding to collections and control flow
+- ⏳ **Phase 2 In Progress**: Core expression types complete, expanding to control flow and advanced features
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -89,8 +90,8 @@
 - [✅] Implement literal type checking (integers, strings, atoms, etc.)
 - [✅] Add binary operation type checking with trait dispatch
 - [✅] Implement function call parameter validation (basic framework)
+- [✅] Handle collection type checking (lists, maps, tuples)
 - [ ] Add struct literal field validation
-- [ ] Handle collection type checking (lists, maps, tuples)
 - [ ] Add if/case expression type checking with branch validation
 - [ ] Implement let binding type checking and scope updates
 
@@ -100,6 +101,7 @@
 - [✅] Clear error messages for type mismatches
 - [✅] Full qualified type names (`Outrun.Core.*`) for built-in types
 - [✅] Integration with main TypeChecker pipeline
+- [✅] Collection type checking with homogeneous lists, heterogeneous tuples, typed maps
 
 ### 2.3 Pattern Type Checking
 **Goal**: Validate destructuring patterns match their target types
@@ -272,9 +274,10 @@
 
 ### Phase 2 Success
 - [✅] **Core expression type checking** works for literals, binary ops, identifiers, basic function calls
+- [✅] **Collection type checking** for lists, maps, tuples with proper generic type syntax
 - [✅] **Built-in type system** uses proper `Outrun.Core.*` namespace
 - [✅] **Type error reporting** with clear messages and source spans
-- [ ] Collection type checking (lists, maps, tuples)
+- [✅] **Homogeneous/heterogeneous typing** - lists require same type, tuples allow different types
 - [ ] Control flow expression type checking (if/case)
 - [ ] Let binding type checking with scope updates
 - [ ] Pattern matching validation handles all pattern types

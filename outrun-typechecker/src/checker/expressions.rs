@@ -9,6 +9,7 @@
 // use crate::types::{TypeId, ConcreteType}; // TODO: Use when needed
 use crate::checker::{TypeContext, TypedExpression, TypedExpressionKind};
 use crate::error::{TypeError, TypeResult};
+use crate::types::TypeId;
 use outrun_parser::{Expression, ExpressionKind};
 
 /// Expression type checker
@@ -36,15 +37,14 @@ impl ExpressionChecker {
             ExpressionKind::Atom(atom_lit) => {
                 Self::check_atom_literal(context, atom_lit, expr.span)
             }
-            ExpressionKind::Identifier(ident) => {
-                Self::check_identifier(context, ident)
-            }
+            ExpressionKind::Identifier(ident) => Self::check_identifier(context, ident),
             ExpressionKind::BinaryOp(bin_op) => {
                 Self::check_binary_operation(context, &bin_op.left, &bin_op.operator, &bin_op.right)
             }
-            ExpressionKind::FunctionCall(call) => {
-                Self::check_function_call(context, call)
-            }
+            ExpressionKind::FunctionCall(call) => Self::check_function_call(context, call),
+            ExpressionKind::List(list_lit) => Self::check_list_literal(context, list_lit),
+            ExpressionKind::Tuple(tuple_lit) => Self::check_tuple_literal(context, tuple_lit),
+            ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
             _ => {
                 // TODO: Implement other expression types
                 Err(TypeError::UnimplementedFeature {
@@ -193,16 +193,22 @@ impl ExpressionChecker {
                 // Check operands are the same numeric type
                 if typed_left.type_id != typed_right.type_id {
                     return Err(TypeError::type_mismatch(
-                        context.get_type_name(typed_left.type_id).unwrap_or("Unknown").to_string(),
-                        context.get_type_name(typed_right.type_id).unwrap_or("Unknown").to_string(),
+                        context
+                            .get_type_name(typed_left.type_id)
+                            .unwrap_or("Unknown")
+                            .to_string(),
+                        context
+                            .get_type_name(typed_right.type_id)
+                            .unwrap_or("Unknown")
+                            .to_string(),
                         crate::error::span_to_source_span(right.span),
                     ));
                 }
-                
+
                 // TODO: Validate types support the operation via traits
                 typed_left.type_id
             }
-            
+
             // Comparison operations - return Boolean
             outrun_parser::BinaryOperator::Equal
             | outrun_parser::BinaryOperator::NotEqual
@@ -213,7 +219,7 @@ impl ExpressionChecker {
                 // TODO: Validate types support comparison via traits
                 context.interner.intern_type("Outrun.Core.Boolean")
             }
-            
+
             // Logical operations - require Boolean operands, return Boolean
             outrun_parser::BinaryOperator::LogicalAnd
             | outrun_parser::BinaryOperator::LogicalOr => {
@@ -221,12 +227,19 @@ impl ExpressionChecker {
                 if typed_left.type_id != bool_type || typed_right.type_id != bool_type {
                     return Err(TypeError::type_mismatch(
                         "Outrun.Core.Boolean".to_string(),
-                        context.get_type_name(
-                            if typed_left.type_id != bool_type { typed_left.type_id } else { typed_right.type_id }
-                        ).unwrap_or("Unknown").to_string(),
-                        crate::error::span_to_source_span(
-                            if typed_left.type_id != bool_type { left.span } else { right.span }
-                        ),
+                        context
+                            .get_type_name(if typed_left.type_id != bool_type {
+                                typed_left.type_id
+                            } else {
+                                typed_right.type_id
+                            })
+                            .unwrap_or("Unknown")
+                            .to_string(),
+                        crate::error::span_to_source_span(if typed_left.type_id != bool_type {
+                            left.span
+                        } else {
+                            right.span
+                        }),
                     ));
                 }
                 bool_type
@@ -285,23 +298,26 @@ impl ExpressionChecker {
 
         // Type check arguments
         let mut typed_args = Vec::new();
-        
+
         for arg in &call.arguments {
             match arg {
-                outrun_parser::Argument::Named { name, expression, format, span } => {
-                    match format {
-                        outrun_parser::ArgumentFormat::Explicit => {
-                            let typed_expr = Self::check_expression(context, expression)?;
-                            typed_args.push((name.name.clone(), typed_expr));
-                        }
-                        outrun_parser::ArgumentFormat::Shorthand => {
-                            return Err(TypeError::UnimplementedFeature {
-                                feature: "Shorthand function arguments".to_string(),
-                                span: crate::error::span_to_source_span(*span),
-                            });
-                        }
+                outrun_parser::Argument::Named {
+                    name,
+                    expression,
+                    format,
+                    span,
+                } => match format {
+                    outrun_parser::ArgumentFormat::Explicit => {
+                        let typed_expr = Self::check_expression(context, expression)?;
+                        typed_args.push((name.name.clone(), typed_expr));
                     }
-                }
+                    outrun_parser::ArgumentFormat::Shorthand => {
+                        return Err(TypeError::UnimplementedFeature {
+                            feature: "Shorthand function arguments".to_string(),
+                            span: crate::error::span_to_source_span(*span),
+                        });
+                    }
+                },
                 outrun_parser::Argument::Spread { span, .. } => {
                     return Err(TypeError::UnimplementedFeature {
                         feature: "Spread function arguments".to_string(),
@@ -323,13 +339,277 @@ impl ExpressionChecker {
             span: call.span,
         })
     }
+
+    /// Type check list literal
+    fn check_list_literal(
+        context: &mut TypeContext,
+        list_lit: &outrun_parser::ListLiteral,
+    ) -> TypeResult<TypedExpression> {
+        let mut typed_elements = Vec::new();
+        let mut element_type: Option<TypeId> = None;
+
+        // Process each list element
+        for list_element in &list_lit.elements {
+            match list_element {
+                outrun_parser::ListElement::Expression(expr) => {
+                    let typed_expr = Self::check_expression(context, expr)?;
+
+                    // For homogeneous lists, all elements must be the same type
+                    match element_type {
+                        None => {
+                            // First element establishes the type
+                            element_type = Some(typed_expr.type_id);
+                        }
+                        Some(expected_type) => {
+                            // Subsequent elements must match
+                            if typed_expr.type_id != expected_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    context
+                                        .get_type_name(typed_expr.type_id)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    crate::error::span_to_source_span(expr.span),
+                                ));
+                            }
+                        }
+                    }
+
+                    typed_elements.push(typed_expr);
+                }
+                outrun_parser::ListElement::Spread(_) => {
+                    return Err(TypeError::UnimplementedFeature {
+                        feature: "List spread operator".to_string(),
+                        span: crate::error::span_to_source_span(list_lit.span),
+                    });
+                }
+            }
+        }
+
+        // Determine final list type
+        let final_element_type = element_type.unwrap_or_else(|| {
+            // Empty list - use a generic unknown type for now
+            // TODO: In the future, this could be inferred from context
+            context.interner.intern_type("Unknown")
+        });
+
+        // Create the list type: Outrun.Core.List<ElementType>
+        // For now, we'll just intern it as a string until we have proper generic support
+        let element_type_name = context
+            .get_type_name(final_element_type)
+            .unwrap_or("Unknown");
+        let list_type_name = format!("Outrun.Core.List<{}>", element_type_name);
+        let list_type_id = context.interner.intern_type(&list_type_name);
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::List {
+                elements: typed_elements,
+                element_type: final_element_type,
+            },
+            type_id: list_type_id,
+            span: list_lit.span,
+        })
+    }
+
+    /// Type check tuple literal
+    fn check_tuple_literal(
+        context: &mut TypeContext,
+        tuple_lit: &outrun_parser::TupleLiteral,
+    ) -> TypeResult<TypedExpression> {
+        let mut typed_elements = Vec::new();
+        let mut element_types = Vec::new();
+
+        // Type check each tuple element
+        for expr in &tuple_lit.elements {
+            let typed_expr = Self::check_expression(context, expr)?;
+            element_types.push(typed_expr.type_id);
+            typed_elements.push(typed_expr);
+        }
+
+        // Create the tuple type: Outrun.Core.Tuple<T1, T2, ...>
+        let type_names: Vec<String> = element_types
+            .iter()
+            .map(|&type_id| {
+                context
+                    .get_type_name(type_id)
+                    .unwrap_or("Unknown")
+                    .to_string()
+            })
+            .collect();
+        let tuple_type_name = if type_names.is_empty() {
+            "Outrun.Core.Tuple<>".to_string()
+        } else {
+            format!("Outrun.Core.Tuple<{}>", type_names.join(", "))
+        };
+        let tuple_type_id = context.interner.intern_type(&tuple_type_name);
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::Tuple {
+                elements: typed_elements,
+                element_types,
+            },
+            type_id: tuple_type_id,
+            span: tuple_lit.span,
+        })
+    }
+
+    /// Type check map literal
+    fn check_map_literal(
+        context: &mut TypeContext,
+        map_lit: &outrun_parser::MapLiteral,
+    ) -> TypeResult<TypedExpression> {
+        let mut typed_entries = Vec::new();
+        let mut key_type: Option<TypeId> = None;
+        let mut value_type: Option<TypeId> = None;
+
+        // Process each map entry
+        for entry in &map_lit.entries {
+            match entry {
+                outrun_parser::MapEntry::Assignment { key, value } => {
+                    let typed_key = Self::check_expression(context, key)?;
+                    let typed_value = Self::check_expression(context, value)?;
+
+                    // For homogeneous maps, all keys must be the same type and all values must be the same type
+                    match key_type {
+                        None => {
+                            key_type = Some(typed_key.type_id);
+                        }
+                        Some(expected_key_type) => {
+                            if typed_key.type_id != expected_key_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_key_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    context
+                                        .get_type_name(typed_key.type_id)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    crate::error::span_to_source_span(key.span),
+                                ));
+                            }
+                        }
+                    }
+
+                    match value_type {
+                        None => {
+                            value_type = Some(typed_value.type_id);
+                        }
+                        Some(expected_value_type) => {
+                            if typed_value.type_id != expected_value_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_value_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    context
+                                        .get_type_name(typed_value.type_id)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    crate::error::span_to_source_span(value.span),
+                                ));
+                            }
+                        }
+                    }
+
+                    typed_entries.push((typed_key, typed_value));
+                }
+                outrun_parser::MapEntry::Shorthand { name, value } => {
+                    // Shorthand syntax {name: value} - name becomes an atom key
+                    let atom_type_id = context.interner.intern_type("Outrun.Core.Atom");
+                    let typed_key = TypedExpression {
+                        kind: TypedExpressionKind::Atom(name.name.clone()),
+                        type_id: atom_type_id,
+                        span: name.span,
+                    };
+                    let typed_value = Self::check_expression(context, value)?;
+
+                    // Check key type consistency
+                    match key_type {
+                        None => {
+                            key_type = Some(atom_type_id);
+                        }
+                        Some(expected_key_type) => {
+                            if atom_type_id != expected_key_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_key_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    "Outrun.Core.Atom".to_string(),
+                                    crate::error::span_to_source_span(name.span),
+                                ));
+                            }
+                        }
+                    }
+
+                    // Check value type consistency
+                    match value_type {
+                        None => {
+                            value_type = Some(typed_value.type_id);
+                        }
+                        Some(expected_value_type) => {
+                            if typed_value.type_id != expected_value_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_value_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    context
+                                        .get_type_name(typed_value.type_id)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    crate::error::span_to_source_span(value.span),
+                                ));
+                            }
+                        }
+                    }
+
+                    typed_entries.push((typed_key, typed_value));
+                }
+                outrun_parser::MapEntry::Spread(_) => {
+                    return Err(TypeError::UnimplementedFeature {
+                        feature: "Map spread operator".to_string(),
+                        span: crate::error::span_to_source_span(map_lit.span),
+                    });
+                }
+            }
+        }
+
+        // Determine final map types
+        let final_key_type = key_type.unwrap_or_else(|| {
+            // Empty map - use unknown types for now
+            context.interner.intern_type("Unknown")
+        });
+        let final_value_type =
+            value_type.unwrap_or_else(|| context.interner.intern_type("Unknown"));
+
+        // Create the map type: Outrun.Core.Map<KeyType, ValueType>
+        let key_type_name = context.get_type_name(final_key_type).unwrap_or("Unknown");
+        let value_type_name = context.get_type_name(final_value_type).unwrap_or("Unknown");
+        let map_type_name = format!("Outrun.Core.Map<{}, {}>", key_type_name, value_type_name);
+        let map_type_id = context.interner.intern_type(&map_type_name);
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::Map {
+                entries: typed_entries,
+                key_type: final_key_type,
+                value_type: final_value_type,
+            },
+            type_id: map_type_id,
+            span: map_lit.span,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use outrun_parser::{
-        AtomFormat, AtomLiteral, BooleanLiteral, FloatFormat, FloatLiteral, Identifier,
+        AtomFormat, AtomLiteral, BooleanLiteral, Expression, FloatFormat, FloatLiteral, Identifier,
         IntegerFormat, IntegerLiteral, Span, StringFormat, StringLiteral, StringPart,
     };
 
@@ -471,7 +751,7 @@ mod tests {
     fn test_identifier_type_checking_success() {
         let mut context = TypeContext::new();
         context.push_scope(false);
-        
+
         // Register a variable in scope
         let var_type = context.interner.intern_type("Outrun.Core.Integer64");
         let variable = crate::checker::context::Variable {
@@ -519,5 +799,360 @@ mod tests {
             }
             _ => panic!("Expected UndefinedVariable error"),
         }
+    }
+
+    #[test]
+    fn test_homogeneous_list_type_checking() {
+        let mut context = TypeContext::new();
+
+        // Create a list literal [42, 24, 66]
+        let list_lit = outrun_parser::ListLiteral {
+            elements: vec![
+                outrun_parser::ListElement::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                        value: 42,
+                        format: IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                })),
+                outrun_parser::ListElement::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                        value: 24,
+                        format: IntegerFormat::Decimal,
+                        span: Span::new(4, 6),
+                    }),
+                    span: Span::new(4, 6),
+                })),
+                outrun_parser::ListElement::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                        value: 66,
+                        format: IntegerFormat::Decimal,
+                        span: Span::new(8, 10),
+                    }),
+                    span: Span::new(8, 10),
+                })),
+            ],
+            span: Span::new(0, 11),
+        };
+
+        let result = ExpressionChecker::check_list_literal(&mut context, &list_lit);
+
+        assert!(result.is_ok());
+        let typed_expr = result.unwrap();
+
+        match typed_expr.kind {
+            TypedExpressionKind::List {
+                elements,
+                element_type,
+            } => {
+                assert_eq!(elements.len(), 3);
+                // Should be Outrun.Core.Integer64 element type
+                let type_name = context.get_type_name(element_type);
+                assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+            }
+            _ => panic!("Expected list expression"),
+        }
+
+        // Should be Outrun.Core.List<Outrun.Core.Integer64> type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.List<Outrun.Core.Integer64>"));
+    }
+
+    #[test]
+    fn test_heterogeneous_list_type_error() {
+        let mut context = TypeContext::new();
+
+        // Create a list literal [42, "hello"] - should fail type checking
+        let list_lit = outrun_parser::ListLiteral {
+            elements: vec![
+                outrun_parser::ListElement::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                        value: 42,
+                        format: IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                })),
+                outrun_parser::ListElement::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::String(StringLiteral {
+                        parts: vec![StringPart::Text {
+                            content: "hello".to_string(),
+                            raw_content: "hello".to_string(),
+                        }],
+                        format: StringFormat::Basic,
+                        span: Span::new(4, 11),
+                    }),
+                    span: Span::new(4, 11),
+                })),
+            ],
+            span: Span::new(0, 12),
+        };
+
+        let result = ExpressionChecker::check_list_literal(&mut context, &list_lit);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.Integer64");
+                assert_eq!(found, "Outrun.Core.String");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_tuple_type_checking() {
+        let mut context = TypeContext::new();
+
+        // Create a tuple literal (42, "hello", true)
+        let tuple_lit = outrun_parser::TupleLiteral {
+            elements: vec![
+                Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                        value: 42,
+                        format: IntegerFormat::Decimal,
+                        span: Span::new(0, 2),
+                    }),
+                    span: Span::new(0, 2),
+                },
+                Expression {
+                    kind: outrun_parser::ExpressionKind::String(StringLiteral {
+                        parts: vec![StringPart::Text {
+                            content: "hello".to_string(),
+                            raw_content: "hello".to_string(),
+                        }],
+                        format: StringFormat::Basic,
+                        span: Span::new(4, 11),
+                    }),
+                    span: Span::new(4, 11),
+                },
+                Expression {
+                    kind: outrun_parser::ExpressionKind::Boolean(BooleanLiteral {
+                        value: true,
+                        span: Span::new(13, 17),
+                    }),
+                    span: Span::new(13, 17),
+                },
+            ],
+            span: Span::new(0, 18),
+        };
+
+        let result = ExpressionChecker::check_tuple_literal(&mut context, &tuple_lit);
+
+        assert!(result.is_ok());
+        let typed_expr = result.unwrap();
+
+        match typed_expr.kind {
+            TypedExpressionKind::Tuple {
+                elements,
+                element_types,
+            } => {
+                assert_eq!(elements.len(), 3);
+                assert_eq!(element_types.len(), 3);
+
+                // Check each element type
+                let type_names: Vec<String> = element_types
+                    .iter()
+                    .map(|&type_id| context.get_type_name(type_id).unwrap().to_string())
+                    .collect();
+
+                assert_eq!(
+                    type_names,
+                    vec![
+                        "Outrun.Core.Integer64",
+                        "Outrun.Core.String",
+                        "Outrun.Core.Boolean"
+                    ]
+                );
+            }
+            _ => panic!("Expected tuple expression"),
+        }
+
+        // Should be Outrun.Core.Tuple<...> type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(
+            type_name,
+            Some(
+                "Outrun.Core.Tuple<Outrun.Core.Integer64, Outrun.Core.String, Outrun.Core.Boolean>"
+            )
+        );
+    }
+
+    #[test]
+    fn test_map_explicit_syntax_type_checking() {
+        let mut context = TypeContext::new();
+
+        // Create a map literal {"key1" => 42, "key2" => 24}
+        let map_lit = outrun_parser::MapLiteral {
+            entries: vec![
+                outrun_parser::MapEntry::Assignment {
+                    key: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text {
+                                content: "key1".to_string(),
+                                raw_content: "key1".to_string(),
+                            }],
+                            format: StringFormat::Basic,
+                            span: Span::new(0, 6),
+                        }),
+                        span: Span::new(0, 6),
+                    }),
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                            value: 42,
+                            format: IntegerFormat::Decimal,
+                            span: Span::new(10, 12),
+                        }),
+                        span: Span::new(10, 12),
+                    }),
+                },
+                outrun_parser::MapEntry::Assignment {
+                    key: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text {
+                                content: "key2".to_string(),
+                                raw_content: "key2".to_string(),
+                            }],
+                            format: StringFormat::Basic,
+                            span: Span::new(14, 20),
+                        }),
+                        span: Span::new(14, 20),
+                    }),
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                            value: 24,
+                            format: IntegerFormat::Decimal,
+                            span: Span::new(24, 26),
+                        }),
+                        span: Span::new(24, 26),
+                    }),
+                },
+            ],
+            span: Span::new(0, 27),
+        };
+
+        let result = ExpressionChecker::check_map_literal(&mut context, &map_lit);
+
+        assert!(result.is_ok());
+        let typed_expr = result.unwrap();
+
+        match typed_expr.kind {
+            TypedExpressionKind::Map {
+                entries,
+                key_type,
+                value_type,
+            } => {
+                assert_eq!(entries.len(), 2);
+
+                // Check key and value types
+                let key_type_name = context.get_type_name(key_type);
+                let value_type_name = context.get_type_name(value_type);
+                assert_eq!(key_type_name, Some("Outrun.Core.String"));
+                assert_eq!(value_type_name, Some("Outrun.Core.Integer64"));
+            }
+            _ => panic!("Expected map expression"),
+        }
+
+        // Should be Outrun.Core.Map<...> type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(
+            type_name,
+            Some("Outrun.Core.Map<Outrun.Core.String, Outrun.Core.Integer64>")
+        );
+    }
+
+    #[test]
+    fn test_map_shorthand_syntax_type_checking() {
+        let mut context = TypeContext::new();
+
+        // Create a map literal {name: "Alice", age: 30} - shorthand syntax
+        let map_lit = outrun_parser::MapLiteral {
+            entries: vec![
+                outrun_parser::MapEntry::Shorthand {
+                    name: Identifier {
+                        name: "name".to_string(),
+                        span: Span::new(0, 4),
+                    },
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text {
+                                content: "Alice".to_string(),
+                                raw_content: "Alice".to_string(),
+                            }],
+                            format: StringFormat::Basic,
+                            span: Span::new(6, 13),
+                        }),
+                        span: Span::new(6, 13),
+                    }),
+                },
+                outrun_parser::MapEntry::Shorthand {
+                    name: Identifier {
+                        name: "age".to_string(),
+                        span: Span::new(15, 18),
+                    },
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(IntegerLiteral {
+                            value: 30,
+                            format: IntegerFormat::Decimal,
+                            span: Span::new(20, 22),
+                        }),
+                        span: Span::new(20, 22),
+                    }),
+                },
+            ],
+            span: Span::new(0, 23),
+        };
+
+        let result = ExpressionChecker::check_map_literal(&mut context, &map_lit);
+
+        assert!(result.is_err());
+        // Should fail because heterogeneous values (String vs Integer64)
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.String");
+                assert_eq!(found, "Outrun.Core.Integer64");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_empty_collections() {
+        let mut context = TypeContext::new();
+
+        // Test empty list
+        let empty_list = outrun_parser::ListLiteral {
+            elements: vec![],
+            span: Span::new(0, 2),
+        };
+        let result = ExpressionChecker::check_list_literal(&mut context, &empty_list);
+        assert!(result.is_ok());
+        let list_type_name = context.get_type_name(result.unwrap().type_id);
+        assert_eq!(list_type_name, Some("Outrun.Core.List<Unknown>"));
+
+        // Test empty tuple
+        let empty_tuple = outrun_parser::TupleLiteral {
+            elements: vec![],
+            span: Span::new(0, 2),
+        };
+        let result = ExpressionChecker::check_tuple_literal(&mut context, &empty_tuple);
+        assert!(result.is_ok());
+        let tuple_type_name = context.get_type_name(result.unwrap().type_id);
+        assert_eq!(tuple_type_name, Some("Outrun.Core.Tuple<>"));
+
+        // Test empty map
+        let empty_map = outrun_parser::MapLiteral {
+            entries: vec![],
+            span: Span::new(0, 2),
+        };
+        let result = ExpressionChecker::check_map_literal(&mut context, &empty_map);
+        assert!(result.is_ok());
+        let map_type_name = context.get_type_name(result.unwrap().type_id);
+        assert_eq!(map_type_name, Some("Outrun.Core.Map<Unknown, Unknown>"));
     }
 }

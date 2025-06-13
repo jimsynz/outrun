@@ -81,6 +81,19 @@ pub enum TypedExpressionKind {
         name: String,
         args: Vec<(String, TypedExpression)>, // Named arguments
     },
+    List {
+        elements: Vec<TypedExpression>,
+        element_type: TypeId, // Homogeneous type for all elements
+    },
+    Tuple {
+        elements: Vec<TypedExpression>,
+        element_types: Vec<TypeId>, // Each element can have different type
+    },
+    Map {
+        entries: Vec<(TypedExpression, TypedExpression)>, // (key, value) pairs
+        key_type: TypeId,
+        value_type: TypeId,
+    },
     // TODO: Add all expression kinds with type information
 }
 
@@ -199,7 +212,7 @@ impl TypeChecker {
     fn check_items(&mut self, program: &Program) -> Result<Vec<TypedItem>, Vec<TypeError>> {
         let mut typed_items = Vec::new();
         let mut errors = Vec::new();
-        
+
         // Process each item in the program
         for item in &program.items {
             match &item.kind {
@@ -276,27 +289,27 @@ impl TypeChecker {
                         Err(err) => errors.push(err),
                     }
                 }
-                
+
                 // Handle all the literal and identifier variants that can appear at top level
-                outrun_parser::ItemKind::Keyword(_) |
-                outrun_parser::ItemKind::BooleanLiteral(_) |
-                outrun_parser::ItemKind::IntegerLiteral(_) |
-                outrun_parser::ItemKind::FloatLiteral(_) |
-                outrun_parser::ItemKind::StringLiteral(_) |
-                outrun_parser::ItemKind::AtomLiteral(_) |
-                outrun_parser::ItemKind::SigilLiteral(_) |
-                outrun_parser::ItemKind::ListLiteral(_) |
-                outrun_parser::ItemKind::MapLiteral(_) |
-                outrun_parser::ItemKind::TupleLiteral(_) |
-                outrun_parser::ItemKind::Identifier(_) |
-                outrun_parser::ItemKind::TypeIdentifier(_) |
-                outrun_parser::ItemKind::Comment(_) => {
+                outrun_parser::ItemKind::Keyword(_)
+                | outrun_parser::ItemKind::BooleanLiteral(_)
+                | outrun_parser::ItemKind::IntegerLiteral(_)
+                | outrun_parser::ItemKind::FloatLiteral(_)
+                | outrun_parser::ItemKind::StringLiteral(_)
+                | outrun_parser::ItemKind::AtomLiteral(_)
+                | outrun_parser::ItemKind::SigilLiteral(_)
+                | outrun_parser::ItemKind::ListLiteral(_)
+                | outrun_parser::ItemKind::MapLiteral(_)
+                | outrun_parser::ItemKind::TupleLiteral(_)
+                | outrun_parser::ItemKind::Identifier(_)
+                | outrun_parser::ItemKind::TypeIdentifier(_)
+                | outrun_parser::ItemKind::Comment(_) => {
                     // These are typically not standalone items but part of expressions
                     // Skip them for now, as they should be processed as part of other constructs
                 }
             }
         }
-        
+
         if errors.is_empty() {
             Ok(typed_items)
         } else {
@@ -305,17 +318,20 @@ impl TypeChecker {
     }
 
     /// Type check a function definition
-    fn check_function_definition(&mut self, func: &outrun_parser::FunctionDefinition) -> Result<TypedItem, TypeError> {
+    fn check_function_definition(
+        &mut self,
+        func: &outrun_parser::FunctionDefinition,
+    ) -> Result<TypedItem, TypeError> {
         // Create a new scope for function parameters
         self.context.push_scope(true);
-        
+
         // Register function parameters as variables in the new scope
         let mut typed_params = Vec::new();
         for param in &func.parameters {
             // TODO: Validate parameter type exists
             let param_type = self.context.interner.intern_type("Unknown"); // Stub for now
             typed_params.push((param.name.name.clone(), param_type));
-            
+
             // Register parameter as variable
             let variable = crate::checker::context::Variable {
                 name: param.name.name.clone(),
@@ -325,7 +341,7 @@ impl TypeChecker {
             };
             self.context.register_variable(variable)?;
         }
-        
+
         // Type check function body (blocks are not yet supported, so we'll create a stub)
         // TODO: Implement block type checking
         let typed_body = TypedExpression {
@@ -333,13 +349,13 @@ impl TypeChecker {
             type_id: self.context.interner.intern_type("Unknown"),
             span: func.body.span,
         };
-        
+
         // TODO: Validate return type matches body type
         let return_type = self.context.interner.intern_type("Unknown"); // Stub for now
-        
+
         // Pop function scope
         self.context.pop_scope();
-        
+
         Ok(TypedItem {
             kind: TypedItemKind::FunctionDefinition(TypedFunctionDefinition {
                 name: func.name.name.clone(),
@@ -353,12 +369,16 @@ impl TypeChecker {
     }
 
     /// Type check a const definition
-    fn check_const_definition(&mut self, const_def: &outrun_parser::ConstDefinition) -> Result<TypedItem, TypeError> {
+    fn check_const_definition(
+        &mut self,
+        const_def: &outrun_parser::ConstDefinition,
+    ) -> Result<TypedItem, TypeError> {
         // Type check the constant value
-        let typed_value = ExpressionChecker::check_expression(&mut self.context, &const_def.expression)?;
-        
+        let typed_value =
+            ExpressionChecker::check_expression(&mut self.context, &const_def.expression)?;
+
         // TODO: Validate explicit type annotation if present
-        
+
         Ok(TypedItem {
             kind: TypedItemKind::ConstDefinition(TypedConstDefinition {
                 name: const_def.name.name.clone(),
