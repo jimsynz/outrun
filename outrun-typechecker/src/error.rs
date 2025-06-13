@@ -363,6 +363,14 @@ impl TypeError {
             found,
         }
     }
+
+    /// Create an internal error (for debugging type checker issues)
+    pub fn internal(message: String) -> Self {
+        Self::InternalError {
+            message,
+            span: SourceSpan::from(0..0), // Use empty span for internal errors
+        }
+    }
 }
 
 /// Convert outrun_parser::Span to miette::SourceSpan
