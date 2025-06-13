@@ -1,0 +1,24 @@
+[package]
+name = "outrun-typechecker"
+version = "0.1.0"
+edition = "2021"
+description = "Static type checker for the Outrun programming language"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Type system and interning
+string-interner = "0.17"
+
+# Error handling and reporting
+miette = { version = "7.0", features = ["fancy", "syntect-highlighter"] }
+thiserror = "2.0"
+
+# Parser integration
+outrun-parser = { path = "../outrun-parser" }
+
+# Utilities
+indexmap = "2.0"
+
+[dev-dependencies]
+# Testing utilities
+pretty_assertions = "1.4"

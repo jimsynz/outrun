@@ -1,0 +1,338 @@
+//! Trait system definitions and implementation tracking
+//!
+//! This module handles trait definitions, implementations, and the complex
+//! trait constraint system that powers Outrun's "everything is traits" philosophy.
+
+use super::{AtomId, TraitId, TypeId};
+use outrun_parser::Span;
+use std::collections::HashMap;
+
+/// A trait definition with functions and constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitDefinition {
+    pub id: TraitId,
+    pub name: String,
+    pub functions: Vec<TraitFunction>,
+    pub generic_params: Vec<TypeId>,
+    pub constraints: Vec<TraitConstraint>,
+    pub span: Span,
+}
+
+/// Function definition within a trait
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitFunction {
+    pub name: AtomId,
+    pub params: Vec<(AtomId, TypeId)>,
+    pub return_type: TypeId,
+    pub is_guard: bool,
+    pub span: Span,
+}
+
+/// Trait constraint (e.g., T: Display && T: Debug)
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitConstraint {
+    pub type_param: TypeId,
+    pub required_traits: Vec<TraitId>,
+    pub span: Span,
+}
+
+/// Implementation of a trait for a specific type
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitImplementation {
+    pub trait_id: TraitId,
+    pub type_id: TypeId,
+    pub functions: HashMap<AtomId, FunctionId>,
+    pub generic_params: Vec<TypeId>,
+    pub constraints: Vec<TraitConstraint>,
+    pub span: Span,
+}
+
+/// Unique identifier for function implementations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FunctionId(pub u32);
+
+impl TraitDefinition {
+    /// Create a new trait definition
+    pub fn new(id: TraitId, name: String, functions: Vec<TraitFunction>, span: Span) -> Self {
+        Self {
+            id,
+            name,
+            functions,
+            generic_params: Vec::new(),
+            constraints: Vec::new(),
+            span,
+        }
+    }
+
+    /// Add a generic parameter to this trait
+    pub fn add_generic_param(&mut self, param: TypeId) {
+        self.generic_params.push(param);
+    }
+
+    /// Add a constraint to this trait
+    pub fn add_constraint(&mut self, constraint: TraitConstraint) {
+        self.constraints.push(constraint);
+    }
+
+    /// Find a function by name in this trait
+    pub fn find_function(&self, name: AtomId) -> Option<&TraitFunction> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+
+    /// Check if this trait has any generic parameters
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+}
+
+impl TraitFunction {
+    /// Create a new trait function
+    pub fn new(
+        name: AtomId,
+        params: Vec<(AtomId, TypeId)>,
+        return_type: TypeId,
+        is_guard: bool,
+        span: Span,
+    ) -> Self {
+        Self {
+            name,
+            params,
+            return_type,
+            is_guard,
+            span,
+        }
+    }
+
+    /// Check if this function is a guard function (name ends with '?')
+    pub fn is_guard_function(&self) -> bool {
+        self.is_guard
+    }
+
+    /// Get the number of parameters
+    pub fn arity(&self) -> usize {
+        self.params.len()
+    }
+}
+
+impl TraitImplementation {
+    /// Create a new trait implementation
+    pub fn new(
+        trait_id: TraitId,
+        type_id: TypeId,
+        functions: HashMap<AtomId, FunctionId>,
+        span: Span,
+    ) -> Self {
+        Self {
+            trait_id,
+            type_id,
+            functions,
+            generic_params: Vec::new(),
+            constraints: Vec::new(),
+            span,
+        }
+    }
+
+    /// Check if this implementation provides a specific function
+    pub fn implements_function(&self, name: AtomId) -> bool {
+        self.functions.contains_key(&name)
+    }
+
+    /// Get the function ID for a specific function name
+    pub fn get_function_id(&self, name: AtomId) -> Option<FunctionId> {
+        self.functions.get(&name).copied()
+    }
+
+    /// Add a function implementation
+    pub fn add_function(&mut self, name: AtomId, function_id: FunctionId) {
+        self.functions.insert(name, function_id);
+    }
+}
+
+impl TraitConstraint {
+    /// Create a new trait constraint
+    pub fn new(type_param: TypeId, required_traits: Vec<TraitId>, span: Span) -> Self {
+        Self {
+            type_param,
+            required_traits,
+            span,
+        }
+    }
+
+    /// Check if this constraint requires a specific trait
+    pub fn requires_trait(&self, trait_id: TraitId) -> bool {
+        self.required_traits.contains(&trait_id)
+    }
+}
+
+/// Trait registry for managing all trait definitions and implementations
+#[derive(Debug, Default, Clone)]
+pub struct TraitRegistry {
+    definitions: HashMap<TraitId, TraitDefinition>,
+    implementations: HashMap<(TraitId, TypeId), TraitImplementation>,
+    next_function_id: u32,
+}
+
+impl TraitRegistry {
+    /// Create a new empty trait registry
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a trait definition
+    pub fn register_trait(&mut self, definition: TraitDefinition) {
+        self.definitions.insert(definition.id, definition);
+    }
+
+    /// Register a trait implementation
+    pub fn register_implementation(&mut self, implementation: TraitImplementation) {
+        let key = (implementation.trait_id, implementation.type_id);
+        self.implementations.insert(key, implementation);
+    }
+
+    /// Get a trait definition by ID
+    pub fn get_trait(&self, trait_id: TraitId) -> Option<&TraitDefinition> {
+        self.definitions.get(&trait_id)
+    }
+
+    /// Get a trait implementation
+    pub fn get_implementation(
+        &self,
+        trait_id: TraitId,
+        type_id: TypeId,
+    ) -> Option<&TraitImplementation> {
+        self.implementations.get(&(trait_id, type_id))
+    }
+
+    /// Check if a type implements a trait
+    pub fn implements_trait(&self, type_id: TypeId, trait_id: TraitId) -> bool {
+        self.implementations.contains_key(&(trait_id, type_id))
+    }
+
+    /// Generate a new unique function ID
+    pub fn next_function_id(&mut self) -> FunctionId {
+        let id = FunctionId(self.next_function_id);
+        self.next_function_id += 1;
+        id
+    }
+
+    /// Get all implementations of a trait
+    pub fn get_trait_implementations(&self, trait_id: TraitId) -> Vec<&TraitImplementation> {
+        self.implementations
+            .iter()
+            .filter(|((t_id, _), _)| *t_id == trait_id)
+            .map(|(_, impl_)| impl_)
+            .collect()
+    }
+
+    /// Get all traits implemented by a type
+    pub fn get_type_implementations(&self, type_id: TypeId) -> Vec<&TraitImplementation> {
+        self.implementations
+            .iter()
+            .filter(|((_, t_id), _)| *t_id == type_id)
+            .map(|(_, impl_)| impl_)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::TypeInterner;
+
+    fn setup_test_registry() -> (TraitRegistry, TypeInterner, TraitId, TypeId, AtomId) {
+        let registry = TraitRegistry::new();
+        let mut interner = TypeInterner::new();
+
+        let trait_id = interner.intern_trait("Display");
+        let type_id = interner.intern_type("Integer");
+        let func_name = interner.intern_atom("to_string");
+
+        (registry, interner, trait_id, type_id, func_name)
+    }
+
+    #[test]
+    fn test_trait_definition() {
+        let (_, mut interner, trait_id, _, func_name) = setup_test_registry();
+        let return_type = interner.intern_type("String");
+
+        let func = TraitFunction::new(func_name, vec![], return_type, false, Span::new(0, 10));
+
+        let trait_def = TraitDefinition::new(
+            trait_id,
+            "Display".to_string(),
+            vec![func],
+            Span::new(0, 50),
+        );
+
+        assert_eq!(trait_def.id, trait_id);
+        assert_eq!(trait_def.name, "Display");
+        assert_eq!(trait_def.functions.len(), 1);
+        assert!(!trait_def.is_generic());
+        assert!(trait_def.find_function(func_name).is_some());
+    }
+
+    #[test]
+    fn test_trait_implementation() {
+        let (_, _, trait_id, type_id, func_name) = setup_test_registry();
+
+        let mut functions = HashMap::new();
+        let func_id = FunctionId(1);
+        functions.insert(func_name, func_id);
+
+        let impl_ = TraitImplementation::new(trait_id, type_id, functions, Span::new(0, 30));
+
+        assert_eq!(impl_.trait_id, trait_id);
+        assert_eq!(impl_.type_id, type_id);
+        assert!(impl_.implements_function(func_name));
+        assert_eq!(impl_.get_function_id(func_name), Some(func_id));
+    }
+
+    #[test]
+    fn test_trait_registry() {
+        let (mut registry, mut interner, trait_id, type_id, func_name) = setup_test_registry();
+        let return_type = interner.intern_type("String");
+
+        // Register trait definition
+        let func = TraitFunction::new(func_name, vec![], return_type, false, Span::new(0, 10));
+
+        let trait_def = TraitDefinition::new(
+            trait_id,
+            "Display".to_string(),
+            vec![func],
+            Span::new(0, 50),
+        );
+
+        registry.register_trait(trait_def);
+
+        // Register implementation
+        let mut functions = HashMap::new();
+        let func_id = registry.next_function_id();
+        functions.insert(func_name, func_id);
+
+        let impl_ = TraitImplementation::new(trait_id, type_id, functions, Span::new(0, 30));
+
+        registry.register_implementation(impl_);
+
+        // Test lookups
+        assert!(registry.get_trait(trait_id).is_some());
+        assert!(registry.get_implementation(trait_id, type_id).is_some());
+        assert!(registry.implements_trait(type_id, trait_id));
+
+        // Test collections
+        assert_eq!(registry.get_trait_implementations(trait_id).len(), 1);
+        assert_eq!(registry.get_type_implementations(type_id).len(), 1);
+    }
+
+    #[test]
+    fn test_trait_constraint() {
+        let (_, mut interner, trait_id, type_id, _) = setup_test_registry();
+        let debug_trait = interner.intern_trait("Debug");
+
+        let constraint =
+            TraitConstraint::new(type_id, vec![trait_id, debug_trait], Span::new(0, 20));
+
+        assert!(constraint.requires_trait(trait_id));
+        assert!(constraint.requires_trait(debug_trait));
+        assert!(!constraint.requires_trait(interner.intern_trait("Unknown")));
+    }
+}
