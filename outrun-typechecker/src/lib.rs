@@ -9,6 +9,9 @@ pub mod dispatch;
 pub mod error;
 pub mod types;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export core types and functions
 pub use checker::{TypeChecker, TypeContext, TypedProgram};
 pub use dispatch::DispatchTable;
