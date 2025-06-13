@@ -50,7 +50,7 @@ pub enum TypedItemKind {
     Expression(TypedExpression),
     FunctionDefinition(TypedFunctionDefinition),
     ConstDefinition(TypedConstDefinition),
-    LetBinding(TypedLetBinding),
+    LetBinding(Box<TypedLetBinding>),
     StructDefinition(TypedStructDefinition),
     TraitDefinition(TypedTraitDefinition),
     ImplBlock(TypedImplBlock),
@@ -100,7 +100,34 @@ pub enum TypedExpressionKind {
         fields: Vec<(AtomId, TypedExpression)>, // (field_name, typed_value)
         struct_type: TypeId,
     },
+    IfExpression {
+        condition: Box<TypedExpression>,
+        then_block: TypedBlock,
+        else_block: Option<TypedBlock>,
+    },
     // TODO: Add all expression kinds with type information
+}
+
+/// Typed block with statements
+#[derive(Debug, Clone)]
+pub struct TypedBlock {
+    pub statements: Vec<TypedStatement>,
+    pub result_type: TypeId, // Type of the block's result
+    pub span: Span,
+}
+
+/// Typed statement
+#[derive(Debug, Clone)]
+pub struct TypedStatement {
+    pub kind: TypedStatementKind,
+    pub span: Span,
+}
+
+/// Kinds of typed statements
+#[derive(Debug, Clone)]
+pub enum TypedStatementKind {
+    Expression(Box<TypedExpression>),
+    LetBinding(Box<TypedLetBinding>),
 }
 
 /// Typed function definition
@@ -460,12 +487,12 @@ impl TypeChecker {
 
         // Create a typed let binding (we'll represent it as an expression for now)
         Ok(TypedItem {
-            kind: TypedItemKind::LetBinding(TypedLetBinding {
+            kind: TypedItemKind::LetBinding(Box::new(TypedLetBinding {
                 pattern: let_binding.pattern.clone(), // TODO: Create typed pattern
                 type_id: binding_type,
                 expression: typed_expression,
                 span: let_binding.span,
-            }),
+            })),
             span: let_binding.span,
         })
     }

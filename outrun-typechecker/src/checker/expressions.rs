@@ -46,6 +46,7 @@ impl ExpressionChecker {
             ExpressionKind::Tuple(tuple_lit) => Self::check_tuple_literal(context, tuple_lit),
             ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
             ExpressionKind::Struct(struct_lit) => Self::check_struct_literal(context, struct_lit),
+            ExpressionKind::IfExpression(if_expr) => Self::check_if_expression(context, if_expr),
             _ => {
                 // TODO: Implement other expression types
                 Err(TypeError::UnimplementedFeature {
@@ -839,6 +840,208 @@ impl ExpressionChecker {
             },
             type_id: struct_type_id,
             span: struct_lit.span,
+        })
+    }
+
+    /// Type check if expression
+    fn check_if_expression(
+        context: &mut TypeContext,
+        if_expr: &outrun_parser::IfExpression,
+    ) -> TypeResult<TypedExpression> {
+        // Type check the condition - must be Boolean
+        let typed_condition = Self::check_expression(context, &if_expr.condition)?;
+
+        let bool_type = context.interner.intern_type("Outrun.Core.Boolean");
+        if typed_condition.type_id != bool_type {
+            return Err(TypeError::type_mismatch(
+                "Outrun.Core.Boolean".to_string(),
+                context
+                    .get_type_name(typed_condition.type_id)
+                    .unwrap_or("Unknown")
+                    .to_string(),
+                crate::error::span_to_source_span(if_expr.condition.span),
+            ));
+        }
+
+        // Type check the then block
+        let typed_then_block = Self::check_block(context, &if_expr.then_block)?;
+
+        // Type check the optional else block
+        let (typed_else_block, result_type) = if let Some(else_block) = &if_expr.else_block {
+            let typed_else = Self::check_block(context, else_block)?;
+
+            // Both branches must have compatible types
+            if typed_then_block.result_type != typed_else.result_type {
+                return Err(TypeError::type_mismatch(
+                    context
+                        .get_type_name(typed_then_block.result_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    context
+                        .get_type_name(typed_else.result_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    crate::error::span_to_source_span(else_block.span),
+                ));
+            }
+
+            (Some(typed_else), typed_then_block.result_type)
+        } else {
+            // If no else block, the expression evaluates to Unit type (for now, use a special type)
+            let unit_type = context.interner.intern_type("Outrun.Core.Unit");
+
+            // The then block must also be Unit type for consistency
+            if typed_then_block.result_type != unit_type {
+                return Err(TypeError::TypeMismatch {
+                    span: crate::error::span_to_source_span(if_expr.then_block.span),
+                    expected: "Outrun.Core.Unit".to_string(),
+                    found: format!(
+                        "if without else requires then block to be Unit type, but found {}",
+                        context
+                            .get_type_name(typed_then_block.result_type)
+                            .unwrap_or("Unknown")
+                    ),
+                });
+            }
+
+            (None, unit_type)
+        };
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::IfExpression {
+                condition: Box::new(typed_condition),
+                then_block: typed_then_block,
+                else_block: typed_else_block,
+            },
+            type_id: result_type,
+            span: if_expr.span,
+        })
+    }
+
+    /// Type check a block
+    fn check_block(
+        context: &mut TypeContext,
+        block: &outrun_parser::Block,
+    ) -> TypeResult<crate::checker::TypedBlock> {
+        // Create a new scope for the block
+        context.push_scope(false);
+
+        let mut typed_statements = Vec::new();
+        let mut result_type = context.interner.intern_type("Outrun.Core.Unit"); // Default to Unit
+
+        for (i, statement) in block.statements.iter().enumerate() {
+            let is_last = i == block.statements.len() - 1;
+
+            match &statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => {
+                    let typed_expr = Self::check_expression(context, expr)?;
+
+                    // The last expression determines the block's type
+                    if is_last {
+                        result_type = typed_expr.type_id;
+                    }
+
+                    typed_statements.push(crate::checker::TypedStatement {
+                        kind: crate::checker::TypedStatementKind::Expression(Box::new(typed_expr)),
+                        span: statement.span,
+                    });
+                }
+                outrun_parser::StatementKind::LetBinding(let_binding) => {
+                    // Use the main TypeChecker's let binding method
+                    // For now, we'll handle let bindings in blocks differently
+                    // since we don't have access to the main TypeChecker here
+
+                    // Type check the expression
+                    let typed_expression =
+                        Self::check_expression(context, &let_binding.expression)?;
+
+                    // Determine the type for the binding (simplified version)
+                    let binding_type = if let Some(type_annotation) = &let_binding.type_annotation {
+                        match type_annotation {
+                            outrun_parser::TypeAnnotation::Simple { path, .. } => {
+                                let type_name = path
+                                    .iter()
+                                    .map(|part| part.name.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(".");
+                                let annotated_type_id = context.interner.intern_type(&type_name);
+
+                                // Check type matches
+                                if typed_expression.type_id != annotated_type_id {
+                                    return Err(TypeError::type_mismatch(
+                                        context
+                                            .get_type_name(annotated_type_id)
+                                            .unwrap_or("Unknown")
+                                            .to_string(),
+                                        context
+                                            .get_type_name(typed_expression.type_id)
+                                            .unwrap_or("Unknown")
+                                            .to_string(),
+                                        crate::error::span_to_source_span(
+                                            let_binding.expression.span,
+                                        ),
+                                    ));
+                                }
+                                annotated_type_id
+                            }
+                            _ => {
+                                return Err(TypeError::UnimplementedFeature {
+                                    feature: "Complex type annotations in block let bindings"
+                                        .to_string(),
+                                    span: crate::error::span_to_source_span(let_binding.span),
+                                });
+                            }
+                        }
+                    } else {
+                        typed_expression.type_id
+                    };
+
+                    // Register variable in scope (simplified pattern handling)
+                    match &let_binding.pattern {
+                        outrun_parser::Pattern::Identifier(identifier) => {
+                            let variable = crate::checker::context::Variable {
+                                name: identifier.name.clone(),
+                                type_id: binding_type,
+                                is_mutable: false,
+                                span: identifier.span,
+                            };
+                            context.register_variable(variable)?;
+                        }
+                        _ => {
+                            return Err(TypeError::UnimplementedFeature {
+                                feature: "Complex patterns in block let bindings".to_string(),
+                                span: crate::error::span_to_source_span(let_binding.span),
+                            });
+                        }
+                    }
+
+                    let typed_let_binding = crate::checker::TypedLetBinding {
+                        pattern: let_binding.pattern.clone(),
+                        type_id: binding_type,
+                        expression: typed_expression,
+                        span: let_binding.span,
+                    };
+
+                    typed_statements.push(crate::checker::TypedStatement {
+                        kind: crate::checker::TypedStatementKind::LetBinding(Box::new(typed_let_binding)),
+                        span: statement.span,
+                    });
+
+                    // Let bindings don't contribute to the block's result type
+                    if is_last {
+                        result_type = context.interner.intern_type("Outrun.Core.Unit");
+                    }
+                }
+            }
+        }
+
+        // Pop the block scope
+        context.pop_scope();
+
+        Ok(crate::checker::TypedBlock {
+            statements: typed_statements,
+            result_type,
+            span: block.span,
         })
     }
 }
@@ -1674,6 +1877,226 @@ mod tests {
                 assert_eq!(name, "UndefinedType");
             }
             _ => panic!("Expected UndefinedType error"),
+        }
+    }
+
+    #[test]
+    fn test_if_expression_with_else() {
+        let mut context = TypeContext::new();
+
+        // Create if true { 42 } else { 24 }
+        let if_expr = outrun_parser::IfExpression {
+            condition: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                    value: true,
+                    span: Span::new(3, 7),
+                }),
+                span: Span::new(3, 7),
+            }),
+            then_block: outrun_parser::Block {
+                statements: vec![outrun_parser::Statement {
+                    kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 42,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(10, 12),
+                            },
+                        ),
+                        span: Span::new(10, 12),
+                    })),
+                    span: Span::new(10, 12),
+                }],
+                span: Span::new(8, 14),
+            },
+            else_block: Some(outrun_parser::Block {
+                statements: vec![outrun_parser::Statement {
+                    kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 24,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(21, 23),
+                            },
+                        ),
+                        span: Span::new(21, 23),
+                    })),
+                    span: Span::new(21, 23),
+                }],
+                span: Span::new(19, 25),
+            }),
+            span: Span::new(0, 25),
+        };
+
+        let result = ExpressionChecker::check_if_expression(&mut context, &if_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        match typed_expr.kind {
+            TypedExpressionKind::IfExpression {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                // Condition should be Boolean
+                match condition.kind {
+                    TypedExpressionKind::Boolean(true) => {}
+                    _ => panic!("Expected boolean condition"),
+                }
+
+                // Both blocks should have Integer64 type
+                assert_eq!(
+                    then_block.result_type,
+                    else_block.as_ref().unwrap().result_type
+                );
+                let type_name = context.get_type_name(then_block.result_type);
+                assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+            }
+            _ => panic!("Expected if expression"),
+        }
+
+        // Overall expression should have Integer64 type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+    }
+
+    #[test]
+    fn test_if_expression_without_else() {
+        let mut context = TypeContext::new();
+
+        // Create if true { } (should be Unit type)
+        let if_expr = outrun_parser::IfExpression {
+            condition: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                    value: true,
+                    span: Span::new(3, 7),
+                }),
+                span: Span::new(3, 7),
+            }),
+            then_block: outrun_parser::Block {
+                statements: vec![], // Empty block
+                span: Span::new(8, 10),
+            },
+            else_block: None,
+            span: Span::new(0, 10),
+        };
+
+        let result = ExpressionChecker::check_if_expression(&mut context, &if_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        // Should have Unit type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Unit"));
+    }
+
+    #[test]
+    fn test_if_expression_condition_type_error() {
+        let mut context = TypeContext::new();
+
+        // Create if 42 { true } (condition should be Boolean, not Integer)
+        let if_expr = outrun_parser::IfExpression {
+            condition: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                    value: 42,
+                    format: outrun_parser::IntegerFormat::Decimal,
+                    span: Span::new(3, 5),
+                }),
+                span: Span::new(3, 5),
+            }),
+            then_block: outrun_parser::Block {
+                statements: vec![outrun_parser::Statement {
+                    kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: true,
+                                span: Span::new(8, 12),
+                            },
+                        ),
+                        span: Span::new(8, 12),
+                    })),
+                    span: Span::new(8, 12),
+                }],
+                span: Span::new(6, 14),
+            },
+            else_block: None,
+            span: Span::new(0, 14),
+        };
+
+        let result = ExpressionChecker::check_if_expression(&mut context, &if_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.Boolean");
+                assert_eq!(found, "Outrun.Core.Integer64");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_if_expression_branch_type_mismatch() {
+        let mut context = TypeContext::new();
+
+        // Create if true { 42 } else { "hello" } (branches have different types)
+        let if_expr = outrun_parser::IfExpression {
+            condition: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                    value: true,
+                    span: Span::new(3, 7),
+                }),
+                span: Span::new(3, 7),
+            }),
+            then_block: outrun_parser::Block {
+                statements: vec![outrun_parser::Statement {
+                    kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 42,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(10, 12),
+                            },
+                        ),
+                        span: Span::new(10, 12),
+                    })),
+                    span: Span::new(10, 12),
+                }],
+                span: Span::new(8, 14),
+            },
+            else_block: Some(outrun_parser::Block {
+                statements: vec![outrun_parser::Statement {
+                    kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                            parts: vec![outrun_parser::StringPart::Text {
+                                content: "hello".to_string(),
+                                raw_content: "hello".to_string(),
+                            }],
+                            format: outrun_parser::StringFormat::Basic,
+                            span: Span::new(21, 28),
+                        }),
+                        span: Span::new(21, 28),
+                    })),
+                    span: Span::new(21, 28),
+                }],
+                span: Span::new(19, 30),
+            }),
+            span: Span::new(0, 30),
+        };
+
+        let result = ExpressionChecker::check_if_expression(&mut context, &if_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.Integer64");
+                assert_eq!(found, "Outrun.Core.String");
+            }
+            _ => panic!("Expected TypeMismatch error"),
         }
     }
 

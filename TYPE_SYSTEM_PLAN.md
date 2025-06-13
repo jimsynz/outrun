@@ -9,12 +9,16 @@
 - ✅ Full AST with type annotations, patterns, expressions
 - ✅ All language features parsed (traits, structs, functions, etc.)
 - ✅ **Phase 1 Complete**: Type system foundation with interning, concrete types, and CLI integration
-- ✅ **62 passing typechecker tests** with comprehensive error system
+- ✅ **69 passing typechecker tests** with comprehensive error system
 - ✅ **Working typecheck CLI command** with beautiful error reporting
 - ✅ **Core expression type checking**: literals, binary ops, identifiers
 - ✅ **Collection type checking**: Lists, tuples, maps with homogeneous/heterogeneous typing
 - ✅ **Function call parameter validation**: Complete argument validation with type checking
 - ✅ **Struct literal field validation**: Complete struct construction with field type checking
+- ✅ **Let binding type checking**: Variable registration with pattern matching and scope updates
+- ✅ **If expression type checking**: Boolean condition validation and compatible branch types
+- ✅ **Block statement type checking**: Complete block processing with let bindings and expressions
+- ✅ **TypedBlock, TypedStatement structures**: Full typed AST support for blocks and statements
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
 - ⏳ **Phase 2 In Progress**: Core expression types complete, expanding to control flow and advanced features
 
@@ -94,8 +98,9 @@
 - [✅] Implement function call parameter validation with comprehensive checks
 - [✅] Handle collection type checking (lists, maps, tuples)
 - [✅] Add struct literal field validation with comprehensive field checking
-- [ ] Add if/case expression type checking with branch validation
-- [ ] Implement let binding type checking and scope updates
+- [✅] Implement let binding type checking and scope updates with pattern matching
+- [✅] Add if expression type checking with Boolean condition and branch validation
+- [ ] Add case expression type checking with pattern matching validation
 
 **Deliverables**:
 - [✅] `checker/expressions.rs` with core expression checking
@@ -280,8 +285,9 @@
 - [✅] **Built-in type system** uses proper `Outrun.Core.*` namespace
 - [✅] **Type error reporting** with clear messages and source spans
 - [✅] **Homogeneous/heterogeneous typing** - lists require same type, tuples allow different types
-- [ ] Control flow expression type checking (if/case)
-- [ ] Let binding type checking with scope updates
+- [✅] Let binding type checking with scope updates and comprehensive pattern matching  
+- [✅] If expression type checking with Boolean conditions and compatible branch types
+- [ ] Case expression type checking with pattern matching validation
 - [ ] Pattern matching validation handles all pattern types
 - [ ] Scope management works correctly with proper isolation
 
