@@ -1075,13 +1075,31 @@ impl ExpressionChecker {
         let mut result_type: Option<TypeId> = None;
 
         for clause in &trait_case.type_clauses {
+            // Validate that the type exists and implements the trait
+            let clause_type_name = &clause.type_name.name;
+            let clause_type_id = context.interner.get_type(clause_type_name).ok_or_else(|| {
+                TypeError::UndefinedType {
+                    span: crate::error::span_to_source_span(clause.type_name.span),
+                    name: clause_type_name.clone(),
+                }
+            })?;
+
+            // Check if the type implements the required trait
+            if !context
+                .trait_registry
+                .implements_trait(clause_type_id, trait_id)
+            {
+                return Err(TypeError::TraitNotImplemented {
+                    span: crate::error::span_to_source_span(clause.type_name.span),
+                    trait_name: trait_name.clone(),
+                    type_name: clause_type_name.clone(),
+                });
+            }
+
             let typed_clause = Self::check_trait_case_clause(context, clause)?;
 
             // Collect the type being covered in this clause
-            let clause_type_name = &clause.type_name.name;
-            if let Some(clause_type_id) = context.interner.get_type(clause_type_name) {
-                covered_types.push(clause_type_id);
-            }
+            covered_types.push(clause_type_id);
 
             // Ensure all clauses return compatible types
             if let Some(existing_type) = result_type {
@@ -1162,22 +1180,54 @@ impl ExpressionChecker {
                     name: type_name.clone(),
                 })?;
 
+        // Note: Trait implementation validation is done in the main trait case expression loop
+
         // Create a new scope for pattern variables if there's a pattern
         context.push_scope(false);
 
-        // Type check the pattern if present
+        // Type check the pattern if present and register bound variables
         if let Some(pattern) = &clause.pattern {
-            let _bound_variables = crate::checker::patterns::PatternChecker::check_pattern(
-                context,
-                &outrun_parser::Pattern::Struct(pattern.clone()),
-                type_id,
-            )?;
+            // Ensure the type being matched is actually a struct type since only structs can be destructured
+            let concrete_type = context.get_concrete_type(type_id);
+            match concrete_type {
+                Some(crate::types::ConcreteType::Struct { .. }) => {
+                    // Valid struct type, proceed with pattern checking
+                    let bound_variables = crate::checker::patterns::PatternChecker::check_pattern(
+                        context,
+                        &outrun_parser::Pattern::Struct(pattern.clone()),
+                        type_id,
+                    )?;
+
+                    // Register all bound variables in the current scope
+                    for variable in bound_variables {
+                        context.register_variable(variable)?;
+                    }
+                }
+                Some(_) => {
+                    // Type exists but is not a struct
+                    context.pop_scope();
+                    return Err(TypeError::TypeMismatch {
+                        span: crate::error::span_to_source_span(pattern.span),
+                        expected: "struct type for pattern destructuring".to_string(),
+                        found: format!("type {}", type_name),
+                    });
+                }
+                None => {
+                    // Type not found in concrete types registry
+                    context.pop_scope();
+                    return Err(TypeError::TypeMismatch {
+                        span: crate::error::span_to_source_span(pattern.span),
+                        expected: "concrete struct type".to_string(),
+                        found: format!("unknown type {}", type_name),
+                    });
+                }
+            }
         }
 
         // Type check the guard if present
         if let Some(guard) = &clause.guard {
             let typed_guard = Self::check_expression(context, guard)?;
-            let boolean_type = context.interner.get_type("Boolean").unwrap();
+            let boolean_type = context.interner.intern_type("Outrun.Core.Boolean");
 
             if typed_guard.type_id != boolean_type {
                 context.pop_scope();

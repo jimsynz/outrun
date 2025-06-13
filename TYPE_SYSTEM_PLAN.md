@@ -26,6 +26,7 @@
 - ✅ **Phase 2.3 Pattern Type Checking Complete**: Comprehensive pattern validation for let bindings
 - ✅ **103 passing typechecker tests** - all expression, pattern, and trait definition type checking validated  
 - ✅ **Phase 3.1 Complete**: Trait definition processing with comprehensive validation
+- ✅ **Phase 3.2 Complete**: Enhanced case statements with trait dispatch and pattern validation integration
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -200,6 +201,7 @@
 - [ ] Add parameter name uniqueness validation
 - [ ] Handle return type checking and guard validation
 - [ ] Support function overloading with guards
+- [ ] Exhaustiveness checking similar to case statements for functions with guards
 
 **Deliverables**:
 - `checker/functions.rs` with function validation
