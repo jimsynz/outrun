@@ -78,26 +78,12 @@ impl<T, U> Converter<T, U> for Processor<T> when T: Serializable && U: Deseriali
         (block
           (statement
             (let_binding
-              (identifier)
+              (destructure_pattern
+                (identifier))
               (expression
                 (primary_expression
-                  (function_call
-                    (module_path
-                      (type_identifier))
-                    (identifier)
-                    (argument_list
-                      (argument
-                        (named_argument
-                          (identifier)
-                          (expression
-                            (primary_expression
-                              (identifier)))))))))))
-          (statement
-            (expression
-              (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
+                  (identifier))
+                (function_call_postfix
                   (identifier)
                   (argument_list
                     (argument
@@ -105,4 +91,17 @@ impl<T, U> Converter<T, U> for Processor<T> when T: Serializable && U: Deseriali
                         (identifier)
                         (expression
                           (primary_expression
-                            (identifier)))))))))))))))
+                            (identifier))))))))))
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))

@@ -23,7 +23,8 @@ macro assert_equal(left, right, message) {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_equal
                 (primary_expression
@@ -44,44 +45,42 @@ macro assert_equal(left, right, message) {
                   (statement
                     (expression
                       (primary_expression
-                        (function_call
-                          (module_path
-                            (type_identifier))
-                          (identifier)
-                          (argument_list
-                            (argument
-                              (named_argument
-                                (identifier)
-                                (expression
-                                  (primary_expression
-                                    (macro_injection
-                                      (identifier))))))
-                            (argument
-                              (named_argument
-                                (identifier)
-                                (expression
-                                  (primary_expression
-                                    (macro_injection
-                                      (identifier))))))
-                            (argument
-                              (named_argument
-                                (identifier)
-                                (expression
-                                  (primary_expression
-                                    (macro_injection
-                                      (identifier)))))))))))
+                        (identifier))
+                      (function_call_postfix
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (macro_injection
+                                    (identifier))))))
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (macro_injection
+                                    (identifier))))))
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (macro_injection
+                                    (identifier))))))))))
                   (statement
                     (expression
                       (primary_expression
-                        (function_call
-                          (module_path
-                            (type_identifier))
-                          (identifier)
-                          (argument_list
-                            (argument
-                              (named_argument
-                                (identifier)
-                                (expression
-                                  (primary_expression
-                                    (literal
-                                      (integer))))))))))))))))))))
+                        (identifier))
+                      (function_call_postfix
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (literal
+                                    (integer)))))))))))))))))))

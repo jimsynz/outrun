@@ -43,17 +43,16 @@ impl Application for ConfigApp {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))))))))))
   (item
     (impl_block
       (trait_spec
@@ -87,42 +86,12 @@ impl Application for ConfigApp {
         (block
           (statement
             (let_binding
-              (identifier)
+              (destructure_pattern
+                (identifier))
               (expression
                 (primary_expression
-                  (function_call
-                    (module_path
-                      (type_identifier))
-                    (identifier)
-                    (argument_list
-                      (argument
-                        (named_argument
-                          (identifier)
-                          (expression
-                            (primary_expression
-                              (identifier)))))))))))
-          (statement
-            (expression
-              (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (literal
-                              (string
-                                (string_content))))))))))))
-          (statement
-            (expression
-              (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
+                  (identifier))
+                (function_call_postfix
                   (identifier)
                   (argument_list
                     (argument
@@ -134,14 +103,41 @@ impl Application for ConfigApp {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (tuple_literal)))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (literal
+                            (string
+                              (string_content)))))))))))
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))))))
+          (statement
+            (expression
+              (primary_expression
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (tuple_literal))))))))))))))

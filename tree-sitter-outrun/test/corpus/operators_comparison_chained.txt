@@ -42,7 +42,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_less_equal
                 (binary_less_equal
@@ -54,7 +55,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
                   (identifier))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_less
                 (binary_less
@@ -68,7 +70,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
                     (integer)))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_equal
                 (binary_equal
@@ -80,7 +83,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
                   (identifier))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_less
                 (binary_less_equal
@@ -95,7 +99,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
                   (identifier))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_greater
                 (binary_greater_equal
@@ -110,7 +115,8 @@ def validate_range(min: Integer, value: Integer, max: Integer): Boolean {
                   (identifier))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_greater_equal
                 (binary_less

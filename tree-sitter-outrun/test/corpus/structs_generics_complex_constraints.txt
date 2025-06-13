@@ -64,9 +64,5 @@ struct Validator<T>(value: T) when T: Serializable && T: Validatable {
                 (identifier))
               (field_access
                 (identifier))
-              (field_access
-                (identifier))))
-          (statement
-            (expression
-              (primary_expression
-                (tuple_literal)))))))))
+              (function_call_postfix
+                (identifier)))))))))

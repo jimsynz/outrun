@@ -32,14 +32,13 @@ when Integer.negative?(x) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
@@ -64,14 +63,13 @@ when Integer.negative?(x) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression

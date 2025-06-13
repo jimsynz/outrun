@@ -11,17 +11,17 @@ def create_user_profile() {
         preferences: UserPreferences {
             theme: if dark_mode_enabled { :dark } else { :light },
             language: case user_locale {
-                when "en" -> :english
-                when "es" -> :spanish
-                else -> :english
+                "en" -> :english
+                "es" -> :spanish
+                _ -> :english
             },
             notifications: NotificationSettings {
                 email: true,
                 push: Config.feature_enabled?(feature: "push_notifications"),
                 frequency: case priority_level {
-                    when level > 5 -> :immediate
-                    when level > 2 -> :daily
-                    else -> :weekly
+                    level when level > 5 -> :immediate
+                    level when level > 2 -> :daily
+                    _ -> :weekly
                 }
             }
         },
@@ -50,30 +50,46 @@ def create_user_profile() {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (primary_expression
                 (struct_literal
-                  (module_path
-                    (type_identifier))
+                  (struct_literal_start)
                   (struct_literal_fields
                     (struct_literal_field
                       (struct_field_assignment
                         (identifier)
                         (expression
                           (primary_expression
-                            (function_call
-                              (module_path
-                                (type_identifier))
-                              (identifier))))))
+                            (identifier))
+                          (function_call_postfix
+                            (identifier)))))
                     (struct_literal_field
                       (struct_field_assignment
                         (identifier)
                         (expression
                           (primary_expression
-                            (function_call
-                              (module_path
-                                (type_identifier))
+                            (identifier))
+                          (function_call_postfix
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (literal
+                                        (string
+                                          (string_content))))))))))))
+                    (struct_literal_field
+                      (struct_field_assignment
+                        (identifier)
+                        (expression
+                          (binary_add
+                            (primary_expression
+                              (identifier))
+                            (function_call_postfix
                               (identifier)
                               (argument_list
                                 (argument
@@ -81,26 +97,7 @@ def create_user_profile() {
                                     (identifier)
                                     (expression
                                       (primary_expression
-                                        (literal
-                                          (string
-                                            (string_content)))))))))))))
-                    (struct_literal_field
-                      (struct_field_assignment
-                        (identifier)
-                        (expression
-                          (binary_add
-                            (primary_expression
-                              (function_call
-                                (module_path
-                                  (type_identifier))
-                                (identifier)
-                                (argument_list
-                                  (argument
-                                    (named_argument
-                                      (identifier)
-                                      (expression
-                                        (primary_expression
-                                          (identifier))))))))
+                                        (identifier)))))))
                             (primary_expression
                               (literal
                                 (string
@@ -111,26 +108,25 @@ def create_user_profile() {
                         (expression
                           (binary_add
                             (primary_expression
-                              (function_call
-                                (module_path
-                                  (type_identifier))
-                                (identifier)
-                                (argument_list
-                                  (argument
-                                    (named_argument
-                                      (identifier)
-                                      (expression
-                                        (primary_expression
-                                          (literal
-                                            (string
-                                              (string_content)))))))
-                                  (argument
-                                    (named_argument
-                                      (identifier)
-                                      (expression
-                                        (primary_expression
-                                          (literal
-                                            (integer)))))))))
+                              (identifier))
+                            (function_call_postfix
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (string
+                                            (string_content)))))))
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (literal
+                                          (integer))))))))
                             (primary_expression
                               (literal
                                 (integer)))))))
@@ -140,8 +136,7 @@ def create_user_profile() {
                         (expression
                           (primary_expression
                             (struct_literal
-                              (module_path
-                                (type_identifier))
+                              (struct_literal_start)
                               (struct_literal_fields
                                 (struct_literal_field
                                   (struct_field_assignment
@@ -177,12 +172,10 @@ def create_user_profile() {
                                               (identifier)))
                                           (case_clause
                                             (case_pattern
-                                              (guard_expression
-                                                (expression
-                                                  (primary_expression
-                                                    (literal
-                                                      (string
-                                                        (string_content)))))))
+                                              (destructure_pattern
+                                                (literal
+                                                  (string
+                                                    (string_content)))))
                                             (expression
                                               (primary_expression
                                                 (literal
@@ -190,18 +183,19 @@ def create_user_profile() {
                                                     (identifier))))))
                                           (case_clause
                                             (case_pattern
-                                              (guard_expression
-                                                (expression
-                                                  (primary_expression
-                                                    (literal
-                                                      (string
-                                                        (string_content)))))))
+                                              (destructure_pattern
+                                                (literal
+                                                  (string
+                                                    (string_content)))))
                                             (expression
                                               (primary_expression
                                                 (literal
                                                   (atom
                                                     (identifier))))))
-                                          (else_clause
+                                          (case_clause
+                                            (case_pattern
+                                              (destructure_pattern
+                                                (identifier)))
                                             (expression
                                               (primary_expression
                                                 (literal
@@ -213,8 +207,7 @@ def create_user_profile() {
                                     (expression
                                       (primary_expression
                                         (struct_literal
-                                          (module_path
-                                            (type_identifier))
+                                          (struct_literal_start)
                                           (struct_literal_fields
                                             (struct_literal_field
                                               (struct_field_assignment
@@ -228,19 +221,18 @@ def create_user_profile() {
                                                 (identifier)
                                                 (expression
                                                   (primary_expression
-                                                    (function_call
-                                                      (module_path
-                                                        (type_identifier))
-                                                      (identifier)
-                                                      (argument_list
-                                                        (argument
-                                                          (named_argument
-                                                            (identifier)
-                                                            (expression
-                                                              (primary_expression
-                                                                (literal
-                                                                  (string
-                                                                    (string_content)))))))))))))
+                                                    (identifier))
+                                                  (function_call_postfix
+                                                    (identifier)
+                                                    (argument_list
+                                                      (argument
+                                                        (named_argument
+                                                          (identifier)
+                                                          (expression
+                                                            (primary_expression
+                                                              (literal
+                                                                (string
+                                                                  (string_content))))))))))))
                                             (struct_literal_field
                                               (struct_field_assignment
                                                 (identifier)
@@ -252,14 +244,17 @@ def create_user_profile() {
                                                           (identifier)))
                                                       (case_clause
                                                         (case_pattern
-                                                          (guard_expression
-                                                            (expression
-                                                              (binary_greater
-                                                                (primary_expression
-                                                                  (identifier))
-                                                                (primary_expression
-                                                                  (literal
-                                                                    (integer)))))))
+                                                          (destructure_pattern
+                                                            (identifier))
+                                                          (guard_clause
+                                                            (guard_expression
+                                                              (expression
+                                                                (binary_greater
+                                                                  (primary_expression
+                                                                    (identifier))
+                                                                  (primary_expression
+                                                                    (literal
+                                                                      (integer))))))))
                                                         (expression
                                                           (primary_expression
                                                             (literal
@@ -267,20 +262,26 @@ def create_user_profile() {
                                                                 (identifier))))))
                                                       (case_clause
                                                         (case_pattern
-                                                          (guard_expression
-                                                            (expression
-                                                              (binary_greater
-                                                                (primary_expression
-                                                                  (identifier))
-                                                                (primary_expression
-                                                                  (literal
-                                                                    (integer)))))))
+                                                          (destructure_pattern
+                                                            (identifier))
+                                                          (guard_clause
+                                                            (guard_expression
+                                                              (expression
+                                                                (binary_greater
+                                                                  (primary_expression
+                                                                    (identifier))
+                                                                  (primary_expression
+                                                                    (literal
+                                                                      (integer))))))))
                                                         (expression
                                                           (primary_expression
                                                             (literal
                                                               (atom
                                                                 (identifier))))))
-                                                      (else_clause
+                                                      (case_clause
+                                                        (case_pattern
+                                                          (destructure_pattern
+                                                            (identifier)))
                                                         (expression
                                                           (primary_expression
                                                             (literal
@@ -297,19 +298,17 @@ def create_user_profile() {
                                   (identifier)
                                   (expression
                                     (primary_expression
-                                      (function_call
-                                        (module_path
-                                          (type_identifier))
-                                        (identifier))))))
+                                      (identifier))
+                                    (function_call_postfix
+                                      (identifier)))))
                               (map_entry
                                 (map_shorthand_pair
                                   (identifier)
                                   (expression
                                     (primary_expression
-                                      (function_call
-                                        (module_path
-                                          (type_identifier))
-                                        (identifier)))
+                                      (identifier))
+                                    (function_call_postfix
+                                      (identifier))
                                     (field_access
                                       (identifier)))))
                               (map_entry
@@ -337,17 +336,16 @@ def create_user_profile() {
                                   (expression
                                     (binary_multiply
                                       (primary_expression
-                                        (function_call
-                                          (module_path
-                                            (type_identifier))
-                                          (identifier)
-                                          (argument_list
-                                            (argument
-                                              (shorthand_argument
-                                                (identifier)))
-                                            (argument
-                                              (shorthand_argument
-                                                (identifier))))))
+                                        (identifier))
+                                      (function_call_postfix
+                                        (identifier)
+                                        (argument_list
+                                          (argument
+                                            (shorthand_argument
+                                              (identifier)))
+                                          (argument
+                                            (shorthand_argument
+                                              (identifier)))))
                                       (primary_expression
                                         (identifier))))))
                               (map_entry
@@ -356,68 +354,64 @@ def create_user_profile() {
                                   (expression
                                     (pipe_expression
                                       (primary_expression
-                                        (function_call
-                                          (module_path
-                                            (type_identifier))
-                                          (identifier)
-                                          (argument_list
-                                            (argument
-                                              (named_argument
-                                                (identifier)
-                                                (expression
-                                                  (primary_expression
-                                                    (identifier))))))))
+                                        (identifier))
+                                      (function_call_postfix
+                                        (identifier)
+                                        (argument_list
+                                          (argument
+                                            (named_argument
+                                              (identifier)
+                                              (expression
+                                                (primary_expression
+                                                  (identifier)))))))
                                       (primary_expression
-                                        (function_call
-                                          (module_path
-                                            (type_identifier))
-                                          (identifier))))))))))))
+                                        (identifier))
+                                      (function_call_postfix
+                                        (identifier)))))))))))
                     (struct_literal_field
                       (struct_field_assignment
                         (identifier)
                         (expression
                           (primary_expression
-                            (function_call
-                              (module_path
-                                (type_identifier))
-                              (identifier)
-                              (argument_list
-                                (argument
-                                  (named_argument
-                                    (identifier)
-                                    (expression
-                                      (primary_expression
-                                        (identifier)))))
-                                (argument
-                                  (named_argument
-                                    (identifier)
-                                    (expression
-                                      (primary_expression
-                                        (identifier)))))
-                                (argument
-                                  (named_argument
-                                    (identifier)
-                                    (expression
-                                      (primary_expression
-                                        (function_call
-                                          (module_path
-                                            (type_identifier))
-                                          (identifier)
-                                          (argument_list
-                                            (argument
-                                              (named_argument
-                                                (identifier)
-                                                (expression
-                                                  (primary_expression
-                                                    (literal
-                                                      (float))))))
-                                            (argument
-                                              (named_argument
-                                                (identifier)
-                                                (expression
-                                                  (primary_expression
-                                                    (literal
-                                                      (float))))))))))))))))))))))))
+                            (identifier))
+                          (function_call_postfix
+                            (identifier)
+                            (argument_list
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))
+                              (argument
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier))
+                                    (function_call_postfix
+                                      (identifier)
+                                      (argument_list
+                                        (argument
+                                          (named_argument
+                                            (identifier)
+                                            (expression
+                                              (primary_expression
+                                                (literal
+                                                  (float))))))
+                                        (argument
+                                          (named_argument
+                                            (identifier)
+                                            (expression
+                                              (primary_expression
+                                                (literal
+                                                  (float))))))))))))))))))))))
         (statement
           (expression
             (primary_expression

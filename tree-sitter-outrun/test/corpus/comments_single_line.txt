@@ -11,7 +11,8 @@ let x = 5
   (comment)
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (literal

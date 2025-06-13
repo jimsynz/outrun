@@ -11,8 +11,10 @@ let [first, second] = list
     (let_binding
       (destructure_pattern
         (list_destructure
-          (identifier)
-          (identifier)))
+          (destructure_pattern
+            (identifier))
+          (destructure_pattern
+            (identifier))))
       (expression
         (primary_expression
           (identifier))))))

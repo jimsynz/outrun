@@ -3,7 +3,7 @@ Complex guard expression with logical operators
 ================
 
 def process(data: String): Result<ProcessedData, Error>
-when String.not_empty?(data) && String.valid_format?(data) {
+when String.not_empty?(value: data) && String.valid_format?(value: data) {
     Result.ok(value: process_data(data: data))
 }
 
@@ -35,30 +35,8 @@ when String.not_empty?(data) && String.valid_format?(data) {
           (expression
             (binary_logical_and
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (shorthand_argument
-                        (identifier))))))
-              (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (shorthand_argument
-                        (identifier))))))))))
-      (block
-        (statement
-          (expression
-            (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
+                (identifier))
+              (function_call_postfix
                 (identifier)
                 (argument_list
                   (argument
@@ -66,12 +44,37 @@ when String.not_empty?(data) && String.valid_format?(data) {
                       (identifier)
                       (expression
                         (primary_expression
-                          (function_call
-                            (identifier)
-                            (argument_list
-                              (argument
-                                (named_argument
-                                  (identifier)
-                                  (expression
-                                    (primary_expression
-                                      (identifier))))))))))))))))))))
+                          (identifier)))))))
+              (primary_expression
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))))))))
+      (block
+        (statement
+          (expression
+            (primary_expression
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (function_call
+                          (identifier)
+                          (argument_list
+                            (argument
+                              (named_argument
+                                (identifier)
+                                (expression
+                                  (primary_expression
+                                    (identifier)))))))))))))))))))

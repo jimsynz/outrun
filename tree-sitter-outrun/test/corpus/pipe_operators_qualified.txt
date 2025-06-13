@@ -9,13 +9,13 @@ let result = data |> Module.process()
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (pipe_expression
           (primary_expression
             (identifier))
           (primary_expression
-            (function_call
-              (module_path
-                (type_identifier))
-              (identifier))))))))
+            (identifier))
+          (function_call_postfix
+            (identifier)))))))

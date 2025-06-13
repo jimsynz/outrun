@@ -20,8 +20,7 @@ const MAX_RETRY_CONFIG: RetryConfig = RetryConfig {
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_assignment
@@ -35,18 +34,17 @@ const MAX_RETRY_CONFIG: RetryConfig = RetryConfig {
                   (identifier)
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (named_argument
-                              (identifier)
-                              (expression
-                                (primary_expression
-                                  (literal
-                                    (integer))))))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (literal
+                                  (integer)))))))))))
               (struct_literal_field
                 (struct_field_assignment
                   (identifier)

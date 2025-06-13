@@ -19,7 +19,6 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$.module_path],
-    [$.module_path, $.sigil],
     [$.guard_expression, $.primary_expression],
     [$.map_literal, $.block]
   ],
@@ -429,6 +428,10 @@ module.exports = grammar({
 
     _postfix_expression: $ => choice(
       $.primary_expression,
+      prec.left(15, seq(
+        $._postfix_expression,
+        $.function_call_postfix
+      )),
       prec.left(14, seq(
         $._postfix_expression,
         choice(
@@ -441,10 +444,17 @@ module.exports = grammar({
 
     field_access: $ => seq('.', $.identifier),
     tuple_access: $ => seq('.', $.integer),
+    function_call_postfix: $ => seq(
+      '.',
+      $.identifier,
+      token.immediate('('),
+      optional($.argument_list),
+      ')'
+    ),
     function_call: $ => prec(1, seq(
       optional(seq($.module_path, '.')),
       $.identifier,
-      '(',
+      token.immediate('('),
       optional($.argument_list),
       ')'
     )),
@@ -551,8 +561,7 @@ module.exports = grammar({
     ),
 
     sigil: $ => seq(
-      '~',
-      $.type_identifier,
+      token(seq('~', /[A-Z][a-zA-Z0-9_]*/)),
       choice($.string, $.multiline_string)
     ),
 
@@ -612,11 +621,17 @@ module.exports = grammar({
     )),
 
     // Struct Literals
-    struct_literal: $ => prec(1, seq(
-      $.module_path,
-      '{',
+    struct_literal: $ => seq(
+      $.struct_literal_start,
       optional($.struct_literal_fields),
       '}'
+    ),
+
+    struct_literal_start: $ => token(seq(
+      /[A-Z][a-zA-Z0-9_]*/,
+      optional(seq('.', /[A-Z][a-zA-Z0-9_]*/)),
+      /\s*/,
+      '{'
     )),
 
     struct_literal_fields: $ => choice(
@@ -656,8 +671,7 @@ module.exports = grammar({
       'case',
       $.expression,
       '{',
-      repeat($.case_clause),
-      optional($.else_clause),
+      repeat1($.case_clause),
       '}'
     ),
 
@@ -667,13 +681,11 @@ module.exports = grammar({
       choice($.expression, $.block)
     ),
 
-    case_pattern: $ => seq('when', $.guard_expression),
-
-    else_clause: $ => seq(
-      'else',
-      '->',
-      choice($.expression, $.block)
+    case_pattern: $ => seq(
+      $.destructure_pattern,
+      optional($.guard_clause)
     ),
+
 
     // Statements
     block: $ => seq('{', repeat($.statement), '}'),
@@ -689,7 +701,6 @@ module.exports = grammar({
       'let',
       choice(
         seq($.identifier, ':', $.type_annotation, '=', $.expression),
-        seq($.identifier, '=', $.expression),
         seq($.destructure_pattern, '=', $.expression)
       )
     ),
@@ -697,31 +708,38 @@ module.exports = grammar({
     destructure_pattern: $ => choice(
       $.tuple_destructure,
       $.struct_destructure,
-      $.list_destructure
+      $.list_destructure,
+      $.identifier,
+      $.literal
     ),
 
     tuple_destructure: $ => seq(
       '(',
-      $.identifier,
-      repeat(seq(',', $.identifier)),
+      $.destructure_pattern,
+      repeat(seq(',', $.destructure_pattern)),
       optional(','),
       ')'
     ),
 
     struct_destructure: $ => seq(
-      $.type_identifier,
-      '{',
-      $.identifier,
-      repeat(seq(',', $.identifier)),
+      $.struct_destructure_start,
+      $.destructure_pattern,
+      repeat(seq(',', $.destructure_pattern)),
       optional(','),
       '}'
     ),
 
+    struct_destructure_start: $ => token(seq(
+      /[A-Z][a-zA-Z0-9_]*/,
+      /\s*/,
+      '{'
+    )),
+
     list_destructure: $ => seq(
       '[',
-      $.identifier,
-      repeat(seq(',', $.identifier)),
-      optional(seq(',', '..', $.identifier)),
+      $.destructure_pattern,
+      repeat(seq(',', $.destructure_pattern)),
+      optional(seq(',', '..', $.destructure_pattern)),
       optional(','),
       ']'
     ),
@@ -798,7 +816,7 @@ module.exports = grammar({
     ),
 
     // Identifiers
-    identifier: $ => /[a-z_][a-zA-Z0-9_]*\??/,
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*\??/,
     type_identifier: $ => /[A-Z][a-zA-Z0-9_]*/
   }
 });

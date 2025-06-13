@@ -15,23 +15,23 @@ const CLIENT: Client = Http.Client.new(timeout: 30, retries: 3)
           (type_identifier)))
       (expression
         (primary_expression
-          (function_call
-            (module_path
-              (type_identifier)
-              (type_identifier))
-            (identifier)
-            (argument_list
-              (argument
-                (named_argument
-                  (identifier)
-                  (expression
-                    (primary_expression
-                      (literal
-                        (integer))))))
-              (argument
-                (named_argument
-                  (identifier)
-                  (expression
-                    (primary_expression
-                      (literal
-                        (integer)))))))))))))
+          (identifier))
+        (field_access
+          (identifier))
+        (function_call_postfix
+          (identifier)
+          (argument_list
+            (argument
+              (named_argument
+                (identifier)
+                (expression
+                  (primary_expression
+                    (literal
+                      (integer))))))
+            (argument
+              (named_argument
+                (identifier)
+                (expression
+                  (primary_expression
+                    (literal
+                      (integer))))))))))))

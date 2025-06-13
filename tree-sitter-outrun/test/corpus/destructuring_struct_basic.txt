@@ -11,9 +11,11 @@ let User { name, email } = user
     (let_binding
       (destructure_pattern
         (struct_destructure
-          (type_identifier)
-          (identifier)
-          (identifier)))
+          (struct_destructure_start)
+          (destructure_pattern
+            (identifier))
+          (destructure_pattern
+            (identifier))))
       (expression
         (primary_expression
           (identifier))))))

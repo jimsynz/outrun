@@ -48,9 +48,5 @@ struct Processor<T>(data: T) when T: Serializable {
                 (identifier))
               (field_access
                 (identifier))
-              (field_access
-                (identifier))))
-          (statement
-            (expression
-              (primary_expression
-                (tuple_literal)))))))))
+              (function_call_postfix
+                (identifier)))))))))

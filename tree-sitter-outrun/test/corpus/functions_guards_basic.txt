@@ -32,33 +32,30 @@ when Integer.non_zero?(denominator) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
             (binary_divide
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (shorthand_argument
-                        (identifier))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (shorthand_argument
-                        (identifier)))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier))))))))))))

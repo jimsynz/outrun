@@ -36,32 +36,29 @@ when (Integer.positive?(x) || Integer.zero?(x)) && Integer.negative?(y) {
                 (expression
                   (binary_logical_or
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (shorthand_argument
+                            (identifier)))))
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (shorthand_argument
+                            (identifier))))))))
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (shorthand_argument
-                        (identifier))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (shorthand_argument
+                      (identifier)))))))))
       (block
         (statement
           (expression

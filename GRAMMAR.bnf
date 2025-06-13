@@ -246,7 +246,26 @@ if_expression ::= "if" expression "{" function_body "}" ("else" "{" function_bod
 # Case Expression  
 case_expression ::= "case" expression "{" case_clause+ "}"
 case_clause ::= case_pattern "->" (expression | "{" function_body "}")
-case_pattern ::= "when" guard_expression | "else"
+case_pattern ::= destructure_pattern guard_clause?
+
+destructure_pattern ::= struct_pattern 
+                      | tuple_pattern
+                      | list_pattern  
+                      | value_pattern
+                      | identifier_pattern
+
+struct_pattern ::= TYPE_IDENTIFIER "{" struct_pattern_fields? "}"
+struct_pattern_fields ::= IDENTIFIER ("," IDENTIFIER)*
+
+tuple_pattern ::= "(" pattern_element ("," pattern_element)* ")"
+pattern_element ::= IDENTIFIER | destructure_pattern
+
+list_pattern ::= "[" list_pattern_elements? "]"
+list_pattern_elements ::= pattern_element ("," pattern_element)* ("," ".." IDENTIFIER)?
+
+value_pattern ::= literal
+
+identifier_pattern ::= IDENTIFIER
 ```
 
 ## Statements

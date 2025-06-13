@@ -11,8 +11,9 @@ let User { profile } = get_user()
     (let_binding
       (destructure_pattern
         (struct_destructure
-          (type_identifier)
-          (identifier)))
+          (struct_destructure_start)
+          (destructure_pattern
+            (identifier))))
       (expression
         (primary_expression
           (function_call

@@ -374,6 +374,16 @@ cargo clippy --all-targets --all-features -- -D warnings
 - ✅ **Function definitions**: `def name(params): ReturnType when guard { body }`
 - ✅ **Struct literals**: `TypeName { field: value, shorthand, ..spread }` with all three field types
 
+#### **Destructuring Patterns (June 2025)**
+- ✅ **Recursive destructuring patterns**: Full recursive pattern system matching tree-sitter capabilities
+- ✅ **Literal patterns**: `42`, `:status`, `"exact"` for exact value matching in destructuring
+- ✅ **Tuple patterns**: `(x, [a, b], y)` with unlimited recursive nesting 
+- ✅ **List patterns**: `[1, name, :status]` with mixed pattern types and recursive elements
+- ✅ **Struct patterns**: `User { name, address: Address { city } }` with recursive field patterns
+- ✅ **Rest pattern constraints**: `..rest` patterns restricted to identifiers only (as documented in LANGUAGE_SPEC.md)
+- ✅ **Unified pattern system**: Same patterns work in let bindings, case statements, and function parameters
+- ✅ **Comprehensive testing**: 21 tests covering all pattern combinations including recursive examples
+
 #### **AST & Source Preservation**
 - ✅ **Complete AST structures**: All literals, expressions, operations with span tracking
 - ✅ **Format preservation**: Original literal formats maintained (e.g., `0xFF` stays hexadecimal)
@@ -403,7 +413,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ### 📊 **Test Statistics**
 ```
-Total Tests: 351+ ✅ (100% pass rate)
+Total Tests: 372+ ✅ (100% pass rate)
 ├── alias_statements.rs: 11 tests
 ├── api_functions.rs: 3 tests
 ├── arithmetic_operators.rs: 17 tests
@@ -415,7 +425,8 @@ Total Tests: 351+ ✅ (100% pass rate)
 ├── constant_definitions.rs: 14 tests
 ├── control_flow_case.rs: 9 tests
 ├── control_flow_if.rs: 9 tests
-├── diagnostics.rs: 16 tests (NEW)
+├── destructuring_patterns.rs: 21 tests (NEW)
+├── diagnostics.rs: 16 tests
 ├── float_literals.rs: 11 tests
 ├── function_calls.rs: 10 tests
 ├── function_definitions.rs: 10 tests

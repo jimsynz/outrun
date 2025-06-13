@@ -16,7 +16,8 @@ def test_not_equal() {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_not_equal
                 (primary_expression

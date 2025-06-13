@@ -68,6 +68,6 @@ const PROCESSOR: Function<(data: String) -> Integer> = &String.length
         (primary_expression
           (function_capture
             (qualified_function_ref
-              (module_path
-                (type_identifier))
-              (identifier))))))))
+              (identifier))))
+        (field_access
+          (identifier))))))

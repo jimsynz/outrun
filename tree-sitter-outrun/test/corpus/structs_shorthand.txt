@@ -16,8 +16,7 @@ const USER: User = User { id, email, name }
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_shorthand
@@ -47,8 +46,7 @@ const USER: User = User { id, email: "test@example.com", name }
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_shorthand
@@ -83,8 +81,7 @@ const USER: User = User { id: id, email: email, name: name }
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_assignment
@@ -123,8 +120,7 @@ const USER: User = User { email, name, ..existing_user }
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_shorthand
@@ -155,8 +151,7 @@ const DATA: Container = Container { value }
       (expression
         (primary_expression
           (struct_literal
-            (module_path
-              (type_identifier))
+            (struct_literal_start)
             (struct_literal_fields
               (struct_literal_field
                 (struct_field_shorthand

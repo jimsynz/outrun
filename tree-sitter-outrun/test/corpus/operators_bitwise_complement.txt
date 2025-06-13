@@ -9,7 +9,8 @@ let result = ~5
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (unary_complement
           (primary_expression

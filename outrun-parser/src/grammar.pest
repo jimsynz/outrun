@@ -263,18 +263,23 @@ statement = !{ let_binding | expression }
 
 // === PATTERNS ===
 
-// Pattern for destructuring assignments
-pattern = { tuple_pattern | struct_pattern | list_pattern | identifier }
+// Pattern for destructuring assignments (unified recursive system)
+pattern = { tuple_pattern | struct_pattern | list_pattern | literal_pattern | identifier }
 
-// Tuple destructuring pattern: (x, y, z)
-tuple_pattern = { "(" ~ identifier ~ ("," ~ identifier)* ~ ","? ~ ")" }
+// Literal pattern for exact value matching
+literal_pattern = { boolean | integer | float | string | atom }
 
-// Struct destructuring pattern: Type { field1, field2 }
-struct_pattern = { type_identifier ~ "{" ~ identifier ~ ("," ~ identifier)* ~ ","? ~ "}" }
+// Tuple destructuring pattern: (pattern1, pattern2, ...)
+tuple_pattern = { "(" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ ")" }
 
-// List destructuring pattern: [x, y, ..rest]
+// Struct destructuring pattern: Type { field1: pattern1, field2 }
+struct_pattern = { type_identifier ~ "{" ~ struct_field_patterns ~ "}" }
+struct_field_patterns = { struct_field_pattern ~ ("," ~ struct_field_pattern)* ~ ","? }
+struct_field_pattern = { identifier ~ (":" ~ pattern)? } // field or field: pattern
+
+// List destructuring pattern: [pattern1, pattern2, ..rest_pattern]
 list_pattern = { "[" ~ list_pattern_elements ~ "]" }
-list_pattern_elements = { identifier ~ ("," ~ identifier)* ~ ("," ~ rest_pattern)? ~ ","? | rest_pattern ~ ","? }
+list_pattern_elements = { pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pattern)? ~ ","? | rest_pattern ~ ","? }
 rest_pattern = @{ ".." ~ identifier }
 
 // === LET BINDINGS ===

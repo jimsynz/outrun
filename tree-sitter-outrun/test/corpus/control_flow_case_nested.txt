@@ -4,27 +4,27 @@ Nested case statements
 
 def categorize_value(value: Any): String {
     case value {
-        when Integer.type?(value) -> {
-            case value {
-                when value > 100 -> "large integer"
-                when value > 0 -> "positive integer"
-                when value == 0 -> "zero"
-                else -> "negative integer"
+        val when Integer.type?(value: val) -> {
+            case val {
+                val when val > 100 -> "large integer"
+                val when val > 0 -> "positive integer"
+                0 -> "zero"
+                _ -> "negative integer"
             }
         }
-        when String.type?(value) -> {
-            case String.length(value) {
-                when length > 20 -> {
-                    case String.contains?(value, char: " ") {
-                        when true -> "long multi-word string"
-                        else -> "long single-word string"
+        val when String.type?(value: val) -> {
+            case String.length(string: val) {
+                length when length > 20 -> {
+                    case String.contains?(string: val, substring: " ") {
+                        true -> "long multi-word string"
+                        _ -> "long single-word string"
                     }
                 }
-                when length > 0 -> "short string"
-                else -> "empty string"
+                length when length > 0 -> "short string"
+                _ -> "empty string"
             }
         }
-        else -> "unknown type"
+        _ -> "unknown type"
     }
 }
 
@@ -54,17 +54,22 @@ def categorize_value(value: Any): String {
                     (identifier)))
                 (case_clause
                   (case_pattern
-                    (guard_expression
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (module_path
-                              (type_identifier))
+                    (destructure_pattern
+                      (identifier))
+                    (guard_clause
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (function_call_postfix
                             (identifier)
                             (argument_list
                               (argument
-                                (shorthand_argument
-                                  (identifier)))))))))
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))))))))
                   (block
                     (statement
                       (expression
@@ -75,14 +80,17 @@ def categorize_value(value: Any): String {
                                 (identifier)))
                             (case_clause
                               (case_pattern
-                                (guard_expression
-                                  (expression
-                                    (binary_greater
-                                      (primary_expression
-                                        (identifier))
-                                      (primary_expression
-                                        (literal
-                                          (integer)))))))
+                                (destructure_pattern
+                                  (identifier))
+                                (guard_clause
+                                  (guard_expression
+                                    (expression
+                                      (binary_greater
+                                        (primary_expression
+                                          (identifier))
+                                        (primary_expression
+                                          (literal
+                                            (integer))))))))
                               (expression
                                 (primary_expression
                                   (literal
@@ -90,14 +98,17 @@ def categorize_value(value: Any): String {
                                       (string_content))))))
                             (case_clause
                               (case_pattern
-                                (guard_expression
-                                  (expression
-                                    (binary_greater
-                                      (primary_expression
-                                        (identifier))
-                                      (primary_expression
-                                        (literal
-                                          (integer)))))))
+                                (destructure_pattern
+                                  (identifier))
+                                (guard_clause
+                                  (guard_expression
+                                    (expression
+                                      (binary_greater
+                                        (primary_expression
+                                          (identifier))
+                                        (primary_expression
+                                          (literal
+                                            (integer))))))))
                               (expression
                                 (primary_expression
                                   (literal
@@ -105,20 +116,18 @@ def categorize_value(value: Any): String {
                                       (string_content))))))
                             (case_clause
                               (case_pattern
-                                (guard_expression
-                                  (expression
-                                    (binary_equal
-                                      (primary_expression
-                                        (identifier))
-                                      (primary_expression
-                                        (literal
-                                          (integer)))))))
+                                (destructure_pattern
+                                  (literal
+                                    (integer))))
                               (expression
                                 (primary_expression
                                   (literal
                                     (string
                                       (string_content))))))
-                            (else_clause
+                            (case_clause
+                              (case_pattern
+                                (destructure_pattern
+                                  (identifier)))
                               (expression
                                 (primary_expression
                                   (literal
@@ -126,17 +135,22 @@ def categorize_value(value: Any): String {
                                       (string_content))))))))))))
                 (case_clause
                   (case_pattern
-                    (guard_expression
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (module_path
-                              (type_identifier))
+                    (destructure_pattern
+                      (identifier))
+                    (guard_clause
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (function_call_postfix
                             (identifier)
                             (argument_list
                               (argument
-                                (shorthand_argument
-                                  (identifier)))))))))
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))))))))
                   (block
                     (statement
                       (expression
@@ -144,24 +158,29 @@ def categorize_value(value: Any): String {
                           (case_expression
                             (expression
                               (primary_expression
-                                (function_call
-                                  (module_path
-                                    (type_identifier))
-                                  (identifier)
-                                  (argument_list
-                                    (argument
-                                      (shorthand_argument
-                                        (identifier)))))))
+                                (identifier))
+                              (function_call_postfix
+                                (identifier)
+                                (argument_list
+                                  (argument
+                                    (named_argument
+                                      (identifier)
+                                      (expression
+                                        (primary_expression
+                                          (identifier))))))))
                             (case_clause
                               (case_pattern
-                                (guard_expression
-                                  (expression
-                                    (binary_greater
-                                      (primary_expression
-                                        (identifier))
-                                      (primary_expression
-                                        (literal
-                                          (integer)))))))
+                                (destructure_pattern
+                                  (identifier))
+                                (guard_clause
+                                  (guard_expression
+                                    (expression
+                                      (binary_greater
+                                        (primary_expression
+                                          (identifier))
+                                        (primary_expression
+                                          (literal
+                                            (integer))))))))
                               (block
                                 (statement
                                   (expression
@@ -169,35 +188,38 @@ def categorize_value(value: Any): String {
                                       (case_expression
                                         (expression
                                           (primary_expression
-                                            (function_call
-                                              (module_path
-                                                (type_identifier))
-                                              (identifier)
-                                              (argument_list
-                                                (argument
-                                                  (shorthand_argument
-                                                    (identifier)))
-                                                (argument
-                                                  (named_argument
-                                                    (identifier)
-                                                    (expression
-                                                      (primary_expression
-                                                        (literal
-                                                          (string
-                                                            (string_content)))))))))))
+                                            (identifier))
+                                          (function_call_postfix
+                                            (identifier)
+                                            (argument_list
+                                              (argument
+                                                (named_argument
+                                                  (identifier)
+                                                  (expression
+                                                    (primary_expression
+                                                      (identifier)))))
+                                              (argument
+                                                (named_argument
+                                                  (identifier)
+                                                  (expression
+                                                    (primary_expression
+                                                      (literal
+                                                        (string
+                                                          (string_content))))))))))
                                         (case_clause
                                           (case_pattern
-                                            (guard_expression
-                                              (expression
-                                                (primary_expression
-                                                  (literal
-                                                    (boolean))))))
+                                            (destructure_pattern
+                                              (literal
+                                                (boolean))))
                                           (expression
                                             (primary_expression
                                               (literal
                                                 (string
                                                   (string_content))))))
-                                        (else_clause
+                                        (case_clause
+                                          (case_pattern
+                                            (destructure_pattern
+                                              (identifier)))
                                           (expression
                                             (primary_expression
                                               (literal
@@ -205,26 +227,35 @@ def categorize_value(value: Any): String {
                                                   (string_content))))))))))))
                             (case_clause
                               (case_pattern
-                                (guard_expression
-                                  (expression
-                                    (binary_greater
-                                      (primary_expression
-                                        (identifier))
-                                      (primary_expression
-                                        (literal
-                                          (integer)))))))
+                                (destructure_pattern
+                                  (identifier))
+                                (guard_clause
+                                  (guard_expression
+                                    (expression
+                                      (binary_greater
+                                        (primary_expression
+                                          (identifier))
+                                        (primary_expression
+                                          (literal
+                                            (integer))))))))
                               (expression
                                 (primary_expression
                                   (literal
                                     (string
                                       (string_content))))))
-                            (else_clause
+                            (case_clause
+                              (case_pattern
+                                (destructure_pattern
+                                  (identifier)))
                               (expression
                                 (primary_expression
                                   (literal
                                     (string
                                       (string_content))))))))))))
-                (else_clause
+                (case_clause
+                  (case_pattern
+                    (destructure_pattern
+                      (identifier)))
                   (expression
                     (primary_expression
                       (literal

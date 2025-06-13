@@ -18,15 +18,14 @@ macro debug(value) {
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (macro_injection
-                            (identifier)))))))))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (macro_injection
+                          (identifier))))))))))))))

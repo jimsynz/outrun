@@ -260,6 +260,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -336,6 +340,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -426,6 +434,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -509,6 +521,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -580,6 +596,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -694,6 +714,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -738,6 +762,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -844,6 +872,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -944,6 +976,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1065,6 +1101,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -1165,6 +1205,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1280,6 +1324,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1402,6 +1450,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -1461,6 +1513,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -1517,6 +1573,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1631,6 +1691,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -1703,6 +1767,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1781,6 +1849,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -1845,6 +1917,10 @@
         },
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -1934,10 +2010,6 @@
           "named": true
         },
         {
-          "type": "else_clause",
-          "named": true
-        },
-        {
           "type": "expression",
           "named": true
         }
@@ -1949,11 +2021,15 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
-          "type": "guard_expression",
+          "type": "destructure_pattern",
+          "named": true
+        },
+        {
+          "type": "guard_clause",
           "named": true
         }
       ]
@@ -2033,7 +2109,15 @@
       "required": true,
       "types": [
         {
+          "type": "identifier",
+          "named": true
+        },
+        {
           "type": "list_destructure",
+          "named": true
+        },
+        {
+          "type": "literal",
           "named": true
         },
         {
@@ -2042,25 +2126,6 @@
         },
         {
           "type": "tuple_destructure",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "else_clause",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "block",
-          "named": true
-        },
-        {
-          "type": "expression",
           "named": true
         }
       ]
@@ -2155,6 +2220,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -2222,6 +2291,25 @@
         },
         {
           "type": "module_path",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "function_call_postfix",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "argument_list",
+          "named": true
+        },
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -2649,7 +2737,7 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "destructure_pattern",
           "named": true
         }
       ]
@@ -3010,6 +3098,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -3169,7 +3261,7 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
@@ -3178,10 +3270,6 @@
         },
         {
           "type": "string",
-          "named": true
-        },
-        {
-          "type": "type_identifier",
           "named": true
         }
       ]
@@ -3308,11 +3396,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "destructure_pattern",
           "named": true
         },
         {
-          "type": "type_identifier",
+          "type": "struct_destructure_start",
           "named": true
         }
       ]
@@ -3395,11 +3483,11 @@
       "required": true,
       "types": [
         {
-          "type": "module_path",
+          "type": "struct_literal_fields",
           "named": true
         },
         {
-          "type": "struct_literal_fields",
+          "type": "struct_literal_start",
           "named": true
         }
       ]
@@ -3578,7 +3666,7 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "destructure_pattern",
           "named": true
         }
       ]
@@ -3692,6 +3780,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -3732,6 +3824,10 @@
       "types": [
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -3778,6 +3874,10 @@
           "named": true
         },
         {
+          "type": "function_call_postfix",
+          "named": true
+        },
+        {
           "type": "index_access",
           "named": true
         },
@@ -3818,6 +3918,10 @@
       "types": [
         {
           "type": "field_access",
+          "named": true
+        },
+        {
+          "type": "function_call_postfix",
           "named": true
         },
         {
@@ -4100,6 +4204,14 @@
   {
     "type": "struct",
     "named": false
+  },
+  {
+    "type": "struct_destructure_start",
+    "named": true
+  },
+  {
+    "type": "struct_literal_start",
+    "named": true
   },
   {
     "type": "trait",

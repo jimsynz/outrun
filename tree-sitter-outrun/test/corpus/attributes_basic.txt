@@ -22,8 +22,7 @@ struct User(name: String) {
                   (list_literal
                     (expression
                       (primary_expression
-                        (module_path
-                          (type_identifier)))))))))))
+                        (identifier))))))))))
       (type_identifier)
       (struct_fields
         (struct_field

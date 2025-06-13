@@ -11,8 +11,10 @@ let (x, y) = (1, 2)
     (let_binding
       (destructure_pattern
         (tuple_destructure
-          (identifier)
-          (identifier)))
+          (destructure_pattern
+            (identifier))
+          (destructure_pattern
+            (identifier))))
       (expression
         (primary_expression
           (tuple_literal

@@ -16,7 +16,6 @@ macro current_time() {
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier))))))))

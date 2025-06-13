@@ -4,11 +4,11 @@ Case with block
 
 def process(value: Integer): String {
     case value {
-        when positive?(value: value) -> {
+        val when positive?(value: val) -> {
             warn(message: "positive value")
             "positive"
         }
-        else -> "other"
+        _ -> "other"
     }
 }
 
@@ -38,18 +38,21 @@ def process(value: Integer): String {
                     (identifier)))
                 (case_clause
                   (case_pattern
-                    (guard_expression
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (identifier)
-                            (argument_list
-                              (argument
-                                (named_argument
-                                  (identifier)
-                                  (expression
-                                    (primary_expression
-                                      (identifier)))))))))))
+                    (destructure_pattern
+                      (identifier))
+                    (guard_clause
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (function_call
+                              (identifier)
+                              (argument_list
+                                (argument
+                                  (named_argument
+                                    (identifier)
+                                    (expression
+                                      (primary_expression
+                                        (identifier))))))))))))
                   (block
                     (statement
                       (expression
@@ -71,7 +74,10 @@ def process(value: Integer): String {
                           (literal
                             (string
                               (string_content))))))))
-                (else_clause
+                (case_clause
+                  (case_pattern
+                    (destructure_pattern
+                      (identifier)))
                   (expression
                     (primary_expression
                       (literal

@@ -50,14 +50,13 @@ impl Application for App {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (tuple_literal)))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (tuple_literal))))))))))))))

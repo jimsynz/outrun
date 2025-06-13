@@ -9,7 +9,8 @@ let add = fn { (x: Integer, y: Integer) -> x + y }
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (anonymous_function

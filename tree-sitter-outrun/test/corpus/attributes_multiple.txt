@@ -24,12 +24,10 @@ struct User(name: String, age: Integer) {
                   (list_literal
                     (expression
                       (primary_expression
-                        (module_path
-                          (type_identifier))))
+                        (identifier)))
                     (expression
                       (primary_expression
-                        (module_path
-                          (type_identifier)))))))))))
+                        (identifier))))))))))
       (attribute
         (type_identifier))
       (attribute

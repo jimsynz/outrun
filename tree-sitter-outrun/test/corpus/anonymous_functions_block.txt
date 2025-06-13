@@ -9,7 +9,8 @@ let logger = fn { message: String -> { let x = 1 } }
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (anonymous_function
@@ -22,7 +23,8 @@ let logger = fn { message: String -> { let x = 1 } }
               (block
                 (statement
                   (let_binding
-                    (identifier)
+                    (destructure_pattern
+                      (identifier))
                     (expression
                       (primary_expression
                         (literal

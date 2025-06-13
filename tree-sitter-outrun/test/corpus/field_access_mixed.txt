@@ -9,7 +9,8 @@ let value = data.items.0.name
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (identifier))

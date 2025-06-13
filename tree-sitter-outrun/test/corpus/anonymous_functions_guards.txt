@@ -13,7 +13,8 @@ let classifier = fn {
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (anonymous_function
@@ -27,14 +28,13 @@ let classifier = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (shorthand_argument
+                            (identifier))))))))
               (expression
                 (primary_expression
                   (literal
@@ -50,14 +50,13 @@ let classifier = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (shorthand_argument
+                            (identifier))))))))
               (expression
                 (primary_expression
                   (literal
@@ -73,14 +72,13 @@ let classifier = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (shorthand_argument
+                            (identifier))))))))
               (expression
                 (primary_expression
                   (literal
@@ -92,9 +90,9 @@ Anonymous function with multiple parameter guards
 ================
 
 let comparer = fn {
-    (x: Integer, y: Integer) when Integer.greater?(x, y) -> "first is greater"
-    (x: Integer, y: Integer) when Integer.less?(x, y) -> "second is greater"
-    (x: Integer, y: Integer) when Integer.equal?(x, y) -> "equal"
+    (x: Integer, y: Integer) when Integer.greater?(first: x, second: y) -> "first is greater"
+    (x: Integer, y: Integer) when Integer.less?(first: x, second: y) -> "second is greater"
+    (x: Integer, y: Integer) when Integer.equal?(first: x, second: y) -> "equal"
 }
 
 ---
@@ -102,7 +100,8 @@ let comparer = fn {
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (anonymous_function
@@ -123,17 +122,22 @@ let comparer = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier)))))
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier))))))))))
               (expression
                 (primary_expression
                   (literal
@@ -156,17 +160,22 @@ let comparer = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier)))))
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier))))))))))
               (expression
                 (primary_expression
                   (literal
@@ -189,17 +198,22 @@ let comparer = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier)))))
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier))))))))))
               (expression
                 (primary_expression
                   (literal
@@ -211,8 +225,8 @@ Anonymous function with complex guard expressions
 ================
 
 let validator = fn {
-    data: String when String.not_empty?(data) && String.valid_format?(data) -> "valid"
-    data: String when String.empty?(data) -> "empty"
+    data: String when String.not_empty?(value: data) && String.valid_format?(value: data) -> "valid"
+    data: String when String.empty?(value: data) -> "empty"
     data: String -> "invalid"
 }
 
@@ -221,7 +235,8 @@ let validator = fn {
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (anonymous_function
@@ -236,23 +251,27 @@ let validator = fn {
                   (expression
                     (binary_logical_and
                       (primary_expression
-                        (function_call
-                          (module_path
-                            (type_identifier))
-                          (identifier)
-                          (argument_list
-                            (argument
-                              (shorthand_argument
-                                (identifier))))))
+                        (identifier))
+                      (function_call_postfix
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (identifier)))))))
                       (primary_expression
-                        (function_call
-                          (module_path
-                            (type_identifier))
-                          (identifier)
-                          (argument_list
-                            (argument
-                              (shorthand_argument
-                                (identifier))))))))))
+                        (identifier))
+                      (function_call_postfix
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (identifier)))))))))))
               (expression
                 (primary_expression
                   (literal
@@ -268,14 +287,16 @@ let validator = fn {
                 (guard_expression
                   (expression
                     (primary_expression
-                      (function_call
-                        (module_path
-                          (type_identifier))
-                        (identifier)
-                        (argument_list
-                          (argument
-                            (shorthand_argument
-                              (identifier)))))))))
+                      (identifier))
+                    (function_call_postfix
+                      (identifier)
+                      (argument_list
+                        (argument
+                          (named_argument
+                            (identifier)
+                            (expression
+                              (primary_expression
+                                (identifier))))))))))
               (expression
                 (primary_expression
                   (literal

@@ -17,12 +17,12 @@ let json_template = ~JSON"""
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (literal
             (sigil
-              (type_identifier)
               (multiline_string
                 (multiline_string_content)
                 (multiline_string_content)

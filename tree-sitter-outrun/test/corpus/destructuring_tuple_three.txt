@@ -11,9 +11,12 @@ let (x, y, z) = some_tuple
     (let_binding
       (destructure_pattern
         (tuple_destructure
-          (identifier)
-          (identifier)
-          (identifier)))
+          (destructure_pattern
+            (identifier))
+          (destructure_pattern
+            (identifier))
+          (destructure_pattern
+            (identifier))))
       (expression
         (primary_expression
           (identifier))))))

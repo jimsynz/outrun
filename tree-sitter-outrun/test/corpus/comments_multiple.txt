@@ -14,7 +14,8 @@ let x = 5 # inline comment
   (block_comment)
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (literal

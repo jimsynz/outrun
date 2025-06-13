@@ -9,11 +9,11 @@ let query = ~SQL"SELECT * FROM users"
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (literal
             (sigil
-              (type_identifier)
               (string
                 (string_content)))))))))

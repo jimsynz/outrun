@@ -93,22 +93,21 @@ def build_organization() {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (primary_expression
                 (struct_literal
-                  (module_path
-                    (type_identifier))
+                  (struct_literal_start)
                   (struct_literal_fields
                     (struct_literal_field
                       (struct_field_assignment
                         (identifier)
                         (expression
                           (primary_expression
-                            (function_call
-                              (module_path
-                                (type_identifier))
-                              (identifier))))))
+                            (identifier))
+                          (function_call_postfix
+                            (identifier)))))
                     (struct_literal_field
                       (struct_field_assignment
                         (identifier)
@@ -123,8 +122,7 @@ def build_organization() {
                         (expression
                           (primary_expression
                             (struct_literal
-                              (module_path
-                                (type_identifier))
+                              (struct_literal_start)
                               (struct_literal_fields
                                 (struct_literal_field
                                   (struct_field_assignment
@@ -164,8 +162,7 @@ def build_organization() {
                                     (expression
                                       (primary_expression
                                         (struct_literal
-                                          (module_path
-                                            (type_identifier))
+                                          (struct_literal_start)
                                           (struct_literal_fields
                                             (struct_literal_field
                                               (struct_field_assignment
@@ -189,8 +186,7 @@ def build_organization() {
                                                 (expression
                                                   (primary_expression
                                                     (struct_literal
-                                                      (module_path
-                                                        (type_identifier))
+                                                      (struct_literal_start)
                                                       (struct_literal_fields
                                                         (struct_literal_field
                                                           (struct_field_assignment
@@ -221,8 +217,7 @@ def build_organization() {
                                     (expression
                                       (primary_expression
                                         (struct_literal
-                                          (module_path
-                                            (type_identifier))
+                                          (struct_literal_start)
                                           (struct_literal_fields
                                             (struct_literal_field
                                               (struct_field_assignment
@@ -245,8 +240,7 @@ def build_organization() {
                                                 (expression
                                                   (primary_expression
                                                     (struct_literal
-                                                      (module_path
-                                                        (type_identifier))
+                                                      (struct_literal_start)
                                                       (struct_literal_fields
                                                         (struct_literal_field
                                                           (struct_field_assignment
@@ -269,8 +263,7 @@ def build_organization() {
                                                             (expression
                                                               (primary_expression
                                                                 (struct_literal
-                                                                  (module_path
-                                                                    (type_identifier))
+                                                                  (struct_literal_start)
                                                                   (struct_literal_fields
                                                                     (struct_literal_field
                                                                       (struct_field_assignment
@@ -295,8 +288,7 @@ def build_organization() {
                               (expression
                                 (primary_expression
                                   (struct_literal
-                                    (module_path
-                                      (type_identifier))
+                                    (struct_literal_start)
                                     (struct_literal_fields
                                       (struct_literal_field
                                         (struct_field_assignment
@@ -312,8 +304,7 @@ def build_organization() {
                                           (expression
                                             (primary_expression
                                               (struct_literal
-                                                (module_path
-                                                  (type_identifier))
+                                                (struct_literal_start)
                                                 (struct_literal_fields
                                                   (struct_literal_field
                                                     (struct_field_assignment
@@ -336,8 +327,7 @@ def build_organization() {
                                                       (expression
                                                         (primary_expression
                                                           (struct_literal
-                                                            (module_path
-                                                              (type_identifier))
+                                                            (struct_literal_start)
                                                             (struct_literal_fields
                                                               (struct_literal_field
                                                                 (struct_field_assignment
@@ -353,8 +343,7 @@ def build_organization() {
                                                                   (expression
                                                                     (primary_expression
                                                                       (struct_literal
-                                                                        (module_path
-                                                                          (type_identifier))
+                                                                        (struct_literal_start)
                                                                         (struct_literal_fields
                                                                           (struct_literal_field
                                                                             (struct_field_assignment
@@ -386,8 +375,7 @@ def build_organization() {
                                                       (expression
                                                         (primary_expression
                                                           (struct_literal
-                                                            (module_path
-                                                              (type_identifier))
+                                                            (struct_literal_start)
                                                             (struct_literal_fields
                                                               (struct_literal_field
                                                                 (struct_field_assignment
@@ -411,8 +399,7 @@ def build_organization() {
                                                                   (expression
                                                                     (primary_expression
                                                                       (struct_literal
-                                                                        (module_path
-                                                                          (type_identifier))
+                                                                        (struct_literal_start)
                                                                         (struct_literal_fields
                                                                           (struct_literal_field
                                                                             (struct_field_assignment
@@ -441,8 +428,7 @@ def build_organization() {
                                                                               (expression
                                                                                 (primary_expression
                                                                                   (struct_literal
-                                                                                    (module_path
-                                                                                      (type_identifier))
+                                                                                    (struct_literal_start)
                                                                                     (struct_literal_fields
                                                                                       (struct_literal_field
                                                                                         (struct_field_assignment
@@ -482,8 +468,7 @@ def build_organization() {
                                           (expression
                                             (primary_expression
                                               (struct_literal
-                                                (module_path
-                                                  (type_identifier))
+                                                (struct_literal_start)
                                                 (struct_literal_fields
                                                   (struct_literal_field
                                                     (struct_field_assignment
@@ -491,8 +476,7 @@ def build_organization() {
                                                       (expression
                                                         (primary_expression
                                                           (struct_literal
-                                                            (module_path
-                                                              (type_identifier))
+                                                            (struct_literal_start)
                                                             (struct_literal_fields
                                                               (struct_literal_field
                                                                 (struct_field_assignment
@@ -518,8 +502,7 @@ def build_organization() {
                                                             (expression
                                                               (primary_expression
                                                                 (struct_literal
-                                                                  (module_path
-                                                                    (type_identifier))
+                                                                  (struct_literal_start)
                                                                   (struct_literal_fields
                                                                     (struct_literal_field
                                                                       (struct_field_assignment
@@ -534,8 +517,7 @@ def build_organization() {
                                                                         (expression
                                                                           (primary_expression
                                                                             (struct_literal
-                                                                              (module_path
-                                                                                (type_identifier))
+                                                                              (struct_literal_start)
                                                                               (struct_literal_fields
                                                                                 (struct_literal_field
                                                                                   (struct_field_assignment

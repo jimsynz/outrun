@@ -39,45 +39,42 @@ when Integer.non_zero?(denominator) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (module_path
-                              (type_identifier))
-                            (identifier)
-                            (argument_list
-                              (argument
-                                (named_argument
-                                  (identifier)
-                                  (expression
-                                    (primary_expression
-                                      (identifier)))))
-                              (argument
-                                (named_argument
-                                  (identifier)
-                                  (expression
-                                    (primary_expression
-                                      (identifier))))))))))))))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (identifier))
+                      (function_call_postfix
+                        (identifier)
+                        (argument_list
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (identifier)))))
+                          (argument
+                            (named_argument
+                              (identifier)
+                              (expression
+                                (primary_expression
+                                  (identifier))))))))))))))))))
 
 ================
 Function with guard and nested generic return type
@@ -123,29 +120,27 @@ when Integer.positive?(user_id) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (identifier))))))))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (identifier)))))))))))))
 
 ================
 Function with guard and tuple of complex types
@@ -196,29 +191,27 @@ when List.not_empty?(items) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (identifier))))))))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (identifier)))))))))))))
 
 ================
 Function with guard and deeply nested generics
@@ -278,29 +271,24 @@ when RawData.valid?(data) {
         (guard_expression
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (shorthand_argument
-                      (identifier)))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (shorthand_argument
+                    (identifier))))))))
       (block
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (identifier))))))))))))))
-
-
-
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (identifier)))))))))))))

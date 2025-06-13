@@ -9,11 +9,12 @@ let mapper = &String.upcase
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (function_capture
             (qualified_function_ref
-              (module_path
-                (type_identifier))
-              (identifier))))))))
+              (identifier))))
+        (field_access
+          (identifier))))))

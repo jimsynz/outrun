@@ -9,12 +9,12 @@ let json_template = ~JSON"{ \"name\": \"#{name}\", \"age\": #{age} }"
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (primary_expression
           (literal
             (sigil
-              (type_identifier)
               (string
                 (string_content)
                 (escape_sequence)

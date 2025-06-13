@@ -15,24 +15,23 @@ const USER: User = User.create(name: "James", email: "test@example.com")
           (type_identifier)))
       (expression
         (primary_expression
-          (function_call
-            (module_path
-              (type_identifier))
-            (identifier)
-            (argument_list
-              (argument
-                (named_argument
-                  (identifier)
-                  (expression
-                    (primary_expression
-                      (literal
-                        (string
-                          (string_content)))))))
-              (argument
-                (named_argument
-                  (identifier)
-                  (expression
-                    (primary_expression
-                      (literal
-                        (string
-                          (string_content))))))))))))))
+          (identifier))
+        (function_call_postfix
+          (identifier)
+          (argument_list
+            (argument
+              (named_argument
+                (identifier)
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)))))))
+            (argument
+              (named_argument
+                (identifier)
+                (expression
+                  (primary_expression
+                    (literal
+                      (string
+                        (string_content)))))))))))))

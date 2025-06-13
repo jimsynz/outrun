@@ -9,7 +9,8 @@ let result = ~a & b
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (binary_bitwise_and
           (unary_complement

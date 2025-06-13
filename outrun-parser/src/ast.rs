@@ -552,37 +552,65 @@ pub enum StatementKind {
     LetBinding(Box<LetBinding>),
 }
 
+// === LITERALS (for pattern matching) ===
+
+/// Literal values for pattern matching
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
+    Boolean(BooleanLiteral),
+    Integer(IntegerLiteral),
+    Float(FloatLiteral),
+    String(StringLiteral),
+    Atom(AtomLiteral),
+}
+
 // === PATTERNS ===
 
-/// Pattern for destructuring assignments
+/// Pattern for destructuring assignments (unified recursive system)
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Identifier(Identifier),
+    Literal(LiteralPattern),
     Tuple(TuplePattern),
     Struct(StructPattern),
     List(ListPattern),
 }
 
-/// Tuple destructuring pattern
+/// Literal pattern for exact value matching
 #[derive(Debug, Clone, PartialEq)]
-pub struct TuplePattern {
-    pub elements: Vec<Identifier>,
+pub struct LiteralPattern {
+    pub literal: Literal,
     pub span: Span,
 }
 
-/// Struct destructuring pattern
+/// Tuple destructuring pattern with recursive patterns
+#[derive(Debug, Clone, PartialEq)]
+pub struct TuplePattern {
+    pub elements: Vec<Pattern>, // Changed from Vec<Identifier> to support recursion
+    pub span: Span,
+}
+
+/// Struct destructuring pattern with recursive field patterns
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructPattern {
     pub type_name: TypeIdentifier,
-    pub fields: Vec<Identifier>,
+    pub fields: Vec<StructFieldPattern>, // Changed to support recursive patterns
     pub span: Span,
 }
 
-/// List destructuring pattern
+/// Struct field pattern (can be identifier or complex pattern)
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructFieldPattern {
+    pub name: Identifier,
+    pub pattern: Option<Pattern>, // None = shorthand syntax, Some = field: pattern syntax
+    pub span: Span,
+}
+
+/// List destructuring pattern with recursive patterns
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListPattern {
-    pub elements: Vec<Identifier>,
-    pub rest: Option<Identifier>, // for [first, ..rest] syntax
+    pub elements: Vec<Pattern>, // Changed from Vec<Identifier> to support recursion
+    pub rest: Option<Identifier>, // Rest patterns can only be identifiers
     pub span: Span,
 }
 
@@ -1185,10 +1213,39 @@ impl std::fmt::Display for Statement {
     }
 }
 
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Boolean(boolean) => write!(f, "{}", boolean),
+            Literal::Integer(integer) => write!(f, "{}", integer),
+            Literal::Float(float) => write!(f, "{}", float),
+            Literal::String(string) => write!(f, "{}", string),
+            Literal::Atom(atom) => write!(f, "{}", atom),
+        }
+    }
+}
+
+impl std::fmt::Display for LiteralPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.literal)
+    }
+}
+
+impl std::fmt::Display for StructFieldPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(pattern) = &self.pattern {
+            write!(f, "{}: {}", self.name, pattern)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
 impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Pattern::Identifier(identifier) => write!(f, "{}", identifier),
+            Pattern::Literal(literal_pattern) => write!(f, "{}", literal_pattern),
             Pattern::Tuple(tuple) => write!(f, "{}", tuple),
             Pattern::Struct(struct_pattern) => write!(f, "{}", struct_pattern),
             Pattern::List(list) => write!(f, "{}", list),

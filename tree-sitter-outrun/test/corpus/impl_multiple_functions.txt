@@ -58,8 +58,7 @@ impl Container for Box {
             (expression
               (primary_expression
                 (struct_literal
-                  (module_path
-                    (type_identifier))
+                  (struct_literal_start)
                   (struct_literal_fields
                     (struct_literal_field
                       (struct_field_assignment

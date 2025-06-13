@@ -57,7 +57,7 @@ Outrun uses explicit error handling with no exceptions or implicit failures:
 
 - **Expected failures**: Use `Option<T>` for potentially missing values, `Result<T, E>` for operations that can fail
 - **Guard-based validation**: Functions use guards to catch error conditions explicitly
-- **Example**: `def div(lhs: Integer64, rhs: Integer64): Result<Integer64, Error> when Integer.zero?(rhs) { RuntimeError }`
+- **Example**: `def div(lhs: Integer64, rhs: Integer64): Result<Integer64, Error> when Integer.zero?(value: rhs) { RuntimeError }`
 - **Actor panics**: Reserve for truly unexpected situations (VM errors, assertion failures, impossible states)
 - **Fault isolation**: Panics only terminate the failing actor, not the whole system
 - **No truthiness**: Only values implementing the `Boolean` trait can be used in conditionals
@@ -391,12 +391,12 @@ defp validate_email(email: String): Boolean {
 
 # Function with guards
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
-when Integer.non_zero?(denominator) {
+when Integer.non_zero?(value: denominator) {
     Ok(numerator / denominator)
 }
 
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
-when Integer.zero?(denominator) {
+when Integer.zero?(value: denominator) {
     Err(DivisionError("Cannot divide by zero"))
 }
 ```
@@ -491,16 +491,16 @@ logger = fn {
 
 # Multiple function heads with guards
 classifier = fn {
-    x: Integer when Integer.positive?(x) -> "positive"
-    x: Integer when Integer.negative?(x) -> "negative"
-    x: Integer when Integer.zero?(x) -> "zero"
+    x: Integer when Integer.positive?(value: x) -> "positive"
+    x: Integer when Integer.negative?(value: x) -> "negative"
+    x: Integer when Integer.zero?(value: x) -> "zero"
 }
 
 # Multiple parameters with guards
 comparer = fn {
-    (x: Integer, y: Integer) when Integer.greater?(x, y) -> "first is greater"
-    (x: Integer, y: Integer) when Integer.less?(x, y) -> "second is greater"
-    (x: Integer, y: Integer) when Integer.equal?(x, y) -> "equal"
+    (x: Integer, y: Integer) when Integer.greater?(left: x, right: y) -> "first is greater"
+    (x: Integer, y: Integer) when Integer.less?(left: x, right: y) -> "second is greater"
+    (x: Integer, y: Integer) when Integer.equal?(left: x, right: y) -> "equal"
 }
 ```
 
@@ -548,40 +548,233 @@ value = if check { 1 } else { 0 }
 
 ### Case Statements
 
-Case statements support pattern matching with optional guards:
+Case statements use pattern matching with optional guards. All case clauses must start with a destructuring pattern:
 
 ```outrun
 result = case user {
-    User { name } when String.equal?(name, "Marty") -> :is_marty
-    User { name } when String.length(name) > 10 -> :long_name  
+    User { name } when String.equal?(value: name, other: "Marty") -> :is_marty
+    User { name } when String.length(string: name) > 10 -> :long_name  
     User { name } -> :other_user
     Guest { session_id } -> :guest
-    Admin { permissions } when List.contains?(permissions, :admin) -> :admin_user
-    else -> :unknown_user
+    Admin { permissions } when List.contains?(list: permissions, item: :admin) -> :admin_user
+    _ -> :unknown_user
 }
 
 # Pattern matching with complex destructuring
 result = case data {
-    (User { name }, Session { active }) when Boolean.and?(active, String.not_empty?(name)) -> {
-        Logger.info("Active user session")
+    (User { name }, Session { active }) when Boolean.and?(left: active, right: String.not_empty?(value: name)) -> {
+        Logger.info(message: "Active user session")
         :valid_session
     }
     (User { name }, Session { active: false }) -> :inactive_session
     (Guest { id }, _) -> :guest_session
-    else -> :invalid_data
+    _ -> :invalid_data
 }
 
-# Simple value matching (guard-only, no destructuring)
-result = case number {
-    n when Integer.positive?(n) -> "positive"
-    n when Integer.negative?(n) -> {
-        Logger.warn("Negative value encountered")  
-        "negative"
-    }
-    n when Integer.zero?(n) -> "zero"
-    else -> "unknown"
+# Pattern types: struct, tuple, list, value, and identifier patterns
+result = case value {
+    # Struct destructuring
+    User { name, email } when String.contains?(string: email, substring: "@") -> "valid user"
+    
+    # Tuple destructuring  
+    (x, y) when Integer.positive?(value: x) && Integer.positive?(value: y) -> "positive coordinates"
+    (x, y) -> "coordinates"
+    
+    # List destructuring with head/tail
+    [head, ..tail] when List.not_empty?(list: tail) -> "list with multiple items"
+    [single] -> "single item list"
+    [] -> "empty list"
+    
+    # Value patterns (exact matches)
+    0 -> "zero"
+    42 -> "the answer"
+    
+    # Identifier patterns (match anything, bind to variable)
+    n when Integer.positive?(value: n) -> "positive number"
+    data when String.type?(value: data) -> "some string"
+    
+    # Underscore identifier (by convention means "unused")
+    _ -> "unknown"
 }
 ```
+
+#### Pattern Types
+
+Case expressions use Outrun's **unified destructuring pattern system**. The same five pattern types work identically in `let` bindings and case statements:
+
+- **Identifier patterns**: `data`, `_` - match anything and bind to that variable
+- **Value patterns**: `42`, `"hello"` - match exact literal values
+- **Struct patterns**: `User { name, email }` - destructure struct fields into variables
+- **Tuple patterns**: `(x, y, z)` - destructure tuple elements into variables  
+- **List patterns**: `[head, ..tail]` - destructure list with head/tail syntax
+
+See **Unified Destructuring Patterns** section below for complete details and examples.
+
+#### Guards and Variable Scope
+
+Guards are optional expressions that must evaluate to a Boolean. Variables bound by patterns are available in both guards and result expressions:
+
+```outrun
+case user_data {
+    User { name, age } when Integer.greater?(value: age, other: 18) -> {
+        # Both 'name' and 'age' are available here
+        process_adult_user(name: name, age: age)
+    }
+    User { name } -> {
+        # Only 'name' is available here (age wasn't bound)
+        process_minor_user(name: name)
+    }
+    _ -> handle_invalid_user()
+}
+```
+
+### Unified Destructuring Patterns
+
+**Outrun uses a unified pattern system for all assignment contexts.** The same destructuring patterns work consistently across:
+
+- **Variable bindings** (`let pattern = value`)  
+- **Case statements** (`case value { pattern -> ... }`)
+- **Function parameters** (in anonymous functions)
+
+This unification means any pattern that works in one context works in all contexts, providing consistent syntax and semantics throughout the language.
+
+#### Pattern Types
+
+All assignment contexts support the same five pattern types:
+
+**1. Identifier Patterns** - Match anything, bind to variable:
+```outrun
+# In let bindings
+let x = some_value                    # Binds any value to 'x'
+let _ = expensive_computation()       # Convention: underscore means "unused"
+
+# In case statements  
+case user_input {
+    value -> process(value: value)    # Binds any value to 'value'
+    _ -> handle_unknown()             # Convention: underscore means "unused"
+}
+```
+
+**2. Value Patterns** - Match exact literals:
+```outrun
+# In let bindings (assertion)
+let 42 = get_answer()                 # Asserts the value equals 42
+let "hello" = get_greeting()          # Asserts the value equals "hello"
+
+# In case statements (matching)
+case user_input {
+    42 -> "the answer"                # Matches exactly 42
+    "quit" -> "goodbye"               # Matches exactly "quit"
+    other -> process(value: other)    # Matches anything else
+}
+```
+
+**3. Struct Patterns** - Destructure struct fields:
+```outrun
+# In let bindings
+let User { name, email } = fetch_user()          # Extracts name and email
+let Config { database: db } = load_config()     # Extracts database field as 'db'
+
+# In case statements
+case user_data {
+    User { name, email } -> process_user(name: name, email: email)
+    Guest { session_id } -> process_guest(id: session_id)
+    Admin { permissions } -> process_admin(perms: permissions)
+}
+```
+
+**4. Tuple Patterns** - Destructure tuple elements:
+```outrun
+# In let bindings
+let (x, y) = get_coordinates()               # Extracts both coordinates
+let ((a, b), (c, d)) = get_nested_pairs()   # Nested tuple destructuring
+
+# In case statements
+case coordinate_data {
+    (x, y) when Integer.positive?(value: x) -> process_positive(x: x, y: y)
+    (0, 0) -> "origin"                       # Exact tuple match
+    (x, y) -> process_general(x: x, y: y)    # General tuple match
+}
+```
+
+**5. List Patterns** - Destructure lists with head/tail:
+```outrun
+# In let bindings
+let [head, ..tail] = process_items()              # Head/tail extraction
+let [first, second, ..rest] = get_sequence()     # Multiple head elements
+
+# In case statements  
+case item_list {
+    [] -> "empty list"                            # Empty list match
+    [single] -> process_single(item: single)      # Single item list
+    [head, ..tail] -> process_multiple(head: head, tail: tail)
+}
+```
+
+#### Pattern Composition and Nesting
+
+**All patterns are fully recursive** - any pattern can contain any other pattern at any depth. This provides unlimited compositional power for complex data extraction:
+
+```outrun
+# Tuple containing nested patterns with literals and structs
+let (42, [User { name, email }, :active], metadata) = get_response()
+
+# List containing mixed pattern types
+let [1, "success", User { name }, (x, y)] = parse_complex_response()
+
+# Struct containing nested tuples and lists
+let Config { database: (host, port), servers: [primary, ..backups] } = load_config()
+
+# Deep nesting with multiple levels
+let ((id, status), [Record { value }, Record { backup: (x, y) }], :valid) = process_data()
+```
+
+**Recursive Pattern Grammar:**
+- **Tuples**: `(pattern1, pattern2, ...)` - each element can be any recursive pattern
+- **Lists**: `[pattern1, pattern2, ..rest_identifier]` - each element can be any recursive pattern, but rest patterns (`..name`) must be identifiers only
+- **Structs**: `Type { field1: pattern1, field2 }` - field patterns can be any recursive pattern
+- **Literals**: `42`, `"text"`, `:atom` - terminal patterns (no recursion)
+- **Identifiers**: `variable_name` - terminal patterns (no recursion)
+
+**Practical Examples:**
+
+```outrun
+# API response parsing with deeply nested data
+let Response { 
+    status: (code, message), 
+    data: [User { profile: Profile { settings } }, ..others],
+    metadata: :success 
+} = api_call()
+
+# Complex case matching with mixed patterns
+case complex_data {
+    (id, [Record { value: (x, y) }, :active], 200) -> process_valid(id: id, coords: (x, y))
+    (_, [], error_code) when Integer.greater?(value: error_code, other: 400) -> handle_error(code: error_code)
+    _ -> fallback_handler()
+}
+
+# Data pipeline with nested extraction
+let (
+    source_id,
+    [Input { raw_data: [first, ..rest] }, processed],
+    Output { results: (success_count, errors) }
+) = pipeline_result
+```
+
+#### Guards in Assignment
+
+Guards are supported in case statements and anonymous functions to add conditional logic to patterns:
+
+```outrun
+case user_age {
+    age when Integer.greater?(value: age, other: 65) -> "senior"
+    age when Integer.greater?(value: age, other: 18) -> "adult"  
+    age when Integer.positive?(value: age) -> "minor"
+    _ -> "invalid age"
+}
+```
+
+This unified approach ensures that learning one assignment context gives you expertise in all contexts, reducing cognitive load and maintaining consistency across the language.
 
 ## Operators
 
@@ -678,12 +871,14 @@ let config_data = (Config { database, cache }, Settings { logging, monitoring })
 let (database_config, app_settings) = config_data
 ```
 
-See **Destructuring** section below for complete details on pattern syntax and capabilities.
+See **Unified Destructuring Patterns** section above for complete details on the pattern system that works across all assignment contexts.
 
 **Implementation Notes:**
 - **Grammar**: Supports both explicit and inferred types
 - **Current Parser**: Requires explicit type annotations
 - **Future**: Type inference will allow omitting obvious types
+- **Recursive Patterns**: Parser must implement recursive descent for destructuring patterns. Each pattern type (tuple, list, struct) must accept nested `destructure_pattern` rules rather than just identifiers
+- **AST Structure**: All destructuring creates `destructure_pattern` nodes containing the specific pattern type, enabling uniform processing across all assignment contexts
 
 ### Constants
 
@@ -844,31 +1039,31 @@ Guards are side-effect-free functions ending in `?` that return Boolean:
 ```outrun
 # In function definitions
 def safe_divide(a: Integer, b: Integer): Float 
-when Integer.non_zero?(b) {
+when Integer.non_zero?(value: b) {
     Float.from_integer(a) / Float.from_integer(b)
 }
 
 # In case statements
 case number {
-    when Integer.even?(number) -> "even"
-    when Integer.odd?(number) -> "odd"
+    n when Integer.even?(value: n) -> "even"
+    n when Integer.odd?(value: n) -> "odd"
 }
 
 # In anonymous functions
 classifier = fn {
-    x: Integer when Integer.positive?(x) -> "positive"
-    x: Integer when Integer.negative?(x) -> "negative"
+    x: Integer when Integer.positive?(value: x) -> "positive"
+    x: Integer when Integer.negative?(value: x) -> "negative"
 }
 
 # Guards can access multiple parameters
 sorter = fn {
-    (a: Integer, b: Integer) when Integer.less?(a, b) -> [a, b]
-    (a: Integer, b: Integer) when Integer.greater_equal?(a, b) -> [b, a]
+    (a: Integer, b: Integer) when Integer.less?(left: a, right: b) -> [a, b]
+    (a: Integer, b: Integer) when Integer.greater_equal?(left: a, right: b) -> [b, a]
 }
 
 # Complex guard expressions
 def process(data: String): Result<ProcessedData, Error>
-when String.not_empty?(data) && String.valid_format?(data) {
+when String.not_empty?(value: data) && String.valid_format?(value: data) {
     # Process the data
 }
 ```
@@ -995,7 +1190,9 @@ trait Attribute {
 
 **Destructuring:**
 
-Outrun supports powerful destructuring patterns for extracting values from complex data structures:
+Outrun uses a **unified destructuring pattern system** that works consistently across variable bindings, case statements, and function parameters. See the "Unified Destructuring Patterns" section for complete details on pattern types and usage.
+
+The examples below show destructuring in `let` binding contexts:
 
 ```outrun
 # Basic tuple destructuring
@@ -1066,24 +1263,29 @@ let with_header = [header_item, ..body_items]
 - The resulting list type is inferred from all elements
 - Only supports head|tail pattern (prepending to lists)
 
+**Rest Pattern Constraints:**
+- **Rest patterns in destructuring must be identifiers only**: `..tail`, `..rest`, `..remaining` (not complex patterns)
+- **Main patterns are fully recursive**: Regular elements in lists/tuples can be any nested pattern
+- **Example**: `[first, (x, y), ..rest]` - `first` and `(x, y)` can be complex patterns, but `rest` must be a simple identifier
+
 **Case Expressions with Pattern Matching:**
 
 Case expressions support pattern matching with optional guards, where bound variables are available in both guards and results:
 
 ```outrun
 let result = case user_data {
-    User { name, email } when String.contains?(email, "@") -> {
+    User { name, email } when String.contains?(string: email, substring: "@") -> {
         process_user(name: name, email: email)
     }
     User { name } -> {
         # email not available in this pattern
         process_user_without_email(name: name)
     }
-    Guest { session_id } when String.not_empty?(session_id) -> {
+    Guest { session_id } when String.not_empty?(value: session_id) -> {
         process_guest(id: session_id)
     }
     Guest { session_id } -> handle_invalid_guest()
-    else -> handle_unknown()
+    _ -> handle_unknown()
 }
 ```
 

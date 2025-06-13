@@ -27,12 +27,31 @@ def example(): Result<String, Error> {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (literal
+                            (string
+                              (string_content))))))))))))
+        (statement
+          (expression
+            (pipe_expression
+              (pipe_expression
+                (primary_expression
+                  (identifier))
+                (primary_expression
+                  (identifier))
+                (function_call_postfix
                   (identifier)
                   (argument_list
                     (argument
@@ -42,40 +61,19 @@ def example(): Result<String, Error> {
                           (primary_expression
                             (literal
                               (string
-                                (string_content)))))))))))))
-        (statement
-          (expression
-            (pipe_expression
-              (pipe_expression
-                (primary_expression
-                  (identifier))
-                (primary_expression
-                  (function_call
-                    (module_path
-                      (type_identifier))
-                    (identifier)
-                    (argument_list
-                      (argument
-                        (named_argument
-                          (identifier)
-                          (expression
-                            (primary_expression
-                              (literal
-                                (string
-                                  (string_content)))))))))))
+                                (string_content))))))))))
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (function_capture
-                              (qualified_function_ref
-                                (module_path
-                                  (type_identifier))
-                                (identifier)))))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (function_capture
+                            (qualified_function_ref
+                              (identifier))))
+                        (field_access
+                          (identifier))))))))))))))

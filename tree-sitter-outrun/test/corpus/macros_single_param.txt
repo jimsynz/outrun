@@ -21,53 +21,53 @@ macro benchmark(code) {
       (block
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (primary_expression
                 (macro_injection
                   (identifier))))))
         (statement
           (let_binding
-            (identifier)
+            (destructure_pattern
+              (identifier))
             (expression
               (binary_subtract
                 (primary_expression
-                  (function_call
-                    (module_path
-                      (type_identifier))
-                    (identifier)))
+                  (identifier))
+                (function_call_postfix
+                  (identifier))
                 (primary_expression
                   (identifier))))))
         (statement
           (expression
             (primary_expression
-              (function_call
-                (module_path
-                  (type_identifier))
-                (identifier)
-                (argument_list
-                  (argument
-                    (named_argument
-                      (identifier)
-                      (expression
-                        (primary_expression
-                          (literal
-                            (string
-                              (string_content)
-                              (interpolation
-                                (expression
-                                  (primary_expression
-                                    (identifier))))
-                              (string_content))))))))))))
+              (identifier))
+            (function_call_postfix
+              (identifier)
+              (argument_list
+                (argument
+                  (named_argument
+                    (identifier)
+                    (expression
+                      (primary_expression
+                        (literal
+                          (string
+                            (string_content)
+                            (interpolation
+                              (expression
+                                (primary_expression
+                                  (identifier))))
+                            (string_content)))))))))))
         (statement
           (expression
             (primary_expression

@@ -23,7 +23,7 @@ outrun/
     │   ├── node-types.json
     │   └── parser.c
     └── test/
-        └── corpus/             # 178 comprehensive test files (100% pass rate)
+        └── corpus/             # 254 comprehensive test files (100% pass rate)
             ├── literals_*.txt  # All literal types
             ├── operators_*.txt # All operators with precedence
             ├── functions_*.txt # Function definitions and calls
@@ -94,7 +94,7 @@ macro unless(condition, do_block) {
 cd tree-sitter-outrun
 npm install
 npm run generate              # Generate parser from grammar.js
-npm test                     # Run all 178 corpus tests (100% pass rate)
+npm test                     # Run all 254 corpus tests (100% pass rate)
 tree-sitter test --update    # Update AST expectations automatically
 tree-sitter parse file.outrun # Test parsing specific files
 ```
@@ -167,10 +167,11 @@ struct User(name: String, email: String) {
 - ✅ Core syntax specification complete
 - ✅ BNF grammar written
 - ✅ Tree-sitter grammar implemented
-- ✅ **COMPLETE: Comprehensive test coverage with 178 tests (100% pass rate)**
+- ✅ **COMPLETE: Comprehensive test coverage with 254 tests (100% pass rate)**
 - ✅ **All SYNTAX_SPEC.md features implemented and tested**
 - ✅ **Pest parser implementation**: Complete string interpolation with expression parsing
 - ✅ **CLI tool**: Parse command with pretty-printed s-expressions and stdin support
+- ✅ **Recursive destructuring patterns**: Fully implemented with unified pattern system across let bindings, case statements, and function parameters
 - ⭐ Type checker needed  
 - ⭐ Interpreter/compiler needed
 

@@ -4,8 +4,8 @@ Macro with nested blocks and control flow
 
 macro try_catch(try_block, catch_block) {
   case ^try_block {
-    when Result.ok?(value) -> value
-    when Result.error?(error) -> ^catch_block
+    value when Result.ok?(value: value) -> value
+    error when Result.error?(value: error) -> ^catch_block
   }
 }
 
@@ -29,33 +29,43 @@ macro try_catch(try_block, catch_block) {
                       (identifier))))
                 (case_clause
                   (case_pattern
-                    (guard_expression
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (module_path
-                              (type_identifier))
+                    (destructure_pattern
+                      (identifier))
+                    (guard_clause
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (function_call_postfix
                             (identifier)
                             (argument_list
                               (argument
-                                (shorthand_argument
-                                  (identifier)))))))))
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))))))))
                   (expression
                     (primary_expression
                       (identifier))))
                 (case_clause
                   (case_pattern
-                    (guard_expression
-                      (expression
-                        (primary_expression
-                          (function_call
-                            (module_path
-                              (type_identifier))
+                    (destructure_pattern
+                      (identifier))
+                    (guard_clause
+                      (guard_expression
+                        (expression
+                          (primary_expression
+                            (identifier))
+                          (function_call_postfix
                             (identifier)
                             (argument_list
                               (argument
-                                (shorthand_argument
-                                  (identifier)))))))))
+                                (named_argument
+                                  (identifier)
+                                  (expression
+                                    (primary_expression
+                                      (identifier)))))))))))
                   (expression
                     (primary_expression
                       (macro_injection

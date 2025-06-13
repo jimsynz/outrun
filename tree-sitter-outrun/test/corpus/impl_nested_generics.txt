@@ -87,25 +87,24 @@ impl<T, E> AsyncProcessor<Future<Result<T, E>>, E> for Handler<T> {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier)))))
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (function_capture
-                              (qualified_function_ref
-                                (identifier)))))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (function_capture
+                            (qualified_function_ref
+                              (identifier))))))))))))))))
 
 ================
 Multiple functions in complex trait impl
@@ -174,25 +173,24 @@ impl<T> Repository<T> for DatabaseRepo<T> when T: Serializable {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier))
-                          (field_access
-                            (identifier)))))
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))
+                        (field_access
+                          (identifier)))))
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier)))))))))))
       (function_definition
         (identifier)
         (parameter_list
@@ -219,22 +217,21 @@ impl<T> Repository<T> for DatabaseRepo<T> when T: Serializable {
           (statement
             (expression
               (primary_expression
-                (function_call
-                  (module_path
-                    (type_identifier))
-                  (identifier)
-                  (argument_list
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier))
-                          (field_access
-                            (identifier)))))
-                    (argument
-                      (named_argument
-                        (identifier)
-                        (expression
-                          (primary_expression
-                            (identifier)))))))))))))))
+                (identifier))
+              (function_call_postfix
+                (identifier)
+                (argument_list
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))
+                        (field_access
+                          (identifier)))))
+                  (argument
+                    (named_argument
+                      (identifier)
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))

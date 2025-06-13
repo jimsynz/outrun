@@ -605,6 +605,10 @@ impl OutrunParser {
                 let list_pattern = Self::parse_list_pattern(pair)?;
                 Ok(Pattern::List(list_pattern))
             }
+            Rule::literal_pattern => {
+                let literal_pattern = Self::parse_literal_pattern(pair)?;
+                Ok(Pattern::Literal(literal_pattern))
+            }
             Rule::identifier => {
                 let identifier = Self::parse_identifier(pair)?;
                 Ok(Pattern::Identifier(identifier))
@@ -613,16 +617,52 @@ impl OutrunParser {
         }
     }
 
+    /// Parse a literal pattern from a Pest pair
+    fn parse_literal_pattern(pair: pest::iterators::Pair<Rule>) -> ParseResult<LiteralPattern> {
+        let span = Self::span_from_pair(&pair);
+
+        // literal_pattern contains the actual literal
+        let inner_pair = pair.into_inner().next().unwrap();
+        let literal = match inner_pair.as_rule() {
+            Rule::boolean => {
+                let boolean_literal = Self::parse_boolean(inner_pair)?;
+                Literal::Boolean(boolean_literal)
+            }
+            Rule::integer => {
+                let integer_literal = Self::parse_integer(inner_pair)?;
+                Literal::Integer(integer_literal)
+            }
+            Rule::float => {
+                let float_literal = Self::parse_float(inner_pair)?;
+                Literal::Float(float_literal)
+            }
+            Rule::string => {
+                let string_literal = Self::parse_string(inner_pair)?;
+                Literal::String(string_literal)
+            }
+            Rule::atom => {
+                let atom_literal = Self::parse_atom(inner_pair)?;
+                Literal::Atom(atom_literal)
+            }
+            _ => {
+                return Err(Self::unexpected_token_from_pair(
+                    &inner_pair,
+                    "Expected literal",
+                ))
+            }
+        };
+
+        Ok(LiteralPattern { literal, span })
+    }
+
     /// Parse a tuple pattern from a Pest pair
     fn parse_tuple_pattern(pair: pest::iterators::Pair<Rule>) -> ParseResult<TuplePattern> {
         let span = Self::span_from_pair(&pair);
         let mut elements = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::identifier {
-                let identifier = Self::parse_identifier(inner_pair)?;
-                elements.push(identifier);
-            }
+            let pattern = Self::parse_pattern(inner_pair)?;
+            elements.push(pattern);
         }
 
         Ok(TuplePattern { elements, span })
@@ -637,18 +677,47 @@ impl OutrunParser {
         let type_pair = inner_pairs.next().unwrap();
         let type_name = Self::parse_type_identifier(type_pair)?;
 
-        // Rest are field identifiers
+        // Next should be struct_field_patterns
         let mut fields = Vec::new();
-        for field_pair in inner_pairs {
-            if field_pair.as_rule() == Rule::identifier {
-                let identifier = Self::parse_identifier(field_pair)?;
-                fields.push(identifier);
+        for inner_pair in inner_pairs {
+            if inner_pair.as_rule() == Rule::struct_field_patterns {
+                for field_pair in inner_pair.into_inner() {
+                    if field_pair.as_rule() == Rule::struct_field_pattern {
+                        let field_pattern = Self::parse_struct_field_pattern(field_pair)?;
+                        fields.push(field_pattern);
+                    }
+                }
             }
         }
 
         Ok(StructPattern {
             type_name,
             fields,
+            span,
+        })
+    }
+
+    /// Parse a struct field pattern from a Pest pair
+    fn parse_struct_field_pattern(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StructFieldPattern> {
+        let span = Self::span_from_pair(&pair);
+        let mut inner_pairs = pair.into_inner();
+
+        // First pair is always the field name
+        let name_pair = inner_pairs.next().unwrap();
+        let name = Self::parse_identifier(name_pair)?;
+
+        // Check if there's a pattern after the colon
+        let pattern = if let Some(pattern_pair) = inner_pairs.next() {
+            Some(Self::parse_pattern(pattern_pair)?)
+        } else {
+            None
+        };
+
+        Ok(StructFieldPattern {
+            name,
+            pattern,
             span,
         })
     }
@@ -664,9 +733,6 @@ impl OutrunParser {
                 // Parse the elements inside the list pattern
                 for element_pair in inner_pair.into_inner() {
                     match element_pair.as_rule() {
-                        Rule::identifier => {
-                            elements.push(Self::parse_identifier(element_pair)?);
-                        }
                         Rule::rest_pattern => {
                             // Parse the rest pattern: atomic "..identifier"
                             let rest_str = element_pair.as_str();
@@ -681,7 +747,11 @@ impl OutrunParser {
                                 });
                             }
                         }
-                        _ => {} // Skip other tokens
+                        _ => {
+                            // All other patterns (recursive)
+                            let pattern = Self::parse_pattern(element_pair)?;
+                            elements.push(pattern);
+                        }
                     }
                 }
             }

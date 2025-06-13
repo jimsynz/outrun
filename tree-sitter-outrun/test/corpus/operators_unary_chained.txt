@@ -9,7 +9,8 @@ let result = --x
 (source_file
   (item
     (let_binding
-      (identifier)
+      (destructure_pattern
+        (identifier))
       (expression
         (unary_minus
           (unary_minus

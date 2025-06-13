@@ -55,9 +55,5 @@ impl<T> Container<T> for Box<T> when T: Clone {
                 (identifier))
               (field_access
                 (identifier))
-              (field_access
-                (identifier))))
-          (statement
-            (expression
-              (primary_expression
-                (tuple_literal)))))))))
+              (function_call_postfix
+                (identifier)))))))))
