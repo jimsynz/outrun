@@ -23,7 +23,8 @@
 - ✅ **Pipe operator type checking**: Basic |> and |? operators with function validation and Option type handling
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
 - ✅ **Phase 2 Complete**: Core expression and control flow type checking complete with comprehensive coverage
-- ✅ **78 passing typechecker tests** - all expression type checking validated
+- ✅ **93 passing typechecker tests** - all expression and trait definition type checking validated
+- ✅ **Phase 3.1 Complete**: Trait definition processing with comprehensive validation
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -134,15 +135,19 @@
 **Goal**: Parse and validate trait definitions and constraints
 
 **Tasks**:
-- [ ] Implement trait definition registration
-- [ ] Add trait constraint validation (A: B && C)
-- [ ] Handle generic trait parameters
-- [ ] Validate trait function signatures
+- [✅] Implement trait definition registration
+- [✅] Add trait constraint validation (A: B && C)
+- [✅] Handle generic trait parameters
+- [✅] Validate trait function signatures
 
 **Deliverables**:
-- `types/traits.rs` with trait definition handling
-- Constraint expression evaluation
-- Generic parameter validation
+- [✅] `types/traits.rs` with trait definition handling
+- [✅] Constraint expression evaluation
+- [✅] Generic parameter validation
+- [✅] Guard function validation (functions ending with '?' must return Boolean)
+- [✅] Type name resolution (Boolean → Outrun.Core.Boolean)
+- [✅] Enhanced error handling with InvalidGuardFunction and UndefinedTypeParameter
+- [✅] 8 comprehensive test cases covering all trait definition scenarios
 
 ### 3.2 Trait Implementation Validation
 **Goal**: Validate impl blocks match trait requirements

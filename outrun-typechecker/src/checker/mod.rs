@@ -11,6 +11,9 @@ pub mod expressions;
 pub mod functions;
 pub mod patterns;
 
+#[cfg(test)]
+mod trait_definitions;
+
 // Re-export core types
 pub use context::{Scope, TypeContext, Variable};
 pub use expressions::ExpressionChecker;
@@ -314,12 +317,10 @@ impl TypeChecker {
                         span: crate::error::span_to_source_span(item.span),
                     });
                 }
-                outrun_parser::ItemKind::TraitDefinition(_) => {
-                    // TODO: Implement trait definition checking
-                    errors.push(TypeError::UnimplementedFeature {
-                        feature: "Trait definition type checking".to_string(),
-                        span: crate::error::span_to_source_span(item.span),
-                    });
+                outrun_parser::ItemKind::TraitDefinition(trait_def) => {
+                    if let Err(err) = Self::check_trait_definition(&mut self.context, trait_def) {
+                        errors.push(err);
+                    }
                 }
                 outrun_parser::ItemKind::ImplBlock(_) => {
                     // TODO: Implement impl block checking
@@ -694,6 +695,255 @@ impl TypeChecker {
               // They are handled within list/tuple patterns as part of the PatternElement enum
         }
         Ok(())
+    }
+
+    /// Type check a trait definition and register it
+    fn check_trait_definition(
+        context: &mut TypeContext,
+        trait_def: &outrun_parser::TraitDefinition,
+    ) -> Result<(), TypeError> {
+        // Intern the trait name and create a TraitId
+        let trait_id = context.interner.intern_trait(&trait_def.name.name);
+        
+        // Process generic parameters (register them as type parameters)
+        let mut generic_params = Vec::new();
+        if let Some(ref generics) = trait_def.generic_params {
+            for param in &generics.params {
+                let param_type_id = context.interner.intern_type(&param.name.name);
+                generic_params.push(param_type_id);
+            }
+        }
+        
+        // Process trait functions (signatures and definitions)
+        let mut trait_functions = Vec::new();
+        for trait_func in &trait_def.functions {
+            match trait_func {
+                outrun_parser::TraitFunction::Signature(sig) => {
+                    let func = Self::process_trait_function_signature(context, sig)?;
+                    trait_functions.push(func);
+                }
+                outrun_parser::TraitFunction::Definition(def) => {
+                    let func = Self::process_trait_function_definition(context, def)?;
+                    trait_functions.push(func);
+                }
+            }
+        }
+        
+        // Process trait constraints
+        let mut constraints = Vec::new();
+        if let Some(ref constraint_expr) = trait_def.constraints {
+            let processed_constraints = Self::process_constraint_expression(context, constraint_expr, &generic_params)?;
+            constraints.extend(processed_constraints);
+        }
+        
+        // Create the trait definition
+        let mut trait_definition = crate::types::traits::TraitDefinition::new(
+            trait_id,
+            trait_def.name.name.clone(),
+            trait_functions,
+            trait_def.span,
+        );
+        
+        // Add generic parameters and constraints
+        for param in generic_params {
+            trait_definition.add_generic_param(param);
+        }
+        for constraint in constraints {
+            trait_definition.add_constraint(constraint);
+        }
+        
+        // Register the trait in the registry
+        context.trait_registry.register_trait(trait_definition);
+        
+        Ok(())
+    }
+    
+    /// Process a trait function signature
+    fn process_trait_function_signature(
+        context: &mut TypeContext,
+        sig: &outrun_parser::FunctionSignature,
+    ) -> Result<crate::types::traits::TraitFunction, TypeError> {
+        let func_name = context.interner.intern_atom(&sig.name.name);
+        
+        // Process parameters
+        let mut params = Vec::new();
+        for param in &sig.parameters {
+            let param_name = context.interner.intern_atom(&param.name.name);
+            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            params.push((param_name, param_type));
+        }
+        
+        // Process return type (default to Unit if not specified)
+        let return_type = if let Some(ref ret_type) = sig.return_type {
+            Self::resolve_type_annotation(context, ret_type)?
+        } else {
+            context.interner.intern_type("Outrun.Core.Unit")
+        };
+        
+        // Check if this is a guard function (name ends with '?')
+        let is_guard = sig.name.name.ends_with('?');
+        
+        // Validate guard function constraints
+        if is_guard {
+            let bool_type = context.interner.intern_type("Outrun.Core.Boolean");
+            if return_type != bool_type {
+                return Err(TypeError::InvalidGuardFunction {
+                    function_name: sig.name.name.clone(),
+                    actual_return_type: context.get_type_name(return_type).unwrap_or("Unknown").to_string(),
+                    span: crate::error::span_to_source_span(sig.span),
+                });
+            }
+        }
+        
+        Ok(crate::types::traits::TraitFunction::new(
+            func_name,
+            params,
+            return_type,
+            is_guard,
+            sig.span,
+        ))
+    }
+    
+    /// Process a trait function definition (full implementation within trait)
+    fn process_trait_function_definition(
+        context: &mut TypeContext,
+        def: &outrun_parser::FunctionDefinition,
+    ) -> Result<crate::types::traits::TraitFunction, TypeError> {
+        let func_name = context.interner.intern_atom(&def.name.name);
+        
+        // Process parameters
+        let mut params = Vec::new();
+        for param in &def.parameters {
+            let param_name = context.interner.intern_atom(&param.name.name);
+            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            params.push((param_name, param_type));
+        }
+        
+        // Process return type (default to Unit if not specified)
+        let return_type = if let Some(ref ret_type) = def.return_type {
+            Self::resolve_type_annotation(context, ret_type)?
+        } else {
+            context.interner.intern_type("Outrun.Core.Unit")
+        };
+        
+        // Check if this is a guard function (name ends with '?')
+        let is_guard = def.name.name.ends_with('?');
+        
+        // Validate guard function constraints
+        if is_guard {
+            let bool_type = context.interner.intern_type("Outrun.Core.Boolean");
+            if return_type != bool_type {
+                return Err(TypeError::InvalidGuardFunction {
+                    function_name: def.name.name.clone(),
+                    actual_return_type: context.get_type_name(return_type).unwrap_or("Unknown").to_string(),
+                    span: crate::error::span_to_source_span(def.span),
+                });
+            }
+        }
+        
+        // TODO: Type check the function body if present
+        // For now, we just process the signature
+        
+        Ok(crate::types::traits::TraitFunction::new(
+            func_name,
+            params,
+            return_type,
+            is_guard,
+            def.span,
+        ))
+    }
+    
+    /// Process trait constraint expressions (T: Display && U: Debug)
+    fn process_constraint_expression(
+        context: &mut TypeContext,
+        constraint_expr: &outrun_parser::ConstraintExpression,
+        generic_params: &[TypeId],
+    ) -> Result<Vec<crate::types::traits::TraitConstraint>, TypeError> {
+        match constraint_expr {
+            outrun_parser::ConstraintExpression::And { left, right, .. } => {
+                let mut constraints = Vec::new();
+                constraints.extend(Self::process_constraint_expression(context, left, generic_params)?);
+                constraints.extend(Self::process_constraint_expression(context, right, generic_params)?);
+                Ok(constraints)
+            }
+            outrun_parser::ConstraintExpression::Constraint { type_param, trait_bound, .. } => {
+                // Find the type parameter in our generic params
+                let param_type_id = context.interner.intern_type(&type_param.name);
+                
+                // Validate that this type parameter is declared in the trait's generic params
+                if !generic_params.contains(&param_type_id) {
+                    return Err(TypeError::UndefinedTypeParameter {
+                        parameter_name: type_param.name.clone(),
+                        span: crate::error::span_to_source_span(type_param.span),
+                    });
+                }
+                
+                // Process the required traits
+                let mut required_traits = Vec::new();
+                for trait_name in trait_bound {
+                    let trait_id = context.interner.intern_trait(&trait_name.name);
+                    required_traits.push(trait_id);
+                }
+                
+                let constraint = crate::types::traits::TraitConstraint::new(
+                    param_type_id,
+                    required_traits,
+                    *constraint_expr.span(),
+                );
+                Ok(vec![constraint])
+            }
+            outrun_parser::ConstraintExpression::Parenthesized { expression, .. } => {
+                Self::process_constraint_expression(context, expression, generic_params)
+            }
+        }
+    }
+    
+    /// Resolve a type annotation to a TypeId
+    fn resolve_type_annotation(
+        context: &mut TypeContext,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> Result<TypeId, TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple { path, .. } => {
+                // Join the path parts to create the type name
+                let type_name = path
+                    .iter()
+                    .map(|part| part.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                
+                // Map short type names to fully qualified names for built-in types
+                let qualified_type_name = match type_name.as_str() {
+                    "Boolean" => "Outrun.Core.Boolean",
+                    "Integer" => "Outrun.Core.Integer64",
+                    "Float" => "Outrun.Core.Float64", 
+                    "String" => "Outrun.Core.String",
+                    "Unit" => "Outrun.Core.Unit",
+                    "List" => "Outrun.Core.List",
+                    "Map" => "Outrun.Core.Map",
+                    "Tuple" => "Outrun.Core.Tuple",
+                    "Option" => "Outrun.Core.Option",
+                    "Result" => "Outrun.Core.Result",
+                    _ => &type_name, // Use as-is for other types
+                };
+                
+                Ok(context.interner.intern_type(qualified_type_name))
+            }
+            outrun_parser::TypeAnnotation::Tuple { span, .. } => {
+                // TODO: Handle tuple types properly
+                Err(TypeError::UnimplementedFeature {
+                    feature: "Tuple type annotations in trait definitions".to_string(),
+                    span: crate::error::span_to_source_span(*span),
+                })
+            }
+            outrun_parser::TypeAnnotation::Function { span, .. } => {
+                // TODO: Handle function types properly
+                Err(TypeError::UnimplementedFeature {
+                    feature: "Function type annotations in trait definitions".to_string(),
+                    span: crate::error::span_to_source_span(*span),
+                })
+            }
+        }
     }
 }
 

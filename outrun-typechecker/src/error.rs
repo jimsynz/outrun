@@ -221,6 +221,29 @@ pub enum TypeError {
         span: SourceSpan,
     },
 
+    #[error("Invalid guard function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::invalid_guard_function),
+        help("Guard functions (ending with '?') must return Boolean values")
+    )]
+    InvalidGuardFunction {
+        #[label("guard function must return Boolean")]
+        span: SourceSpan,
+        function_name: String,
+        actual_return_type: String,
+    },
+
+    #[error("Undefined type parameter {parameter_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::undefined_type_parameter),
+        help("Type parameter {parameter_name} must be declared in the generic parameters list")
+    )]
+    UndefinedTypeParameter {
+        #[label("undefined type parameter")]
+        span: SourceSpan,
+        parameter_name: String,
+    },
+
     #[error("Feature not yet implemented: {feature}")]
     #[diagnostic(
         code(outrun::typechecker::unimplemented),
