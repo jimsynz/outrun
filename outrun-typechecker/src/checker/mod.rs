@@ -19,7 +19,7 @@ pub use patterns::PatternChecker;
 
 use crate::dispatch::DispatchTable;
 use crate::error::TypeError;
-use crate::types::TypeId;
+use crate::types::{AtomId, TypeId};
 use outrun_parser::{Program, Span};
 // use std::collections::HashMap; // TODO: Use when needed
 
@@ -93,6 +93,11 @@ pub enum TypedExpressionKind {
         entries: Vec<(TypedExpression, TypedExpression)>, // (key, value) pairs
         key_type: TypeId,
         value_type: TypeId,
+    },
+    Struct {
+        type_name: String,
+        fields: Vec<(AtomId, TypedExpression)>, // (field_name, typed_value)
+        struct_type: TypeId,
     },
     // TODO: Add all expression kinds with type information
 }

@@ -45,6 +45,7 @@ impl ExpressionChecker {
             ExpressionKind::List(list_lit) => Self::check_list_literal(context, list_lit),
             ExpressionKind::Tuple(tuple_lit) => Self::check_tuple_literal(context, tuple_lit),
             ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
+            ExpressionKind::Struct(struct_lit) => Self::check_struct_literal(context, struct_lit),
             _ => {
                 // TODO: Implement other expression types
                 Err(TypeError::UnimplementedFeature {
@@ -672,6 +673,174 @@ impl ExpressionChecker {
             span: map_lit.span,
         })
     }
+
+    /// Type check struct literal
+    fn check_struct_literal(
+        context: &mut TypeContext,
+        struct_lit: &outrun_parser::StructLiteral,
+    ) -> TypeResult<TypedExpression> {
+        // Get the struct type from the type name
+        let struct_type_name = &struct_lit.type_name.name;
+        let struct_type_id = context.interner.intern_type(struct_type_name);
+
+        // Look up the struct definition in the context
+        let struct_definition = context.get_concrete_type(struct_type_id);
+        let struct_fields = match struct_definition {
+            Some(crate::types::ConcreteType::Struct { fields, .. }) => fields.clone(),
+            Some(_) => {
+                return Err(TypeError::TypeMismatch {
+                    span: crate::error::span_to_source_span(struct_lit.type_name.span),
+                    expected: "struct type".to_string(),
+                    found: format!("{} is not a struct", struct_type_name),
+                });
+            }
+            None => {
+                return Err(TypeError::UndefinedType {
+                    name: struct_type_name.clone(),
+                    span: crate::error::span_to_source_span(struct_lit.type_name.span),
+                });
+            }
+        };
+
+        // Process each field in the struct literal
+        let mut typed_fields = Vec::new();
+        let mut provided_field_names = std::collections::HashSet::new();
+
+        for field in &struct_lit.fields {
+            match field {
+                outrun_parser::StructLiteralField::Assignment { name, value } => {
+                    // Type check the field value
+                    let typed_value = Self::check_expression(context, value)?;
+
+                    // Intern the field name as an atom
+                    let field_atom = context.interner.intern_atom(&name.name);
+
+                    // Check if this field exists in the struct definition
+                    let expected_field_type = struct_fields
+                        .iter()
+                        .find(|field| field.name == field_atom)
+                        .map(|field| field.type_id);
+
+                    match expected_field_type {
+                        Some(expected_type) => {
+                            // Validate the field value type matches the expected type
+                            if typed_value.type_id != expected_type {
+                                return Err(TypeError::type_mismatch(
+                                    context
+                                        .get_type_name(expected_type)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    context
+                                        .get_type_name(typed_value.type_id)
+                                        .unwrap_or("Unknown")
+                                        .to_string(),
+                                    crate::error::span_to_source_span(value.span),
+                                ));
+                            }
+
+                            typed_fields.push((field_atom, typed_value));
+                            provided_field_names.insert(field_atom);
+                        }
+                        None => {
+                            return Err(TypeError::UnexpectedParameter {
+                                function_name: struct_type_name.clone(),
+                                parameter_name: name.name.clone(),
+                                span: crate::error::span_to_source_span(name.span),
+                            });
+                        }
+                    }
+                }
+                outrun_parser::StructLiteralField::Shorthand(name) => {
+                    // First intern the field name
+                    let field_atom = context.interner.intern_atom(&name.name);
+
+                    // Then look up variable with same name in scope
+                    let variable = context.lookup_variable(&name.name);
+                    match variable {
+                        Some(var) => {
+                            // Check if this field exists in the struct definition
+                            let expected_field_type = struct_fields
+                                .iter()
+                                .find(|field| field.name == field_atom)
+                                .map(|field| field.type_id);
+
+                            match expected_field_type {
+                                Some(expected_type) => {
+                                    // Validate the variable type matches the expected field type
+                                    if var.type_id != expected_type {
+                                        return Err(TypeError::type_mismatch(
+                                            context
+                                                .get_type_name(expected_type)
+                                                .unwrap_or("Unknown")
+                                                .to_string(),
+                                            context
+                                                .get_type_name(var.type_id)
+                                                .unwrap_or("Unknown")
+                                                .to_string(),
+                                            crate::error::span_to_source_span(name.span),
+                                        ));
+                                    }
+
+                                    let typed_value = TypedExpression {
+                                        kind: TypedExpressionKind::Identifier(name.name.clone()),
+                                        type_id: var.type_id,
+                                        span: name.span,
+                                    };
+
+                                    typed_fields.push((field_atom, typed_value));
+                                    provided_field_names.insert(field_atom);
+                                }
+                                None => {
+                                    return Err(TypeError::UnexpectedParameter {
+                                        function_name: struct_type_name.clone(),
+                                        parameter_name: name.name.clone(),
+                                        span: crate::error::span_to_source_span(name.span),
+                                    });
+                                }
+                            }
+                        }
+                        None => {
+                            return Err(TypeError::undefined_variable(
+                                name.name.clone(),
+                                crate::error::span_to_source_span(name.span),
+                            ));
+                        }
+                    }
+                }
+                outrun_parser::StructLiteralField::Spread(_) => {
+                    return Err(TypeError::UnimplementedFeature {
+                        feature: "Struct literal spread operator".to_string(),
+                        span: crate::error::span_to_source_span(struct_lit.span),
+                    });
+                }
+            }
+        }
+
+        // Check that all required fields are provided
+        for struct_field in &struct_fields {
+            if !provided_field_names.contains(&struct_field.name) {
+                let field_name = context
+                    .interner
+                    .resolve_atom(struct_field.name)
+                    .unwrap_or("<unknown>");
+                return Err(TypeError::MissingParameter {
+                    function_name: struct_type_name.clone(),
+                    parameter_name: field_name.to_string(),
+                    span: crate::error::span_to_source_span(struct_lit.span),
+                });
+            }
+        }
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::Struct {
+                type_name: struct_type_name.clone(),
+                fields: typed_fields,
+                struct_type: struct_type_id,
+            },
+            type_id: struct_type_id,
+            span: struct_lit.span,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1250,5 +1419,324 @@ mod tests {
 
         // This test verifies that the enhanced validation code compiles
         // and the basic structures are in place
+    }
+
+    #[test]
+    fn test_struct_literal_basic_validation() {
+        let mut context = TypeContext::new();
+
+        // First register a simple struct type
+        let struct_name_type_id = context.interner.intern_type("User");
+        let name_field_atom = context.interner.intern_atom("name");
+        let age_field_atom = context.interner.intern_atom("age");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+
+        let user_struct = crate::types::ConcreteType::Struct {
+            name: struct_name_type_id,
+            fields: vec![
+                crate::types::StructField {
+                    name: name_field_atom,
+                    type_id: string_type,
+                    span: Span::new(0, 4),
+                },
+                crate::types::StructField {
+                    name: age_field_atom,
+                    type_id: int_type,
+                    span: Span::new(5, 8),
+                },
+            ],
+        };
+
+        context.register_concrete_type(struct_name_type_id, user_struct);
+
+        // Create a struct literal with correct fields
+        let struct_lit = outrun_parser::StructLiteral {
+            type_name: outrun_parser::TypeIdentifier {
+                name: "User".to_string(),
+                span: Span::new(0, 4),
+            },
+            fields: vec![
+                outrun_parser::StructLiteralField::Assignment {
+                    name: Identifier {
+                        name: "name".to_string(),
+                        span: Span::new(6, 10),
+                    },
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                            parts: vec![outrun_parser::StringPart::Text {
+                                content: "Alice".to_string(),
+                                raw_content: "Alice".to_string(),
+                            }],
+                            format: outrun_parser::StringFormat::Basic,
+                            span: Span::new(12, 19),
+                        }),
+                        span: Span::new(12, 19),
+                    }),
+                },
+                outrun_parser::StructLiteralField::Assignment {
+                    name: Identifier {
+                        name: "age".to_string(),
+                        span: Span::new(21, 24),
+                    },
+                    value: Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(
+                            outrun_parser::IntegerLiteral {
+                                value: 30,
+                                format: outrun_parser::IntegerFormat::Decimal,
+                                span: Span::new(26, 28),
+                            },
+                        ),
+                        span: Span::new(26, 28),
+                    }),
+                },
+            ],
+            span: Span::new(0, 29),
+        };
+
+        let result = ExpressionChecker::check_struct_literal(&mut context, &struct_lit);
+
+        assert!(result.is_ok());
+        let typed_expr = result.unwrap();
+        assert_eq!(typed_expr.type_id, struct_name_type_id);
+
+        match typed_expr.kind {
+            TypedExpressionKind::Struct {
+                type_name,
+                fields,
+                struct_type,
+            } => {
+                assert_eq!(type_name, "User");
+                assert_eq!(struct_type, struct_name_type_id);
+                assert_eq!(fields.len(), 2);
+
+                // Check field names and types
+                let field_names: Vec<String> = fields
+                    .iter()
+                    .map(|(atom_id, _)| {
+                        context.interner.resolve_atom(*atom_id).unwrap().to_string()
+                    })
+                    .collect();
+                assert!(field_names.contains(&"name".to_string()));
+                assert!(field_names.contains(&"age".to_string()));
+            }
+            _ => panic!("Expected struct expression"),
+        }
+    }
+
+    #[test]
+    fn test_struct_literal_missing_field() {
+        let mut context = TypeContext::new();
+
+        // Register a struct type with two required fields
+        let struct_name_type_id = context.interner.intern_type("User");
+        let name_field_atom = context.interner.intern_atom("name");
+        let age_field_atom = context.interner.intern_atom("age");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+        let int_type = context.interner.intern_type("Outrun.Core.Integer64");
+
+        let user_struct = crate::types::ConcreteType::Struct {
+            name: struct_name_type_id,
+            fields: vec![
+                crate::types::StructField {
+                    name: name_field_atom,
+                    type_id: string_type,
+                    span: Span::new(0, 4),
+                },
+                crate::types::StructField {
+                    name: age_field_atom,
+                    type_id: int_type,
+                    span: Span::new(5, 8),
+                },
+            ],
+        };
+
+        context.register_concrete_type(struct_name_type_id, user_struct);
+
+        // Create a struct literal missing the age field
+        let struct_lit = outrun_parser::StructLiteral {
+            type_name: outrun_parser::TypeIdentifier {
+                name: "User".to_string(),
+                span: Span::new(0, 4),
+            },
+            fields: vec![outrun_parser::StructLiteralField::Assignment {
+                name: Identifier {
+                    name: "name".to_string(),
+                    span: Span::new(6, 10),
+                },
+                value: Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                        parts: vec![outrun_parser::StringPart::Text {
+                            content: "Bob".to_string(),
+                            raw_content: "Bob".to_string(),
+                        }],
+                        format: outrun_parser::StringFormat::Basic,
+                        span: Span::new(12, 17),
+                    }),
+                    span: Span::new(12, 17),
+                }),
+            }],
+            span: Span::new(0, 18),
+        };
+
+        let result = ExpressionChecker::check_struct_literal(&mut context, &struct_lit);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            TypeError::MissingParameter {
+                function_name,
+                parameter_name,
+                ..
+            } => {
+                assert_eq!(function_name, "User");
+                assert_eq!(parameter_name, "age");
+            }
+            _ => panic!("Expected MissingParameter error"),
+        }
+    }
+
+    #[test]
+    fn test_struct_literal_type_mismatch() {
+        let mut context = TypeContext::new();
+
+        // Register a struct type
+        let struct_name_type_id = context.interner.intern_type("User");
+        let name_field_atom = context.interner.intern_atom("name");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+
+        let user_struct = crate::types::ConcreteType::Struct {
+            name: struct_name_type_id,
+            fields: vec![crate::types::StructField {
+                name: name_field_atom,
+                type_id: string_type,
+                span: Span::new(0, 4),
+            }],
+        };
+
+        context.register_concrete_type(struct_name_type_id, user_struct);
+
+        // Create a struct literal with wrong field type (integer instead of string)
+        let struct_lit = outrun_parser::StructLiteral {
+            type_name: outrun_parser::TypeIdentifier {
+                name: "User".to_string(),
+                span: Span::new(0, 4),
+            },
+            fields: vec![outrun_parser::StructLiteralField::Assignment {
+                name: Identifier {
+                    name: "name".to_string(),
+                    span: Span::new(6, 10),
+                },
+                value: Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(12, 14),
+                    }),
+                    span: Span::new(12, 14),
+                }),
+            }],
+            span: Span::new(0, 15),
+        };
+
+        let result = ExpressionChecker::check_struct_literal(&mut context, &struct_lit);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.String");
+                assert_eq!(found, "Outrun.Core.Integer64");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_struct_literal_undefined_type() {
+        let mut context = TypeContext::new();
+
+        // Create a struct literal for a non-existent type
+        let struct_lit = outrun_parser::StructLiteral {
+            type_name: outrun_parser::TypeIdentifier {
+                name: "UndefinedType".to_string(),
+                span: Span::new(0, 13),
+            },
+            fields: vec![],
+            span: Span::new(0, 16),
+        };
+
+        let result = ExpressionChecker::check_struct_literal(&mut context, &struct_lit);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            TypeError::UndefinedType { name, .. } => {
+                assert_eq!(name, "UndefinedType");
+            }
+            _ => panic!("Expected UndefinedType error"),
+        }
+    }
+
+    #[test]
+    fn test_struct_literal_shorthand_field() {
+        let mut context = TypeContext::new();
+        context.push_scope(false);
+
+        // Register a struct type
+        let struct_name_type_id = context.interner.intern_type("User");
+        let name_field_atom = context.interner.intern_atom("name");
+        let string_type = context.interner.intern_type("Outrun.Core.String");
+
+        let user_struct = crate::types::ConcreteType::Struct {
+            name: struct_name_type_id,
+            fields: vec![crate::types::StructField {
+                name: name_field_atom,
+                type_id: string_type,
+                span: Span::new(0, 4),
+            }],
+        };
+
+        context.register_concrete_type(struct_name_type_id, user_struct);
+
+        // Register a variable with the same name as the field
+        let variable = crate::checker::context::Variable {
+            name: "name".to_string(),
+            type_id: string_type,
+            is_mutable: false,
+            span: Span::new(0, 4),
+        };
+        context.register_variable(variable).unwrap();
+
+        // Create a struct literal using shorthand syntax
+        let struct_lit = outrun_parser::StructLiteral {
+            type_name: outrun_parser::TypeIdentifier {
+                name: "User".to_string(),
+                span: Span::new(0, 4),
+            },
+            fields: vec![outrun_parser::StructLiteralField::Shorthand(Identifier {
+                name: "name".to_string(),
+                span: Span::new(6, 10),
+            })],
+            span: Span::new(0, 12),
+        };
+
+        let result = ExpressionChecker::check_struct_literal(&mut context, &struct_lit);
+
+        assert!(result.is_ok());
+        let typed_expr = result.unwrap();
+
+        match typed_expr.kind {
+            TypedExpressionKind::Struct { fields, .. } => {
+                assert_eq!(fields.len(), 1);
+                // Verify the field uses an identifier expression for shorthand
+                match &fields[0].1.kind {
+                    TypedExpressionKind::Identifier(name) => {
+                        assert_eq!(name, "name");
+                    }
+                    _ => panic!("Expected identifier expression for shorthand field"),
+                }
+            }
+            _ => panic!("Expected struct expression"),
+        }
     }
 }
