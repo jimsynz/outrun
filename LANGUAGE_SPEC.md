@@ -548,7 +548,11 @@ value = if check { 1 } else { 0 }
 
 ### Case Statements
 
-Case statements use pattern matching with optional guards. All case clauses must start with a destructuring pattern:
+Case statements use pattern matching with optional guards and support two distinct syntax forms for different use cases:
+
+#### Case with Concrete Type Matching
+
+Standard case statements match against the concrete type of the expression, with patterns destructuring the value:
 
 ```outrun
 result = case user {
@@ -597,6 +601,48 @@ result = case value {
     _ -> "unknown"
 }
 ```
+
+#### Case with Trait Dispatch
+
+The enhanced case syntax `case expr as TraitName` enables trait-based exhaustiveness checking and dispatch, allowing pattern matching based on trait implementations rather than concrete types:
+
+```outrun
+# Trait-based case with exhaustiveness checking
+result = case mixed_values as Display {
+    # Must handle all concrete types that implement Display
+    # Compiler enforces exhaustiveness using orphan rules
+    User { name } -> "User: #{name}"
+    Product { title, price } -> "Product: #{title} (#{price})"
+    Order { id, total } -> "Order ##{id}: #{total}"
+    # Compiler error if any Display implementor is missing
+}
+
+# Trait dispatch with value binding
+result = case data as Serializable {
+    config: Config when Config.valid?(config) -> config.serialize()
+    settings: Settings -> settings.to_json()
+    metadata: Metadata -> metadata.to_string()
+    # Each case binds the value with its concrete type for trait method calls
+}
+```
+
+#### Exhaustiveness Checking
+
+The trait-based syntax enables comprehensive exhaustiveness checking:
+
+- **Concrete type cases**: Traditional exhaustiveness based on value patterns and wildcards
+- **Trait-based cases**: Exhaustiveness determined by all concrete types implementing the trait  
+- **Orphan rule analysis**: Compiler uses orphan rules to determine which types could implement the trait
+- **Open trait system**: New implementations require case statement updates for exhaustiveness
+
+#### Case Syntax Summary
+
+Two distinct case statement forms serve different purposes:
+
+1. **`case expr { patterns... }`** - Traditional pattern matching against concrete types
+2. **`case expr as Trait { type_patterns... }`** - Trait dispatch with exhaustiveness checking
+
+The trait syntax provides stronger type safety and exhaustiveness guarantees when working with trait abstractions.
 
 #### Pattern Types
 

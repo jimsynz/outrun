@@ -44,6 +44,54 @@ impl OutrunParser {
     pub(crate) fn parse_case_expression(
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<CaseExpression> {
+        // The case_expression rule expands to either concrete_case_expression or trait_case_expression
+        // We need to examine the inner pairs to determine which one it is
+        match pair.as_rule() {
+            Rule::case_expression => {
+                // Get the first inner pair to determine the actual type
+                let inner_pair = pair.into_inner().next().unwrap();
+                match inner_pair.as_rule() {
+                    Rule::concrete_case_expression => {
+                        let concrete_case = Self::parse_concrete_case_expression(inner_pair)?;
+                        Ok(CaseExpression::Concrete(concrete_case))
+                    }
+                    Rule::trait_case_expression => {
+                        let trait_case = Self::parse_trait_case_expression(inner_pair)?;
+                        Ok(CaseExpression::Trait(trait_case))
+                    }
+                    _ => {
+                        let span = Self::span_from_pair(&inner_pair);
+                        Err(Self::unexpected_token_from_span(
+                            &span,
+                            inner_pair.as_str(),
+                            "Expected concrete or trait case expression",
+                        ))
+                    }
+                }
+            }
+            Rule::concrete_case_expression => {
+                let concrete_case = Self::parse_concrete_case_expression(pair)?;
+                Ok(CaseExpression::Concrete(concrete_case))
+            }
+            Rule::trait_case_expression => {
+                let trait_case = Self::parse_trait_case_expression(pair)?;
+                Ok(CaseExpression::Trait(trait_case))
+            }
+            _ => {
+                let span = Self::span_from_pair(&pair);
+                Err(Self::unexpected_token_from_span(
+                    &span,
+                    pair.as_str(),
+                    "Expected concrete or trait case expression",
+                ))
+            }
+        }
+    }
+
+    /// Parse a concrete case expression from a Pest pair
+    pub(crate) fn parse_concrete_case_expression(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<ConcreteCaseExpression> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
@@ -58,10 +106,43 @@ impl OutrunParser {
         let clauses_pair = inner_pairs.next().unwrap();
         let (when_clauses, else_clause) = Self::parse_case_clauses(clauses_pair)?;
 
-        Ok(CaseExpression {
+        Ok(ConcreteCaseExpression {
             expression: Box::new(expression),
             when_clauses,
             else_clause,
+            span,
+        })
+    }
+
+    /// Parse a trait case expression from a Pest pair
+    pub(crate) fn parse_trait_case_expression(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TraitCaseExpression> {
+        let span = Self::span_from_pair(&pair);
+        let mut inner_pairs = pair.into_inner();
+
+        // First pair should be the "case" keyword, skip it
+        let _case_keyword = inner_pairs.next().unwrap();
+
+        // Second pair should be the expression being matched
+        let expression_pair = inner_pairs.next().unwrap();
+        let expression = Self::parse_expression_from_pair(expression_pair)?;
+
+        // Third pair should be the "as" keyword, skip it
+        let _as_keyword = inner_pairs.next().unwrap();
+
+        // Fourth pair should be the trait name
+        let trait_name_pair = inner_pairs.next().unwrap();
+        let trait_name = Self::parse_type_identifier(trait_name_pair)?;
+
+        // Fifth pair should be the trait_case_clauses
+        let clauses_pair = inner_pairs.next().unwrap();
+        let type_clauses = Self::parse_trait_case_clauses(clauses_pair)?;
+
+        Ok(TraitCaseExpression {
+            expression: Box::new(expression),
+            trait_name,
+            type_clauses,
             span,
         })
     }
@@ -163,5 +244,77 @@ impl OutrunParser {
                 Ok(CaseResult::Expression(Box::new(expression)))
             }
         }
+    }
+
+    /// Parse trait case clauses
+    pub(crate) fn parse_trait_case_clauses(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<Vec<TraitCaseClause>> {
+        let mut type_clauses = Vec::new();
+
+        for inner_pair in pair.into_inner() {
+            if inner_pair.as_rule() == Rule::trait_case_clause {
+                let trait_clause = Self::parse_trait_case_clause(inner_pair)?;
+                type_clauses.push(trait_clause);
+            }
+            // Skip other rules
+        }
+
+        Ok(type_clauses)
+    }
+
+    /// Parse a trait case clause
+    pub(crate) fn parse_trait_case_clause(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<TraitCaseClause> {
+        let span = Self::span_from_pair(&pair);
+        let mut inner_pairs = pair.into_inner();
+
+        // First pair should be the type name
+        let type_name_pair = inner_pairs.next().unwrap();
+        let type_name = Self::parse_type_identifier(type_name_pair)?;
+
+        // Second pair might be struct field patterns (optional)
+        let mut pattern = None;
+        let mut guard = None;
+        let mut result = None;
+
+        for inner_pair in inner_pairs {
+            match inner_pair.as_rule() {
+                Rule::struct_field_patterns => {
+                    // Parse struct field patterns
+                    let mut fields = Vec::new();
+                    for field_pair in inner_pair.into_inner() {
+                        let field_pattern = Self::parse_struct_field_pattern(field_pair)?;
+                        fields.push(field_pattern);
+                    }
+                    pattern = Some(StructPattern {
+                        type_name: type_name.clone(),
+                        fields,
+                        span: type_name.span, // Use type name span for now
+                    });
+                }
+                Rule::guard_clause => {
+                    let guard_pair = inner_pair.into_inner().next().unwrap(); // Skip "when" keyword
+                    guard = Some(Self::parse_expression_from_pair(guard_pair)?);
+                }
+                Rule::block | Rule::expression => {
+                    result = Some(Self::parse_case_result(inner_pair)?);
+                }
+                _ => {} // Skip other rules like arrow
+            }
+        }
+
+        let result = result.ok_or_else(|| {
+            Self::unexpected_token_from_span(&span, "", "Trait case clause missing result")
+        })?;
+
+        Ok(TraitCaseClause {
+            type_name,
+            pattern,
+            guard,
+            result,
+            span,
+        })
     }
 }

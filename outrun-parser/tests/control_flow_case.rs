@@ -14,8 +14,18 @@ fn test_case_with_single_when_clause() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
+                    // Handle both concrete and trait case expressions
+                    let (expression, when_clauses, else_clause) = match case_expr {
+                        CaseExpression::Concrete(concrete) => (
+                            &concrete.expression,
+                            &concrete.when_clauses,
+                            &concrete.else_clause,
+                        ),
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
                     // Check case expression value
-                    match &case_expr.expression.kind {
+                    match &expression.kind {
                         ExpressionKind::Identifier(id) => {
                             assert_eq!(id.name, "x");
                         }
@@ -23,8 +33,8 @@ fn test_case_with_single_when_clause() {
                     }
 
                     // Check when clauses
-                    assert_eq!(case_expr.when_clauses.len(), 1);
-                    let when_clause = &case_expr.when_clauses[0];
+                    assert_eq!(when_clauses.len(), 1);
+                    let when_clause = &when_clauses[0];
 
                     // Check guard is a comparison
                     match &when_clause.guard.kind {
@@ -46,7 +56,7 @@ fn test_case_with_single_when_clause() {
                     }
 
                     // Check else clause
-                    match &case_expr.else_clause.result {
+                    match &else_clause.result {
                         CaseResult::Expression(expr) => match &expr.kind {
                             ExpressionKind::String(string_lit) => {
                                 assert_eq!(string_lit.format, StringFormat::Basic);
@@ -78,11 +88,19 @@ fn test_case_with_multiple_when_clauses() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
+                    // Handle both concrete and trait case expressions
+                    let (when_clauses, else_clause) = match case_expr {
+                        CaseExpression::Concrete(concrete) => {
+                            (&concrete.when_clauses, &concrete.else_clause)
+                        }
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
                     // Check we have 3 when clauses
-                    assert_eq!(case_expr.when_clauses.len(), 3);
+                    assert_eq!(when_clauses.len(), 3);
 
                     // Check first when clause (value > 100)
-                    match &case_expr.when_clauses[0].guard.kind {
+                    match &when_clauses[0].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::Greater);
                         }
@@ -90,7 +108,7 @@ fn test_case_with_multiple_when_clauses() {
                     }
 
                     // Check second when clause (value > 0)
-                    match &case_expr.when_clauses[1].guard.kind {
+                    match &when_clauses[1].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::Greater);
                         }
@@ -98,7 +116,7 @@ fn test_case_with_multiple_when_clauses() {
                     }
 
                     // Check third when clause (value == 0)
-                    match &case_expr.when_clauses[2].guard.kind {
+                    match &when_clauses[2].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::Equal);
                         }
@@ -106,7 +124,7 @@ fn test_case_with_multiple_when_clauses() {
                     }
 
                     // Check else clause exists
-                    match &case_expr.else_clause.result {
+                    match &else_clause.result {
                         CaseResult::Expression(_) => {}
                         _ => panic!("Expected expression result in else"),
                     }
@@ -134,10 +152,18 @@ fn test_case_with_block_results() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
-                    assert_eq!(case_expr.when_clauses.len(), 1);
+                    // Handle both concrete and trait case expressions
+                    let (when_clauses, else_clause) = match case_expr {
+                        CaseExpression::Concrete(concrete) => {
+                            (&concrete.when_clauses, &concrete.else_clause)
+                        }
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
+                    assert_eq!(when_clauses.len(), 1);
 
                     // Check when clause has block result
-                    match &case_expr.when_clauses[0].result {
+                    match &when_clauses[0].result {
                         CaseResult::Block(block) => {
                             // Should have 2 statements: function call and string
                             assert_eq!(block.statements.len(), 2);
@@ -146,7 +172,7 @@ fn test_case_with_block_results() {
                     }
 
                     // Check else clause has expression result
-                    match &case_expr.else_clause.result {
+                    match &else_clause.result {
                         CaseResult::Expression(_) => {}
                         _ => panic!("Expected expression result in else"),
                     }
@@ -172,10 +198,18 @@ fn test_case_with_function_call_guard() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
-                    assert_eq!(case_expr.when_clauses.len(), 2);
+                    // Handle both concrete and trait case expressions
+                    let (when_clauses, _) = match case_expr {
+                        CaseExpression::Concrete(concrete) => {
+                            (&concrete.when_clauses, &concrete.else_clause)
+                        }
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
+                    assert_eq!(when_clauses.len(), 2);
 
                     // Check first guard is logical AND of two function calls
-                    match &case_expr.when_clauses[0].guard.kind {
+                    match &when_clauses[0].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::LogicalAnd);
                         }
@@ -183,7 +217,7 @@ fn test_case_with_function_call_guard() {
                     }
 
                     // Check second guard is a function call
-                    match &case_expr.when_clauses[1].guard.kind {
+                    match &when_clauses[1].guard.kind {
                         ExpressionKind::FunctionCall(call) => match &call.path {
                             FunctionPath::Qualified { module, name } => {
                                 assert_eq!(module.name, "String");
@@ -219,10 +253,18 @@ fn test_nested_case_expressions() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(outer_case) => {
-                    assert_eq!(outer_case.when_clauses.len(), 1);
+                    // Handle both concrete and trait case expressions
+                    let (when_clauses, _) = match outer_case {
+                        CaseExpression::Concrete(concrete) => {
+                            (&concrete.when_clauses, &concrete.else_clause)
+                        }
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
+                    assert_eq!(when_clauses.len(), 1);
 
                     // Check when clause has block result with nested case
-                    match &outer_case.when_clauses[0].result {
+                    match &when_clauses[0].result {
                         CaseResult::Block(block) => {
                             assert_eq!(block.statements.len(), 1);
 
@@ -230,7 +272,16 @@ fn test_nested_case_expressions() {
                             match &block.statements[0].kind {
                                 StatementKind::Expression(expr) => match &expr.kind {
                                     ExpressionKind::CaseExpression(inner_case) => {
-                                        assert_eq!(inner_case.when_clauses.len(), 1);
+                                        // Handle both concrete and trait case expressions
+                                        let (inner_when_clauses, _) = match inner_case {
+                                            CaseExpression::Concrete(concrete) => {
+                                                (&concrete.when_clauses, &concrete.else_clause)
+                                            }
+                                            CaseExpression::Trait(_) => {
+                                                panic!("Expected concrete case expression")
+                                            }
+                                        };
+                                        assert_eq!(inner_when_clauses.len(), 1);
                                     }
                                     _ => panic!("Expected nested case expression"),
                                 },
@@ -268,7 +319,14 @@ fn test_case_in_function_body() {
             match &func.body.statements[0].kind {
                 StatementKind::Expression(expr) => match &expr.kind {
                     ExpressionKind::CaseExpression(case_expr) => {
-                        assert_eq!(case_expr.when_clauses.len(), 2);
+                        // Handle both concrete and trait case expressions
+                        let (when_clauses, _) = match case_expr {
+                            CaseExpression::Concrete(concrete) => {
+                                (&concrete.when_clauses, &concrete.else_clause)
+                            }
+                            CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                        };
+                        assert_eq!(when_clauses.len(), 2);
                     }
                     _ => panic!("Expected case expression in function body"),
                 },
@@ -294,10 +352,18 @@ fn test_case_with_integer_literal_guards() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
-                    assert_eq!(case_expr.when_clauses.len(), 3);
+                    // Handle both concrete and trait case expressions
+                    let (when_clauses, _) = match case_expr {
+                        CaseExpression::Concrete(concrete) => {
+                            (&concrete.when_clauses, &concrete.else_clause)
+                        }
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
+                    assert_eq!(when_clauses.len(), 3);
 
                     // Check first guard (== 200)
-                    match &case_expr.when_clauses[0].guard.kind {
+                    match &when_clauses[0].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::Equal);
                         }
@@ -305,7 +371,7 @@ fn test_case_with_integer_literal_guards() {
                     }
 
                     // Check second guard (== 404)
-                    match &case_expr.when_clauses[1].guard.kind {
+                    match &when_clauses[1].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::Equal);
                         }
@@ -313,7 +379,7 @@ fn test_case_with_integer_literal_guards() {
                     }
 
                     // Check third guard (>= 500)
-                    match &case_expr.when_clauses[2].guard.kind {
+                    match &when_clauses[2].guard.kind {
                         ExpressionKind::BinaryOp(op) => {
                             assert_eq!(op.operator, BinaryOperator::GreaterEqual);
                         }
@@ -341,8 +407,18 @@ fn test_case_with_string_result() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::CaseExpression(case_expr) => {
+                    // Handle both concrete and trait case expressions
+                    let (expression, when_clauses, _) = match case_expr {
+                        CaseExpression::Concrete(concrete) => (
+                            &concrete.expression,
+                            &concrete.when_clauses,
+                            &concrete.else_clause,
+                        ),
+                        CaseExpression::Trait(_) => panic!("Expected concrete case expression"),
+                    };
+
                     // Check case expression is a function call
-                    match &case_expr.expression.kind {
+                    match &expression.kind {
                         ExpressionKind::FunctionCall(call) => match &call.path {
                             FunctionPath::Qualified { module, name } => {
                                 assert_eq!(module.name, "String");
@@ -353,7 +429,7 @@ fn test_case_with_string_result() {
                         _ => panic!("Expected function call expression"),
                     }
 
-                    assert_eq!(case_expr.when_clauses.len(), 2);
+                    assert_eq!(when_clauses.len(), 2);
                 }
                 _ => panic!("Expected case expression"),
             }

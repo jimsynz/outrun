@@ -641,16 +641,32 @@ pub struct IfExpression {
     pub span: Span,
 }
 
-/// Case expression with when clauses and else clause
+/// Case expression with two variants: concrete type matching and trait dispatch
 #[derive(Debug, Clone, PartialEq)]
-pub struct CaseExpression {
+pub enum CaseExpression {
+    Concrete(ConcreteCaseExpression),
+    Trait(TraitCaseExpression),
+}
+
+/// Concrete case expression with when clauses and else clause
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConcreteCaseExpression {
     pub expression: Box<Expression>, // The value being matched
     pub when_clauses: Vec<CaseWhenClause>,
     pub else_clause: CaseElseClause,
     pub span: Span,
 }
 
-/// When clause in case expression
+/// Trait case expression for trait-based exhaustiveness checking
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitCaseExpression {
+    pub expression: Box<Expression>, // The value being matched
+    pub trait_name: TypeIdentifier,  // The trait for dispatch
+    pub type_clauses: Vec<TraitCaseClause>,
+    pub span: Span,
+}
+
+/// When clause in concrete case expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseWhenClause {
     pub guard: Expression,  // The guard condition (must return boolean)
@@ -658,7 +674,17 @@ pub struct CaseWhenClause {
     pub span: Span,
 }
 
-/// Else clause in case expression  
+/// Type clause in trait case expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitCaseClause {
+    pub type_name: TypeIdentifier, // Concrete type implementing the trait
+    pub pattern: Option<StructPattern>, // Optional struct destructuring pattern
+    pub guard: Option<Expression>, // Optional guard condition
+    pub result: CaseResult,        // Block or expression result
+    pub span: Span,
+}
+
+/// Else clause in concrete case expression  
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseElseClause {
     pub result: CaseResult, // Block or expression result
@@ -1335,6 +1361,15 @@ impl std::fmt::Display for IfExpression {
 
 impl std::fmt::Display for CaseExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CaseExpression::Concrete(concrete) => write!(f, "{}", concrete),
+            CaseExpression::Trait(trait_case) => write!(f, "{}", trait_case),
+        }
+    }
+}
+
+impl std::fmt::Display for ConcreteCaseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "case {} {{", self.expression)?;
 
         for when_clause in &self.when_clauses {
@@ -1343,6 +1378,34 @@ impl std::fmt::Display for CaseExpression {
 
         writeln!(f, "    {}", self.else_clause)?;
         write!(f, "}}")
+    }
+}
+
+impl std::fmt::Display for TraitCaseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "case {} as {} {{", self.expression, self.trait_name)?;
+
+        for type_clause in &self.type_clauses {
+            writeln!(f, "    {}", type_clause)?;
+        }
+
+        write!(f, "}}")
+    }
+}
+
+impl std::fmt::Display for TraitCaseClause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.type_name)?;
+
+        if let Some(pattern) = &self.pattern {
+            write!(f, " {}", pattern)?;
+        }
+
+        if let Some(guard) = &self.guard {
+            write!(f, " when {}", guard)?;
+        }
+
+        write!(f, " -> {}", self.result)
     }
 }
 

@@ -244,9 +244,16 @@ struct_update ::= ".." expression
 if_expression ::= "if" expression "{" function_body "}" ("else" "{" function_body "}")?
 
 # Case Expression  
-case_expression ::= "case" expression "{" case_clause+ "}"
+case_expression ::= concrete_case_expression | trait_case_expression
+
+concrete_case_expression ::= "case" expression "{" case_clause+ "}"
+trait_case_expression ::= "case" expression "as" TYPE_IDENTIFIER "{" trait_case_clause+ "}"
+
 case_clause ::= case_pattern "->" (expression | "{" function_body "}")
+trait_case_clause ::= trait_case_pattern "->" (expression | "{" function_body "}")
+
 case_pattern ::= destructure_pattern guard_clause?
+trait_case_pattern ::= TYPE_IDENTIFIER "{" struct_pattern_fields? "}" guard_clause?
 
 destructure_pattern ::= struct_pattern 
                       | tuple_pattern

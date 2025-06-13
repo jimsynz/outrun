@@ -939,6 +939,21 @@ impl ExpressionChecker {
         context: &mut TypeContext,
         case_expr: &outrun_parser::CaseExpression,
     ) -> TypeResult<TypedExpression> {
+        match case_expr {
+            outrun_parser::CaseExpression::Concrete(concrete) => {
+                Self::check_concrete_case_expression(context, concrete)
+            }
+            outrun_parser::CaseExpression::Trait(trait_case) => {
+                Self::check_trait_case_expression(context, trait_case)
+            }
+        }
+    }
+
+    /// Type check concrete case expression
+    fn check_concrete_case_expression(
+        context: &mut TypeContext,
+        case_expr: &outrun_parser::ConcreteCaseExpression,
+    ) -> TypeResult<TypedExpression> {
         // Type check the expression being matched
         let typed_expression = Self::check_expression(context, &case_expr.expression)?;
 
@@ -1020,6 +1035,22 @@ impl ExpressionChecker {
             },
             type_id: first_result_type,
             span: case_expr.span,
+        })
+    }
+
+    /// Type check trait case expression
+    fn check_trait_case_expression(
+        context: &mut TypeContext,
+        trait_case: &outrun_parser::TraitCaseExpression,
+    ) -> TypeResult<TypedExpression> {
+        // Type check the expression being matched
+        let _typed_expression = Self::check_expression(context, &trait_case.expression)?;
+
+        // TODO: Implement trait case type checking with exhaustiveness checking
+        // For now, return an unimplemented error
+        Err(TypeError::UnimplementedFeature {
+            feature: "Trait case expression type checking".to_string(),
+            span: crate::error::span_to_source_span(trait_case.span),
         })
     }
 
@@ -2406,7 +2437,7 @@ mod tests {
         let mut context = TypeContext::new();
 
         // Create case x { when true -> 42 when false -> 24 else -> 66 }
-        let case_expr = outrun_parser::CaseExpression {
+        let concrete_case = outrun_parser::ConcreteCaseExpression {
             expression: Box::new(Expression {
                 kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
                     name: "x".to_string(),
@@ -2474,6 +2505,8 @@ mod tests {
             span: Span::new(0, 52),
         };
 
+        let case_expr = outrun_parser::CaseExpression::Concrete(concrete_case);
+
         // Register a variable x for the expression
         context.push_scope(false);
         let var_type = context.interner.intern_type("Outrun.Core.Integer64");
@@ -2537,7 +2570,7 @@ mod tests {
         let mut context = TypeContext::new();
 
         // Create case x { when 42 -> "invalid" else -> "valid" } (guard should be Boolean, not Integer)
-        let case_expr = outrun_parser::CaseExpression {
+        let concrete_case = outrun_parser::ConcreteCaseExpression {
             expression: Box::new(Expression {
                 kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
                     name: "x".to_string(),
@@ -2584,6 +2617,8 @@ mod tests {
             span: Span::new(0, 45),
         };
 
+        let case_expr = outrun_parser::CaseExpression::Concrete(concrete_case);
+
         // Register a variable x for the expression
         context.push_scope(false);
         let var_type = context.interner.intern_type("Outrun.Core.Integer64");
@@ -2614,7 +2649,7 @@ mod tests {
         let mut context = TypeContext::new();
 
         // Create case x { when true -> 42 when false -> "hello" else -> 66 } (branches have different types)
-        let case_expr = outrun_parser::CaseExpression {
+        let concrete_case = outrun_parser::ConcreteCaseExpression {
             expression: Box::new(Expression {
                 kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
                     name: "x".to_string(),
@@ -2683,6 +2718,8 @@ mod tests {
             span: Span::new(0, 57),
         };
 
+        let case_expr = outrun_parser::CaseExpression::Concrete(concrete_case);
+
         // Register a variable x for the expression
         context.push_scope(false);
         let var_type = context.interner.intern_type("Outrun.Core.Integer64");
@@ -2713,7 +2750,7 @@ mod tests {
         let mut context = TypeContext::new();
 
         // Create case x { when true -> { 42 } else -> { 24 } }
-        let case_expr = outrun_parser::CaseExpression {
+        let concrete_case = outrun_parser::ConcreteCaseExpression {
             expression: Box::new(Expression {
                 kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
                     name: "x".to_string(),
@@ -2768,6 +2805,8 @@ mod tests {
             },
             span: Span::new(0, 43),
         };
+
+        let case_expr = outrun_parser::CaseExpression::Concrete(concrete_case);
 
         // Register a variable x for the expression
         context.push_scope(false);

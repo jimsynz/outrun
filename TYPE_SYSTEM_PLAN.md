@@ -123,15 +123,24 @@
 - [✅] Implement pattern type checking for all pattern types
 - [✅] Add comprehensive test coverage for pattern validation (9 tests)
 - [✅] Handle recursive pattern validation with variable binding collection
-- [ ] Add pattern exhaustiveness checking for case expressions
-- [ ] Integrate pattern checking with case expressions
+- [✅] **Case Statement Enhancement (New Design)**:
+  - [✅] Update LANGUAGE_SPEC.md with new case syntax (`case expr as Trait` vs `case expr`)
+  - [✅] Update GRAMMAR.bnf with new case statement syntax
+  - [✅] Update Pest grammar for new case statement parsing
+  - [✅] Update AST structures for trait-dispatch vs concrete-type cases
+  - [✅] Fix parser tests to handle new CaseExpression enum structure
+  - [ ] Implement trait-based exhaustiveness checking with orphan rules
+  - [ ] Add pattern validation integration for case expressions
+  - [ ] Test coverage for both case variants and exhaustiveness
 
 **Deliverables**:
 - [✅] `checker/patterns.rs` with complete pattern validation
 - [✅] Variable binding collection for scope updates
 - [✅] Comprehensive test coverage including error cases
-- [ ] Exhaustiveness checking for case statements
-- [ ] Case expression pattern integration
+- [✅] **Enhanced case statement syntax**: `case expr as TraitName` for trait dispatch (parser implementation)
+- [✅] **Case expression enum structure**: Concrete vs Trait variants with comprehensive test fixes
+- [ ] **Trait-based exhaustiveness checking** using orphan rule analysis
+- [ ] **Case expression pattern integration** with structural vs guard-based matching
 
 ## Phase 3: Trait System (Week 5-6)
 
