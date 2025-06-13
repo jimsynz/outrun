@@ -47,6 +47,7 @@ impl ExpressionChecker {
             ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
             ExpressionKind::Struct(struct_lit) => Self::check_struct_literal(context, struct_lit),
             ExpressionKind::IfExpression(if_expr) => Self::check_if_expression(context, if_expr),
+            ExpressionKind::CaseExpression(case_expr) => Self::check_case_expression(context, case_expr),
             _ => {
                 // TODO: Implement other expression types
                 Err(TypeError::UnimplementedFeature {
@@ -916,6 +917,112 @@ impl ExpressionChecker {
             type_id: result_type,
             span: if_expr.span,
         })
+    }
+
+    /// Type check case expression
+    fn check_case_expression(
+        context: &mut TypeContext,
+        case_expr: &outrun_parser::CaseExpression,
+    ) -> TypeResult<TypedExpression> {
+        // Type check the expression being matched
+        let typed_expression = Self::check_expression(context, &case_expr.expression)?;
+
+        // Type check all when clauses
+        let mut typed_when_clauses = Vec::new();
+        let mut result_types = Vec::new();
+
+        for when_clause in &case_expr.when_clauses {
+            // Type check the guard - must be Boolean
+            let typed_guard = Self::check_expression(context, &when_clause.guard)?;
+            
+            let bool_type = context.interner.intern_type("Outrun.Core.Boolean");
+            if typed_guard.type_id != bool_type {
+                return Err(TypeError::type_mismatch(
+                    "Outrun.Core.Boolean".to_string(),
+                    context
+                        .get_type_name(typed_guard.type_id)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    crate::error::span_to_source_span(when_clause.guard.span),
+                ));
+            }
+
+            // Type check the result
+            let typed_result = Self::check_case_result(context, &when_clause.result)?;
+            result_types.push(typed_result.result_type());
+
+            typed_when_clauses.push(crate::checker::TypedCaseWhenClause {
+                guard: typed_guard,
+                result: typed_result,
+                span: when_clause.span,
+            });
+        }
+
+        // Type check the else clause
+        let typed_else_result = Self::check_case_result(context, &case_expr.else_clause.result)?;
+        result_types.push(typed_else_result.result_type());
+
+        let typed_else_clause = crate::checker::TypedCaseElseClause {
+            result: typed_else_result,
+            span: case_expr.else_clause.span,
+        };
+
+        // All result types must be compatible
+        let first_result_type = result_types[0];
+        for (i, &result_type) in result_types.iter().enumerate().skip(1) {
+            if result_type != first_result_type {
+                // Find the span for the mismatched branch
+                let error_span = if i <= typed_when_clauses.len() {
+                    // Error in when clause
+                    match &typed_when_clauses[i - 1].result {
+                        crate::checker::TypedCaseResult::Block(block) => block.span,
+                        crate::checker::TypedCaseResult::Expression(expr) => expr.span,
+                    }
+                } else {
+                    // Error in else clause
+                    case_expr.else_clause.span
+                };
+
+                return Err(TypeError::type_mismatch(
+                    context
+                        .get_type_name(first_result_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    context
+                        .get_type_name(result_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    crate::error::span_to_source_span(error_span),
+                ));
+            }
+        }
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::CaseExpression {
+                expression: Box::new(typed_expression),
+                when_clauses: typed_when_clauses,
+                else_clause: typed_else_clause,
+            },
+            type_id: first_result_type,
+            span: case_expr.span,
+        })
+    }
+
+    /// Type check a case result (block or expression)
+    fn check_case_result(
+        context: &mut TypeContext,
+        case_result: &outrun_parser::CaseResult,
+    ) -> TypeResult<crate::checker::TypedCaseResult> {
+        match case_result {
+            outrun_parser::CaseResult::Block(block) => {
+                let typed_block = Self::check_block(context, block)?;
+                Ok(crate::checker::TypedCaseResult::Block(typed_block))
+            }
+            outrun_parser::CaseResult::Expression(expr) => {
+                let typed_expr = Self::check_expression(context, expr)?;
+                Ok(crate::checker::TypedCaseResult::Expression(Box::new(typed_expr)))
+            }
+        }
     }
 
     /// Type check a block
@@ -2161,5 +2268,408 @@ mod tests {
             }
             _ => panic!("Expected struct expression"),
         }
+    }
+
+    #[test]
+    fn test_case_expression_with_compatible_types() {
+        let mut context = TypeContext::new();
+
+        // Create case x { when true -> 42 when false -> 24 else -> 66 }
+        let case_expr = outrun_parser::CaseExpression {
+            expression: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
+                    name: "x".to_string(),
+                    span: Span::new(5, 6),
+                }),
+                span: Span::new(5, 6),
+            }),
+            when_clauses: vec![
+                outrun_parser::CaseWhenClause {
+                    guard: Expression {
+                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                            value: true,
+                            span: Span::new(13, 17),
+                        }),
+                        span: Span::new(13, 17),
+                    },
+                    result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                            value: 42,
+                            format: outrun_parser::IntegerFormat::Decimal,
+                            span: Span::new(21, 23),
+                        }),
+                        span: Span::new(21, 23),
+                    })),
+                    span: Span::new(8, 23),
+                },
+                outrun_parser::CaseWhenClause {
+                    guard: Expression {
+                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                            value: false,
+                            span: Span::new(29, 34),
+                        }),
+                        span: Span::new(29, 34),
+                    },
+                    result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                            value: 24,
+                            format: outrun_parser::IntegerFormat::Decimal,
+                            span: Span::new(38, 40),
+                        }),
+                        span: Span::new(38, 40),
+                    })),
+                    span: Span::new(24, 40),
+                },
+            ],
+            else_clause: outrun_parser::CaseElseClause {
+                result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 66,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(48, 50),
+                    }),
+                    span: Span::new(48, 50),
+                })),
+                span: Span::new(41, 50),
+            },
+            span: Span::new(0, 52),
+        };
+
+        // Register a variable x for the expression
+        context.push_scope(false);
+        let var_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "x".to_string(),
+            type_id: var_type,
+            is_mutable: false,
+            span: Span::new(0, 1),
+        };
+        context.register_variable(variable).unwrap();
+
+        let result = ExpressionChecker::check_case_expression(&mut context, &case_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        match typed_expr.kind {
+            TypedExpressionKind::CaseExpression {
+                expression,
+                when_clauses,
+                else_clause,
+            } => {
+                // Expression should be an identifier
+                match expression.kind {
+                    TypedExpressionKind::Identifier(name) => assert_eq!(name, "x"),
+                    _ => panic!("Expected identifier expression"),
+                }
+
+                // Should have 2 when clauses
+                assert_eq!(when_clauses.len(), 2);
+
+                // All guards should be Boolean
+                for when_clause in &when_clauses {
+                    match when_clause.guard.kind {
+                        TypedExpressionKind::Boolean(_) => {}
+                        _ => panic!("Expected boolean guard"),
+                    }
+                }
+
+                // All results should have Integer64 type
+                for when_clause in &when_clauses {
+                    assert_eq!(
+                        when_clause.result.result_type(),
+                        context.interner.intern_type("Outrun.Core.Integer64")
+                    );
+                }
+                assert_eq!(
+                    else_clause.result.result_type(),
+                    context.interner.intern_type("Outrun.Core.Integer64")
+                );
+            }
+            _ => panic!("Expected case expression"),
+        }
+
+        // Overall expression should have Integer64 type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+    }
+
+    #[test]
+    fn test_case_expression_guard_type_error() {
+        let mut context = TypeContext::new();
+
+        // Create case x { when 42 -> "invalid" else -> "valid" } (guard should be Boolean, not Integer)
+        let case_expr = outrun_parser::CaseExpression {
+            expression: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
+                    name: "x".to_string(),
+                    span: Span::new(5, 6),
+                }),
+                span: Span::new(5, 6),
+            }),
+            when_clauses: vec![outrun_parser::CaseWhenClause {
+                guard: Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(13, 15),
+                    }),
+                    span: Span::new(13, 15),
+                },
+                result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                        parts: vec![outrun_parser::StringPart::Text {
+                            content: "invalid".to_string(),
+                            raw_content: "invalid".to_string(),
+                        }],
+                        format: outrun_parser::StringFormat::Basic,
+                        span: Span::new(19, 28),
+                    }),
+                    span: Span::new(19, 28),
+                })),
+                span: Span::new(8, 28),
+            }],
+            else_clause: outrun_parser::CaseElseClause {
+                result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                        parts: vec![outrun_parser::StringPart::Text {
+                            content: "valid".to_string(),
+                            raw_content: "valid".to_string(),
+                        }],
+                        format: outrun_parser::StringFormat::Basic,
+                        span: Span::new(36, 43),
+                    }),
+                    span: Span::new(36, 43),
+                })),
+                span: Span::new(29, 43),
+            },
+            span: Span::new(0, 45),
+        };
+
+        // Register a variable x for the expression
+        context.push_scope(false);
+        let var_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "x".to_string(),
+            type_id: var_type,
+            is_mutable: false,
+            span: Span::new(0, 1),
+        };
+        context.register_variable(variable).unwrap();
+
+        let result = ExpressionChecker::check_case_expression(&mut context, &case_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.Boolean");
+                assert_eq!(found, "Outrun.Core.Integer64");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_case_expression_branch_type_mismatch() {
+        let mut context = TypeContext::new();
+
+        // Create case x { when true -> 42 when false -> "hello" else -> 66 } (branches have different types)
+        let case_expr = outrun_parser::CaseExpression {
+            expression: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
+                    name: "x".to_string(),
+                    span: Span::new(5, 6),
+                }),
+                span: Span::new(5, 6),
+            }),
+            when_clauses: vec![
+                outrun_parser::CaseWhenClause {
+                    guard: Expression {
+                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                            value: true,
+                            span: Span::new(13, 17),
+                        }),
+                        span: Span::new(13, 17),
+                    },
+                    result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                            value: 42,
+                            format: outrun_parser::IntegerFormat::Decimal,
+                            span: Span::new(21, 23),
+                        }),
+                        span: Span::new(21, 23),
+                    })),
+                    span: Span::new(8, 23),
+                },
+                outrun_parser::CaseWhenClause {
+                    guard: Expression {
+                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                            value: false,
+                            span: Span::new(29, 34),
+                        }),
+                        span: Span::new(29, 34),
+                    },
+                    result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                        kind: outrun_parser::ExpressionKind::String(outrun_parser::StringLiteral {
+                            parts: vec![outrun_parser::StringPart::Text {
+                                content: "hello".to_string(),
+                                raw_content: "hello".to_string(),
+                            }],
+                            format: outrun_parser::StringFormat::Basic,
+                            span: Span::new(38, 45),
+                        }),
+                        span: Span::new(38, 45),
+                    })),
+                    span: Span::new(24, 45),
+                },
+            ],
+            else_clause: outrun_parser::CaseElseClause {
+                result: outrun_parser::CaseResult::Expression(Box::new(Expression {
+                    kind: outrun_parser::ExpressionKind::Integer(outrun_parser::IntegerLiteral {
+                        value: 66,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        span: Span::new(53, 55),
+                    }),
+                    span: Span::new(53, 55),
+                })),
+                span: Span::new(46, 55),
+            },
+            span: Span::new(0, 57),
+        };
+
+        // Register a variable x for the expression
+        context.push_scope(false);
+        let var_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "x".to_string(),
+            type_id: var_type,
+            is_mutable: false,
+            span: Span::new(0, 1),
+        };
+        context.register_variable(variable).unwrap();
+
+        let result = ExpressionChecker::check_case_expression(&mut context, &case_expr);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            TypeError::TypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Outrun.Core.Integer64");
+                assert_eq!(found, "Outrun.Core.String");
+            }
+            _ => panic!("Expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_case_expression_with_blocks() {
+        let mut context = TypeContext::new();
+
+        // Create case x { when true -> { 42 } else -> { 24 } }
+        let case_expr = outrun_parser::CaseExpression {
+            expression: Box::new(Expression {
+                kind: outrun_parser::ExpressionKind::Identifier(outrun_parser::Identifier {
+                    name: "x".to_string(),
+                    span: Span::new(5, 6),
+                }),
+                span: Span::new(5, 6),
+            }),
+            when_clauses: vec![outrun_parser::CaseWhenClause {
+                guard: Expression {
+                    kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral {
+                        value: true,
+                        span: Span::new(13, 17),
+                    }),
+                    span: Span::new(13, 17),
+                },
+                result: outrun_parser::CaseResult::Block(outrun_parser::Block {
+                    statements: vec![outrun_parser::Statement {
+                        kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                            kind: outrun_parser::ExpressionKind::Integer(
+                                outrun_parser::IntegerLiteral {
+                                    value: 42,
+                                    format: outrun_parser::IntegerFormat::Decimal,
+                                    span: Span::new(23, 25),
+                                },
+                            ),
+                            span: Span::new(23, 25),
+                        })),
+                        span: Span::new(23, 25),
+                    }],
+                    span: Span::new(21, 27),
+                }),
+                span: Span::new(8, 27),
+            }],
+            else_clause: outrun_parser::CaseElseClause {
+                result: outrun_parser::CaseResult::Block(outrun_parser::Block {
+                    statements: vec![outrun_parser::Statement {
+                        kind: outrun_parser::StatementKind::Expression(Box::new(Expression {
+                            kind: outrun_parser::ExpressionKind::Integer(
+                                outrun_parser::IntegerLiteral {
+                                    value: 24,
+                                    format: outrun_parser::IntegerFormat::Decimal,
+                                    span: Span::new(37, 39),
+                                },
+                            ),
+                            span: Span::new(37, 39),
+                        })),
+                        span: Span::new(37, 39),
+                    }],
+                    span: Span::new(35, 41),
+                }),
+                span: Span::new(28, 41),
+            },
+            span: Span::new(0, 43),
+        };
+
+        // Register a variable x for the expression
+        context.push_scope(false);
+        let var_type = context.interner.intern_type("Outrun.Core.Integer64");
+        let variable = crate::checker::context::Variable {
+            name: "x".to_string(),
+            type_id: var_type,
+            is_mutable: false,
+            span: Span::new(0, 1),
+        };
+        context.register_variable(variable).unwrap();
+
+        let result = ExpressionChecker::check_case_expression(&mut context, &case_expr);
+        assert!(result.is_ok());
+
+        let typed_expr = result.unwrap();
+        match typed_expr.kind {
+            TypedExpressionKind::CaseExpression {
+                when_clauses,
+                else_clause,
+                ..
+            } => {
+                // When clause should have a block result
+                match &when_clauses[0].result {
+                    crate::checker::TypedCaseResult::Block(block) => {
+                        assert_eq!(block.statements.len(), 1);
+                        let type_name = context.get_type_name(block.result_type);
+                        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+                    }
+                    _ => panic!("Expected block result"),
+                }
+
+                // Else clause should have a block result
+                match &else_clause.result {
+                    crate::checker::TypedCaseResult::Block(block) => {
+                        assert_eq!(block.statements.len(), 1);
+                        let type_name = context.get_type_name(block.result_type);
+                        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
+                    }
+                    _ => panic!("Expected block result"),
+                }
+            }
+            _ => panic!("Expected case expression"),
+        }
+
+        // Overall expression should have Integer64 type
+        let type_name = context.get_type_name(typed_expr.type_id);
+        assert_eq!(type_name, Some("Outrun.Core.Integer64"));
     }
 }

@@ -105,6 +105,11 @@ pub enum TypedExpressionKind {
         then_block: TypedBlock,
         else_block: Option<TypedBlock>,
     },
+    CaseExpression {
+        expression: Box<TypedExpression>,
+        when_clauses: Vec<TypedCaseWhenClause>,
+        else_clause: TypedCaseElseClause,
+    },
     // TODO: Add all expression kinds with type information
 }
 
@@ -114,6 +119,38 @@ pub struct TypedBlock {
     pub statements: Vec<TypedStatement>,
     pub result_type: TypeId, // Type of the block's result
     pub span: Span,
+}
+
+/// Typed case when clause
+#[derive(Debug, Clone)]
+pub struct TypedCaseWhenClause {
+    pub guard: TypedExpression,
+    pub result: TypedCaseResult,
+    pub span: Span,
+}
+
+/// Typed case else clause
+#[derive(Debug, Clone)]
+pub struct TypedCaseElseClause {
+    pub result: TypedCaseResult,
+    pub span: Span,
+}
+
+/// Typed case result (block or expression)
+#[derive(Debug, Clone)]
+pub enum TypedCaseResult {
+    Block(TypedBlock),
+    Expression(Box<TypedExpression>),
+}
+
+impl TypedCaseResult {
+    /// Get the result type of this case result
+    pub fn result_type(&self) -> TypeId {
+        match self {
+            TypedCaseResult::Block(block) => block.result_type,
+            TypedCaseResult::Expression(expr) => expr.type_id,
+        }
+    }
 }
 
 /// Typed statement
