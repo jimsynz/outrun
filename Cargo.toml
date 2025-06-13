@@ -1,8 +1,7 @@
 [workspace]
 
 members = [ "outrun",
-  "outrun-parser",
-  "tree-sitter-outrun"
+  "outrun-parser"
 ]
 
 resolver = "3"

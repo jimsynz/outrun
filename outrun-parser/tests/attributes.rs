@@ -1,7 +1,7 @@
 use outrun_parser::ast::*;
 use outrun_parser::parser::OutrunParser;
 
-// Test basic attribute parsing based on tree-sitter test cases
+// Test basic attribute parsing
 
 #[test]
 fn test_struct_with_basic_attribute() {
