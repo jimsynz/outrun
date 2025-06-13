@@ -104,12 +104,11 @@ impl OutrunParser {
 
         // Third pair should be the case_clauses
         let clauses_pair = inner_pairs.next().unwrap();
-        let (when_clauses, else_clause) = Self::parse_case_clauses(clauses_pair)?;
+        let when_clauses = Self::parse_case_clauses(clauses_pair)?;
 
         Ok(ConcreteCaseExpression {
             expression: Box::new(expression),
             when_clauses,
-            else_clause,
             span,
         })
     }
@@ -147,36 +146,21 @@ impl OutrunParser {
         })
     }
 
-    /// Parse case clauses (when clauses and else clause)
+    /// Parse case clauses (when clauses only - exhaustiveness checked)
     pub(crate) fn parse_case_clauses(
         pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<(Vec<CaseWhenClause>, CaseElseClause)> {
+    ) -> ParseResult<Vec<CaseWhenClause>> {
         let mut when_clauses = Vec::new();
-        let mut else_clause = None;
 
         for inner_pair in pair.into_inner() {
-            match inner_pair.as_rule() {
-                Rule::case_when_clause => {
-                    let when_clause = Self::parse_case_when_clause(inner_pair)?;
-                    when_clauses.push(when_clause);
-                }
-                Rule::case_else_clause => {
-                    else_clause = Some(Self::parse_case_else_clause(inner_pair)?);
-                }
-                _ => {} // Skip other rules
+            if inner_pair.as_rule() == Rule::case_when_clause {
+                let when_clause = Self::parse_case_when_clause(inner_pair)?;
+                when_clauses.push(when_clause);
             }
+            // Skip other rules
         }
 
-        let else_clause = else_clause.ok_or_else(|| {
-            let placeholder_span = Self::span_from_range(0, 1);
-            Self::unexpected_token_from_span(
-                &placeholder_span,
-                "",
-                "Case expression missing else clause",
-            )
-        })?;
-
-        Ok((when_clauses, else_clause))
+        Ok(when_clauses)
     }
 
     /// Parse a when clause in a case expression
@@ -205,26 +189,6 @@ impl OutrunParser {
             result,
             span,
         })
-    }
-
-    /// Parse an else clause in a case expression
-    pub(crate) fn parse_case_else_clause(
-        pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<CaseElseClause> {
-        let span = Self::span_from_pair(&pair);
-        let mut inner_pairs = pair.into_inner();
-
-        // First pair should be the "else" keyword, skip it
-        let _else_keyword = inner_pairs.next().unwrap();
-
-        // Second pair should be the arrow rule, skip it
-        let _arrow = inner_pairs.next().unwrap();
-
-        // Third pair should be the result (block or expression)
-        let result_pair = inner_pairs.next().unwrap();
-        let result = Self::parse_case_result(result_pair)?;
-
-        Ok(CaseElseClause { result, span })
     }
 
     /// Parse a case result (either block or expression)

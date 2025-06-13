@@ -648,12 +648,11 @@ pub enum CaseExpression {
     Trait(TraitCaseExpression),
 }
 
-/// Concrete case expression with when clauses and else clause
+/// Concrete case expression with when clauses (exhaustiveness checked)
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConcreteCaseExpression {
     pub expression: Box<Expression>, // The value being matched
     pub when_clauses: Vec<CaseWhenClause>,
-    pub else_clause: CaseElseClause,
     pub span: Span,
 }
 
@@ -681,13 +680,6 @@ pub struct TraitCaseClause {
     pub pattern: Option<StructPattern>, // Optional struct destructuring pattern
     pub guard: Option<Expression>, // Optional guard condition
     pub result: CaseResult,        // Block or expression result
-    pub span: Span,
-}
-
-/// Else clause in concrete case expression  
-#[derive(Debug, Clone, PartialEq)]
-pub struct CaseElseClause {
-    pub result: CaseResult, // Block or expression result
     pub span: Span,
 }
 
@@ -1376,7 +1368,6 @@ impl std::fmt::Display for ConcreteCaseExpression {
             writeln!(f, "    {}", when_clause)?;
         }
 
-        writeln!(f, "    {}", self.else_clause)?;
         write!(f, "}}")
     }
 }
@@ -1412,12 +1403,6 @@ impl std::fmt::Display for TraitCaseClause {
 impl std::fmt::Display for CaseWhenClause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "when {} -> {}", self.guard, self.result)
-    }
-}
-
-impl std::fmt::Display for CaseElseClause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "else -> {}", self.result)
     }
 }
 

@@ -617,17 +617,10 @@ fn format_concrete_case_expression_with_indent(
         })
         .collect();
 
-    let else_clause = format!(
-        "\n{}(else {})",
-        " ".repeat(indent + 2),
-        format_case_result_with_indent(&case_expr.else_clause.result, indent + 4)
-    );
-
     format!(
-        "(case {}\n{}{})",
+        "(case {}\n{})",
         expr,
-        when_clauses.join(&format!("\n{}", " ".repeat(indent + 2))),
-        else_clause
+        when_clauses.join(&format!("\n{}", " ".repeat(indent + 2)))
     )
 }
 

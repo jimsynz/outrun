@@ -111,7 +111,6 @@ pub enum TypedExpressionKind {
     CaseExpression {
         expression: Box<TypedExpression>,
         when_clauses: Vec<TypedCaseWhenClause>,
-        else_clause: TypedCaseElseClause,
     },
     TraitCaseExpression {
         expression: Box<TypedExpression>,
@@ -133,13 +132,6 @@ pub struct TypedBlock {
 #[derive(Debug, Clone)]
 pub struct TypedCaseWhenClause {
     pub guard: TypedExpression,
-    pub result: TypedCaseResult,
-    pub span: Span,
-}
-
-/// Typed case else clause
-#[derive(Debug, Clone)]
-pub struct TypedCaseElseClause {
     pub result: TypedCaseResult,
     pub span: Span,
 }

@@ -221,9 +221,8 @@ case_expression = !{ concrete_case_expression | trait_case_expression }
 concrete_case_expression = !{ keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
 trait_case_expression = !{ keyword_case ~ expression ~ keyword_as ~ type_identifier ~ "{" ~ trait_case_clauses ~ "}" }
 
-case_clauses = { case_when_clause+ ~ case_else_clause? }
+case_clauses = { case_when_clause+ }
 case_when_clause = !{ keyword_when ~ expression ~ arrow ~ (block | expression) }
-case_else_clause = !{ keyword_else ~ arrow ~ (block | expression) }
 
 trait_case_clauses = { trait_case_clause+ }
 trait_case_clause = !{ type_identifier ~ "{" ~ struct_field_patterns? ~ "}" ~ guard_clause? ~ arrow ~ (block | expression) }
