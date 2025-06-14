@@ -371,11 +371,36 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
     if functions_count == 0 {
         format!("(trait {})", name)
     } else {
+        // Count different types of functions
+        let mut signatures = 0;
+        let mut definitions = 0;
+        let mut static_definitions = 0;
+
+        for function in &trait_def.functions {
+            match function {
+                TraitFunction::Signature(_) => signatures += 1,
+                TraitFunction::Definition(_) => definitions += 1,
+                TraitFunction::StaticDefinition(_) => static_definitions += 1,
+            }
+        }
+
+        let mut function_details = Vec::new();
+        if signatures > 0 {
+            function_details.push(format!("signatures {}", signatures));
+        }
+        if definitions > 0 {
+            function_details.push(format!("definitions {}", definitions));
+        }
+        if static_definitions > 0 {
+            function_details.push(format!("static {}", static_definitions));
+        }
+
         format!(
-            "(trait {}\n{}(functions {}))",
+            "(trait {}\n{}(functions {} [{}]))",
             name,
             " ".repeat(indent + 2),
-            functions_count
+            functions_count,
+            function_details.join(", ")
         )
     }
 }

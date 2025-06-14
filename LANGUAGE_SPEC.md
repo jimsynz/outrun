@@ -314,6 +314,71 @@ impl<T> Container<T> for Box<T> when T: Clone {
 }
 ```
 
+### Static Trait Functions
+
+Traits can define static functions using the `defs` keyword. These functions are implemented in the trait itself and provide constructor patterns and trait-level utilities without requiring implementation by concrete types.
+
+```outrun
+trait Result<T, E> {
+    # Static constructor functions - implemented in the trait
+    defs ok(value: T): Result<T, E> {
+        Result.Ok { value: value }
+    }
+    
+    defs error(error: E): Result<T, E> {
+        Result.Error { error: error }
+    }
+    
+    # Instance functions - must be implemented by concrete types
+    def is_ok?(self: Self): Boolean
+    def unwrap(self: Self): T
+    def map<U>(self: Self, f: Function<(T) -> U>): Result<U, E>
+}
+
+trait Option<T> {
+    # Static constructors
+    defs some(value: T): Option<T> {
+        Option.Some { value: value }
+    }
+    
+    defs none(): Option<T> {
+        Option.None {}
+    }
+    
+    # Instance methods
+    def is_some?(self: Self): Boolean
+    def unwrap(self: Self): T
+}
+```
+
+**Static Function Characteristics:**
+
+- **No `Self` parameter**: Static functions don't operate on instances
+- **Trait-level implementation**: Function body is defined in the trait itself
+- **Constructor patterns**: Commonly used for ergonomic type construction
+- **Callable via trait name**: `Result.ok(value: 42)`, `Option.some(value: "hello")`
+- **Not implemented by types**: Concrete types implementing the trait don't provide these functions
+- **Generic support**: Can use trait's generic parameters in signatures and bodies
+
+**Usage Examples:**
+
+```outrun
+# Create Result values using static constructors
+let success = Result.ok(value: 42)
+let failure = Result.error(error: "Invalid input")
+
+# Create Option values
+let some_value = Option.some(value: "hello")
+let no_value = Option.none()
+
+# Static functions can't be called on instances
+# success.ok(value: 123)  # Error: ok is a static function
+
+# Instance methods work normally
+let is_success = success.is_ok?()
+let unwrapped = success.unwrap()
+```
+
 ### Function Types
 
 Function types provide explicit type annotations for first-class functions. They specify the parameter types and return type for function values:

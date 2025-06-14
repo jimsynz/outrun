@@ -3,6 +3,7 @@
 //! All test files must be declared as modules here.
 
 mod test_basic_type_checking;
+mod test_static_trait_functions;
 mod test_trait_case_exhaustiveness;
 mod test_trait_case_patterns;
 mod test_traits_unit;

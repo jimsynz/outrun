@@ -25,6 +25,7 @@ pub struct TraitFunction {
     pub params: Vec<(AtomId, TypeId)>,
     pub return_type: TypeId,
     pub is_guard: bool,
+    pub is_static: bool, // true for `defs` functions, false for instance functions
     pub span: Span,
 }
 
@@ -108,6 +109,24 @@ impl TraitFunction {
             params,
             return_type,
             is_guard,
+            is_static: false, // Default to instance function
+            span,
+        }
+    }
+
+    /// Create a new static trait function
+    pub fn new_static(
+        name: AtomId,
+        params: Vec<(AtomId, TypeId)>,
+        return_type: TypeId,
+        span: Span,
+    ) -> Self {
+        Self {
+            name,
+            params,
+            return_type,
+            is_guard: false, // Static functions can't be guards
+            is_static: true,
             span,
         }
     }

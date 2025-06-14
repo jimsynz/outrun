@@ -246,7 +246,7 @@ impl OutrunParser {
                     constraints = Some(Self::parse_trait_constraints(remaining_pair)?);
                 }
                 Rule::trait_functions => {
-                    functions = Self::parse_trait_functions(remaining_pair)?;
+                    functions = crate::OutrunParser::parse_trait_functions(remaining_pair)?;
                 }
                 _ => {} // Skip other rules like braces
             }

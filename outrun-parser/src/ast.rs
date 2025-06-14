@@ -1447,11 +1447,22 @@ pub struct TraitDefinition {
     pub span: Span,
 }
 
-/// Trait function (signature or full definition)
+/// Trait function (signature, definition, or static definition)
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraitFunction {
     Signature(FunctionSignature),
     Definition(FunctionDefinition),
+    StaticDefinition(StaticFunctionDefinition),
+}
+
+/// Static function definition in traits (using `defs` keyword)
+#[derive(Debug, Clone, PartialEq)]
+pub struct StaticFunctionDefinition {
+    pub name: Identifier,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<TypeAnnotation>,
+    pub body: Block,
+    pub span: Span,
 }
 
 /// Function signature without body
@@ -1585,6 +1596,7 @@ impl std::fmt::Display for TraitFunction {
         match self {
             TraitFunction::Signature(sig) => write!(f, "{}", sig),
             TraitFunction::Definition(def) => write!(f, "{}", def),
+            TraitFunction::StaticDefinition(static_def) => write!(f, "{}", static_def),
         }
     }
 }
@@ -1607,6 +1619,24 @@ impl std::fmt::Display for FunctionSignature {
             write!(f, " {}", guard)?;
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for StaticFunctionDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "defs {}", self.name)?;
+        write!(f, "(")?;
+        for (i, param) in self.parameters.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", param)?;
+        }
+        write!(f, ")")?;
+        if let Some(return_type) = &self.return_type {
+            write!(f, ": {}", return_type)?;
+        }
+        write!(f, " {}", self.body)
     }
 }
 

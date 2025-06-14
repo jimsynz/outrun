@@ -734,6 +734,10 @@ impl TypeChecker {
                     let func = Self::process_trait_function_definition(context, def)?;
                     trait_functions.push(func);
                 }
+                outrun_parser::TraitFunction::StaticDefinition(static_def) => {
+                    let func = Self::process_static_function_definition(context, static_def)?;
+                    trait_functions.push(func);
+                }
             }
         }
 
@@ -865,6 +869,49 @@ impl TypeChecker {
             return_type,
             is_guard,
             def.span,
+        ))
+    }
+
+    /// Process a static trait function definition (using `defs` keyword)
+    fn process_static_function_definition(
+        context: &mut TypeContext,
+        static_def: &outrun_parser::StaticFunctionDefinition,
+    ) -> Result<crate::types::traits::TraitFunction, TypeError> {
+        let func_name = context.interner.intern_atom(&static_def.name.name);
+
+        // Process parameters
+        let mut params = Vec::new();
+        for param in &static_def.parameters {
+            let param_name = context.interner.intern_atom(&param.name.name);
+            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            params.push((param_name, param_type));
+        }
+
+        // Process return type (default to Unit if not specified)
+        let return_type = if let Some(ref ret_type) = static_def.return_type {
+            Self::resolve_type_annotation(context, ret_type)?
+        } else {
+            context.interner.intern_type("Outrun.Core.Unit")
+        };
+
+        // Static functions cannot be guard functions (no `?` in name validation needed since parser enforces `defs` syntax)
+        // But let's validate that the name doesn't end with `?` to be safe
+        if static_def.name.name.ends_with('?') {
+            return Err(TypeError::InvalidGuardFunction {
+                function_name: static_def.name.name.clone(),
+                actual_return_type: "Static functions cannot be guard functions".to_string(),
+                span: crate::error::span_to_source_span(static_def.span),
+            });
+        }
+
+        // TODO: Type check the function body
+        // For now, we just process the signature
+
+        Ok(crate::types::traits::TraitFunction::new_static(
+            func_name,
+            params,
+            return_type,
+            static_def.span,
         ))
     }
 

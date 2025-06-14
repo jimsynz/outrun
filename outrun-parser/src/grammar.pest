@@ -65,6 +65,7 @@ keyword_struct = @{ "struct" ~ !ASCII_ALPHANUMERIC }
 keyword_trait = @{ "trait" ~ !ASCII_ALPHANUMERIC }
 keyword_impl = @{ "impl" ~ !ASCII_ALPHANUMERIC }
 keyword_def = @{ "def" ~ !ASCII_ALPHANUMERIC }
+keyword_defs = @{ "defs" ~ !ASCII_ALPHANUMERIC }
 keyword_defp = @{ "defp" ~ !ASCII_ALPHANUMERIC }
 keyword_let = @{ "let" ~ !ASCII_ALPHANUMERIC }
 keyword_const = @{ "const" ~ !ASCII_ALPHANUMERIC }
@@ -82,7 +83,7 @@ keyword_function = @{ "Function" ~ !ASCII_ALPHANUMERIC }
 
 // All keywords combined
 keyword = {
-    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defp |
+    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defs | keyword_defp |
     keyword_let | keyword_const | keyword_fn | keyword_if | keyword_else |
     keyword_case | keyword_when | keyword_alias | keyword_import | keyword_macro |
     keyword_for | keyword_self | keyword_function | keyword_as | keyword_only | keyword_except
@@ -305,7 +306,9 @@ struct_method_item = !{ function_definition }
 trait_definition = { attribute* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
 trait_functions = { trait_item+ }
 trait_item = !{ trait_function }
-trait_function = { function_signature | function_definition }
+trait_function = { function_signature | function_definition | static_function_definition }
+
+static_function_definition = { keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
 // Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }

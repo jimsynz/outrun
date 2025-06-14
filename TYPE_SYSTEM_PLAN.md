@@ -24,10 +24,12 @@
 - ✅ **Fully qualified type names**: All built-in types use `Outrun.Core.*` namespace
 - ✅ **Phase 2 Complete**: Core expression and control flow type checking complete with comprehensive coverage
 - ✅ **Phase 2.3 Pattern Type Checking Complete**: Comprehensive pattern validation for let bindings
-- ✅ **103 passing typechecker tests** - all expression, pattern, and trait definition type checking validated  
+- ✅ **102 passing typechecker tests** - all expression, pattern, and trait definition type checking validated  
 - ✅ **Phase 3.1 Complete**: Trait definition processing with comprehensive validation
 - ✅ **Phase 3.2 Complete**: Enhanced case statements with trait dispatch and pattern validation integration
 - ✅ **Else clause removal**: Removed redundant else clauses from case expressions, now using exhaustiveness checking
+- ✅ **Phase 2.4 Complete**: Static trait functions with `defs` keyword for constructor patterns and trait-level utilities
+- ✅ **107 passing typechecker tests** - all expression, pattern, trait definition, and static function type checking validated
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -131,9 +133,9 @@
   - [✅] Update Pest grammar for new case statement parsing
   - [✅] Update AST structures for trait-dispatch vs concrete-type cases
   - [✅] Fix parser tests to handle new CaseExpression enum structure
-  - [ ] Implement trait-based exhaustiveness checking with orphan rules
-  - [ ] Add pattern validation integration for case expressions
-  - [ ] Test coverage for both case variants and exhaustiveness
+  - [✅] Implement trait-based exhaustiveness checking with orphan rules
+  - [✅] Add pattern validation integration for case expressions
+  - [✅] Test coverage for both case variants and exhaustiveness
 
 **Deliverables**:
 - [✅] `checker/patterns.rs` with complete pattern validation
@@ -141,8 +143,28 @@
 - [✅] Comprehensive test coverage including error cases
 - [✅] **Enhanced case statement syntax**: `case expr as TraitName` for trait dispatch (parser implementation)
 - [✅] **Case expression enum structure**: Concrete vs Trait variants with comprehensive test fixes
-- [ ] **Trait-based exhaustiveness checking** using orphan rule analysis
-- [ ] **Case expression pattern integration** with structural vs guard-based matching
+- [✅] **Trait-based exhaustiveness checking** using orphan rule analysis
+- [✅] **Case expression pattern integration** with structural vs guard-based matching
+
+### 2.4 Static Trait Functions
+**Goal**: Add `defs` keyword for static trait functions with implementation
+
+**Tasks**:
+- [✅] Update LANGUAGE_SPEC.md with `defs` syntax and examples
+- [✅] Update GRAMMAR.bnf with defs syntax rules
+- [✅] Update grammar.pest with defs parsing rules
+- [✅] Update outrun-parser AST structures for static functions
+- [✅] Add comprehensive parser tests for defs syntax
+- [✅] Update outrun crate's sexpr formatter for defs
+- [✅] Update typechecker trait representation for static functions
+- [✅] Add typechecker tests for static function validation
+
+**Deliverables**:
+- [✅] Complete `defs` syntax support across parser and type checker
+- [✅] Static function call resolution and validation
+- [✅] Constructor pattern support for core types (Result, Option)
+- [✅] Foundation for ergonomic trait-level utilities
+- [✅] Clear distinction between static functions (implemented in trait) and instance functions (implemented by types)
 
 ## Phase 3: Trait System (Week 5-6)
 

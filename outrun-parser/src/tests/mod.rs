@@ -39,6 +39,7 @@ mod test_pipe_operators;
 mod test_sigil_literals;
 mod test_source_reconstruction;
 mod test_spread_operator_integration;
+mod test_static_trait_functions;
 mod test_string_interpolation;
 mod test_string_literals;
 mod test_struct_literals;
