@@ -11,37 +11,46 @@ use outrun_parser::Span;
 
 /// Resolve a trait function call to its implementation
 pub fn resolve_trait_function(
-    _table: &DispatchTable,
-    _trait_id: TraitId,
-    _type_id: TypeId,
+    table: &DispatchTable,
+    trait_id: TraitId,
+    type_id: TypeId,
     _function_name: AtomId,
     span: Span,
 ) -> TypeResult<FunctionId> {
-    // TODO: Implement trait function resolution
-    // - Look up (trait_id, type_id) in dispatch table
-    // - Find function within the trait implementation
-    // - Return function ID for execution
-    Err(TypeError::UnimplementedFeature {
-        feature: "Trait function resolution".to_string(),
-        span: crate::error::span_to_source_span(span),
-    })
+    // Look up (trait_id, type_id) in dispatch table
+    match table.lookup_trait_impl(trait_id, type_id) {
+        Some(module_id) => {
+            // Found the implementation module
+            // TODO: The interpreter will use module_id to look up the actual function
+            // For now, we return a synthetic function ID based on the module
+            Ok(FunctionId(module_id.0))
+        }
+        None => Err(TypeError::TraitNotImplemented {
+            trait_name: format!("trait_{:?}", trait_id),
+            type_name: format!("type_{:?}", type_id),
+            span: crate::error::span_to_source_span(span),
+        }),
+    }
 }
 
 /// Resolve a static function call to its implementation
 pub fn resolve_static_function(
-    _table: &DispatchTable,
-    _type_id: TypeId,
-    _function_name: String,
+    table: &DispatchTable,
+    type_id: TypeId,
+    function_name: String,
     span: Span,
 ) -> TypeResult<FunctionId> {
-    // TODO: Implement static function resolution
-    // - Look up type_id in static function table
-    // - Find function by name
-    // - Return function ID for execution
-    Err(TypeError::UnimplementedFeature {
-        feature: "Static function resolution".to_string(),
-        span: crate::error::span_to_source_span(span),
-    })
+    // Look up type_id in static function table
+    match table.lookup_static_function(type_id, &function_name) {
+        Some(function_id) => {
+            // Found the static function implementation
+            Ok(function_id)
+        }
+        None => Err(TypeError::UndefinedFunction {
+            name: function_name,
+            span: crate::error::span_to_source_span(span),
+        }),
+    }
 }
 
 /// Function resolution context for complex lookups

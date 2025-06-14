@@ -313,4 +313,14 @@ impl TraitRegistry {
             ExhaustivenessResult::Missing(missing_types)
         }
     }
+
+    /// Get all trait implementations for dispatch table construction
+    pub fn all_implementations(&self) -> impl Iterator<Item = &TraitImplementation> {
+        self.implementations.values()
+    }
+
+    /// Get all trait definitions for dispatch table construction
+    pub fn all_traits(&self) -> impl Iterator<Item = &TraitDefinition> {
+        self.definitions.values()
+    }
 }

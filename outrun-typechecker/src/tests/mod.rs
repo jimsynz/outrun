@@ -5,6 +5,7 @@
 mod test_basic_type_checking;
 mod test_default_implementations;
 mod test_default_trait_implementations;
+mod test_dispatch_table_construction;
 mod test_static_trait_functions;
 mod test_trait_case_exhaustiveness;
 mod test_trait_case_patterns;

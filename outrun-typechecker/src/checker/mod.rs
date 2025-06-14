@@ -258,11 +258,11 @@ impl TypeChecker {
         // Phase 2: Validate trait implementations
         self.validate_implementations()?;
 
-        // Phase 3: Build dispatch tables
-        self.build_dispatch_tables()?;
-
-        // Phase 4: Type check all items
+        // Phase 3: Type check all items (this registers implementations)
         let typed_items = self.check_items(program)?;
+
+        // Phase 4: Build dispatch tables (after implementations are registered)
+        self.build_dispatch_tables()?;
 
         // Phase 5: Build final typed program
         Ok(TypedProgram {
@@ -351,11 +351,18 @@ impl TypeChecker {
 
     /// Build dispatch tables for efficient runtime trait method calls
     fn build_dispatch_tables(&mut self) -> Result<(), Vec<TypeError>> {
-        // TODO: Implement dispatch table construction
-        // - Build (TraitId, TypeId) -> Function mappings
-        // - Build operator dispatch tables
-        // - Build static function lookup tables
-        Ok(())
+        use crate::dispatch::lookup::DispatchTableBuilder;
+
+        // Build complete dispatch table from trait registry
+        let builder =
+            DispatchTableBuilder::new(&self.context.trait_registry, &mut self.context.interner);
+        match builder.build() {
+            Ok(dispatch_table) => {
+                self.context.dispatch_table = dispatch_table;
+                Ok(())
+            }
+            Err(err) => Err(vec![err]),
+        }
     }
 
     /// Type check all items in the program
