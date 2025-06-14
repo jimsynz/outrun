@@ -26,6 +26,7 @@ pub struct TraitFunction {
     pub return_type: TypeId,
     pub is_guard: bool,
     pub is_static: bool, // true for `defs` functions, false for instance functions
+    pub has_default_impl: bool, // true for function definitions with bodies, false for signatures
     pub span: Span,
 }
 
@@ -96,7 +97,7 @@ impl TraitDefinition {
 }
 
 impl TraitFunction {
-    /// Create a new trait function
+    /// Create a new trait function signature (no default implementation)
     pub fn new(
         name: AtomId,
         params: Vec<(AtomId, TypeId)>,
@@ -109,7 +110,27 @@ impl TraitFunction {
             params,
             return_type,
             is_guard,
-            is_static: false, // Default to instance function
+            is_static: false,        // Default to instance function
+            has_default_impl: false, // Signature only - must be implemented
+            span,
+        }
+    }
+
+    /// Create a new trait function with default implementation
+    pub fn new_with_default(
+        name: AtomId,
+        params: Vec<(AtomId, TypeId)>,
+        return_type: TypeId,
+        is_guard: bool,
+        span: Span,
+    ) -> Self {
+        Self {
+            name,
+            params,
+            return_type,
+            is_guard,
+            is_static: false,
+            has_default_impl: true, // Has default implementation - can be overridden
             span,
         }
     }
@@ -127,6 +148,7 @@ impl TraitFunction {
             return_type,
             is_guard: false, // Static functions can't be guards
             is_static: true,
+            has_default_impl: true, // Static functions always have implementations
             span,
         }
     }

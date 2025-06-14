@@ -10,6 +10,7 @@ pub mod context;
 pub mod expressions;
 pub mod functions;
 pub mod patterns;
+pub mod trait_definitions;
 
 // Re-export core types
 pub use context::{Scope, TypeContext, Variable};
@@ -272,11 +273,70 @@ impl TypeChecker {
     }
 
     /// Register all type definitions and traits from the program
-    fn register_types(&mut self, _program: &Program) -> Result<(), Vec<TypeError>> {
-        // TODO: Implement type registration
-        // - Process struct definitions
-        // - Process trait definitions
-        // - Register built-in types
+    fn register_types(&mut self, program: &Program) -> Result<(), Vec<TypeError>> {
+        let mut errors = Vec::new();
+
+        // Phase 1a: Register all struct types (just the types, not full validation)
+        for item in &program.items {
+            if let outrun_parser::ItemKind::StructDefinition(struct_def) = &item.kind {
+                match self.register_struct_type(struct_def) {
+                    Ok(()) => {}
+                    Err(err) => errors.push(err),
+                }
+            }
+        }
+
+        // Phase 1b: Register all trait definitions
+        for item in &program.items {
+            if let outrun_parser::ItemKind::TraitDefinition(trait_def) = &item.kind {
+                match Self::check_trait_definition(&mut self.context, trait_def) {
+                    Ok(()) => {}
+                    Err(err) => errors.push(err),
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    /// Register a struct type (just the type, not full validation)
+    fn register_struct_type(
+        &mut self,
+        struct_def: &outrun_parser::StructDefinition,
+    ) -> Result<(), TypeError> {
+        // Register the struct type in our registry
+        let struct_type_id = self.context.interner.intern_type(&struct_def.name.name);
+
+        // Process struct fields
+        let mut concrete_fields = Vec::new();
+
+        for field in &struct_def.fields {
+            // Resolve field type
+            let field_type_id =
+                Self::resolve_type_annotation(&mut self.context, &field.type_annotation, &[])?;
+
+            // Create concrete field for registry
+            let field_atom = self.context.interner.intern_atom(&field.name.name);
+            concrete_fields.push(crate::types::concrete::StructField {
+                name: field_atom,
+                type_id: field_type_id,
+                span: field.span,
+            });
+        }
+
+        // Create concrete struct type and register it
+        let concrete_struct = crate::types::concrete::ConcreteType::Struct {
+            name: struct_type_id,
+            fields: concrete_fields,
+        };
+
+        self.context
+            .register_concrete_type(struct_type_id, concrete_struct);
+
         Ok(())
     }
 
@@ -318,24 +378,22 @@ impl TypeChecker {
                         Err(err) => errors.push(err),
                     }
                 }
-                outrun_parser::ItemKind::StructDefinition(_) => {
-                    // TODO: Implement struct definition checking
-                    errors.push(TypeError::UnimplementedFeature {
-                        feature: "Struct definition type checking".to_string(),
-                        span: crate::error::span_to_source_span(item.span),
-                    });
+                outrun_parser::ItemKind::StructDefinition(struct_def) => {
+                    match self.check_struct_definition(struct_def) {
+                        Ok(typed_struct) => typed_items.push(typed_struct),
+                        Err(err) => errors.push(err),
+                    }
                 }
                 outrun_parser::ItemKind::TraitDefinition(trait_def) => {
                     if let Err(err) = Self::check_trait_definition(&mut self.context, trait_def) {
                         errors.push(err);
                     }
                 }
-                outrun_parser::ItemKind::ImplBlock(_) => {
-                    // TODO: Implement impl block checking
-                    errors.push(TypeError::UnimplementedFeature {
-                        feature: "Impl block type checking".to_string(),
-                        span: crate::error::span_to_source_span(item.span),
-                    });
+                outrun_parser::ItemKind::ImplBlock(impl_block) => {
+                    match self.check_impl_block(impl_block) {
+                        Ok(typed_impl) => typed_items.push(typed_impl),
+                        Err(err) => errors.push(err),
+                    }
                 }
                 outrun_parser::ItemKind::ImportDefinition(_) => {
                     // TODO: Implement import checking
@@ -715,10 +773,17 @@ impl TypeChecker {
 
         // Process generic parameters (register them as type parameters)
         let mut generic_params = Vec::new();
+        let mut generic_param_names = Vec::new(); // For passing to function processors
+
+        // Always add Self as a special generic parameter
+        let self_type_id = context.interner.intern_type("Self");
+        generic_param_names.push(("Self".to_string(), self_type_id));
+
         if let Some(ref generics) = trait_def.generic_params {
             for param in &generics.params {
                 let param_type_id = context.interner.intern_type(&param.name.name);
                 generic_params.push(param_type_id);
+                generic_param_names.push((param.name.name.clone(), param_type_id));
             }
         }
 
@@ -727,15 +792,24 @@ impl TypeChecker {
         for trait_func in &trait_def.functions {
             match trait_func {
                 outrun_parser::TraitFunction::Signature(sig) => {
-                    let func = Self::process_trait_function_signature(context, sig)?;
+                    let func =
+                        Self::process_trait_function_signature(context, sig, &generic_param_names)?;
                     trait_functions.push(func);
                 }
                 outrun_parser::TraitFunction::Definition(def) => {
-                    let func = Self::process_trait_function_definition(context, def)?;
+                    let func = Self::process_trait_function_definition(
+                        context,
+                        def,
+                        &generic_param_names,
+                    )?;
                     trait_functions.push(func);
                 }
                 outrun_parser::TraitFunction::StaticDefinition(static_def) => {
-                    let func = Self::process_static_function_definition(context, static_def)?;
+                    let func = Self::process_static_function_definition(
+                        context,
+                        static_def,
+                        &generic_param_names,
+                    )?;
                     trait_functions.push(func);
                 }
             }
@@ -775,6 +849,7 @@ impl TypeChecker {
     fn process_trait_function_signature(
         context: &mut TypeContext,
         sig: &outrun_parser::FunctionSignature,
+        generic_params: &[(String, TypeId)],
     ) -> Result<crate::types::traits::TraitFunction, TypeError> {
         let func_name = context.interner.intern_atom(&sig.name.name);
 
@@ -782,13 +857,14 @@ impl TypeChecker {
         let mut params = Vec::new();
         for param in &sig.parameters {
             let param_name = context.interner.intern_atom(&param.name.name);
-            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            let param_type =
+                Self::resolve_type_annotation(context, &param.type_annotation, generic_params)?;
             params.push((param_name, param_type));
         }
 
         // Process return type (default to Unit if not specified)
         let return_type = if let Some(ref ret_type) = sig.return_type {
-            Self::resolve_type_annotation(context, ret_type)?
+            Self::resolve_type_annotation(context, ret_type, generic_params)?
         } else {
             context.interner.intern_type("Outrun.Core.Unit")
         };
@@ -811,6 +887,18 @@ impl TypeChecker {
             }
         }
 
+        // Validate that instance functions have at least one Self parameter
+        let self_type_id = context.interner.intern_type("Self");
+        let has_self_param = params
+            .iter()
+            .any(|(_, param_type)| *param_type == self_type_id);
+        if !has_self_param {
+            return Err(TypeError::MissingSelfParameter {
+                function_name: sig.name.name.clone(),
+                span: crate::error::span_to_source_span(sig.span),
+            });
+        }
+
         Ok(crate::types::traits::TraitFunction::new(
             func_name,
             params,
@@ -824,6 +912,7 @@ impl TypeChecker {
     fn process_trait_function_definition(
         context: &mut TypeContext,
         def: &outrun_parser::FunctionDefinition,
+        generic_params: &[(String, TypeId)],
     ) -> Result<crate::types::traits::TraitFunction, TypeError> {
         let func_name = context.interner.intern_atom(&def.name.name);
 
@@ -831,13 +920,14 @@ impl TypeChecker {
         let mut params = Vec::new();
         for param in &def.parameters {
             let param_name = context.interner.intern_atom(&param.name.name);
-            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            let param_type =
+                Self::resolve_type_annotation(context, &param.type_annotation, generic_params)?;
             params.push((param_name, param_type));
         }
 
         // Process return type (default to Unit if not specified)
         let return_type = if let Some(ref ret_type) = def.return_type {
-            Self::resolve_type_annotation(context, ret_type)?
+            Self::resolve_type_annotation(context, ret_type, generic_params)?
         } else {
             context.interner.intern_type("Outrun.Core.Unit")
         };
@@ -860,10 +950,22 @@ impl TypeChecker {
             }
         }
 
+        // Validate that instance functions have at least one Self parameter
+        let self_type_id = context.interner.intern_type("Self");
+        let has_self_param = params
+            .iter()
+            .any(|(_, param_type)| *param_type == self_type_id);
+        if !has_self_param {
+            return Err(TypeError::MissingSelfParameter {
+                function_name: def.name.name.clone(),
+                span: crate::error::span_to_source_span(def.span),
+            });
+        }
+
         // TODO: Type check the function body if present
         // For now, we just process the signature
 
-        Ok(crate::types::traits::TraitFunction::new(
+        Ok(crate::types::traits::TraitFunction::new_with_default(
             func_name,
             params,
             return_type,
@@ -873,23 +975,25 @@ impl TypeChecker {
     }
 
     /// Process a static trait function definition (using `defs` keyword)
+    /// Note: Static functions cannot use generic parameters (including Self)
     fn process_static_function_definition(
         context: &mut TypeContext,
         static_def: &outrun_parser::StaticFunctionDefinition,
+        _generic_params: &[(String, TypeId)], // Used for validation only
     ) -> Result<crate::types::traits::TraitFunction, TypeError> {
         let func_name = context.interner.intern_atom(&static_def.name.name);
 
-        // Process parameters
+        // Process parameters (static functions cannot use generic types including Self)
         let mut params = Vec::new();
         for param in &static_def.parameters {
             let param_name = context.interner.intern_atom(&param.name.name);
-            let param_type = Self::resolve_type_annotation(context, &param.type_annotation)?;
+            let param_type = Self::resolve_type_annotation(context, &param.type_annotation, &[])?;
             params.push((param_name, param_type));
         }
 
-        // Process return type (default to Unit if not specified)
+        // Process return type (default to Unit if not specified, static functions cannot use generic types)
         let return_type = if let Some(ref ret_type) = static_def.return_type {
-            Self::resolve_type_annotation(context, ret_type)?
+            Self::resolve_type_annotation(context, ret_type, &[])?
         } else {
             context.interner.intern_type("Outrun.Core.Unit")
         };
@@ -972,19 +1076,434 @@ impl TypeChecker {
         }
     }
 
+    /// Type check a struct definition
+    fn check_struct_definition(
+        &mut self,
+        struct_def: &outrun_parser::StructDefinition,
+    ) -> Result<TypedItem, TypeError> {
+        // Register the struct type in our registry
+        let struct_type_id = self.context.interner.intern_type(&struct_def.name.name);
+
+        // Process struct fields
+        let mut typed_fields = Vec::new();
+        let mut concrete_fields = Vec::new();
+
+        for field in &struct_def.fields {
+            // Resolve field type
+            let field_type_id =
+                Self::resolve_type_annotation(&mut self.context, &field.type_annotation, &[])?;
+            typed_fields.push((field.name.name.clone(), field_type_id));
+
+            // Create concrete field for registry
+            let field_atom = self.context.interner.intern_atom(&field.name.name);
+            concrete_fields.push(crate::types::concrete::StructField {
+                name: field_atom,
+                type_id: field_type_id,
+                span: field.span,
+            });
+        }
+
+        // Create concrete struct type and register it
+        let concrete_struct = crate::types::concrete::ConcreteType::Struct {
+            name: struct_type_id,
+            fields: concrete_fields,
+        };
+
+        self.context
+            .register_concrete_type(struct_type_id, concrete_struct);
+
+        // Process struct methods (if any)
+        let mut typed_methods = Vec::new();
+        for method in &struct_def.methods {
+            match self.check_function_definition(method) {
+                Ok(typed_item) => {
+                    if let TypedItemKind::FunctionDefinition(func_def) = typed_item.kind {
+                        typed_methods.push(func_def);
+                    }
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(TypedItem {
+            kind: TypedItemKind::StructDefinition(TypedStructDefinition {
+                name: struct_def.name.name.clone(),
+                fields: typed_fields,
+                methods: typed_methods,
+                span: struct_def.span,
+            }),
+            span: struct_def.span,
+        })
+    }
+
+    /// Type check an implementation block
+    fn check_impl_block(
+        &mut self,
+        impl_block: &outrun_parser::ImplBlock,
+    ) -> Result<TypedItem, TypeError> {
+        // Resolve trait and type specifications
+        let trait_id = self.resolve_type_spec_to_trait(&impl_block.trait_spec)?;
+        let type_id = self.resolve_type_spec_to_type(&impl_block.type_spec)?;
+
+        // Get the trait definition to validate against
+        let trait_def = self
+            .context
+            .trait_registry
+            .get_trait(trait_id)
+            .cloned()
+            .ok_or_else(|| TypeError::UndefinedTrait {
+                trait_name: self.format_type_spec(&impl_block.trait_spec),
+                span: crate::error::span_to_source_span(impl_block.trait_spec.span),
+            })?;
+
+        // Validate that the type exists in our registry
+        let type_name = self.format_type_spec(&impl_block.type_spec);
+        let type_exists = self.context.get_concrete_type(type_id).is_some();
+
+        if !type_exists {
+            return Err(TypeError::UndefinedType {
+                name: type_name,
+                span: crate::error::span_to_source_span(impl_block.type_spec.span),
+            });
+        }
+
+        // Check if this implementation already exists
+        if self
+            .context
+            .trait_registry
+            .implements_trait(type_id, trait_id)
+        {
+            return Err(TypeError::DuplicateImplementation {
+                trait_name: self.format_type_spec(&impl_block.trait_spec),
+                type_name: self.format_type_spec(&impl_block.type_spec),
+                span: crate::error::span_to_source_span(impl_block.span),
+            });
+        }
+
+        // Process generic parameters and constraints
+        let generic_params = self.process_impl_generic_params(&impl_block.generic_params)?;
+        let constraints = if let Some(ref constraint_expr) = impl_block.constraints {
+            self.process_impl_constraints(constraint_expr, &generic_params)?
+        } else {
+            Vec::new()
+        };
+
+        // Validate all required trait functions are implemented
+        let mut function_implementations = std::collections::HashMap::new();
+        for trait_func in &trait_def.functions {
+            let implemented_func = impl_block.methods.iter().find(|method| {
+                let trait_func_name = self
+                    .context
+                    .interner
+                    .atom_name(trait_func.name)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                method.name.name == trait_func_name
+            });
+
+            match implemented_func {
+                Some(method) => {
+                    // Validate function signature compatibility
+                    self.validate_function_signature_compatibility(trait_func, method, type_id)?;
+
+                    // Generate unique function ID and register
+                    let func_id = self.context.trait_registry.next_function_id();
+                    function_implementations.insert(trait_func.name, func_id);
+                }
+                None => {
+                    // Check if implementation is required
+                    if !trait_func.is_static && !trait_func.has_default_impl {
+                        // Function signature without default implementation - must be implemented
+                        return Err(TypeError::MissingImplementation {
+                            trait_name: trait_def.name.clone(),
+                            type_name: self.format_type_spec(&impl_block.type_spec),
+                            function_name: self
+                                .context
+                                .interner
+                                .atom_name(trait_func.name)
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            span: crate::error::span_to_source_span(impl_block.span),
+                        });
+                    }
+                    // For default implementations and static functions, no implementation is required
+                }
+            }
+        }
+
+        // Check for extra methods not declared in trait
+        for method in &impl_block.methods {
+            let trait_has_method = trait_def.functions.iter().any(|f| {
+                let func_name = self
+                    .context
+                    .interner
+                    .atom_name(f.name)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                func_name == method.name.name
+            });
+
+            if !trait_has_method {
+                return Err(TypeError::ExtraImplementation {
+                    trait_name: trait_def.name.clone(),
+                    function_name: method.name.name.clone(),
+                    span: crate::error::span_to_source_span(method.span),
+                });
+            }
+        }
+
+        // Create and register trait implementation
+        let trait_impl = crate::types::traits::TraitImplementation {
+            trait_id,
+            type_id,
+            functions: function_implementations,
+            generic_params,
+            constraints,
+            span: impl_block.span,
+        };
+
+        self.context
+            .trait_registry
+            .register_implementation(trait_impl);
+
+        // Type check all implementation methods
+        let mut typed_methods = Vec::new();
+        for method in &impl_block.methods {
+            match self.check_function_definition(method) {
+                Ok(typed_item) => {
+                    if let TypedItemKind::FunctionDefinition(func_def) = typed_item.kind {
+                        typed_methods.push(func_def);
+                    }
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(TypedItem {
+            kind: TypedItemKind::ImplBlock(TypedImplBlock {
+                trait_name: self.format_type_spec(&impl_block.trait_spec),
+                type_name: self.format_type_spec(&impl_block.type_spec),
+                methods: typed_methods,
+                span: impl_block.span,
+            }),
+            span: impl_block.span,
+        })
+    }
+
+    /// Resolve a type specification to a trait ID
+    fn resolve_type_spec_to_trait(
+        &mut self,
+        type_spec: &outrun_parser::TypeSpec,
+    ) -> Result<crate::types::TraitId, TypeError> {
+        let trait_name = self.format_type_spec(type_spec);
+        Ok(self.context.interner.intern_trait(&trait_name))
+    }
+
+    /// Resolve a type specification to a type ID
+    fn resolve_type_spec_to_type(
+        &mut self,
+        type_spec: &outrun_parser::TypeSpec,
+    ) -> Result<TypeId, TypeError> {
+        let type_name = self.format_type_spec(type_spec);
+        Ok(self.context.interner.intern_type(&type_name))
+    }
+
+    /// Format a type specification as a string
+    fn format_type_spec(&self, type_spec: &outrun_parser::TypeSpec) -> String {
+        type_spec
+            .path
+            .iter()
+            .map(|part| part.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    /// Process generic parameters from implementation block
+    fn process_impl_generic_params(
+        &mut self,
+        generic_params: &Option<outrun_parser::GenericParams>,
+    ) -> Result<Vec<TypeId>, TypeError> {
+        let mut params = Vec::new();
+        if let Some(ref generics) = generic_params {
+            for param in &generics.params {
+                let param_type_id = self.context.interner.intern_type(&param.name.name);
+                params.push(param_type_id);
+            }
+        }
+        Ok(params)
+    }
+
+    /// Process constraint expressions from implementation block
+    fn process_impl_constraints(
+        &mut self,
+        constraint_expr: &outrun_parser::ConstraintExpression,
+        generic_params: &[TypeId],
+    ) -> Result<Vec<crate::types::traits::TraitConstraint>, TypeError> {
+        Self::process_constraint_expression(&mut self.context, constraint_expr, generic_params)
+    }
+
+    /// Validate that a function implementation matches the trait signature
+    fn validate_function_signature_compatibility(
+        &mut self,
+        trait_func: &crate::types::traits::TraitFunction,
+        impl_func: &outrun_parser::FunctionDefinition,
+        implementing_type: TypeId,
+    ) -> Result<(), TypeError> {
+        // Check parameter count
+        if trait_func.params.len() != impl_func.parameters.len() {
+            return Err(TypeError::SignatureMismatch {
+                function_name: impl_func.name.name.clone(),
+                expected: format!("{} parameters", trait_func.params.len()),
+                found: format!("{} parameters", impl_func.parameters.len()),
+                span: crate::error::span_to_source_span(impl_func.span),
+            });
+        }
+
+        // Check parameter types and names
+        for (i, (trait_param, impl_param)) in trait_func
+            .params
+            .iter()
+            .zip(&impl_func.parameters)
+            .enumerate()
+        {
+            // Resolve implementation parameter type
+            let impl_param_type = match Self::resolve_type_annotation_with_self(
+                &mut self.context,
+                &impl_param.type_annotation,
+                &[],
+                implementing_type,
+            ) {
+                Ok(type_id) => type_id,
+                Err(_) => {
+                    return Err(TypeError::SignatureMismatch {
+                        function_name: impl_func.name.name.clone(),
+                        expected: format!("valid type for parameter {}", i + 1),
+                        found: "invalid type".to_string(),
+                        span: crate::error::span_to_source_span(impl_param.span),
+                    });
+                }
+            };
+
+            // Check parameter type compatibility
+            // Special case: if trait parameter is Self, it should match the implementing type
+            let self_type_id = self.context.interner.intern_type("Self");
+            let types_match = if trait_param.1 == self_type_id {
+                impl_param_type == implementing_type
+            } else {
+                trait_param.1 == impl_param_type
+            };
+
+            if !types_match {
+                return Err(TypeError::SignatureMismatch {
+                    function_name: impl_func.name.name.clone(),
+                    expected: if trait_param.1 == self_type_id {
+                        self.context
+                            .get_type_name(implementing_type)
+                            .unwrap_or("Self")
+                            .to_string()
+                    } else {
+                        self.context
+                            .get_type_name(trait_param.1)
+                            .unwrap_or("Unknown")
+                            .to_string()
+                    },
+                    found: self
+                        .context
+                        .get_type_name(impl_param_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    span: crate::error::span_to_source_span(impl_param.span),
+                });
+            }
+
+            // Check parameter name compatibility
+            let trait_param_name = self
+                .context
+                .interner
+                .atom_name(trait_param.0)
+                .unwrap_or_else(|| "unknown".to_string());
+            if trait_param_name != impl_param.name.name {
+                return Err(TypeError::SignatureMismatch {
+                    function_name: impl_func.name.name.clone(),
+                    expected: format!("parameter named '{}'", trait_param_name),
+                    found: format!("parameter named '{}'", impl_param.name.name),
+                    span: crate::error::span_to_source_span(impl_param.name.span),
+                });
+            }
+        }
+
+        // Check return type compatibility
+        let impl_return_type = if let Some(ref ret_type) = impl_func.return_type {
+            Self::resolve_type_annotation_with_self(
+                &mut self.context,
+                ret_type,
+                &[],
+                implementing_type,
+            )?
+        } else {
+            self.context.interner.intern_type("Outrun.Core.Unit")
+        };
+
+        // Check return type compatibility
+        // Special case: if trait return type is Self, it should match the implementing type
+        let self_type_id = self.context.interner.intern_type("Self");
+        let return_types_match = if trait_func.return_type == self_type_id {
+            impl_return_type == implementing_type
+        } else {
+            trait_func.return_type == impl_return_type
+        };
+
+        if !return_types_match {
+            return Err(TypeError::SignatureMismatch {
+                function_name: impl_func.name.name.clone(),
+                expected: format!(
+                    "return type {}",
+                    if trait_func.return_type == self_type_id {
+                        self.context
+                            .get_type_name(implementing_type)
+                            .unwrap_or("Self")
+                    } else {
+                        self.context
+                            .get_type_name(trait_func.return_type)
+                            .unwrap_or("Unknown")
+                    }
+                ),
+                found: format!(
+                    "return type {}",
+                    self.context
+                        .get_type_name(impl_return_type)
+                        .unwrap_or("Unknown")
+                ),
+                span: crate::error::span_to_source_span(impl_func.span),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Resolve a type annotation to a TypeId
+    ///
+    /// generic_params: Available generic type parameters in current scope
     fn resolve_type_annotation(
         context: &mut TypeContext,
         type_annotation: &outrun_parser::TypeAnnotation,
+        generic_params: &[(String, TypeId)], // (name, type_id) pairs
     ) -> Result<TypeId, TypeError> {
         match type_annotation {
-            outrun_parser::TypeAnnotation::Simple { path, .. } => {
+            outrun_parser::TypeAnnotation::Simple { path, span, .. } => {
                 // Join the path parts to create the type name
                 let type_name = path
                     .iter()
                     .map(|part| part.name.as_str())
                     .collect::<Vec<_>>()
                     .join(".");
+
+                // First, check if this is a generic parameter
+                for (param_name, param_type_id) in generic_params {
+                    if param_name == &type_name {
+                        return Ok(*param_type_id);
+                    }
+                }
 
                 // Map short type names to fully qualified names for built-in types
                 let qualified_type_name = match type_name.as_str() {
@@ -1001,7 +1520,95 @@ impl TypeChecker {
                     _ => &type_name, // Use as-is for other types
                 };
 
-                Ok(context.interner.intern_type(qualified_type_name))
+                // Intern the type name to get a TypeId
+                let type_id = context.interner.intern_type(qualified_type_name);
+
+                // Check if the type has been registered in the context
+                // Built-in types are always registered during context creation
+                if context.get_concrete_type(type_id).is_some() {
+                    Ok(type_id)
+                } else {
+                    // Type not found - return UndefinedType error
+                    Err(TypeError::UndefinedType {
+                        name: type_name,
+                        span: crate::error::span_to_source_span(*span),
+                    })
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { span, .. } => {
+                // TODO: Handle tuple types properly
+                Err(TypeError::UnimplementedFeature {
+                    feature: "Tuple type annotations in trait definitions".to_string(),
+                    span: crate::error::span_to_source_span(*span),
+                })
+            }
+            outrun_parser::TypeAnnotation::Function { span, .. } => {
+                // TODO: Handle function types properly
+                Err(TypeError::UnimplementedFeature {
+                    feature: "Function type annotations in trait definitions".to_string(),
+                    span: crate::error::span_to_source_span(*span),
+                })
+            }
+        }
+    }
+
+    /// Resolve type annotation with support for Self in impl blocks
+    fn resolve_type_annotation_with_self(
+        context: &mut TypeContext,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        generic_params: &[(String, TypeId)], // (name, type_id) pairs
+        self_type: TypeId,
+    ) -> Result<TypeId, TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple { path, span, .. } => {
+                // Join the path parts to create the type name
+                let type_name = path
+                    .iter()
+                    .map(|part| part.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                // Check if this is Self
+                if type_name == "Self" {
+                    return Ok(self_type);
+                }
+
+                // First, check if this is a generic parameter
+                for (param_name, param_type_id) in generic_params {
+                    if param_name == &type_name {
+                        return Ok(*param_type_id);
+                    }
+                }
+
+                // Map short type names to fully qualified names for built-in types
+                let qualified_type_name = match type_name.as_str() {
+                    "Boolean" => "Outrun.Core.Boolean",
+                    "Integer" => "Outrun.Core.Integer64",
+                    "Float" => "Outrun.Core.Float64",
+                    "String" => "Outrun.Core.String",
+                    "Unit" => "Outrun.Core.Unit",
+                    "List" => "Outrun.Core.List",
+                    "Map" => "Outrun.Core.Map",
+                    "Tuple" => "Outrun.Core.Tuple",
+                    "Option" => "Outrun.Core.Option",
+                    "Result" => "Outrun.Core.Result",
+                    _ => &type_name, // Use as-is for other types
+                };
+
+                // Intern the type name to get a TypeId
+                let type_id = context.interner.intern_type(qualified_type_name);
+
+                // Check if the type has been registered in the context
+                // Built-in types are always registered during context creation
+                if context.get_concrete_type(type_id).is_some() {
+                    Ok(type_id)
+                } else {
+                    // Type not found - return UndefinedType error
+                    Err(TypeError::UndefinedType {
+                        name: type_name,
+                        span: crate::error::span_to_source_span(*span),
+                    })
+                }
             }
             outrun_parser::TypeAnnotation::Tuple { span, .. } => {
                 // TODO: Handle tuple types properly

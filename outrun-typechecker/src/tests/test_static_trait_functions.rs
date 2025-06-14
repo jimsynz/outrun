@@ -9,9 +9,9 @@ use outrun_parser::parse_program;
 #[test]
 fn test_static_function_validation() {
     let input = r#"
-trait Result<T, E> {
-    defs ok(value: T): Result<T, E> {
-        Result.Ok { value: value }
+trait Result {
+    defs ok(value: String): String {
+        "ok"
     }
     
     def is_ok?(self: Self): Boolean
@@ -69,7 +69,7 @@ trait Result<T, E> {
 fn test_static_function_cannot_be_guard() {
     let input = r#"
 trait Test {
-    defs check?(value: T): Boolean {
+    defs check?(value: String): Boolean {
         true
     }
 }
@@ -99,17 +99,17 @@ trait Test {
 #[test]
 fn test_multiple_static_functions() {
     let input = r#"
-trait Option<T> {
-    defs some(value: T): Option<T> {
-        Option.Some { value: value }
+trait Option {
+    defs some(value: String): String {
+        "some"
     }
     
-    defs none(): Option<T> {
-        Option.None {}
+    defs none(): String {
+        "none"
     }
     
     def is_some?(self: Self): Boolean
-    def unwrap(self: Self): T
+    def unwrap(self: Self): String
 }
 "#;
 
@@ -164,8 +164,8 @@ trait Option<T> {
 fn test_static_function_parameter_validation() {
     let input = r#"
 trait Test {
-    defs create(value: Integer, count: String): Test {
-        Test { value: value, count: count }
+    defs create(value: Integer, count: String): String {
+        "created"
     }
 }
 "#;

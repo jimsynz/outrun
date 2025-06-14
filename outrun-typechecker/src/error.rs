@@ -107,6 +107,17 @@ pub enum TypeError {
         name: String,
     },
 
+    #[error("Instance function {function_name} must have at least one Self parameter")]
+    #[diagnostic(
+        code(outrun::typechecker::missing_self_parameter),
+        help("Add a Self parameter like 'self: Self' to make this an instance function, or use 'defs' for static functions")
+    )]
+    MissingSelfParameter {
+        #[label("missing Self parameter")]
+        span: SourceSpan,
+        function_name: String,
+    },
+
     #[error("Missing parameter {parameter_name} for function {function_name}")]
     #[diagnostic(
         code(outrun::typechecker::missing_parameter),
@@ -276,6 +287,67 @@ pub enum TypeError {
         #[label("internal error")]
         span: SourceSpan,
         message: String,
+    },
+
+    #[error("Undefined trait {trait_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::undefined_trait),
+        help("Define the trait {trait_name} or import it from another module")
+    )]
+    UndefinedTrait {
+        #[label("undefined trait")]
+        span: SourceSpan,
+        trait_name: String,
+    },
+
+    #[error("Duplicate implementation of trait {trait_name} for type {type_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::duplicate_implementation),
+        help("Each type can only implement a trait once")
+    )]
+    DuplicateImplementation {
+        #[label("duplicate implementation")]
+        span: SourceSpan,
+        trait_name: String,
+        type_name: String,
+    },
+
+    #[error("Missing implementation of function {function_name} in trait {trait_name} for type {type_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::missing_implementation),
+        help("All trait functions must be implemented")
+    )]
+    MissingImplementation {
+        #[label("missing function implementation")]
+        span: SourceSpan,
+        trait_name: String,
+        type_name: String,
+        function_name: String,
+    },
+
+    #[error("Extra implementation of function {function_name} not declared in trait {trait_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::extra_implementation),
+        help("Only functions declared in the trait can be implemented")
+    )]
+    ExtraImplementation {
+        #[label("extra function implementation")]
+        span: SourceSpan,
+        trait_name: String,
+        function_name: String,
+    },
+
+    #[error("Function signature mismatch for {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::signature_mismatch),
+        help("Implementation signature must match trait signature exactly")
+    )]
+    SignatureMismatch {
+        #[label("signature mismatch")]
+        span: SourceSpan,
+        function_name: String,
+        expected: String,
+        found: String,
     },
 }
 

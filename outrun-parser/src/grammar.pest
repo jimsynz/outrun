@@ -302,11 +302,11 @@ struct_field = { identifier ~ ":" ~ type_annotation }
 struct_methods = { struct_method_item+ }
 struct_method_item = !{ function_definition }
 
-// Trait definition: trait Name<T> { function signatures }
+// Trait definition: trait Name<T> [when constraints] { function signatures }
 trait_definition = { attribute* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
 trait_functions = { trait_item+ }
 trait_item = !{ trait_function }
-trait_function = { function_signature | function_definition | static_function_definition }
+trait_function = { static_function_definition | function_definition | function_signature }
 
 static_function_definition = { keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
