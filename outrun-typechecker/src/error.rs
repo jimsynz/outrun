@@ -364,6 +364,63 @@ pub enum TypeError {
         expected: String,
         found: String,
     },
+
+    #[error("Parameter signature mismatch in anonymous function")]
+    #[diagnostic(
+        code(outrun::typechecker::parameter_signature_mismatch),
+        help("All clauses in an anonymous function must have identical parameter signatures")
+    )]
+    ParameterSignatureMismatch {
+        #[label("this clause has different parameter signature")]
+        span: SourceSpan,
+        #[label("first clause signature defined here")]
+        first_clause_span: SourceSpan,
+        clause_index: usize,
+        expected_signature: String,
+        found_signature: String,
+    },
+
+    #[error("Return type mismatch in anonymous function")]
+    #[diagnostic(
+        code(outrun::typechecker::return_type_mismatch),
+        help("All clauses in an anonymous function must return the same type")
+    )]
+    ReturnTypeMismatch {
+        #[label("this clause returns different type")]
+        span: SourceSpan,
+        #[label("first clause return type defined here")]
+        first_clause_span: SourceSpan,
+        clause_index: usize,
+        expected_type: String,
+        found_type: String,
+    },
+
+    #[error("Invalid guard in anonymous function")]
+    #[diagnostic(
+        code(outrun::typechecker::invalid_anonymous_guard),
+        help("Guards in anonymous functions must return Boolean values")
+    )]
+    InvalidAnonymousGuard {
+        #[label("guard must return Boolean")]
+        span: SourceSpan,
+        clause_index: usize,
+        found_type: String,
+    },
+
+    #[error("Pattern mismatch in anonymous function parameters")]
+    #[diagnostic(
+        code(outrun::typechecker::pattern_parameter_mismatch),
+        help("All clauses must use the same pattern structure in parameters")
+    )]
+    PatternParameterMismatch {
+        #[label("this clause uses different pattern structure")]
+        span: SourceSpan,
+        #[label("first clause pattern defined here")]
+        first_clause_span: SourceSpan,
+        clause_index: usize,
+        expected_pattern: String,
+        found_pattern: String,
+    },
 }
 
 impl TypeError {

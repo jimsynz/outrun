@@ -733,6 +733,8 @@ When multiple sources provide the same parameter:
 
 ### Anonymous Functions
 
+Anonymous functions provide lambda expressions with multiple clauses, guards, and pattern matching. They support the same guard-based dispatch as regular functions but with strict type consistency requirements.
+
 ```outrun
 # Single expression
 increment = fn { x: Integer -> x + 1 }
@@ -759,7 +761,140 @@ comparer = fn {
     (x: Integer, y: Integer) when Integer.less?(left: x, right: y) -> "second is greater"
     (x: Integer, y: Integer) when Integer.equal?(left: x, right: y) -> "equal"
 }
+
+# No parameters
+generator = fn { () -> UUID.new() }
+
+# Complex parameter patterns
+processor = fn {
+    User { name, email } when String.contains?(string: email, substring: "@") -> process_user(name: name, email: email)
+    Guest { session_id } -> process_guest(id: session_id)
+    Admin { permissions } -> process_admin(perms: permissions)
+}
 ```
+
+#### Anonymous Function Type Rules
+
+Anonymous functions follow strict type consistency rules to enable static analysis and efficient dispatch:
+
+**1. Parameter Signature Consistency**
+- All clauses in an anonymous function **must have identical parameter signatures**
+- Parameter names, types, and arity must match exactly across all clauses
+- Pattern types are considered part of the parameter signature
+
+```outrun
+# ✅ Valid: Same parameter signature across clauses
+processor = fn {
+    x: Integer when Integer.positive?(value: x) -> x * 2
+    x: Integer when Integer.negative?(value: x) -> x * -1
+    x: Integer -> 0  # Default case, same signature
+}
+
+# ❌ Invalid: Different parameter types
+mixed_processor = fn {
+    x: Integer -> x * 2      # Parameter type: Integer
+    x: String -> x.length()  # Parameter type: String - COMPILATION ERROR
+}
+
+# ❌ Invalid: Different parameter arity
+arity_mismatch = fn {
+    x: Integer -> x * 2                    # One parameter
+    (x: Integer, y: Integer) -> x + y      # Two parameters - COMPILATION ERROR
+}
+```
+
+**2. Return Type Consistency**
+- All clauses **must return the same concrete type**
+- Return type is inferred from the first clause and validated against all subsequent clauses
+- No implicit type conversions or common supertype inference
+
+```outrun
+# ✅ Valid: All clauses return String
+formatter = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive: #{x}"
+    x: Integer when Integer.negative?(value: x) -> "negative: #{x}"
+    x: Integer -> "zero"
+}
+
+# ❌ Invalid: Mixed return types
+mixed_returns = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive"  # Returns String
+    x: Integer when Integer.negative?(value: x) -> x          # Returns Integer - COMPILATION ERROR
+    x: Integer -> 0                                           # Returns Integer - COMPILATION ERROR
+}
+
+# ❌ Invalid: Option vs concrete type mismatch
+option_mismatch = fn {
+    x: Integer when Integer.positive?(value: x) -> Option.some(value: x)  # Returns Option<Integer>
+    x: Integer -> x                                                       # Returns Integer - COMPILATION ERROR
+}
+```
+
+**3. Guard Function Requirements**
+- Guards must be side-effect-free functions returning Boolean
+- Guards can access all parameters bound by the clause pattern
+- Guards follow the same rules as function guards (functions ending with `?`)
+
+```outrun
+# ✅ Valid: Guards return Boolean
+validator = fn {
+    User { age } when Integer.greater?(value: age, other: 18) -> "adult"
+    User { age } when Integer.positive?(value: age) -> "minor"
+    User { age } -> "invalid age"
+}
+
+# ❌ Invalid: Guard doesn't return Boolean
+invalid_guard = fn {
+    x: Integer when Integer.abs(value: x) -> "processed"  # Guard returns Integer, not Boolean - COMPILATION ERROR
+    x: Integer -> "unprocessed"
+}
+```
+
+**4. Pattern Matching Consistency**
+- When using pattern matching in parameters, all clauses must use the same pattern structure
+- Cannot mix simple parameters with pattern parameters
+
+```outrun
+# ✅ Valid: All clauses use struct patterns
+struct_processor = fn {
+    User { name } when String.not_empty?(value: name) -> process_user(name: name)
+    User { name } -> process_anonymous_user()
+}
+
+# ❌ Invalid: Mixing pattern types
+pattern_mismatch = fn {
+    User { name } -> process_user(name: name)    # Struct pattern
+    x: User -> process_user_simple(user: x)      # Simple parameter - COMPILATION ERROR
+}
+```
+
+**5. Function Type Inference**
+- Anonymous functions have type `Function<(params...) -> ReturnType>`
+- Parameter and return types are inferred from clause analysis
+- Function type is used for type checking in assignments and function calls
+
+```outrun
+# Function type: Function<(x: Integer) -> String>
+let processor: Function<(x: Integer) -> String> = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive"
+    x: Integer -> "non-positive"
+}
+
+# Type compatibility checking
+def apply_processor(data: Integer, proc: Function<(x: Integer) -> String>): String {
+    proc(x: data)
+}
+
+let result = apply_processor(data: 42, proc: processor)  # ✅ Valid: types match
+```
+
+**Error Messages:**
+- Parameter signature mismatches produce clear compilation errors
+- Return type inconsistencies highlight the conflicting clauses
+- Guard validation errors specify the problematic guard expression
+- Type inference failures provide expected vs actual type information
+
+These rules ensure that anonymous functions are statically analyzable, enabling efficient compilation and clear error reporting while maintaining the flexibility of guard-based dispatch.
 
 ### Function Capture Syntax
 

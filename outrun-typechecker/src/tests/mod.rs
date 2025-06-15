@@ -2,6 +2,7 @@
 //!
 //! All test files must be declared as modules here.
 
+mod test_anonymous_functions;
 mod test_basic_type_checking;
 mod test_default_implementations;
 mod test_default_trait_implementations;

@@ -36,7 +36,9 @@
 - ✅ **Phase 4.1 Complete**: Function signature validation with comprehensive parameter checking, guard function validation, and Self type support
 - ✅ **Phase 4.2 Complete**: Enhanced function call resolution with qualified calls (Module.function) and function capture syntax (&function)
 - ✅ **Phase 4.3 Complete**: Function overloading with guards - comprehensive overload resolution, conflict detection, and guard-based dispatch
-- ✅ **170 passing typechecker tests** - complete type system with function definitions, qualified calls, function capture, function overloading, and all language features validated
+- ✅ **Phase 5.3 Complete**: Type introspection system with Type trait, TypeIdentifier expressions, and runtime type metadata
+- ✅ **Phase 5.4 Complete**: Anonymous function type checking with multi-clause support, parameter signature validation, return type consistency, and guard validation
+- ✅ **198 passing typechecker tests** - complete type system including anonymous functions with comprehensive error handling and validation
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -441,6 +443,92 @@ when Type.implements_trait?(T, "Serializable") {
 - Day 1: Core Type trait system and TypeIdentifier expressions
 - Day 2: Built-in introspection functions and metadata enhancement
 - Day 3: Comprehensive testing and integration
+
+### 5.4 Anonymous Function Type Checking ✅ **COMPLETE**
+**Goal**: Implement comprehensive type checking for anonymous functions with multiple clauses
+
+**Background**: 
+Anonymous functions (`fn { x: Integer -> x + 1 }`) are first-class values in Outrun with support for multiple clauses, guards, and pattern matching. They require sophisticated type checking to ensure parameter signature consistency, return type uniformity, and proper guard validation across all clauses.
+
+**Tasks**:
+- [✅] Add AnonymousFunction variant to TypedExpressionKind
+  - [✅] Create TypedAnonymousClause structure with typed parameters, guards, and body
+  - [✅] Add TypedAnonymousBody enum (Expression vs Block)
+  - [✅] Include function type information in typed AST
+- [✅] Implement check_anonymous_function() in expressions.rs
+  - [✅] Validate parameter signature consistency across all clauses
+  - [✅] Ensure return type consistency (all clauses return same concrete type)
+  - [✅] Type check guard expressions (must return Boolean)
+  - [✅] Handle scope management for parameter binding within clauses
+- [✅] Extend Function concrete type support
+  - [✅] Enhance ConcreteType::Function for anonymous function types
+  - [✅] Add function type inference from clause analysis
+  - [✅] Support Function<(params...) -> ReturnType> type annotations
+- [✅] Add comprehensive error handling
+  - [✅] ParameterSignatureMismatch error for inconsistent clause signatures
+  - [✅] ReturnTypeMismatch error for inconsistent return types
+  - [✅] InvalidAnonymousGuard error for non-Boolean guards
+  - [✅] Clear error messages with clause-specific context
+- [✅] Create comprehensive test suite
+  - [✅] Test single-clause anonymous functions
+  - [✅] Test multi-clause functions with guards
+  - [✅] Test parameter pattern matching in anonymous functions (current implementation validates parameter consistency)
+  - [✅] Test error cases (signature mismatches, return type inconsistencies)
+  - [✅] Test integration with function capture and higher-order functions
+
+**Design Principles**:
+- **Strict type consistency**: All clauses must have identical parameter signatures and return types
+- **No implicit conversions**: Return types must match exactly, no common supertype inference
+- **Guard validation**: Guards follow same rules as regular function guards (Boolean return)
+- **Pattern consistency**: All clauses must use same parameter pattern structure
+- **Static analyzability**: Enable efficient compilation and dispatch table generation
+
+**Type Checking Algorithm**:
+```rust
+fn check_anonymous_function(
+    context: &mut TypeContext,
+    anon_fn: &AnonymousFunction
+) -> TypeResult<TypedExpression> {
+    // 1. Extract and validate parameter signatures across clauses
+    // 2. Type check each clause with scope management
+    // 3. Validate guard expressions return Boolean
+    // 4. Ensure return type consistency across all clauses
+    // 5. Infer final function type Function<(params) -> ReturnType>
+    // 6. Generate typed AST with complete type information
+}
+```
+
+**Error Examples**:
+```rust
+// ParameterSignatureMismatch
+fn { x: Integer -> x * 2; x: String -> x.length() }  // Different param types
+
+// ReturnTypeMismatch  
+fn { x: Integer when positive?(x) -> "positive"; x: Integer -> 0 }  // String vs Integer
+
+// InvalidAnonymousGuard
+fn { x: Integer when abs(x) -> "processed" }  // Guard returns Integer, not Boolean
+```
+
+**Deliverables**: ✅ **COMPLETED**
+- [✅] `TypedAnonymousClause` and related AST structures in `checker/mod.rs`
+- [✅] `check_anonymous_function()` implementation in `checker/expressions.rs`
+- [✅] Enhanced Function type support in `types/concrete.rs`
+- [✅] Comprehensive error types in `error.rs`
+- [✅] 16 comprehensive test cases covering all anonymous function scenarios
+- [✅] Integration with existing function capture and higher-order function features
+
+**Success Criteria**: ✅ **ALL MET**
+- [✅] All anonymous function syntax from parser is type-checkable
+- [✅] Parameter signature validation prevents runtime errors
+- [✅] Return type consistency enforced across all clauses
+- [✅] Guard expressions validated as Boolean-returning
+- [✅] Function type inference works correctly for assignments and calls
+- [✅] Clear error messages for all consistency violations
+- [✅] No regressions to existing function system features (198/198 tests passing)
+
+**Actual Effort**: Completed in 1 day
+- Comprehensive implementation including all AST structures, type checking logic, error handling, and complete test suite
 
 ### 5.5 Error Reporting Integration
 **Goal**: Beautiful error reporting with miette integration

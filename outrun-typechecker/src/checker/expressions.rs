@@ -7,10 +7,12 @@
 //! - Collection literals (lists, maps, tuples)
 
 // use crate::types::{TypeId, ConcreteType}; // TODO: Use when needed
-use crate::checker::{TypeContext, TypedExpression, TypedExpressionKind, TypedTraitCaseClause};
+use crate::checker::{
+    TypeContext, TypedExpression, TypedExpressionKind, TypedTraitCaseClause, Variable,
+};
 use crate::error::{TypeError, TypeResult};
-use crate::types::TypeId;
-use outrun_parser::{Expression, ExpressionKind};
+use crate::types::{AtomId, TypeId};
+use outrun_parser::{Expression, ExpressionKind, Span};
 
 /// Expression type checker
 pub struct ExpressionChecker;
@@ -72,8 +74,11 @@ impl ExpressionChecker {
             ExpressionKind::TypeIdentifier(type_id) => {
                 Self::check_type_identifier(context, type_id)
             }
+            ExpressionKind::AnonymousFunction(anon_fn) => {
+                Self::check_anonymous_function(context, anon_fn)
+            }
             _ => {
-                // TODO: Implement remaining expression types (Sigil, TypeIdentifier, MacroInjection)
+                // TODO: Implement remaining expression types (Sigil, MacroInjection)
                 Err(TypeError::UnimplementedFeature {
                     feature: format!("Expression type checking for {:?}", expr.kind),
                     span: crate::error::span_to_source_span(expr.span),
@@ -1870,6 +1875,279 @@ impl ExpressionChecker {
             type_id: concrete_type,
             span: type_id.span,
         })
+    }
+
+    /// Type check anonymous function
+    fn check_anonymous_function(
+        context: &mut TypeContext,
+        anon_fn: &outrun_parser::AnonymousFunction,
+    ) -> TypeResult<TypedExpression> {
+        if anon_fn.clauses.is_empty() {
+            return Err(TypeError::internal(
+                "Anonymous function must have at least one clause".to_string(),
+            ));
+        }
+
+        let mut typed_clauses = Vec::new();
+        let mut function_signature: Option<Vec<(AtomId, TypeId)>> = None;
+        let mut return_types = Vec::new();
+        let mut first_clause_span = anon_fn.clauses[0].span;
+
+        for (clause_index, clause) in anon_fn.clauses.iter().enumerate() {
+            // 1. Type check and extract parameter signature
+            let typed_params = Self::extract_parameter_signature(context, &clause.parameters)?;
+
+            // 2. Validate signature consistency across clauses
+            if let Some(ref expected_sig) = function_signature {
+                Self::validate_signature_consistency(
+                    expected_sig,
+                    &typed_params,
+                    first_clause_span,
+                    clause.span,
+                    clause_index,
+                )?;
+            } else {
+                function_signature = Some(typed_params.clone());
+                first_clause_span = clause.span;
+            }
+
+            // 3. Push new scope for parameters
+            context.push_scope(false);
+
+            // 4. Register parameters in scope
+            for (atom_id, type_id) in &typed_params {
+                let param_name = context
+                    .interner
+                    .resolve_atom(*atom_id)
+                    .unwrap_or("<unknown>")
+                    .to_string();
+                let variable = Variable {
+                    name: param_name,
+                    type_id: *type_id,
+                    is_mutable: false,
+                    span: clause.span, // Simplified - should use actual parameter span
+                };
+                context.register_variable(variable)?;
+            }
+
+            // 5. Type check guard (if present)
+            let typed_guard = if let Some(ref guard) = clause.guard {
+                let guard_result = Self::check_expression(context, guard)?;
+                Self::validate_guard_type(context, &guard_result, clause_index)?;
+                Some(guard_result)
+            } else {
+                None
+            };
+
+            // 6. Type check body
+            let typed_body = Self::check_anonymous_body(context, &clause.body)?;
+            let return_type = typed_body.return_type();
+            return_types.push((return_type, typed_body.span()));
+
+            // 7. Pop parameter scope
+            context.pop_scope();
+
+            typed_clauses.push(crate::checker::TypedAnonymousClause {
+                params: typed_params,
+                guard: typed_guard,
+                body: typed_body,
+                return_type,
+                span: clause.span,
+            });
+        }
+
+        // 8. Validate return type consistency
+        let unified_return_type =
+            Self::validate_return_type_consistency(context, &return_types, first_clause_span)?;
+
+        // 9. Create function type
+        let function_type =
+            Self::create_function_type(context, &function_signature.unwrap(), unified_return_type)?;
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::AnonymousFunction {
+                clauses: typed_clauses,
+                function_type,
+            },
+            type_id: function_type,
+            span: anon_fn.span,
+        })
+    }
+
+    /// Extract parameter signature from anonymous function parameters
+    fn extract_parameter_signature(
+        context: &mut TypeContext,
+        params: &outrun_parser::AnonymousParameters,
+    ) -> TypeResult<Vec<(AtomId, TypeId)>> {
+        match params {
+            outrun_parser::AnonymousParameters::None { .. } => Ok(Vec::new()),
+            outrun_parser::AnonymousParameters::Single { parameter, .. } => {
+                let atom_id = context.interner.intern_atom(&parameter.name.name);
+                let type_id = super::TypeChecker::resolve_type_annotation(
+                    context,
+                    &parameter.type_annotation,
+                    &[], // No generic params in anonymous functions
+                )?;
+                Ok(vec![(atom_id, type_id)])
+            }
+            outrun_parser::AnonymousParameters::Multiple { parameters, .. } => {
+                let mut typed_params = Vec::new();
+                for param in parameters {
+                    let atom_id = context.interner.intern_atom(&param.name.name);
+                    let type_id = super::TypeChecker::resolve_type_annotation(
+                        context,
+                        &param.type_annotation,
+                        &[], // No generic params in anonymous functions
+                    )?;
+                    typed_params.push((atom_id, type_id));
+                }
+                Ok(typed_params)
+            }
+        }
+    }
+
+    /// Validate parameter signature consistency between clauses
+    fn validate_signature_consistency(
+        expected: &[(AtomId, TypeId)],
+        found: &[(AtomId, TypeId)],
+        first_clause_span: Span,
+        current_clause_span: Span,
+        clause_index: usize,
+    ) -> TypeResult<()> {
+        if expected.len() != found.len() {
+            return Err(TypeError::ParameterSignatureMismatch {
+                span: crate::error::span_to_source_span(current_clause_span),
+                first_clause_span: crate::error::span_to_source_span(first_clause_span),
+                clause_index,
+                expected_signature: format!("{} parameters", expected.len()),
+                found_signature: format!("{} parameters", found.len()),
+            });
+        }
+
+        for (i, ((exp_atom, exp_type), (found_atom, found_type))) in
+            expected.iter().zip(found.iter()).enumerate()
+        {
+            if exp_atom != found_atom || exp_type != found_type {
+                return Err(TypeError::ParameterSignatureMismatch {
+                    span: crate::error::span_to_source_span(current_clause_span),
+                    first_clause_span: crate::error::span_to_source_span(first_clause_span),
+                    clause_index,
+                    expected_signature: format!("parameter {} with different name/type", i),
+                    found_signature: format!("parameter {} mismatch", i),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate guard returns Boolean type
+    fn validate_guard_type(
+        context: &mut TypeContext,
+        guard_expr: &TypedExpression,
+        clause_index: usize,
+    ) -> TypeResult<()> {
+        let boolean_type = context.interner.intern_type("Outrun.Core.Boolean");
+        if guard_expr.type_id != boolean_type {
+            return Err(TypeError::InvalidAnonymousGuard {
+                span: crate::error::span_to_source_span(guard_expr.span),
+                clause_index,
+                found_type: context
+                    .get_type_name(guard_expr.type_id)
+                    .unwrap_or("Unknown")
+                    .to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Type check anonymous function body
+    fn check_anonymous_body(
+        context: &mut TypeContext,
+        body: &outrun_parser::AnonymousBody,
+    ) -> TypeResult<crate::checker::TypedAnonymousBody> {
+        match body {
+            outrun_parser::AnonymousBody::Expression(expr) => {
+                let typed_expr = Self::check_expression(context, expr)?;
+                Ok(crate::checker::TypedAnonymousBody::Expression(typed_expr))
+            }
+            outrun_parser::AnonymousBody::Block(block) => {
+                let typed_block = Self::check_block(context, block)?;
+                Ok(crate::checker::TypedAnonymousBody::Block(typed_block))
+            }
+        }
+    }
+
+    /// Validate return type consistency across all clauses
+    fn validate_return_type_consistency(
+        context: &TypeContext,
+        return_types: &[(TypeId, Span)],
+        first_clause_span: Span,
+    ) -> TypeResult<TypeId> {
+        if return_types.is_empty() {
+            return Err(TypeError::internal(
+                "No return types to validate".to_string(),
+            ));
+        }
+
+        let (first_return_type, _) = return_types[0];
+        for (clause_index, (return_type, return_span)) in return_types.iter().enumerate().skip(1) {
+            if *return_type != first_return_type {
+                return Err(TypeError::ReturnTypeMismatch {
+                    span: crate::error::span_to_source_span(*return_span),
+                    first_clause_span: crate::error::span_to_source_span(first_clause_span),
+                    clause_index,
+                    expected_type: context
+                        .get_type_name(first_return_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    found_type: context
+                        .get_type_name(*return_type)
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                });
+            }
+        }
+
+        Ok(first_return_type)
+    }
+
+    /// Create function type from parameter signature and return type
+    fn create_function_type(
+        context: &mut TypeContext,
+        params: &[(AtomId, TypeId)],
+        return_type: TypeId,
+    ) -> TypeResult<TypeId> {
+        // Create a concrete Function type
+        let function_concrete = crate::types::ConcreteType::Function {
+            params: params.to_vec(),
+            return_type,
+        };
+
+        // Generate a unique type name for this function signature
+        let param_names: Vec<String> = params
+            .iter()
+            .map(|(atom_id, type_id)| {
+                let param_name = context
+                    .interner
+                    .resolve_atom(*atom_id)
+                    .unwrap_or("<unknown>");
+                let type_name = context.get_type_name(*type_id).unwrap_or("Unknown");
+                format!("{}: {}", param_name, type_name)
+            })
+            .collect();
+
+        let return_type_name = context.get_type_name(return_type).unwrap_or("Unknown");
+        let function_type_name = format!(
+            "Function<({}) -> {}>",
+            param_names.join(", "),
+            return_type_name
+        );
+
+        let function_type_id = context.interner.intern_type(&function_type_name);
+        context.register_concrete_type(function_type_id, function_concrete);
+
+        Ok(function_type_id)
     }
 }
 

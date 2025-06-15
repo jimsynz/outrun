@@ -137,6 +137,10 @@ pub enum TypedExpressionKind {
         type_name: String,
         referenced_type: TypeId, // The actual type being referenced
     },
+    AnonymousFunction {
+        clauses: Vec<TypedAnonymousClause>,
+        function_type: TypeId, // Function<(params...) -> ReturnType>
+    },
     // TODO: Add remaining expression kinds (Sigil, MacroInjection)
 }
 
@@ -146,6 +150,41 @@ pub struct TypedBlock {
     pub statements: Vec<TypedStatement>,
     pub result_type: TypeId, // Type of the block's result
     pub span: Span,
+}
+
+/// Typed anonymous function clause
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAnonymousClause {
+    pub params: Vec<(AtomId, TypeId)>,  // Parameter names and types
+    pub guard: Option<TypedExpression>, // Optional guard expression (must return Boolean)
+    pub body: TypedAnonymousBody,       // Function body (expression or block)
+    pub return_type: TypeId,            // Return type of this clause
+    pub span: Span,
+}
+
+/// Body of an anonymous function clause
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedAnonymousBody {
+    Expression(TypedExpression),
+    Block(TypedBlock),
+}
+
+impl TypedAnonymousBody {
+    /// Get the return type of this body
+    pub fn return_type(&self) -> TypeId {
+        match self {
+            TypedAnonymousBody::Expression(expr) => expr.type_id,
+            TypedAnonymousBody::Block(block) => block.result_type,
+        }
+    }
+
+    /// Get the span of this body
+    pub fn span(&self) -> Span {
+        match self {
+            TypedAnonymousBody::Expression(expr) => expr.span,
+            TypedAnonymousBody::Block(block) => block.span,
+        }
+    }
 }
 
 /// Typed case when clause
