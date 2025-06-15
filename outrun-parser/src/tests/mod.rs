@@ -27,6 +27,7 @@ mod test_function_calls;
 mod test_function_captures;
 mod test_function_definitions;
 mod test_function_types;
+mod test_identifier_precedence;
 mod test_import_statements;
 mod test_integer_formats;
 mod test_let_bindings;

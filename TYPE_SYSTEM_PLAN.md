@@ -276,7 +276,7 @@
 - [✅] Add parameter name uniqueness validation
 - [✅] Handle return type checking and guard validation
 - [✅] Support function overloading with guards (moved to Phase 4.3)
-- [ ] Exhaustiveness checking similar to case statements for functions with guards (optional enhancement)
+- [📍] Exhaustiveness checking similar to case statements for functions with guards (moved to Phase 5.2)
 
 **Deliverables**:
 - [✅] `checker/functions.rs` with comprehensive function validation
@@ -333,7 +333,116 @@
 - Clean conversion from parser AST to typed AST
 - Type information preservation for interpreter
 
-### 5.2 Error Reporting Integration
+### 5.2 Exhaustiveness Analysis
+**Goal**: Implement comprehensive exhaustiveness checking for case statements and function guards
+
+**Tasks**:
+- [ ] Implement `ExhaustivenessAnalyzer` operating on typed AST
+- [ ] Add Boolean case exhaustiveness checking (true/false coverage)
+- [ ] Add Option/Result case exhaustiveness checking (Some/None, Ok/Err coverage)
+- [ ] Implement function guard exhaustiveness (require default case or complete coverage)
+- [ ] Add sophisticated guard analysis for Boolean parameters
+- [ ] Create comprehensive error reporting for non-exhaustive patterns
+- [ ] Integrate exhaustiveness checking into CLI with flags
+
+**Deliverables**:
+- `exhaustiveness.rs` module with complete analysis system
+- Boolean, Option, Result case exhaustiveness validation
+- Function guard default case requirement checking
+- Advanced Boolean parameter guard coverage analysis
+- CLI integration: `outrun typecheck --exhaustiveness`, `--exhaustiveness=strict`, `--warn-non-exhaustive`
+- New error types: `FunctionNotExhaustive`, enhanced `CaseNotExhaustive`
+- Comprehensive test suite for all exhaustiveness scenarios
+
+**Technical Details**:
+- Operates after typed AST generation for accurate type information
+- Uses resolved TypeIds for precise type-specific exhaustiveness rules
+- Analyzes typed guard expressions for coverage determination
+- Supports gradual enhancement: basic rules first, sophisticated constraint analysis later
+- Clean separation from type checking pass for maintainability
+
+### 5.3 Type Introspection System
+**Goal**: Implement TypeIdentifier expressions and the Type trait system for runtime introspection
+
+**Background**: 
+Support for type identifiers as first-class values enables powerful introspection and metaprogramming capabilities. This follows Outrun's "everything is traits" philosophy by treating types as values that implement the `Type` trait.
+
+**Tasks**:
+- [ ] Define core Type trait and concrete type structures
+  - [ ] Create `Type` trait with `name()`, `module()`, `kind()`, `implements_trait?()` methods
+  - [ ] Implement `StructType` and `TraitType` concrete types with metadata
+  - [ ] Add `TypeKind` enum (Struct, Trait, Primitive, Collection)
+- [ ] Implement TypeIdentifier expression type checking
+  - [ ] Add `check_type_identifier()` function in expressions.rs
+  - [ ] Validate referenced type exists and determine StructType vs TraitType
+  - [ ] Add `TypeIdentifier` variant to `TypedExpressionKind`
+- [ ] Extend type system with introspection metadata
+  - [ ] Enhance `ConcreteType` with field information for structs
+  - [ ] Add function signature metadata for traits
+  - [ ] Create type registry with introspection data
+- [ ] Implement built-in introspection functions
+  - [ ] Add `typeof<T>(value: T): Type` built-in function
+  - [ ] Implement Type trait methods for StructType and TraitType
+  - [ ] Add runtime trait implementation queries
+- [ ] Create comprehensive test suite
+  - [ ] Test TypeIdentifier expressions (`User`, `Display`, etc.)
+  - [ ] Test Type trait method calls (`Type.name()`, `Type.implements_trait?()`)
+  - [ ] Test typeof() function with various value types
+  - [ ] Test introspection with generic types and collections
+
+**Design Principles**:
+- **Consistent with Outrun philosophy**: Type is a trait implemented by concrete types
+- **Performance friendly**: Type info built during type checking, fast TypeId comparisons
+- **Extensible architecture**: Easy to add more type kinds and metadata in future
+- **Static dispatch**: No dynamic method resolution overhead
+
+**Example Usage**:
+```outrun
+// Type identifiers as expressions
+let user_type: StructType = User
+let display_type: TraitType = Display
+
+// Runtime type inspection
+def describe_type(value: T): String {
+    let value_type = typeof(value)
+    "Type: #{Type.name(value_type)}, Module: #{Type.module(value_type)}"
+}
+
+// Trait implementation checking
+def can_display?(value: T): Boolean {
+    let value_type = typeof(value)
+    Type.implements_trait?(value_type, trait_name: "Display")
+}
+
+// Generic constraints with type values
+def process_serializable<T>(value: T): String 
+when Type.implements_trait?(T, "Serializable") {
+    Serializable.to_string(value)
+}
+```
+
+**Deliverables**:
+- `types/introspection.rs` module with Type trait and concrete implementations
+- TypeIdentifier expression checking in `expressions.rs`
+- Built-in `typeof()` function implementation
+- Enhanced type registry with introspection metadata
+- Comprehensive test suite with 20+ test cases
+- Documentation and examples for type introspection usage
+
+**Success Criteria**:
+- TypeIdentifier expressions type check correctly (`User`, `Display`, etc.)
+- typeof() function works with all value types
+- Type trait methods provide accurate type information
+- Runtime trait implementation queries work correctly
+- Performance impact is minimal (compile-time metadata generation)
+- All tests pass with no regressions to existing functionality
+
+**Estimated Effort**: 2-3 days
+- Day 1: Core Type trait system and TypeIdentifier expressions
+- Day 2: Built-in introspection functions and metadata enhancement
+- Day 3: Comprehensive testing and integration
+
+### 5.5 Error Reporting Integration
 **Goal**: Beautiful error reporting with miette integration
 
 **Tasks**:
@@ -347,7 +456,7 @@
 - Beautiful error reporting with source highlighting
 - Helpful error messages and suggestions
 
-### 5.3 Public API and Documentation
+### 5.6 Public API and Documentation
 **Goal**: Clean public API for integration with other tools
 
 **Tasks**:
@@ -426,6 +535,9 @@
 
 ### Phase 5 Success
 - [ ] Typed AST generated with complete type information
+- [ ] Exhaustiveness checking for Boolean, Option, Result case statements
+- [ ] Function guard exhaustiveness validation (default case requirement)
+- [ ] Advanced Boolean parameter guard coverage analysis
 - [ ] Beautiful error reporting with source highlighting
 - [ ] Clean public API ready for integration
 

@@ -101,7 +101,8 @@ fn test_struct_destructuring_basic() {
     match &result.items[0].kind {
         ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
             Pattern::Struct(struct_pattern) => {
-                assert_eq!(struct_pattern.type_name.name, "User");
+                assert_eq!(struct_pattern.type_path.len(), 1);
+                assert_eq!(struct_pattern.type_path[0].name, "User");
                 assert_eq!(struct_pattern.fields.len(), 2);
                 assert_eq!(struct_pattern.fields[0].name.name, "name");
                 assert!(struct_pattern.fields[0].pattern.is_none()); // shorthand syntax
@@ -123,7 +124,8 @@ fn test_struct_destructuring_single_field() {
     match &result.items[0].kind {
         ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
             Pattern::Struct(struct_pattern) => {
-                assert_eq!(struct_pattern.type_name.name, "Point");
+                assert_eq!(struct_pattern.type_path.len(), 1);
+                assert_eq!(struct_pattern.type_path[0].name, "Point");
                 assert_eq!(struct_pattern.fields.len(), 1);
                 assert_eq!(struct_pattern.fields[0].name.name, "x");
                 assert!(struct_pattern.fields[0].pattern.is_none()); // shorthand syntax
@@ -144,7 +146,8 @@ fn test_struct_destructuring_with_type() {
         ItemKind::LetBinding(let_binding) => {
             match &let_binding.pattern {
                 Pattern::Struct(struct_pattern) => {
-                    assert_eq!(struct_pattern.type_name.name, "User");
+                    assert_eq!(struct_pattern.type_path.len(), 1);
+                    assert_eq!(struct_pattern.type_path[0].name, "User");
                     assert_eq!(struct_pattern.fields.len(), 2);
                     assert_eq!(struct_pattern.fields[0].name.name, "name");
                     assert!(struct_pattern.fields[0].pattern.is_none()); // shorthand syntax

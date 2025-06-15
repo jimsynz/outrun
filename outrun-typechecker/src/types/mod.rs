@@ -9,10 +9,15 @@
 pub mod collections;
 pub mod concrete;
 pub mod interning;
+pub mod introspection;
 pub mod traits;
 
 // Re-export core types
 pub use collections::{validate_collection_type, CollectionType};
 pub use concrete::{ConcreteType, FunctionSignature, StructField};
 pub use interning::{AtomId, TraitId, TypeId, TypeInterner};
+pub use introspection::{
+    IntrospectionRegistry, StructFieldInfo, StructTypeInfo, TraitFunctionInfo, TraitTypeInfo,
+    TypeKind,
+};
 pub use traits::{TraitDefinition, TraitFunction, TraitImplementation};

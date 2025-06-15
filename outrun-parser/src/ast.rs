@@ -285,7 +285,7 @@ pub enum StructLiteralField {
 /// Struct literals TypeName { field: value, ..spread }
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteral {
-    pub type_name: TypeIdentifier,
+    pub type_path: Vec<TypeIdentifier>,
     pub fields: Vec<StructLiteralField>,
     pub span: Span,
 }
@@ -593,7 +593,7 @@ pub struct TuplePattern {
 /// Struct destructuring pattern with recursive field patterns
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructPattern {
-    pub type_name: TypeIdentifier,
+    pub type_path: Vec<TypeIdentifier>,
     pub fields: Vec<StructFieldPattern>, // Changed to support recursive patterns
     pub span: Span,
 }
@@ -937,7 +937,14 @@ impl std::fmt::Display for StructLiteralField {
 
 impl std::fmt::Display for StructLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{", self.type_name)?;
+        // Format the qualified type path (e.g., "Result.Ok" or "User")
+        for (i, type_id) in self.type_path.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+            write!(f, "{}", type_id.name)?;
+        }
+        write!(f, " {{")?;
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -1286,7 +1293,14 @@ impl std::fmt::Display for TuplePattern {
 
 impl std::fmt::Display for StructPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{ ", self.type_name)?;
+        // Format the qualified type path
+        for (i, type_id) in self.type_path.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+            write!(f, "{}", type_id.name)?;
+        }
+        write!(f, " {{ ")?;
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;

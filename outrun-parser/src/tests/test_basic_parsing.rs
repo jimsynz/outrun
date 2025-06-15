@@ -218,10 +218,10 @@ fn test_parse_type_identifier() {
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
-            ExpressionKind::Identifier(identifier) => {
-                assert_eq!(identifier.name, "MyStruct");
+            ExpressionKind::TypeIdentifier(type_identifier) => {
+                assert_eq!(type_identifier.name, "MyStruct");
             }
-            _ => panic!("Expected identifier in expression"),
+            _ => panic!("Expected type identifier in expression"),
         },
         _ => panic!("Expected expression"),
     }
@@ -294,10 +294,10 @@ fn test_parse_mixed_identifiers_and_integers() {
     // Check type identifier
     match &result.items[2].kind {
         ItemKind::Expression(expr) => match &expr.kind {
-            ExpressionKind::Identifier(identifier) => {
-                assert_eq!(identifier.name, "MyType");
+            ExpressionKind::TypeIdentifier(type_identifier) => {
+                assert_eq!(type_identifier.name, "MyType");
             }
-            _ => panic!("Expected identifier in expression"),
+            _ => panic!("Expected type identifier in expression"),
         },
         _ => panic!("Expected expression at position 2"),
     }
@@ -360,10 +360,10 @@ fn test_comprehensive_mix() {
                 assert_eq!(format!("{}", kw), *expected_value);
             }
             (ItemKind::Expression(expr), "type_identifier") => match &expr.kind {
-                ExpressionKind::Identifier(identifier) => {
-                    assert_eq!(identifier.name, *expected_value);
+                ExpressionKind::TypeIdentifier(type_identifier) => {
+                    assert_eq!(type_identifier.name, *expected_value);
                 }
-                _ => panic!("Expected identifier in expression at position {}", i),
+                _ => panic!("Expected type identifier in expression at position {}", i),
             },
             (ItemKind::Expression(expr), "boolean") => match &expr.kind {
                 ExpressionKind::Boolean(boolean) => {

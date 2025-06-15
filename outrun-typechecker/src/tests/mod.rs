@@ -16,3 +16,4 @@ mod test_trait_implementations;
 mod test_traits_unit;
 mod test_type_checker_core;
 mod test_type_interning;
+mod test_type_introspection;

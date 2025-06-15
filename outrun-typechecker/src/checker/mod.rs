@@ -119,7 +119,25 @@ pub enum TypedExpressionKind {
         path: String,       // Function path (e.g., "Module.function" or "function")
         arity: Option<i32>, // Optional arity specification (/2)
     },
-    // TODO: Add all expression kinds with type information
+    Block(TypedBlock), // Block expression (function bodies, etc.)
+    UnaryOp {
+        operator: outrun_parser::UnaryOperator,
+        operand: Box<TypedExpression>,
+    },
+    FieldAccess {
+        object: Box<TypedExpression>,
+        field: String,
+    },
+    QualifiedIdentifier {
+        module: String,
+        name: String,
+    },
+    Parenthesized(Box<TypedExpression>),
+    TypeIdentifier {
+        type_name: String,
+        referenced_type: TypeId, // The actual type being referenced
+    },
+    // TODO: Add remaining expression kinds (Sigil, MacroInjection)
 }
 
 /// Typed block with statements
@@ -552,12 +570,33 @@ impl TypeChecker {
             });
         };
 
-        // Create stub typed body for now (full block type checking is future work)
+        // The function has already been validated by FunctionChecker,
+        // but we need to type-check the body with parameters in scope.
+        // Recreate the parameter scope for typed AST generation
+        self.context.push_scope(true); // Function scope
+
+        // Register parameters in scope
+        for (param_name, param_type) in &typed_params {
+            let variable = Variable {
+                name: param_name.clone(),
+                type_id: *param_type,
+                is_mutable: false,
+                span: func.span, // Use function span for now
+            };
+            self.context.register_variable(variable)?;
+        }
+
+        // Type check the function body to get typed AST
+        let typed_block =
+            FunctionChecker::check_function_body_typed(&mut self.context, &func.body, return_type)?;
         let typed_body = TypedExpression {
-            kind: TypedExpressionKind::Integer(0), // Stub - represents function body
-            type_id: return_type,                  // Body should match return type
+            kind: TypedExpressionKind::Block(typed_block.clone()),
+            type_id: typed_block.result_type,
             span: func.body.span,
         };
+
+        // Clean up function scope
+        self.context.pop_scope();
 
         Ok(TypedItem {
             kind: TypedItemKind::FunctionDefinition(TypedFunctionDefinition {

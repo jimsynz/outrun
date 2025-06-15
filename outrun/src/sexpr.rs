@@ -544,7 +544,10 @@ fn format_tuple_with_indent(tuple_lit: &TupleLiteral, indent: usize) -> String {
 }
 
 fn format_struct_literal_with_indent(struct_lit: &StructLiteral, indent: usize) -> String {
-    let type_name = &struct_lit.type_name.name;
+    let type_name = struct_lit.type_path.iter()
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
 
     if struct_lit.fields.is_empty() {
         format!("{} {{}}", type_name)
@@ -699,7 +702,11 @@ fn format_struct_pattern(pattern: &StructPattern) -> String {
         })
         .collect();
 
-    format!("{} {{ {} }}", pattern.type_name.name, fields.join(", "))
+    let type_name = pattern.type_path.iter()
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
+    format!("{} {{ {} }}", type_name, fields.join(", "))
 }
 
 fn format_pattern(pattern: &Pattern) -> String {

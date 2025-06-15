@@ -168,8 +168,8 @@ impl OutrunParser {
         let span = Self::extract_span(&pair);
         let mut inner_pairs = pair.into_inner();
 
-        // First should be the type identifier
-        let type_name = Self::parse_type_identifier(inner_pairs.next().unwrap())?;
+        // First should be the module path
+        let type_path = Self::parse_module_path(inner_pairs.next().unwrap())?;
 
         let mut fields = Vec::new();
 
@@ -186,7 +186,7 @@ impl OutrunParser {
         }
 
         Ok(StructLiteral {
-            type_name,
+            type_path,
             fields,
             span,
         })

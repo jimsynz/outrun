@@ -53,8 +53,27 @@ impl ExpressionChecker {
             ExpressionKind::CaseExpression(case_expr) => {
                 Self::check_case_expression(context, case_expr)
             }
+            ExpressionKind::UnaryOp(unary_op) => Self::check_unary_operation(context, unary_op),
+            ExpressionKind::FieldAccess(field_access) => {
+                Self::check_field_access(context, field_access)
+            }
+            ExpressionKind::QualifiedIdentifier(qualified_id) => {
+                Self::check_qualified_identifier(context, qualified_id)
+            }
+            ExpressionKind::Parenthesized(inner_expr) => {
+                // Parenthesized expressions are transparent - just check the inner expression
+                let typed_inner = Self::check_expression(context, inner_expr)?;
+                Ok(TypedExpression {
+                    kind: TypedExpressionKind::Parenthesized(Box::new(typed_inner.clone())),
+                    type_id: typed_inner.type_id,
+                    span: expr.span,
+                })
+            }
+            ExpressionKind::TypeIdentifier(type_id) => {
+                Self::check_type_identifier(context, type_id)
+            }
             _ => {
-                // TODO: Implement other expression types
+                // TODO: Implement remaining expression types (Sigil, TypeIdentifier, MacroInjection)
                 Err(TypeError::UnimplementedFeature {
                     feature: format!("Expression type checking for {:?}", expr.kind),
                     span: crate::error::span_to_source_span(expr.span),
@@ -715,9 +734,14 @@ impl ExpressionChecker {
         context: &mut TypeContext,
         struct_lit: &outrun_parser::StructLiteral,
     ) -> TypeResult<TypedExpression> {
-        // Get the struct type from the type name
-        let struct_type_name = &struct_lit.type_name.name;
-        let struct_type_id = context.interner.intern_type(struct_type_name);
+        // Get the struct type from the qualified type path
+        let struct_type_name = struct_lit
+            .type_path
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        let struct_type_id = context.interner.intern_type(&struct_type_name);
 
         // Look up the struct definition in the context
         let struct_definition = context.get_concrete_type(struct_type_id);
@@ -725,7 +749,7 @@ impl ExpressionChecker {
             Some(crate::types::ConcreteType::Struct { fields, .. }) => fields.clone(),
             Some(_) => {
                 return Err(TypeError::TypeMismatch {
-                    span: crate::error::span_to_source_span(struct_lit.type_name.span),
+                    span: crate::error::span_to_source_span(struct_lit.span),
                     expected: "struct type".to_string(),
                     found: format!("{} is not a struct", struct_type_name),
                 });
@@ -733,7 +757,7 @@ impl ExpressionChecker {
             None => {
                 return Err(TypeError::UndefinedType {
                     name: struct_type_name.clone(),
-                    span: crate::error::span_to_source_span(struct_lit.type_name.span),
+                    span: crate::error::span_to_source_span(struct_lit.span),
                 });
             }
         };
@@ -1643,6 +1667,210 @@ impl ExpressionChecker {
             span: capture.span,
         })
     }
+
+    /// Type check unary operation
+    fn check_unary_operation(
+        context: &mut TypeContext,
+        unary_op: &outrun_parser::UnaryOperation,
+    ) -> TypeResult<TypedExpression> {
+        use outrun_parser::UnaryOperator;
+
+        // Type check the operand
+        let typed_operand = Self::check_expression(context, &unary_op.operand)?;
+
+        // Determine result type based on operator and operand type
+        let result_type = match unary_op.operator {
+            UnaryOperator::LogicalNot => {
+                // !expr requires Boolean operand and returns Boolean
+                let boolean_type = context.interner.intern_type("Outrun.Core.Boolean");
+                if typed_operand.type_id != boolean_type {
+                    let found_type_name = context
+                        .interner
+                        .resolve_type(typed_operand.type_id)
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    return Err(TypeError::type_mismatch(
+                        "Outrun.Core.Boolean".to_string(),
+                        found_type_name,
+                        crate::error::span_to_source_span(unary_op.span),
+                    ));
+                }
+                boolean_type
+            }
+            UnaryOperator::Minus => {
+                // -expr requires numeric operand and returns same type
+                let integer_type = context.interner.intern_type("Outrun.Core.Integer64");
+                let float_type = context.interner.intern_type("Outrun.Core.Float64");
+
+                if typed_operand.type_id == integer_type || typed_operand.type_id == float_type {
+                    typed_operand.type_id
+                } else {
+                    let found_type_name = context
+                        .interner
+                        .resolve_type(typed_operand.type_id)
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    return Err(TypeError::type_mismatch(
+                        "Numeric type (Integer64 or Float64)".to_string(),
+                        found_type_name,
+                        crate::error::span_to_source_span(unary_op.span),
+                    ));
+                }
+            }
+            UnaryOperator::Plus => {
+                // +expr requires numeric operand and returns same type
+                let integer_type = context.interner.intern_type("Outrun.Core.Integer64");
+                let float_type = context.interner.intern_type("Outrun.Core.Float64");
+
+                if typed_operand.type_id == integer_type || typed_operand.type_id == float_type {
+                    typed_operand.type_id
+                } else {
+                    let found_type_name = context
+                        .interner
+                        .resolve_type(typed_operand.type_id)
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    return Err(TypeError::type_mismatch(
+                        "Numeric type (Integer64 or Float64)".to_string(),
+                        found_type_name,
+                        crate::error::span_to_source_span(unary_op.span),
+                    ));
+                }
+            }
+            UnaryOperator::BitwiseNot => {
+                // ~expr requires integer operand and returns same type
+                let integer_type = context.interner.intern_type("Outrun.Core.Integer64");
+
+                if typed_operand.type_id == integer_type {
+                    typed_operand.type_id
+                } else {
+                    let found_type_name = context
+                        .interner
+                        .resolve_type(typed_operand.type_id)
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    return Err(TypeError::type_mismatch(
+                        "Outrun.Core.Integer64".to_string(),
+                        found_type_name,
+                        crate::error::span_to_source_span(unary_op.span),
+                    ));
+                }
+            }
+        };
+
+        Ok(TypedExpression {
+            kind: crate::checker::TypedExpressionKind::UnaryOp {
+                operator: unary_op.operator.clone(),
+                operand: Box::new(typed_operand),
+            },
+            type_id: result_type,
+            span: unary_op.span,
+        })
+    }
+
+    /// Type check field access (object.field)
+    fn check_field_access(
+        context: &mut TypeContext,
+        field_access: &outrun_parser::FieldAccess,
+    ) -> TypeResult<TypedExpression> {
+        // Type check the object
+        let typed_object = Self::check_expression(context, &field_access.object)?;
+
+        // TODO: Implement proper struct field lookup
+        // For now, assume field access is valid and return String type as placeholder
+        let field_type = context.interner.intern_type("Outrun.Core.String");
+
+        Ok(TypedExpression {
+            kind: crate::checker::TypedExpressionKind::FieldAccess {
+                object: Box::new(typed_object),
+                field: field_access.field.name.clone(),
+            },
+            type_id: field_type,
+            span: field_access.span,
+        })
+    }
+
+    /// Type check qualified identifier (Module.function)
+    fn check_qualified_identifier(
+        context: &mut TypeContext,
+        qualified_id: &outrun_parser::QualifiedIdentifier,
+    ) -> TypeResult<TypedExpression> {
+        let module_name = &qualified_id.module.name;
+        let function_name = &qualified_id.name.name;
+
+        // Try to resolve as a trait static function call
+        let trait_name = format!("{}Trait", module_name); // e.g., StringTrait
+        if let Some(trait_id) = context.interner.get_trait(&trait_name) {
+            if let Some(trait_def) = context.trait_registry.get_trait(trait_id) {
+                let function_name_atom = context.interner.intern_atom(function_name);
+                if let Some(function_def) = trait_def.find_function(function_name_atom) {
+                    return Ok(TypedExpression {
+                        kind: crate::checker::TypedExpressionKind::QualifiedIdentifier {
+                            module: module_name.clone(),
+                            name: function_name.clone(),
+                        },
+                        type_id: function_def.return_type,
+                        span: qualified_id.span,
+                    });
+                }
+            }
+        }
+
+        // For now, return a placeholder type
+        let placeholder_type = context.interner.intern_type("Outrun.Core.String");
+        Ok(TypedExpression {
+            kind: crate::checker::TypedExpressionKind::QualifiedIdentifier {
+                module: module_name.clone(),
+                name: function_name.clone(),
+            },
+            type_id: placeholder_type,
+            span: qualified_id.span,
+        })
+    }
+
+    /// Type check type identifier (type names as expressions)
+    fn check_type_identifier(
+        context: &mut TypeContext,
+        type_id: &outrun_parser::TypeIdentifier,
+    ) -> TypeResult<TypedExpression> {
+        // Look up the referenced type to verify it exists
+        let referenced_type =
+            context
+                .interner
+                .get_type(&type_id.name)
+                .ok_or_else(|| TypeError::UndefinedType {
+                    span: crate::error::span_to_source_span(type_id.span),
+                    name: type_id.name.clone(),
+                })?;
+
+        // Determine if it's a struct or trait type to decide the concrete type
+        let concrete_type = if let Some(trait_id) = context.interner.get_trait(&type_id.name) {
+            // It's a trait - check if it's registered in the trait registry
+            if context.trait_registry.has_trait(trait_id) {
+                context.interner.intern_type("Outrun.Type.TraitType")
+            } else {
+                context.interner.intern_type("Outrun.Type.PrimitiveType")
+            }
+        } else if context
+            .introspection_registry
+            .is_struct_type(referenced_type)
+        {
+            // It's a struct - create StructType
+            context.interner.intern_type("Outrun.Type.StructType")
+        } else {
+            // For now, assume it's a primitive type and create a generic Type
+            context.interner.intern_type("Outrun.Type.PrimitiveType")
+        };
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::TypeIdentifier {
+                type_name: type_id.name.clone(),
+                referenced_type,
+            },
+            type_id: concrete_type,
+            span: type_id.span,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -2254,10 +2482,10 @@ mod tests {
 
         // Create a struct literal with correct fields
         let struct_lit = outrun_parser::StructLiteral {
-            type_name: outrun_parser::TypeIdentifier {
+            type_path: vec![outrun_parser::TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![
                 outrun_parser::StructLiteralField::Assignment {
                     name: Identifier {
@@ -2357,10 +2585,10 @@ mod tests {
 
         // Create a struct literal missing the age field
         let struct_lit = outrun_parser::StructLiteral {
-            type_name: outrun_parser::TypeIdentifier {
+            type_path: vec![outrun_parser::TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![outrun_parser::StructLiteralField::Assignment {
                 name: Identifier {
                     name: "name".to_string(),
@@ -2419,10 +2647,10 @@ mod tests {
 
         // Create a struct literal with wrong field type (integer instead of string)
         let struct_lit = outrun_parser::StructLiteral {
-            type_name: outrun_parser::TypeIdentifier {
+            type_path: vec![outrun_parser::TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![outrun_parser::StructLiteralField::Assignment {
                 name: Identifier {
                     name: "name".to_string(),
@@ -2460,10 +2688,10 @@ mod tests {
 
         // Create a struct literal for a non-existent type
         let struct_lit = outrun_parser::StructLiteral {
-            type_name: outrun_parser::TypeIdentifier {
+            type_path: vec![outrun_parser::TypeIdentifier {
                 name: "UndefinedType".to_string(),
                 span: Span::new(0, 13),
-            },
+            }],
             fields: vec![],
             span: Span::new(0, 16),
         };
@@ -2731,10 +2959,10 @@ mod tests {
 
         // Create a struct literal using shorthand syntax
         let struct_lit = outrun_parser::StructLiteral {
-            type_name: outrun_parser::TypeIdentifier {
+            type_path: vec![outrun_parser::TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![outrun_parser::StructLiteralField::Shorthand(Identifier {
                 name: "name".to_string(),
                 span: Span::new(6, 10),

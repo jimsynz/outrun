@@ -62,22 +62,6 @@ impl OutrunParser {
         }
     }
 
-    /// Parse module path (Type or Module.Type)
-    pub(crate) fn parse_module_path(
-        pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<Vec<TypeIdentifier>> {
-        let mut path = Vec::new();
-
-        for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::type_identifier {
-                let type_id = Self::parse_type_identifier(inner_pair)?;
-                path.push(type_id);
-            }
-        }
-
-        Ok(path)
-    }
-
     /// Parse a struct definition
     pub(crate) fn parse_struct_definition(
         pair: pest::iterators::Pair<Rule>,

@@ -209,7 +209,13 @@ impl PatternChecker {
                 fields,
             } => {
                 // Check that pattern struct name matches target struct name
-                let pattern_type_id = context.interner.intern_type(&struct_pattern.type_name.name);
+                let pattern_type_name = struct_pattern
+                    .type_path
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let pattern_type_id = context.interner.intern_type(&pattern_type_name);
                 if pattern_type_id != struct_name {
                     return Err(TypeError::type_mismatch(
                         context
@@ -217,7 +223,7 @@ impl PatternChecker {
                             .resolve_type(struct_name)
                             .unwrap_or("Unknown")
                             .to_string(),
-                        struct_pattern.type_name.name.clone(),
+                        pattern_type_name.clone(),
                         crate::error::span_to_source_span(struct_pattern.span),
                     ));
                 }
@@ -529,10 +535,10 @@ mod tests {
         context.register_concrete_type(user_type_id, user_concrete_type);
 
         let pattern = Pattern::Struct(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![
                 StructFieldPattern {
                     name: Identifier {
@@ -592,10 +598,10 @@ mod tests {
         context.register_concrete_type(user_type_id, user_concrete_type);
 
         let pattern = Pattern::Struct(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "User".to_string(),
                 span: Span::new(0, 4),
-            },
+            }],
             fields: vec![StructFieldPattern {
                 name: Identifier {
                     name: "unknown_field".to_string(),

@@ -152,10 +152,10 @@ fn test_valid_struct_pattern_destructuring() {
             span: Span::new(20, 26),
         },
         pattern: Some(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "Person".to_string(),
                 span: Span::new(20, 26),
-            },
+            }],
             fields: vec![
                 StructFieldPattern {
                     name: Identifier {
@@ -253,10 +253,10 @@ fn test_pattern_on_non_struct_type() {
             span: Span::new(20, 27),
         },
         pattern: Some(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "Integer".to_string(),
                 span: Span::new(20, 27),
-            },
+            }],
             fields: vec![],
             span: Span::new(20, 30),
         }),
@@ -316,10 +316,10 @@ fn test_pattern_with_wrong_field() {
             span: Span::new(20, 26),
         },
         pattern: Some(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "Person".to_string(),
                 span: Span::new(20, 26),
-            },
+            }],
             fields: vec![StructFieldPattern {
                 name: Identifier {
                     name: "nonexistent".to_string(),
@@ -380,10 +380,10 @@ fn test_pattern_variables_in_guard() {
             span: Span::new(20, 26),
         },
         pattern: Some(StructPattern {
-            type_name: TypeIdentifier {
+            type_path: vec![TypeIdentifier {
                 name: "Person".to_string(),
                 span: Span::new(20, 26),
-            },
+            }],
             fields: vec![StructFieldPattern {
                 name: Identifier {
                     name: "age".to_string(),

@@ -244,6 +244,11 @@ impl TraitRegistry {
         self.definitions.get(&trait_id)
     }
 
+    /// Check if a trait definition exists with the given TraitId
+    pub fn has_trait(&self, trait_id: TraitId) -> bool {
+        self.definitions.contains_key(&trait_id)
+    }
+
     /// Get a trait implementation
     pub fn get_implementation(
         &self,

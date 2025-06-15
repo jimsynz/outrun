@@ -259,6 +259,16 @@ impl FunctionChecker {
 
         Ok(typed_body.result_type)
     }
+
+    /// Type check function body and return typed block for AST generation
+    pub fn check_function_body_typed(
+        context: &mut TypeContext,
+        body: &outrun_parser::Block,
+        _expected_return_type: TypeId,
+    ) -> TypeResult<crate::checker::TypedBlock> {
+        // Type check the function body using the existing block checker
+        ExpressionChecker::check_block(context, body)
+    }
 }
 
 #[cfg(test)]

@@ -253,7 +253,7 @@ impl OutrunParser {
                         fields.push(field_pattern);
                     }
                     pattern = Some(StructPattern {
-                        type_name: type_name.clone(),
+                        type_path: vec![type_name.clone()],
                         fields,
                         span: type_name.span, // Use type name span for now
                     });

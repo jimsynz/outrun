@@ -11,7 +11,8 @@ fn test_struct_literal_basic() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::Struct(struct_lit) => {
-                    assert_eq!(struct_lit.type_name.name, "User");
+                    assert_eq!(struct_lit.type_path.len(), 1);
+                    assert_eq!(struct_lit.type_path[0].name, "User");
                     assert_eq!(struct_lit.fields.len(), 2);
 
                     // Check first field
@@ -63,7 +64,8 @@ fn test_struct_literal_with_shorthand() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::Struct(struct_lit) => {
-                    assert_eq!(struct_lit.type_name.name, "User");
+                    assert_eq!(struct_lit.type_path.len(), 1);
+                    assert_eq!(struct_lit.type_path[0].name, "User");
                     assert_eq!(struct_lit.fields.len(), 2);
 
                     // Check shorthand field
@@ -103,7 +105,8 @@ fn test_struct_literal_with_spread() {
         ItemKind::Expression(expr) => {
             match &expr.kind {
                 ExpressionKind::Struct(struct_lit) => {
-                    assert_eq!(struct_lit.type_name.name, "User");
+                    assert_eq!(struct_lit.type_path.len(), 1);
+                    assert_eq!(struct_lit.type_path[0].name, "User");
                     assert_eq!(struct_lit.fields.len(), 2);
 
                     // Check assignment field

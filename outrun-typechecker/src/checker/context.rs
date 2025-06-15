@@ -8,7 +8,7 @@
 use crate::dispatch::DispatchTable;
 use crate::error::TypeError;
 use crate::types::traits::{FunctionId, TraitRegistry};
-use crate::types::{AtomId, ConcreteType, TraitId, TypeId, TypeInterner};
+use crate::types::{AtomId, ConcreteType, IntrospectionRegistry, TraitId, TypeId, TypeInterner};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
@@ -19,6 +19,7 @@ pub struct TypeContext {
     pub interner: TypeInterner,
     pub concrete_types: HashMap<TypeId, ConcreteType>,
     pub trait_registry: TraitRegistry,
+    pub introspection_registry: IntrospectionRegistry,
 
     // Scope management
     pub scopes: Vec<Scope>,
@@ -73,6 +74,7 @@ impl TypeContext {
             interner: TypeInterner::new(),
             concrete_types: HashMap::new(),
             trait_registry: TraitRegistry::new(),
+            introspection_registry: IntrospectionRegistry::new(),
             scopes: Vec::new(),
             current_function: None,
             dispatch_table: DispatchTable::new(),

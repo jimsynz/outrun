@@ -92,7 +92,7 @@ keyword = {
 // === IDENTIFIERS ===
 // Pattern-based, single format
 
-identifier = @{ !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ "?"? }
+identifier = @{ !keyword ~ (ASCII_ALPHA_LOWER | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ "?"? }
 type_identifier = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHANUMERIC | "_")* }
 
 // === LITERALS ===
@@ -165,7 +165,7 @@ tuple = !{ "(" ~ tuple_elements? ~ ")" }
 tuple_elements = { expression ~ ("," ~ expression)* ~ ","? }
 
 // Struct literals TypeName { field: value, ..spread }
-struct_literal = !{ type_identifier ~ "{" ~ struct_literal_fields? ~ "}" }
+struct_literal = !{ module_path ~ "{" ~ struct_literal_fields? ~ "}" }
 struct_literal_fields = { struct_literal_field ~ ("," ~ struct_literal_field)* ~ ","? }
 struct_literal_field = { struct_field_spread | struct_field_assignment | struct_field_shorthand }
 struct_field_assignment = { identifier ~ ":" ~ expression }
