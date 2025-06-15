@@ -304,24 +304,7 @@ impl ExpressionChecker {
             }
         };
 
-        // Look up the function - handle both simple and qualified calls
-        let function_return_type = if let Some(module) = &module_path {
-            // Qualified function call: Module.function_name()
-            // This is treated as a static function call on the module/type
-            Self::lookup_qualified_function(context, module, &function_name)?
-        } else {
-            // Simple function call: function_name()
-            if let Some(function) = context.lookup_function(&function_name) {
-                function.return_type
-            } else {
-                return Err(TypeError::undefined_function(
-                    function_name,
-                    crate::error::span_to_source_span(path_span),
-                ));
-            }
-        };
-
-        // Type check arguments
+        // Type check arguments first (needed for overload resolution)
         let mut typed_args = Vec::new();
 
         for arg in &call.arguments {
@@ -352,11 +335,36 @@ impl ExpressionChecker {
             }
         }
 
+        // Look up the function - handle both simple and qualified calls
+        let function_return_type = if let Some(module) = &module_path {
+            // Qualified function call: Module.function_name()
+            // This is treated as a static function call on the module/type
+            Self::lookup_qualified_function(context, module, &function_name)?
+        } else {
+            // Simple function call: function_name()
+            // Use function overload resolution with arguments
+            if let Some(function) = context.resolve_function_overload(&function_name, &typed_args) {
+                function.return_type
+            } else {
+                return Err(TypeError::undefined_function(
+                    function_name,
+                    crate::error::span_to_source_span(path_span),
+                ));
+            }
+        };
+
         // Validate argument types match function parameters
         // Skip parameter validation for qualified function calls for now
         // TODO: Implement comprehensive parameter validation for qualified calls
         if module_path.is_none() {
-            let function_def = context.lookup_function(&function_name).unwrap(); // Safe due to check above
+            let function_def = context
+                .resolve_function_overload(&function_name, &typed_args)
+                .ok_or_else(|| {
+                    TypeError::undefined_function(
+                        function_name.clone(),
+                        crate::error::span_to_source_span(path_span),
+                    )
+                })?;
 
             // Check that all required parameters are provided
             let required_param_names: std::collections::HashSet<_> = function_def
@@ -1536,7 +1544,7 @@ impl ExpressionChecker {
                 if let Some(function_def) = trait_def.find_function(function_name_atom) {
                     return Ok(function_def.return_type);
                 }
-                
+
                 // Trait exists but function doesn't exist on it
                 return Err(TypeError::UndefinedFunction {
                     span: crate::error::span_to_source_span(outrun_parser::Span::new(0, 0)), // TODO: Pass proper span

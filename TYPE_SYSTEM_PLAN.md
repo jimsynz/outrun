@@ -35,7 +35,8 @@
 - ✅ **Phase 3.3 Complete**: Dispatch table construction with trait implementation and static function dispatch
 - ✅ **Phase 4.1 Complete**: Function signature validation with comprehensive parameter checking, guard function validation, and Self type support
 - ✅ **Phase 4.2 Complete**: Enhanced function call resolution with qualified calls (Module.function) and function capture syntax (&function)
-- ✅ **161 passing typechecker tests** - complete type system with function definitions, qualified calls, function capture, and all language features validated
+- ✅ **Phase 4.3 Complete**: Function overloading with guards - comprehensive overload resolution, conflict detection, and guard-based dispatch
+- ✅ **170 passing typechecker tests** - complete type system with function definitions, qualified calls, function capture, function overloading, and all language features validated
 
 **Target State**:
 - ✅ Static type checking with trait constraint validation
@@ -274,8 +275,8 @@
 - [✅] Implement function signature type checking
 - [✅] Add parameter name uniqueness validation
 - [✅] Handle return type checking and guard validation
-- [ ] Support function overloading with guards
-- [ ] Exhaustiveness checking similar to case statements for functions with guards
+- [✅] Support function overloading with guards (moved to Phase 4.3)
+- [ ] Exhaustiveness checking similar to case statements for functions with guards (optional enhancement)
 
 **Deliverables**:
 - [✅] `checker/functions.rs` with comprehensive function validation
@@ -299,6 +300,22 @@
 - [✅] Function capture validation and type checking (&function_name)
 - [✅] TypedExpressionKind::FunctionCapture variant with path and arity
 - [✅] 8 comprehensive test cases covering qualified calls and function capture
+
+### 4.3 Function Overloading with Guards ✅ **COMPLETE**
+**Goal**: Enable function overloading with guard-based dispatch resolution
+
+**Tasks**:
+- [✅] Extend FunctionSignature to support guard clauses and overloading
+- [✅] Implement function overload conflict detection and validation
+- [✅] Add function call resolution algorithm for overloaded functions
+- [✅] Create comprehensive test coverage for all overloading scenarios
+
+**Deliverables**:
+- [✅] Function overloading support in `checker/context.rs` with scope-based overload storage
+- [✅] ConflictingFunctionOverload error type for better error reporting
+- [✅] Guard-based function resolution with default case handling
+- [✅] PartialEq implementations across typed AST structures for guard clause comparison
+- [✅] 9 comprehensive test cases covering overloading, conflicts, and resolution scenarios
 
 ## Phase 5: Integration (Week 8)
 

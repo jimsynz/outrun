@@ -74,6 +74,21 @@ pub enum TypeError {
         name: String,
     },
 
+    #[error("Conflicting function overload for {name}")]
+    #[diagnostic(
+        code(outrun::typechecker::conflicting_function_overload),
+        help(
+            "Function overloads must have different guard conditions or different parameter types"
+        )
+    )]
+    ConflictingFunctionOverload {
+        #[label("conflicting overload here")]
+        span: SourceSpan,
+        #[label("previous overload here")]
+        previous_span: SourceSpan,
+        name: String,
+    },
+
     #[error("Undefined type {name}")]
     #[diagnostic(
         code(outrun::typechecker::undefined_type),

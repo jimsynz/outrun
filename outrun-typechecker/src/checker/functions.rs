@@ -61,10 +61,16 @@ impl FunctionChecker {
             context.register_variable(variable)?;
         }
 
-        // 4. Validate guard clause if present
-        if let Some(guard) = &function.guard {
-            Self::check_guard_clause(context, guard)?;
-        }
+        // 4. Validate guard clause if present and create typed guard clause
+        let typed_guard_clause = if let Some(guard) = &function.guard {
+            let typed_guard = Self::check_guard_clause(context, guard)?;
+            Some(crate::checker::context::TypedGuardClause {
+                condition: typed_guard,
+                span: guard.span,
+            })
+        } else {
+            None
+        };
 
         // 5. Type check function body
         let body_type = Self::check_function_body(context, &function.body, return_type)?;
@@ -90,11 +96,27 @@ impl FunctionChecker {
             ));
         }
 
-        // 7. Register function signature (will be done by caller typically)
-        // This is mainly for validation - actual registration happens in trait checking
-
-        // 8. Clean up function scope
+        // 7. Clean up function scope
         context.pop_scope();
+
+        // 8. Create and register function signature with guard clause in global scope
+        let function_signature = crate::checker::context::FunctionSignature {
+            name: function.name.name.clone(),
+            params: parameters
+                .iter()
+                .map(|(name, type_id, _span)| {
+                    let atom_id = context.interner.intern_atom(name);
+                    (atom_id, *type_id)
+                })
+                .collect(),
+            return_type,
+            is_guard: is_guard_function,
+            guard_clause: typed_guard_clause,
+            span: function.span,
+        };
+
+        // Register the function signature (supports overloading) in global scope
+        context.register_function(function_signature)?;
 
         Ok(())
     }
@@ -198,8 +220,11 @@ impl FunctionChecker {
         Ok(return_type_id)
     }
 
-    /// Type check a guard clause
-    fn check_guard_clause(context: &mut TypeContext, guard: &GuardClause) -> TypeResult<()> {
+    /// Type check a guard clause and return the typed expression
+    fn check_guard_clause(
+        context: &mut TypeContext,
+        guard: &GuardClause,
+    ) -> TypeResult<crate::checker::TypedExpression> {
         // Type check the guard expression
         let guard_expr_type = ExpressionChecker::check_expression(context, &guard.condition)?;
 
@@ -220,7 +245,7 @@ impl FunctionChecker {
         // TODO: Validate guard functions are side-effect free (complex analysis)
         // For now, we just ensure the type is correct
 
-        Ok(())
+        Ok(guard_expr_type)
     }
 
     /// Type check function body and ensure it produces the expected return type
@@ -231,7 +256,7 @@ impl FunctionChecker {
     ) -> TypeResult<TypeId> {
         // Type check the function body using the existing block checker
         let typed_body = ExpressionChecker::check_block(context, body)?;
-        
+
         Ok(typed_body.result_type)
     }
 }

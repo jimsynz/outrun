@@ -35,8 +35,8 @@ pub struct TypeContext {
 #[derive(Debug, Clone)]
 pub struct Scope {
     pub variables: HashMap<String, Variable>,
-    pub functions: HashMap<String, FunctionSignature>,
-    pub is_function_scope: bool, // True for function parameter scopes
+    pub functions: HashMap<String, Vec<FunctionSignature>>, // Support multiple overloaded functions
+    pub is_function_scope: bool,                            // True for function parameter scopes
 }
 
 /// Variable information in a scope
@@ -55,6 +55,14 @@ pub struct FunctionSignature {
     pub params: Vec<(AtomId, TypeId)>,
     pub return_type: TypeId,
     pub is_guard: bool,
+    pub guard_clause: Option<TypedGuardClause>, // For function overloading
+    pub span: Span,
+}
+
+/// Typed guard clause for function overloading
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedGuardClause {
+    pub condition: crate::checker::TypedExpression,
     pub span: Span,
 }
 
@@ -147,19 +155,35 @@ impl TypeContext {
         None
     }
 
-    /// Register a function in the current scope
+    /// Register a function in the current scope (supports overloading)
     pub fn register_function(&mut self, function: FunctionSignature) -> Result<(), TypeError> {
-        if let Some(scope) = self.current_scope_mut() {
-            if scope.functions.contains_key(&function.name) {
-                return Err(TypeError::FunctionAlreadyDefined {
-                    name: function.name.clone(),
-                    span: crate::error::span_to_source_span(function.span),
-                    previous_span: crate::error::span_to_source_span(
-                        scope.functions[&function.name].span,
-                    ),
-                });
+        // First, check for conflicting overloads without holding mutable reference
+        let existing_functions = self
+            .scopes
+            .last()
+            .and_then(|scope| scope.functions.get(&function.name))
+            .cloned();
+
+        if let Some(existing_functions) = existing_functions {
+            for existing in &existing_functions {
+                // Check if this is a valid overload
+                if self.is_conflicting_overload(&function, existing)? {
+                    return Err(TypeError::ConflictingFunctionOverload {
+                        name: function.name.clone(),
+                        span: crate::error::span_to_source_span(function.span),
+                        previous_span: crate::error::span_to_source_span(existing.span),
+                    });
+                }
             }
-            scope.functions.insert(function.name.clone(), function);
+        }
+
+        // Now add the function to the overload list
+        if let Some(scope) = self.current_scope_mut() {
+            scope
+                .functions
+                .entry(function.name.clone())
+                .or_insert_with(Vec::new)
+                .push(function);
             Ok(())
         } else {
             Err(TypeError::NoCurrentScope {
@@ -169,13 +193,103 @@ impl TypeContext {
     }
 
     /// Look up a function by name, searching through scope stack
+    /// Returns the first overload if multiple exist (for backward compatibility)
     pub fn lookup_function(&self, name: &str) -> Option<&FunctionSignature> {
         for scope in self.scopes.iter().rev() {
-            if let Some(func) = scope.functions.get(name) {
-                return Some(func);
+            if let Some(funcs) = scope.functions.get(name) {
+                if let Some(first_func) = funcs.first() {
+                    return Some(first_func);
+                }
             }
         }
         None
+    }
+
+    /// Look up all function overloads by name, searching through scope stack
+    pub fn lookup_function_overloads(&self, name: &str) -> Vec<&FunctionSignature> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(funcs) = scope.functions.get(name) {
+                return funcs.iter().collect();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Check if two function signatures represent conflicting overloads
+    fn is_conflicting_overload(
+        &self,
+        new_func: &FunctionSignature,
+        existing_func: &FunctionSignature,
+    ) -> Result<bool, TypeError> {
+        // Functions with different parameter signatures can coexist
+        if new_func.params != existing_func.params {
+            return Ok(false);
+        }
+
+        // Functions with same parameter signature must have distinguishable guard conditions
+        // to avoid conflicts at call time
+        match (&new_func.guard_clause, &existing_func.guard_clause) {
+            (None, None) => {
+                // Two functions with identical signatures and no guards - this is always conflicting
+                Ok(true)
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                // One has guard, one doesn't - this is allowed
+                // The one without guard acts as the default case
+                Ok(false)
+            }
+            (Some(new_guard), Some(existing_guard)) => {
+                // Both have guards - check if they're equivalent (conflicting)
+                // For now, assume different guard expressions are non-conflicting
+                // TODO: Implement sophisticated guard analysis to detect overlapping conditions
+                Ok(self.are_guards_equivalent(&new_guard.condition, &existing_guard.condition))
+            }
+        }
+    }
+
+    /// Check if two guard expressions are equivalent (simplified implementation)
+    fn are_guards_equivalent(
+        &self,
+        _guard1: &crate::checker::TypedExpression,
+        _guard2: &crate::checker::TypedExpression,
+    ) -> bool {
+        // TODO: Implement sophisticated guard expression comparison
+        // For now, assume all different guard expressions are non-conflicting
+        false
+    }
+
+    /// Resolve function call to the appropriate overload based on arguments
+    /// This is the core function overloading resolution algorithm
+    pub fn resolve_function_overload(
+        &self,
+        function_name: &str,
+        _args: &[(String, crate::checker::TypedExpression)], // For future sophisticated resolution
+    ) -> Option<&FunctionSignature> {
+        let overloads = self.lookup_function_overloads(function_name);
+
+        if overloads.is_empty() {
+            return None;
+        }
+
+        // For now, use simple resolution strategy:
+        // 1. If there's only one overload, use it
+        // 2. If multiple overloads, prefer the one without a guard clause
+        // 3. TODO: Implement sophisticated guard evaluation and argument matching
+
+        if overloads.len() == 1 {
+            return overloads.first().copied();
+        }
+
+        // Find overload without guard clause first (default case)
+        for overload in &overloads {
+            if overload.guard_clause.is_none() {
+                return Some(overload);
+            }
+        }
+
+        // If all have guard clauses, return the first one
+        // TODO: Implement guard evaluation based on arguments
+        overloads.first().copied()
     }
 
     /// Get a concrete type by TypeId
@@ -281,6 +395,7 @@ impl FunctionSignature {
             params,
             return_type,
             is_guard,
+            guard_clause: None, // No guard clause for this constructor
             span,
         }
     }

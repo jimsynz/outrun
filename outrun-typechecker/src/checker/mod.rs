@@ -58,7 +58,7 @@ pub enum TypedItemKind {
 }
 
 /// Expression with type information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub type_id: TypeId,
@@ -66,7 +66,7 @@ pub struct TypedExpression {
 }
 
 /// Kinds of typed expressions (stub for now)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpressionKind {
     Integer(i64),
     Float(f64),
@@ -123,7 +123,7 @@ pub enum TypedExpressionKind {
 }
 
 /// Typed block with statements
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedBlock {
     pub statements: Vec<TypedStatement>,
     pub result_type: TypeId, // Type of the block's result
@@ -131,7 +131,7 @@ pub struct TypedBlock {
 }
 
 /// Typed case when clause
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedCaseWhenClause {
     pub guard: TypedExpression,
     pub result: TypedCaseResult,
@@ -139,7 +139,7 @@ pub struct TypedCaseWhenClause {
 }
 
 /// Typed case result (block or expression)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedCaseResult {
     Block(TypedBlock),
     Expression(Box<TypedExpression>),
@@ -156,7 +156,7 @@ impl TypedCaseResult {
 }
 
 /// Typed trait case clause
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedTraitCaseClause {
     pub type_id: TypeId,
     pub result_type: TypeId,
@@ -164,14 +164,14 @@ pub struct TypedTraitCaseClause {
 }
 
 /// Typed statement
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedStatement {
     pub kind: TypedStatementKind,
     pub span: Span,
 }
 
 /// Kinds of typed statements
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedStatementKind {
     Expression(Box<TypedExpression>),
     LetBinding(Box<TypedLetBinding>),
@@ -197,7 +197,7 @@ pub struct TypedConstDefinition {
 }
 
 /// Typed let binding
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedLetBinding {
     pub pattern: outrun_parser::Pattern, // TODO: Create typed pattern system
     pub type_id: TypeId,
