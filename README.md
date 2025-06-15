@@ -21,8 +21,8 @@ result = value |> transform() |? validate() |> save()
 # |> calls Pipe.pipe_into(), |? calls Maybe.maybe_pipe()
 
 # Even attributes are traits!
-@Derive(traits: [Debug, Clone])
-struct User(name: String, email: String) {}
+@Derive(traits: [Debug, Display])
+struct NeonCar(model: String, speed: Integer) {}
 ```
 
 ### 🏷️ Named Parameters Only

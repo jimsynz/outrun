@@ -303,13 +303,13 @@ impl Drawable for User {
 }
 
 # With generics
-impl<T> Container<T> for Box<T> when T: Clone {
-    def get(self: Self): T {
-        self.value.clone()
+impl<T> Display for SynthesizerBank<T> when T: Waveform {
+    def to_string(self: Self): String {
+        "SynthBank: #{self.patches.length()} patches loaded"
     }
     
-    def put(self: Self, value: T): Self {
-        Box { value: value }
+    def add_patch(self: Self, patch: T): Self {
+        SynthesizerBank { patches: [patch, ..self.patches] }
     }
 }
 ```
@@ -321,8 +321,8 @@ Traits can define static functions using the `defs` keyword. These functions are
 ```outrun
 trait Result<T, E> {
     # Static constructor functions - implemented in the trait
-    defs ok(value: T): Result<T, E> {
-        Result.Ok { value: value }
+    defs ok(result: T): Result<T, E> {
+        Result.Ok { result: result}
     }
     
     defs error(error: E): Result<T, E> {
@@ -346,14 +346,14 @@ trait Option<T> {
     }
     
     # Instance methods
-    def is_some?(self: Self): Boolean
+    def some?(self: Self): Boolean
     def unwrap(self: Self): T
 }
 ```
 
 **Static Function Characteristics:**
 
-- **No `Self` parameter**: Static functions don't operate on instances
+- **No `Self` parameter**: Static functions don't operate on values
 - **Trait-level implementation**: Function body is defined in the trait itself
 - **Constructor patterns**: Commonly used for ergonomic type construction
 - **Callable via trait name**: `Result.ok(value: 42)`, `Option.some(value: "hello")`
@@ -370,13 +370,6 @@ let failure = Result.error(error: "Invalid input")
 # Create Option values
 let some_value = Option.some(value: "hello")
 let no_value = Option.none()
-
-# Static functions can't be called on instances
-# success.ok(value: 123)  # Error: ok is a static function
-
-# Instance methods work normally
-let is_success = success.is_ok?()
-let unwrapped = success.unwrap()
 ```
 
 ## Generic Types
@@ -420,15 +413,15 @@ struct Processor<T>(data: T) when T: Display {
 }
 
 # Multiple constraints  
-struct Sortable<T>(items: List<T>) when T: Comparable && T: Clone {
-    def sort(self: Self): List<T> {
-        # Can use both Comparable and Clone operations
+struct RaceTrack<T>(segments: List<T>) when T: Measurable && T: Navigable {
+    def calculate_lap_time(self: Self): Duration {
+        # Can use both Measurable and Navigable operations
     }
 }
 
 # Trait with constraints
-trait Container<T> when T: Clone {
-    def duplicate(self: Self): Self
+trait NeonDisplay<T> when T: Illuminated {
+    def render_frame(self: Self): Frame
 }
 ```
 
@@ -454,12 +447,22 @@ def create_container(value: String): Container<String> {
 # def map<T, U>(list: List<T>, fn: T -> U): List<U>  # Not supported
 ```
 
-### Generic Type Arguments
-
-When using generic types, you specify concrete type arguments:
+The only generic types that can be referred to by function arguments or return values are those which are defined in the surrounding type, eg:
 
 ```outrun
-# Creating instances of generic types
+struct Point<T>(x: T, y: T) {
+    def as_tuple(point: Self): (T, T) {
+        (point.x, point.y)
+    }
+}
+```
+
+### Generic Type Arguments
+
+When using generic types, you specify concrete type or trait arguments:
+
+```outrun
+# Creating values of generic types
 let numbers: List<Integer> = List.new()
 let user_result: Result<User, String> = Result.ok(value: user)
 let name_option: Option<String> = Option.some(value: "Alice")
@@ -482,9 +485,9 @@ impl Display<T> for Container<T> when T: Display {
 }
 
 # Implementation for specific generic instantiation
-impl Clone for Pair<String, Integer> {
-    def clone(self: Self): Self {
-        Pair { first: self.first.clone(), second: self.second }
+impl Double for Pair<Integer> {
+    def double(self: Self): Integer {
+        Self { a: self.a * 2, b: self.b * 2 }
     }
 }
 ```
@@ -504,19 +507,19 @@ Outrun provides several built-in generic types:
 `Self` is a special generic type that always refers to the implementing concrete type:
 
 ```outrun
-trait Cloneable {
-    def clone(self: Self): Self  # Self refers to the implementing type
+trait Synthesizable {
+    def create_waveform(self: Self): Waveform  # Self refers to the implementing type
 }
 
-impl Cloneable for User {
-    def clone(self: Self): Self {  # Self = User in this implementation
-        User { id: self.id, name: self.name.clone() }
+impl Synthesizable for CyberSynth {
+    def create_waveform(self: Self): Waveform {  # Self = CyberSynth in this implementation
+        Waveform { frequency: self.frequency, amplitude: self.amplitude }
     }
 }
 
-impl Cloneable for Container<String> {
-    def clone(self: Self): Self {  # Self = Container<String> in this implementation
-        Container { value: self.value.clone() }
+impl Synthesizable for LaserHarp<String> {
+    def create_waveform(self: Self): Waveform {  # Self = LaserHarp<String> in this implementation
+        Waveform.from_note(note: self.current_note)
     }
 }
 ```
@@ -532,7 +535,7 @@ impl Cloneable for Container<String> {
 1. **Declaration Scope**: Only structs and traits can declare generic parameters
 2. **Usage Scope**: Functions, variables, and expressions can use existing generic types
 3. **Constraint Scope**: Generic constraints (`when T: Trait`) are only valid on struct and trait declarations
-4. **Type Arguments**: Must be provided when creating instances of generic types
+4. **Type Arguments**: Must be provided when creating values of generic types
 5. **Variance**: Generic types are invariant (no subtyping between `Container<A>` and `Container<B>`)
 6. **Self Type**: `Self` is a special generic that always refers to the implementing concrete type
 
@@ -543,7 +546,7 @@ Function types provide explicit type annotations for first-class functions. They
 ```outrun
 # Basic function type syntax: Function<(param: Type) -> ReturnType>
 def process(callback: Function<(x: Integer) -> String>) {
-    callback(42)
+    callback(x: 42)
 }
 
 # Function type with no parameters  
@@ -608,18 +611,18 @@ def add(left: Integer, right: Integer): Integer {
 
 # Private function
 defp validate_email(email: String): Boolean {
-    String.contains?(email, "@")
+    String.contains?(string: email, pattern: "@")
 }
 
 # Function with guards
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
 when Integer.non_zero?(value: denominator) {
-    Ok(numerator / denominator)
+    Result.ok(result: numerator / denominator)
 }
 
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
 when Integer.zero?(value: denominator) {
-    Err(DivisionError("Cannot divide by zero"))
+    Result.error(DivisionError.error(message: "Cannot divide by zero"))
 }
 ```
 
@@ -633,10 +636,10 @@ def calculate(x: Integer): Integer { x * 2 }
 
 # ✅ Valid: Function returns Option value
 def process_data(msg: String): Option<String> { 
-    if String.empty?(msg) {
+    if String.empty?(string: msg) {
         Option.none()
     } else {
-        Option.some(value: String.uppercase(msg))
+        Option.some(option: String.uppercase(string: msg))
     }
 }
 
@@ -673,7 +676,7 @@ result = add(left, right)           # Equivalent to add(left: left, right: right
 result = add(left, right: 10)      # Equivalent to add(left: left, right: 10)
 
 # Remote function calls
-user = User.create(email: "test@example.com", name: Some("James"))
+user = User.create(email: "test@example.com", name: Option.some(option: "James"))
 
 # Parentheses required even for no arguments
 current_time = DateTime.now()
@@ -709,7 +712,7 @@ def process_user(user: User, session: Session, timestamp: DateTime): Result<(), 
     # Function implementation
 }
 
-# The compiler auto-generates:
+# The compiler auto-generates a type whose name is opaque but is discoverable via the `Function` trait.
 struct ProcessUserInput(user: User, session: Session, timestamp: DateTime)
 
 # And automatically implements Spreadable<ProcessUserInput> for compatible structs:
@@ -744,7 +747,7 @@ logger = fn {
     message: String -> {
         let timestamp = DateTime.now()
         IO.puts("#{timestamp}: #{message}")
-        Ok(())
+        Result.ok(result: ())
     }
 }
 
@@ -767,9 +770,9 @@ generator = fn { () -> UUID.new() }
 
 # Complex parameter patterns
 processor = fn {
-    User { name, email } when String.contains?(string: email, substring: "@") -> process_user(name: name, email: email)
-    Guest { session_id } -> process_guest(id: session_id)
-    Admin { permissions } -> process_admin(perms: permissions)
+    _user: User { name, email } when String.contains?(string: email, substring: "@") -> process_user(name: name, email: email)
+    _user: Guest { session_id } -> process_guest(id: session_id)
+    _user: Admin { permissions } -> process_admin(perms: permissions)
 }
 ```
 
@@ -838,9 +841,9 @@ option_mismatch = fn {
 ```outrun
 # ✅ Valid: Guards return Boolean
 validator = fn {
-    User { age } when Integer.greater?(value: age, other: 18) -> "adult"
-    User { age } when Integer.positive?(value: age) -> "minor"
-    User { age } -> "invalid age"
+    _user: User { age } when Integer.greater?(value: age, other: 18) -> "adult"
+    _user: User { age } when Integer.positive?(value: age) -> "minor"
+    _user: User { age } -> "invalid age"
 }
 
 # ❌ Invalid: Guard doesn't return Boolean
@@ -857,13 +860,13 @@ invalid_guard = fn {
 ```outrun
 # ✅ Valid: All clauses use struct patterns
 struct_processor = fn {
-    User { name } when String.not_empty?(value: name) -> process_user(name: name)
-    User { name } -> process_anonymous_user()
+    _user: User { name } when String.not_empty?(value: name) -> process_user(name: name)
+    _user: User { name } -> process_anonymous_user()
 }
 
 # ❌ Invalid: Mixing pattern types
 pattern_mismatch = fn {
-    User { name } -> process_user(name: name)    # Struct pattern
+    _user: User { name } -> process_user(name: name)    # Struct pattern
     x: User -> process_user_simple(user: x)      # Simple parameter - COMPILATION ERROR
 }
 ```
@@ -1440,8 +1443,8 @@ import Logger, except: [debug: 1]       # Exclude specific functions
 Attributes are trait-based and use named parameter syntax:
 
 ```outrun
-@Derive(traits: [Debug, Clone])
-struct User(email: String, name: String) {
+@Derive(traits: [Debug, Display])
+struct SportsCar(model: String, speed: Integer) {
     # Functions go here
 }
 
@@ -1623,7 +1626,7 @@ trait Attribute {
     def apply(target: AST, args: Map<Atom, Any>): Result<AST, AttributeError>
 }
 
-# Usage: @Derive(traits: [Debug, Clone])
+# Usage: @Derive(traits: [Debug, Display])
 ```
 
 **Destructuring:**
