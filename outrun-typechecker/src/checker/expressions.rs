@@ -42,6 +42,9 @@ impl ExpressionChecker {
                 Self::check_binary_operation(context, &bin_op.left, &bin_op.operator, &bin_op.right)
             }
             ExpressionKind::FunctionCall(call) => Self::check_function_call(context, call),
+            ExpressionKind::FunctionCapture(capture) => {
+                Self::check_function_capture(context, capture)
+            }
             ExpressionKind::List(list_lit) => Self::check_list_literal(context, list_lit),
             ExpressionKind::Tuple(tuple_lit) => Self::check_tuple_literal(context, tuple_lit),
             ExpressionKind::Map(map_lit) => Self::check_map_literal(context, map_lit),
@@ -288,30 +291,34 @@ impl ExpressionChecker {
         call: &outrun_parser::FunctionCall,
     ) -> TypeResult<TypedExpression> {
         // Extract function name and span from path
-        let (function_name, path_span) = match &call.path {
-            outrun_parser::FunctionPath::Simple { name } => (name.name.clone(), name.span),
-            outrun_parser::FunctionPath::Qualified { name, .. } => {
-                return Err(TypeError::UnimplementedFeature {
-                    feature: "Qualified function calls".to_string(),
-                    span: crate::error::span_to_source_span(name.span),
-                });
+        let (function_name, module_path, path_span) = match &call.path {
+            outrun_parser::FunctionPath::Simple { name } => (name.name.clone(), None, name.span),
+            outrun_parser::FunctionPath::Qualified { module, name } => {
+                (name.name.clone(), Some(module.name.clone()), name.span)
             }
             outrun_parser::FunctionPath::Expression { expression } => {
                 return Err(TypeError::UnimplementedFeature {
-                    feature: "Expression function calls".to_string(),
+                    feature: "Expression function calls (captured functions)".to_string(),
                     span: crate::error::span_to_source_span(expression.span),
                 });
             }
         };
 
-        // Look up the function in the current scope
-        let function_return_type = if let Some(function) = context.lookup_function(&function_name) {
-            function.return_type
+        // Look up the function - handle both simple and qualified calls
+        let function_return_type = if let Some(module) = &module_path {
+            // Qualified function call: Module.function_name()
+            // This is treated as a static function call on the module/type
+            Self::lookup_qualified_function(context, module, &function_name)?
         } else {
-            return Err(TypeError::undefined_function(
-                function_name,
-                crate::error::span_to_source_span(path_span),
-            ));
+            // Simple function call: function_name()
+            if let Some(function) = context.lookup_function(&function_name) {
+                function.return_type
+            } else {
+                return Err(TypeError::undefined_function(
+                    function_name,
+                    crate::error::span_to_source_span(path_span),
+                ));
+            }
         };
 
         // Type check arguments
@@ -346,73 +353,77 @@ impl ExpressionChecker {
         }
 
         // Validate argument types match function parameters
-        let function_def = context.lookup_function(&function_name).unwrap(); // Safe due to check above
+        // Skip parameter validation for qualified function calls for now
+        // TODO: Implement comprehensive parameter validation for qualified calls
+        if module_path.is_none() {
+            let function_def = context.lookup_function(&function_name).unwrap(); // Safe due to check above
 
-        // Check that all required parameters are provided
-        let required_param_names: std::collections::HashSet<_> = function_def
-            .params
-            .iter()
-            .map(|(atom_id, _)| {
-                context
-                    .interner
-                    .resolve_atom(*atom_id)
-                    .unwrap_or("<unknown>")
-            })
-            .collect();
-
-        let provided_param_names: std::collections::HashSet<_> =
-            typed_args.iter().map(|(name, _)| name.as_str()).collect();
-
-        // Check for missing required parameters
-        for required_param in &required_param_names {
-            if !provided_param_names.contains(required_param) {
-                return Err(TypeError::MissingParameter {
-                    function_name: function_name.clone(),
-                    parameter_name: required_param.to_string(),
-                    span: crate::error::span_to_source_span(call.span),
-                });
-            }
-        }
-
-        // Check for unexpected parameters
-        for provided_param in &provided_param_names {
-            if !required_param_names.contains(provided_param) {
-                return Err(TypeError::UnexpectedParameter {
-                    function_name: function_name.clone(),
-                    parameter_name: provided_param.to_string(),
-                    span: crate::error::span_to_source_span(call.span),
-                });
-            }
-        }
-
-        // Validate argument types match parameter types
-        for (arg_name, typed_arg) in &typed_args {
-            // Find the parameter type for this argument
-            let param_type = function_def
+            // Check that all required parameters are provided
+            let required_param_names: std::collections::HashSet<_> = function_def
                 .params
                 .iter()
-                .find(|(atom_id, _)| {
+                .map(|(atom_id, _)| {
                     context
                         .interner
                         .resolve_atom(*atom_id)
                         .unwrap_or("<unknown>")
-                        == arg_name
                 })
-                .map(|(_, type_id)| *type_id);
+                .collect();
 
-            if let Some(expected_type) = param_type {
-                if typed_arg.type_id != expected_type {
-                    return Err(TypeError::type_mismatch(
+            let provided_param_names: std::collections::HashSet<_> =
+                typed_args.iter().map(|(name, _)| name.as_str()).collect();
+
+            // Check for missing required parameters
+            for required_param in &required_param_names {
+                if !provided_param_names.contains(required_param) {
+                    return Err(TypeError::MissingParameter {
+                        function_name: function_name.clone(),
+                        parameter_name: required_param.to_string(),
+                        span: crate::error::span_to_source_span(call.span),
+                    });
+                }
+            }
+
+            // Check for unexpected parameters
+            for provided_param in &provided_param_names {
+                if !required_param_names.contains(provided_param) {
+                    return Err(TypeError::UnexpectedParameter {
+                        function_name: function_name.clone(),
+                        parameter_name: provided_param.to_string(),
+                        span: crate::error::span_to_source_span(call.span),
+                    });
+                }
+            }
+
+            // Validate argument types match parameter types
+            for (arg_name, typed_arg) in &typed_args {
+                // Find the parameter type for this argument
+                let param_type = function_def
+                    .params
+                    .iter()
+                    .find(|(atom_id, _)| {
                         context
-                            .get_type_name(expected_type)
-                            .unwrap_or("Unknown")
-                            .to_string(),
-                        context
-                            .get_type_name(typed_arg.type_id)
-                            .unwrap_or("Unknown")
-                            .to_string(),
-                        crate::error::span_to_source_span(typed_arg.span),
-                    ));
+                            .interner
+                            .resolve_atom(*atom_id)
+                            .unwrap_or("<unknown>")
+                            == arg_name
+                    })
+                    .map(|(_, type_id)| *type_id);
+
+                if let Some(expected_type) = param_type {
+                    if typed_arg.type_id != expected_type {
+                        return Err(TypeError::type_mismatch(
+                            context
+                                .get_type_name(expected_type)
+                                .unwrap_or("Unknown")
+                                .to_string(),
+                            context
+                                .get_type_name(typed_arg.type_id)
+                                .unwrap_or("Unknown")
+                                .to_string(),
+                            crate::error::span_to_source_span(typed_arg.span),
+                        ));
+                    }
                 }
             }
         }
@@ -1380,7 +1391,7 @@ impl ExpressionChecker {
     }
 
     /// Type check a block
-    fn check_block(
+    pub fn check_block(
         context: &mut TypeContext,
         block: &outrun_parser::Block,
     ) -> TypeResult<crate::checker::TypedBlock> {
@@ -1505,6 +1516,123 @@ impl ExpressionChecker {
             statements: typed_statements,
             result_type,
             span: block.span,
+        })
+    }
+
+    /// Look up a qualified function (Module.function_name)
+    /// This treats qualified calls as static function calls on the module/type
+    fn lookup_qualified_function(
+        context: &mut TypeContext,
+        module_name: &str,
+        function_name: &str,
+    ) -> TypeResult<TypeId> {
+        // Try to resolve the module as a trait first
+        // This handles cases like Option.some(), Result.ok(), etc.
+        if let Some(trait_id) = context.interner.get_trait(module_name) {
+            if let Some(trait_def) = context.trait_registry.get_trait(trait_id) {
+                // Convert function name to AtomId for lookup
+                // Note: intern_atom is used instead of get_atom to ensure the atom exists for comparison
+                let function_name_atom = context.interner.intern_atom(function_name);
+                if let Some(function_def) = trait_def.find_function(function_name_atom) {
+                    return Ok(function_def.return_type);
+                }
+                
+                // Trait exists but function doesn't exist on it
+                return Err(TypeError::UndefinedFunction {
+                    span: crate::error::span_to_source_span(outrun_parser::Span::new(0, 0)), // TODO: Pass proper span
+                    name: format!("{}.{}", module_name, function_name),
+                });
+            }
+        }
+
+        // Try to resolve as a type (for future struct static methods)
+        if let Some(module_type_id) = context.interner.get_type(module_name) {
+            // Look up the static function on this type using the dispatch table
+            if let Some(_function_id) = context
+                .dispatch_table
+                .lookup_static_function(module_type_id, function_name)
+            {
+                // Function exists in dispatch table, should have been handled above if it's a trait
+                // This is for future struct static methods
+                // For now, return a placeholder type
+                return Ok(context.interner.intern_type("String")); // TODO: Get actual return type
+            }
+        }
+
+        // If not found as a static function on a type, try as a module function
+        // For now, this is a simplified implementation
+        // Future enhancement: proper module registry and qualified function lookup
+        let qualified_name = format!("{}.{}", module_name, function_name);
+        if let Some(function) = context.lookup_function(&qualified_name) {
+            return Ok(function.return_type);
+        }
+
+        // Function not found in module
+        Err(TypeError::UndefinedFunction {
+            span: crate::error::span_to_source_span(outrun_parser::Span::new(0, 0)), // TODO: Pass proper span
+            name: qualified_name,
+        })
+    }
+
+    /// Check function capture expression (&function_name)
+    fn check_function_capture(
+        context: &mut TypeContext,
+        capture: &outrun_parser::FunctionCapture,
+    ) -> TypeResult<TypedExpression> {
+        // Resolve the function being captured
+        let function_name = &capture.function_name.name;
+
+        // Handle both simple and qualified function captures
+        let function_return_type = if let Some(module_path) = &capture.module_path {
+            // Qualified capture: &Module.function_name
+            let module_name = module_path
+                .iter()
+                .map(|id| id.name.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            Self::lookup_qualified_function(context, &module_name, function_name)?
+        } else {
+            // Simple capture: &function_name
+            if let Some(function) = context.lookup_function(function_name) {
+                function.return_type
+            } else {
+                return Err(TypeError::undefined_function(
+                    function_name.clone(),
+                    crate::error::span_to_source_span(capture.span),
+                ));
+            }
+        };
+
+        // For now, we'll create a simplified function type
+        // TODO: Implement proper function types in the type system
+        // For now, we'll use a placeholder type that represents "function"
+        let function_type_id = context.interner.intern_type(&format!(
+            "Function<{}>",
+            context
+                .interner
+                .resolve_type(function_return_type)
+                .unwrap_or("Unknown")
+        ));
+
+        Ok(TypedExpression {
+            kind: crate::checker::TypedExpressionKind::FunctionCapture {
+                path: if let Some(module_path) = &capture.module_path {
+                    format!(
+                        "{}.{}",
+                        module_path
+                            .iter()
+                            .map(|id| id.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join("."),
+                        function_name
+                    )
+                } else {
+                    function_name.clone()
+                },
+                arity: capture.arity,
+            },
+            type_id: function_type_id,
+            span: capture.span,
         })
     }
 }

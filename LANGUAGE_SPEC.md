@@ -22,7 +22,7 @@ Outrun distinguishes between **concrete types** (actual runtime values) and **tr
 
 - **Concrete types**: `Outrun.Core.Integer64`, `Outrun.Core.Float64`, `Outrun.Core.Boolean`, `Outrun.Core.String`, `Outrun.Core.Atom`
 - **Traits**: `Integer`, `Float`, `Boolean`, `String` define behaviour interface
-- **Runtime dispatch**: Integer literals default to `Outrun.Core.Integer64` but other concrete types can implement `Integer`
+- **Static dispatch**: Integer literals default to `Outrun.Core.Integer64` but other concrete types can implement `Integer`
 - **Type checking**: The type checker maintains trait implementation mappings, not the interpreter
 - **Static analysis**: All trait compatibility validated at compile time, not runtime
 
@@ -89,7 +89,7 @@ Outrun's module system is based on types, with clear separation between static f
 
 - **Type checker responsibility**: Builds `(TraitId, TypeId) -> OpaqueModule` lookup table
 - **Runtime dispatch**: `Display.to_string(value: int)` becomes module lookup + function call within module
-- **Opaque trait modules**: Named like "impl TraitName for TypeName", separate from type's own module
+- **Opaque trait modules**: Named like "TypeName as TraitName", separate from type's own module
 - **No naming conflicts**: Static functions in type module vs trait functions in separate impl modules
 
 ### Module Resolution
@@ -235,7 +235,7 @@ can span multiple lines
 ```outrun
 [1, 2, 3]                         # List
 (42, "hello", true)               # Tuple
-%{name: "James", age: 35}         # Map
+{name: "James", age: 35}          # Map
 
 # List construction with head|tail syntax (similar to Elixir's [head | tail])
 [head, ..tail]                   # Prepend element(s) to existing list
@@ -316,7 +316,7 @@ impl<T> Container<T> for Box<T> when T: Clone {
 
 ### Static Trait Functions
 
-Traits can define static functions using the `defs` keyword. These functions are implemented in the trait itself and provide constructor patterns and trait-level utilities without requiring implementation by concrete types.
+Traits can define static functions using the `defs` keyword. These functions are implemented in the trait itself and provide constructor patterns and trait-level utilities without requiring implementation by concrete types. They cannot refer to the `Self` type.
 
 ```outrun
 trait Result<T, E> {
@@ -379,6 +379,163 @@ let is_success = success.is_ok?()
 let unwrapped = success.unwrap()
 ```
 
+## Generic Types
+
+Generic types provide parametric polymorphism in Outrun, allowing types and traits to work with multiple concrete types while maintaining type safety. Generic parameters are declared on **structs and traits only** - functions do not declare their own generic parameters.
+
+### Generic Type Declaration
+
+Generic parameters are declared using angle brackets `<T>` on structs and traits:
+
+```outrun
+# Generic struct with single parameter
+struct Container<T>(value: T) {
+    def get(self: Self): T { self.value }
+}
+
+# Generic struct with multiple parameters
+struct Pair<T, U>(first: T, second: U) {
+    def swap(self: Self): Pair<U, T> {
+        Pair { first: self.second, second: self.first }
+    }
+}
+
+# Generic trait with parameter
+trait Serializable<T> {
+    def serialize(self: Self): T
+    def deserialize(data: T): Result<Self, String>
+}
+```
+
+### Generic Constraints
+
+Generic parameters can be constrained to implement specific traits using the `when` clause:
+
+```outrun
+# Single constraint
+struct Processor<T>(data: T) when T: Display {
+    def show(self: Self): String {
+        T.to_string(self.data)
+    }
+}
+
+# Multiple constraints  
+struct Sortable<T>(items: List<T>) when T: Comparable && T: Clone {
+    def sort(self: Self): List<T> {
+        # Can use both Comparable and Clone operations
+    }
+}
+
+# Trait with constraints
+trait Container<T> when T: Clone {
+    def duplicate(self: Self): Self
+}
+```
+
+### Generic Type Usage in Functions
+
+Functions **do not declare generic parameters** like `def foo<T>()`. Instead, functions use existing generic types in their signatures:
+
+```outrun
+# ✅ Valid: Using existing generic types
+def process_list(items: List<String>): List<Integer> {
+    # Process List<String> to produce List<Integer>
+}
+
+def handle_result(result: Result<User, DatabaseError>): Option<User> {
+    # Process Result to produce Option
+}
+
+def create_container(value: String): Container<String> {
+    Container { value: value }
+}
+
+# ❌ Invalid: Functions cannot declare generic parameters
+# def map<T, U>(list: List<T>, fn: T -> U): List<U>  # Not supported
+```
+
+### Generic Type Arguments
+
+When using generic types, you specify concrete type arguments:
+
+```outrun
+# Creating instances of generic types
+let numbers: List<Integer> = List.new()
+let user_result: Result<User, String> = Result.ok(value: user)
+let name_option: Option<String> = Option.some(value: "Alice")
+
+# Generic types in struct literals
+let container = Container<String> { value: "hello" }
+let pair = Pair<Integer, String> { first: 42, second: "answer" }
+```
+
+### Generic Implementation Blocks
+
+Implementations can be generic over type parameters:
+
+```outrun
+# Generic implementation
+impl Display<T> for Container<T> when T: Display {
+    def to_string(self: Self): String {
+        "Container(#{T.to_string(self.value)})"
+    }
+}
+
+# Implementation for specific generic instantiation
+impl Clone for Pair<String, Integer> {
+    def clone(self: Self): Self {
+        Pair { first: self.first.clone(), second: self.second }
+    }
+}
+```
+
+### Built-in Generic Types
+
+Outrun provides several built-in generic types:
+
+- **`Option<T>`**: Optional values that may be `Some<T>` or `None`
+- **`Result<T, E>`**: Success (`Ok<T>`) or failure (`Err<E>`) values
+- **`List<T>`**: Homogeneous collections of type `T`
+- **`Map<K, V>`**: Key-value associations from `K` to `V`
+- **`Function<(args...) -> ReturnType>`**: Function types with specified signatures
+
+### The Self Type
+
+`Self` is a special generic type that always refers to the implementing concrete type:
+
+```outrun
+trait Cloneable {
+    def clone(self: Self): Self  # Self refers to the implementing type
+}
+
+impl Cloneable for User {
+    def clone(self: Self): Self {  # Self = User in this implementation
+        User { id: self.id, name: self.name.clone() }
+    }
+}
+
+impl Cloneable for Container<String> {
+    def clone(self: Self): Self {  # Self = Container<String> in this implementation
+        Container { value: self.value.clone() }
+    }
+}
+```
+
+**Self Type Characteristics:**
+- **Always available**: `Self` is implicitly available in all trait and struct function definitions
+- **Refers to implementer**: In trait implementations, `Self` refers to the concrete implementing type
+- **Type-safe**: Ensures methods return the correct concrete type, not a generic
+- **No explicit declaration**: `Self` doesn't need to be declared like other generic parameters
+
+### Generic Type Rules
+
+1. **Declaration Scope**: Only structs and traits can declare generic parameters
+2. **Usage Scope**: Functions, variables, and expressions can use existing generic types
+3. **Constraint Scope**: Generic constraints (`when T: Trait`) are only valid on struct and trait declarations
+4. **Type Arguments**: Must be provided when creating instances of generic types
+5. **Variance**: Generic types are invariant (no subtyping between `Container<A>` and `Container<B>`)
+6. **Self Type**: `Self` is a special generic that always refers to the implementing concrete type
+
 ### Function Types
 
 Function types provide explicit type annotations for first-class functions. They specify the parameter types and return type for function values:
@@ -390,7 +547,7 @@ def process(callback: Function<(x: Integer) -> String>) {
 }
 
 # Function type with no parameters  
-def run(task: Function<() -> Unit>) {
+def run(task: Function<() -> Option>) {
     task()
 }
 
@@ -411,11 +568,11 @@ struct EventHandler(
     }
 }
 
-# Function types with generic return types
-def map_list<T, U>(
-    list: List<T>, 
-    mapper: Function<(item: T) -> U>
-): List<U> {
+# Functions using existing generic types in signatures
+def process_list(
+    list: List<String>, 
+    mapper: Function<(item: String) -> Integer>
+): List<Integer> {
     List.map(list, mapper)
 }
 
@@ -465,6 +622,41 @@ when Integer.zero?(value: denominator) {
     Err(DivisionError("Cannot divide by zero"))
 }
 ```
+
+### Function Return Types
+
+All functions in Outrun **must have explicit return type annotations** and **must return a value**. Every function body contains at least one expression, and all expressions produce values:
+
+```outrun
+# ✅ Valid: Function returns calculated value
+def calculate(x: Integer): Integer { x * 2 }
+
+# ✅ Valid: Function returns Option value
+def process_data(msg: String): Option<String> { 
+    if String.empty?(msg) {
+        Option.none()
+    } else {
+        Option.some(value: String.uppercase(msg))
+    }
+}
+
+# ✅ Valid: Function that performs side effects but still returns a value
+def log_and_return(msg: String): String {
+    Logger.info(msg)  # Side effect
+    msg              # Return value
+}
+
+# ❌ Invalid: Missing return type annotation
+# def invalid_function(x: Integer) { x * 2 }  # Compilation error
+```
+
+**Return Type Rules:**
+
+1. **Mandatory Annotations**: Every function must specify its return type explicitly
+2. **Must Return Value**: All functions must contain at least one expression that produces the return value
+3. **Type Matching**: Function body must produce a value that matches the declared return type exactly
+4. **Guard Functions**: Functions ending with `?` must return `Boolean`
+5. **Generic Returns**: Functions can return generic types like `Option<User>`, `Result<T, E>`
 
 ### Function Calls
 
@@ -588,12 +780,12 @@ let simple_logger = &Logger.log/1
 let detailed_logger = &Logger.log/2
 
 # Used in higher-order functions
-users |> List.filter(&User.verified?)
-names |> List.map(&String.upcase)
+users |> List.filter(filter: &User.verified?)
+names |> List.map(map: &String.upcase)
 
 # For complex expressions, use full anonymous function syntax
-users |> List.filter(fn { user: User -> user.age >= 18 && user.verified })
-coordinates |> List.map(fn { point: Point -> Point { x: point.x * 2, y: point.y * 2 } })
+users |> List.filter(filter: fn { user: User -> user.age >= 18 && user.verified })
+coordinates |> List.map(map: fn { point: Point -> Point { x: point.x * 2, y: point.y * 2 } })
 ```
 
 ## Control Flow

@@ -115,6 +115,10 @@ pub enum TypedExpressionKind {
         trait_name: String,
         type_clauses: Vec<TypedTraitCaseClause>,
     },
+    FunctionCapture {
+        path: String,       // Function path (e.g., "Module.function" or "function")
+        arity: Option<i32>, // Optional arity specification (/2)
+    },
     // TODO: Add all expression kinds with type information
 }
 
@@ -474,39 +478,86 @@ impl TypeChecker {
         &mut self,
         func: &outrun_parser::FunctionDefinition,
     ) -> Result<TypedItem, TypeError> {
-        // Create a new scope for function parameters
-        self.context.push_scope(true);
+        // Use the comprehensive function validation from FunctionChecker
+        FunctionChecker::check_function_definition(&mut self.context, func)?;
+        self.create_typed_function_item(func, None)
+    }
 
-        // Register function parameters as variables in the new scope
+    /// Type check a function definition with implementation context (for impl blocks)
+    fn check_function_definition_with_impl_context(
+        &mut self,
+        func: &outrun_parser::FunctionDefinition,
+        implementing_type: TypeId,
+    ) -> Result<TypedItem, TypeError> {
+        // Use the comprehensive function validation from FunctionChecker with impl context
+        FunctionChecker::check_function_definition_with_context(
+            &mut self.context,
+            func,
+            Some(implementing_type),
+        )?;
+        self.create_typed_function_item(func, Some(implementing_type))
+    }
+
+    /// Create a typed function item (shared logic for both standalone and impl functions)
+    fn create_typed_function_item(
+        &mut self,
+        func: &outrun_parser::FunctionDefinition,
+        implementing_type: Option<TypeId>,
+    ) -> Result<TypedItem, TypeError> {
+        // Resolve parameter types for typed AST
         let mut typed_params = Vec::new();
         for param in &func.parameters {
-            // TODO: Validate parameter type exists
-            let param_type = self.context.interner.intern_type("Unknown"); // Stub for now
-            typed_params.push((param.name.name.clone(), param_type));
-
-            // Register parameter as variable
-            let variable = crate::checker::context::Variable {
-                name: param.name.name.clone(),
-                type_id: param_type,
-                is_mutable: false,
-                span: param.span,
+            let param_type = if let Some(implementing_type_id) = implementing_type {
+                // Use Self-aware type resolution for impl block functions
+                Self::resolve_type_annotation_with_self(
+                    &mut self.context,
+                    &param.type_annotation,
+                    &[], // No generic parameters in functions
+                    implementing_type_id,
+                )?
+            } else {
+                // Use regular type resolution for standalone functions
+                Self::resolve_type_annotation(
+                    &mut self.context,
+                    &param.type_annotation,
+                    &[], // No generic parameters in functions
+                )?
             };
-            self.context.register_variable(variable)?;
+            typed_params.push((param.name.name.clone(), param_type));
         }
 
-        // Type check function body (blocks are not yet supported, so we'll create a stub)
-        // TODO: Implement block type checking
-        let typed_body = TypedExpression {
-            kind: TypedExpressionKind::Integer(0), // Stub
-            type_id: self.context.interner.intern_type("Unknown"),
-            span: func.body.span,
+        // Resolve return type
+        let return_type = if let Some(ret_type) = &func.return_type {
+            if let Some(implementing_type_id) = implementing_type {
+                // Use Self-aware type resolution for impl block functions
+                Self::resolve_type_annotation_with_self(
+                    &mut self.context,
+                    ret_type,
+                    &[], // No generic parameters in functions
+                    implementing_type_id,
+                )?
+            } else {
+                // Use regular type resolution for standalone functions
+                Self::resolve_type_annotation(
+                    &mut self.context,
+                    ret_type,
+                    &[], // No generic parameters in functions
+                )?
+            }
+        } else {
+            // This should have been caught by FunctionChecker validation
+            return Err(TypeError::UnimplementedFeature {
+                feature: "Functions must have explicit return type annotations".to_string(),
+                span: crate::error::span_to_source_span(func.span),
+            });
         };
 
-        // TODO: Validate return type matches body type
-        let return_type = self.context.interner.intern_type("Unknown"); // Stub for now
-
-        // Pop function scope
-        self.context.pop_scope();
+        // Create stub typed body for now (full block type checking is future work)
+        let typed_body = TypedExpression {
+            kind: TypedExpressionKind::Integer(0), // Stub - represents function body
+            type_id: return_type,                  // Body should match return type
+            span: func.body.span,
+        };
 
         Ok(TypedItem {
             kind: TypedItemKind::FunctionDefinition(TypedFunctionDefinition {
@@ -1122,7 +1173,7 @@ impl TypeChecker {
         // Process struct methods (if any)
         let mut typed_methods = Vec::new();
         for method in &struct_def.methods {
-            match self.check_function_definition(method) {
+            match self.check_function_definition_with_impl_context(method, struct_type_id) {
                 Ok(typed_item) => {
                     if let TypedItemKind::FunctionDefinition(func_def) = typed_item.kind {
                         typed_methods.push(func_def);
@@ -1276,7 +1327,7 @@ impl TypeChecker {
         // Type check all implementation methods
         let mut typed_methods = Vec::new();
         for method in &impl_block.methods {
-            match self.check_function_definition(method) {
+            match self.check_function_definition_with_impl_context(method, type_id) {
                 Ok(typed_item) => {
                     if let TypedItemKind::FunctionDefinition(func_def) = typed_item.kind {
                         typed_methods.push(func_def);
