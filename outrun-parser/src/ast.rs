@@ -350,7 +350,7 @@ pub struct BinaryOperation {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOperator {
     // Arithmetic operators
     Add,      // +
@@ -392,7 +392,7 @@ pub struct UnaryOperation {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOperator {
     Plus,       // +
     Minus,      // -

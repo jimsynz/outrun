@@ -12,7 +12,7 @@ pub use resolution::{resolve_static_function, resolve_trait_function};
 
 use crate::types::traits::FunctionId;
 use crate::types::{TraitId, TypeId};
-// use outrun_parser::BinaryOperator; // TODO: Use when operators support Hash + Eq
+use outrun_parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 
 /// Opaque module identifier for trait implementations
@@ -28,9 +28,9 @@ pub struct DispatchTable {
     // Static function lookup: TypeId -> function mappings
     static_functions: HashMap<TypeId, HashMap<String, FunctionId>>,
 
-    // TODO: Add operator dispatch when BinaryOperator/UnaryOperator implement Hash + Eq
-    // binary_ops: HashMap<(BinaryOperator, TypeId, TypeId), FunctionId>,
-    // unary_ops: HashMap<(outrun_parser::UnaryOperator, TypeId), FunctionId>,
+    // Operator dispatch tables
+    binary_ops: HashMap<(BinaryOperator, TypeId, TypeId), FunctionId>,
+    unary_ops: HashMap<(UnaryOperator, TypeId), FunctionId>,
 
     // Next available opaque module ID
     next_module_id: u32,
@@ -42,6 +42,8 @@ impl DispatchTable {
         Self {
             trait_dispatch: HashMap::new(),
             static_functions: HashMap::new(),
+            binary_ops: HashMap::new(),
+            unary_ops: HashMap::new(),
             next_module_id: 0,
         }
     }
@@ -76,8 +78,6 @@ impl DispatchTable {
         self.static_functions.get(&type_id)?.get(name).copied()
     }
 
-    // TODO: Add operator dispatch methods when BinaryOperator/UnaryOperator implement Hash + Eq
-    /*
     /// Register binary operator implementation
     pub fn register_binary_op(
         &mut self,
@@ -102,7 +102,7 @@ impl DispatchTable {
     /// Register unary operator implementation
     pub fn register_unary_op(
         &mut self,
-        operator: outrun_parser::UnaryOperator,
+        operator: UnaryOperator,
         operand_type: TypeId,
         function_id: FunctionId,
     ) {
@@ -112,12 +112,11 @@ impl DispatchTable {
     /// Look up unary operator implementation
     pub fn lookup_unary_op(
         &self,
-        operator: outrun_parser::UnaryOperator,
+        operator: UnaryOperator,
         operand_type: TypeId,
     ) -> Option<FunctionId> {
         self.unary_ops.get(&(operator, operand_type)).copied()
     }
-    */
 
     /// Generate next opaque module ID
     fn next_opaque_module_id(&mut self) -> OpaqueModuleId {
@@ -131,8 +130,8 @@ impl DispatchTable {
         DispatchStats {
             trait_implementations: self.trait_dispatch.len(),
             static_functions: self.static_functions.values().map(|m| m.len()).sum(),
-            binary_operators: 0, // TODO: Add back when operators support Hash + Eq
-            unary_operators: 0,  // TODO: Add back when operators support Hash + Eq
+            binary_operators: self.binary_ops.len(),
+            unary_operators: self.unary_ops.len(),
         }
     }
 }
@@ -205,8 +204,6 @@ mod tests {
         assert_eq!(not_found, None);
     }
 
-    // TODO: Re-enable when BinaryOperator implements Hash + Eq
-    /*
     #[test]
     fn test_binary_operator_registration() {
         let mut table = DispatchTable::new();
@@ -223,7 +220,6 @@ mod tests {
         let not_found = table.lookup_binary_op(BinaryOperator::Subtract, int_type, int_type);
         assert_eq!(not_found, None);
     }
-    */
 
     #[test]
     fn test_dispatch_stats() {
@@ -237,13 +233,13 @@ mod tests {
         // Add some entries
         table.register_trait_impl(trait_id, type_id);
         table.register_static_function(type_id, "test".to_string(), function_id);
-        // TODO: Re-enable when BinaryOperator supports Hash + Eq
-        // table.register_binary_op(BinaryOperator::Add, type_id, type_id, function_id);
+        table.register_binary_op(BinaryOperator::Add, type_id, type_id, function_id);
+        table.register_unary_op(UnaryOperator::Minus, type_id, function_id);
 
         let stats = table.stats();
         assert_eq!(stats.trait_implementations, 1);
         assert_eq!(stats.static_functions, 1);
-        assert_eq!(stats.binary_operators, 0); // TODO: Change to 1 when operators are supported
-        assert_eq!(stats.unary_operators, 0);
+        assert_eq!(stats.binary_operators, 1);
+        assert_eq!(stats.unary_operators, 1);
     }
 }
