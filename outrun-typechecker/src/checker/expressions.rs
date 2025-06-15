@@ -128,23 +128,37 @@ impl ExpressionChecker {
         // String literals are Outrun.Core.String type
         let type_id = context.interner.intern_type("Outrun.Core.String");
 
-        // TODO: Handle string interpolation type checking properly
-        // For now, extract the basic text content
-        let content = str_lit.parts.iter().fold(String::new(), |mut acc, part| {
+        // Process all parts, validating interpolated expressions
+        let mut processed_content = String::new();
+        for part in &str_lit.parts {
             match part {
                 outrun_parser::StringPart::Text { content, .. } => {
-                    acc.push_str(content);
+                    processed_content.push_str(content);
                 }
-                outrun_parser::StringPart::Interpolation { .. } => {
-                    // TODO: Type check interpolated expressions
-                    acc.push_str("${...}");
+                outrun_parser::StringPart::Interpolation { expression, span } => {
+                    // Type check the interpolated expression
+                    let typed_expr = Self::check_expression(context, expression)?;
+
+                    // Validate that the expression type implements Display trait
+                    if !Self::implements_display_trait(context, typed_expr.type_id) {
+                        let type_name = context
+                            .get_type_name(typed_expr.type_id)
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        return Err(TypeError::string_interpolation_display(
+                            type_name,
+                            crate::error::span_to_source_span(*span),
+                        ));
+                    }
+
+                    // For reconstruction purposes, use placeholder
+                    processed_content.push_str("#{...}");
                 }
             }
-            acc
-        });
+        }
 
         Ok(TypedExpression {
-            kind: TypedExpressionKind::String(content),
+            kind: TypedExpressionKind::String(processed_content),
             type_id,
             span,
         })
@@ -2148,6 +2162,20 @@ impl ExpressionChecker {
         context.register_concrete_type(function_type_id, function_concrete);
 
         Ok(function_type_id)
+    }
+
+    /// Check if a type implements the Display trait
+    fn implements_display_trait(context: &TypeContext, type_id: TypeId) -> bool {
+        // First, check if Display trait exists
+        let display_trait_id = match context.interner.get_trait("Display") {
+            Some(trait_id) => trait_id,
+            None => return false, // Display trait not defined
+        };
+
+        // Check if the type implements the Display trait
+        context
+            .trait_registry
+            .implements_trait(type_id, display_trait_id)
     }
 }
 

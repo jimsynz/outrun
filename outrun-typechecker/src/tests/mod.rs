@@ -11,6 +11,7 @@ mod test_enhanced_function_calls;
 mod test_function_definitions;
 mod test_function_overloading;
 mod test_static_trait_functions;
+mod test_string_interpolation;
 mod test_trait_case_exhaustiveness;
 mod test_trait_case_patterns;
 mod test_trait_implementations;

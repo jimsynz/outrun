@@ -421,6 +421,17 @@ pub enum TypeError {
         expected_pattern: String,
         found_pattern: String,
     },
+
+    #[error("String interpolation error: type {type_name} does not implement Display trait")]
+    #[diagnostic(
+        code(outrun::typechecker::string_interpolation_display),
+        help("Only types that implement the Display trait can be interpolated in strings. Implement Display for {type_name} or convert the value explicitly.")
+    )]
+    StringInterpolationDisplayError {
+        #[label("expression of type {type_name} cannot be displayed")]
+        span: SourceSpan,
+        type_name: String,
+    },
 }
 
 impl TypeError {
@@ -526,6 +537,11 @@ impl TypeError {
             message,
             span: SourceSpan::from(0..0), // Use empty span for internal errors
         }
+    }
+
+    /// Create a string interpolation display error
+    pub fn string_interpolation_display(type_name: String, span: SourceSpan) -> Self {
+        Self::StringInterpolationDisplayError { span, type_name }
     }
 }
 
