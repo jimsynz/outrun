@@ -141,7 +141,17 @@ pub enum TypedExpressionKind {
         clauses: Vec<TypedAnonymousClause>,
         function_type: TypeId, // Function<(params...) -> ReturnType>
     },
-    // TODO: Add remaining expression kinds (Sigil, MacroInjection)
+    Sigil {
+        name: String,                                   // Sigil name (e.g., "r", "json")
+        content: String,                                // Processed content
+        raw_content: String,                            // Original content for reconstruction
+        interpolated_expressions: Vec<TypedExpression>, // Type-checked interpolated expressions
+        result_type: TypeId,                            // Type returned by the sigil
+    },
+    MacroInjection {
+        name: String, // Macro parameter name being injected (e.g., "condition" in ^condition)
+        injected_type: TypeId, // Type of the injected value
+    },
 }
 
 /// Typed block with statements
@@ -253,10 +263,57 @@ pub struct TypedConstDefinition {
     pub span: Span,
 }
 
+/// Typed pattern with complete type information
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedPattern {
+    Identifier {
+        name: String,
+        type_id: TypeId,
+    },
+    Literal {
+        literal: TypedLiteral,
+        type_id: TypeId,
+    },
+    Tuple {
+        elements: Vec<TypedPattern>,
+        element_types: Vec<TypeId>, // Type of each element
+        tuple_type: TypeId,         // Overall tuple type
+    },
+    Struct {
+        type_name: String,
+        type_id: TypeId,
+        fields: Vec<TypedStructFieldPattern>,
+    },
+    List {
+        elements: Vec<TypedPattern>,
+        rest: Option<String>, // Rest pattern identifier if present
+        element_type: TypeId, // Type of list elements
+        list_type: TypeId,    // Overall list type
+    },
+}
+
+/// Typed literal pattern
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedLiteral {
+    Boolean(bool),
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Atom(String),
+}
+
+/// Typed struct field pattern
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedStructFieldPattern {
+    pub name: String,          // Field name
+    pub pattern: TypedPattern, // Pattern for the field value
+    pub field_type: TypeId,    // Type of this field
+}
+
 /// Typed let binding
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedLetBinding {
-    pub pattern: outrun_parser::Pattern, // TODO: Create typed pattern system
+    pub pattern: TypedPattern,
     pub type_id: TypeId,
     pub expression: TypedExpression,
     pub span: Span,
@@ -309,6 +366,543 @@ impl TypeChecker {
     #[cfg(test)]
     pub fn context(&self) -> &TypeContext {
         &self.context
+    }
+
+    /// Convert an untyped program to a typed program
+    ///
+    /// This is the main entry point for AST conversion. It performs complete type checking
+    /// and returns a typed AST with dispatch tables.
+    pub fn convert_program(&mut self, program: &Program) -> Result<TypedProgram, Vec<TypeError>> {
+        self.check_program(program)
+    }
+
+    /// Convert an untyped expression to a typed expression
+    ///
+    /// This performs type checking on the expression and returns a typed AST node.
+    /// The expression is checked in the current type context.
+    pub fn convert_expression(
+        &mut self,
+        expr: &outrun_parser::Expression,
+    ) -> Result<TypedExpression, TypeError> {
+        ExpressionChecker::check_expression(&mut self.context, expr)
+    }
+
+    /// Convert an untyped block to a typed block
+    ///
+    /// This performs type checking on all statements in the block and returns a typed block.
+    /// The block is checked in the current type context with proper scope management.
+    pub fn convert_block(&mut self, block: &outrun_parser::Block) -> Result<TypedBlock, TypeError> {
+        self.context.push_scope(false); // Block scope
+
+        let mut typed_statements = Vec::new();
+        let mut block_result_type = self.context.interner.intern_type("Outrun.Core.Unit");
+
+        for statement in &block.statements {
+            match &statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => {
+                    let typed_expr = self.convert_expression(expr)?;
+                    // Update block result type to the last expression
+                    block_result_type = typed_expr.type_id;
+                    typed_statements.push(TypedStatement {
+                        kind: TypedStatementKind::Expression(Box::new(typed_expr)),
+                        span: statement.span,
+                    });
+                }
+                outrun_parser::StatementKind::LetBinding(let_binding) => {
+                    let typed_let = self.convert_let_binding(let_binding)?;
+                    typed_statements.push(TypedStatement {
+                        kind: TypedStatementKind::LetBinding(Box::new(typed_let)),
+                        span: statement.span,
+                    });
+                }
+            }
+        }
+
+        self.context.pop_scope();
+
+        Ok(TypedBlock {
+            statements: typed_statements,
+            result_type: block_result_type,
+            span: block.span,
+        })
+    }
+
+    /// Convert an untyped let binding to a typed let binding
+    ///
+    /// This performs type checking on the let binding expression and pattern,
+    /// registering bound variables in the current scope.
+    pub fn convert_let_binding(
+        &mut self,
+        let_binding: &outrun_parser::LetBinding,
+    ) -> Result<TypedLetBinding, TypeError> {
+        // Type check the right-hand side expression first
+        let typed_expression = self.convert_expression(&let_binding.expression)?;
+
+        // Use pattern checker to validate the pattern and register variables
+        let bound_variables = PatternChecker::check_pattern(
+            &mut self.context,
+            &let_binding.pattern,
+            typed_expression.type_id,
+        )?;
+
+        // Register all bound variables in the current scope
+        for variable in bound_variables {
+            self.context.register_variable(variable)?;
+        }
+
+        // Convert the pattern to a typed pattern
+        let typed_pattern = self.convert_pattern(&let_binding.pattern, typed_expression.type_id)?;
+
+        Ok(TypedLetBinding {
+            pattern: typed_pattern,
+            type_id: typed_expression.type_id,
+            expression: typed_expression,
+            span: let_binding.span,
+        })
+    }
+
+    /// Convert an untyped pattern to a typed pattern
+    ///
+    /// This converts a parser pattern to a typed pattern with complete type information.
+    /// The target_type is the expected type that this pattern should match.
+    pub fn convert_pattern(
+        &mut self,
+        pattern: &outrun_parser::Pattern,
+        target_type: TypeId,
+    ) -> Result<TypedPattern, TypeError> {
+        match pattern {
+            outrun_parser::Pattern::Identifier(ident) => Ok(TypedPattern::Identifier {
+                name: ident.name.clone(),
+                type_id: target_type,
+            }),
+            outrun_parser::Pattern::Literal(literal_pattern) => {
+                let typed_literal = self.convert_literal_pattern(&literal_pattern.literal)?;
+                Ok(TypedPattern::Literal {
+                    literal: typed_literal,
+                    type_id: target_type,
+                })
+            }
+            outrun_parser::Pattern::Tuple(tuple_pattern) => {
+                // Get the concrete tuple type to extract element types
+                let concrete_type =
+                    self.context.get_concrete_type(target_type).ok_or_else(|| {
+                        TypeError::internal("Tuple pattern target type not in registry".to_string())
+                    })?;
+
+                let element_types = match concrete_type {
+                    crate::types::ConcreteType::Tuple { element_types } => element_types.clone(),
+                    _ => {
+                        return Err(TypeError::internal(
+                            "Tuple pattern expected tuple type".to_string(),
+                        ))
+                    }
+                };
+
+                if tuple_pattern.elements.len() != element_types.len() {
+                    return Err(TypeError::internal(
+                        "Tuple pattern arity mismatch".to_string(),
+                    ));
+                }
+
+                let mut typed_elements = Vec::new();
+                for (pattern_elem, &elem_type) in
+                    tuple_pattern.elements.iter().zip(element_types.iter())
+                {
+                    let typed_elem = self.convert_pattern(pattern_elem, elem_type)?;
+                    typed_elements.push(typed_elem);
+                }
+
+                Ok(TypedPattern::Tuple {
+                    elements: typed_elements,
+                    element_types,
+                    tuple_type: target_type,
+                })
+            }
+            outrun_parser::Pattern::Struct(struct_pattern) => {
+                // Get the struct type name
+                let type_name = struct_pattern
+                    .type_path
+                    .iter()
+                    .map(|id| &id.name)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                // Get the concrete struct type to validate fields
+                let concrete_type =
+                    self.context.get_concrete_type(target_type).ok_or_else(|| {
+                        TypeError::internal(
+                            "Struct pattern target type not in registry".to_string(),
+                        )
+                    })?;
+
+                let struct_fields = match concrete_type {
+                    crate::types::ConcreteType::Struct { fields, .. } => fields.clone(),
+                    _ => {
+                        return Err(TypeError::internal(
+                            "Struct pattern expected struct type".to_string(),
+                        ))
+                    }
+                };
+
+                let mut typed_fields = Vec::new();
+                for field_pattern in &struct_pattern.fields {
+                    // Find the corresponding struct field
+                    let field_atom = self.context.interner.intern_atom(&field_pattern.name.name);
+                    let field_type = struct_fields
+                        .iter()
+                        .find(|field| field.name == field_atom)
+                        .map(|field| field.type_id)
+                        .ok_or_else(|| {
+                            TypeError::internal(format!(
+                                "Unknown field {} in struct pattern",
+                                field_pattern.name.name
+                            ))
+                        })?;
+
+                    // Convert the field pattern (could be shorthand or explicit)
+                    let field_value_pattern = match &field_pattern.pattern {
+                        Some(explicit_pattern) => {
+                            self.convert_pattern(explicit_pattern, field_type)?
+                        }
+                        None => {
+                            // Shorthand syntax: field name becomes identifier pattern
+                            TypedPattern::Identifier {
+                                name: field_pattern.name.name.clone(),
+                                type_id: field_type,
+                            }
+                        }
+                    };
+
+                    typed_fields.push(TypedStructFieldPattern {
+                        name: field_pattern.name.name.clone(),
+                        pattern: field_value_pattern,
+                        field_type,
+                    });
+                }
+
+                Ok(TypedPattern::Struct {
+                    type_name,
+                    type_id: target_type,
+                    fields: typed_fields,
+                })
+            }
+            outrun_parser::Pattern::List(list_pattern) => {
+                // Get the concrete list type to extract element type
+                let concrete_type =
+                    self.context.get_concrete_type(target_type).ok_or_else(|| {
+                        TypeError::internal("List pattern target type not in registry".to_string())
+                    })?;
+
+                let element_type = match concrete_type {
+                    crate::types::ConcreteType::List { element_type } => *element_type,
+                    _ => {
+                        return Err(TypeError::internal(
+                            "List pattern expected list type".to_string(),
+                        ))
+                    }
+                };
+
+                let mut typed_elements = Vec::new();
+                for pattern_elem in &list_pattern.elements {
+                    let typed_elem = self.convert_pattern(pattern_elem, element_type)?;
+                    typed_elements.push(typed_elem);
+                }
+
+                Ok(TypedPattern::List {
+                    elements: typed_elements,
+                    rest: list_pattern.rest.as_ref().map(|ident| ident.name.clone()),
+                    element_type,
+                    list_type: target_type,
+                })
+            }
+        }
+    }
+
+    /// Convert an untyped literal to a typed literal for patterns
+    ///
+    /// This extracts the literal value and converts it to the typed representation.
+    pub fn convert_literal_pattern(
+        &mut self,
+        literal: &outrun_parser::Literal,
+    ) -> Result<TypedLiteral, TypeError> {
+        match literal {
+            outrun_parser::Literal::Boolean(bool_lit) => Ok(TypedLiteral::Boolean(bool_lit.value)),
+            outrun_parser::Literal::Integer(int_lit) => Ok(TypedLiteral::Integer(int_lit.value)),
+            outrun_parser::Literal::Float(float_lit) => Ok(TypedLiteral::Float(float_lit.value)),
+            outrun_parser::Literal::String(str_lit) => {
+                // For pattern strings, we need to extract the simple text content
+                // String interpolation in patterns would be more complex and isn't commonly supported
+                let content = str_lit
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        outrun_parser::StringPart::Text { content, .. } => Some(content.as_str()),
+                        outrun_parser::StringPart::Interpolation { .. } => None, // Skip interpolations for now
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
+                Ok(TypedLiteral::String(content))
+            }
+            outrun_parser::Literal::Atom(atom_lit) => Ok(TypedLiteral::Atom(atom_lit.name.clone())),
+        }
+    }
+
+    /// Convert an untyped function definition to a typed function definition
+    ///
+    /// This performs comprehensive function validation and returns a typed function definition.
+    /// The function is checked in the current type context with proper parameter scoping.
+    pub fn convert_function_definition(
+        &mut self,
+        func: &outrun_parser::FunctionDefinition,
+    ) -> Result<TypedFunctionDefinition, TypeError> {
+        // Validate function signature first
+        FunctionChecker::check_function_definition(&mut self.context, func)?;
+
+        // Resolve parameter types
+        let mut typed_params = Vec::new();
+        for param in &func.parameters {
+            let param_type = Self::resolve_type_annotation(
+                &mut self.context,
+                &param.type_annotation,
+                &[], // No generic parameters in functions
+            )?;
+            typed_params.push((param.name.name.clone(), param_type));
+        }
+
+        // Resolve return type
+        let return_type = if let Some(ret_type) = &func.return_type {
+            Self::resolve_type_annotation(
+                &mut self.context,
+                ret_type,
+                &[], // No generic parameters in functions
+            )?
+        } else {
+            return Err(TypeError::UnimplementedFeature {
+                feature: "Functions must have explicit return type annotations".to_string(),
+                span: crate::error::span_to_source_span(func.span),
+            });
+        };
+
+        // Create function scope and register parameters
+        self.context.push_scope(true); // Function scope
+
+        for (param_name, param_type) in &typed_params {
+            let variable = Variable {
+                name: param_name.clone(),
+                type_id: *param_type,
+                is_mutable: false,
+                span: func.span,
+            };
+            self.context.register_variable(variable)?;
+        }
+
+        // Type check the function body
+        let typed_block =
+            FunctionChecker::check_function_body_typed(&mut self.context, &func.body, return_type)?;
+        let typed_body = TypedExpression {
+            kind: TypedExpressionKind::Block(typed_block.clone()),
+            type_id: typed_block.result_type,
+            span: func.body.span,
+        };
+
+        // Clean up function scope
+        self.context.pop_scope();
+
+        Ok(TypedFunctionDefinition {
+            name: func.name.name.clone(),
+            params: typed_params,
+            return_type,
+            body: typed_body,
+            span: func.span,
+        })
+    }
+
+    /// Convert an untyped const definition to a typed const definition
+    ///
+    /// This performs type checking on the constant expression and validates any explicit type annotation.
+    pub fn convert_const_definition(
+        &mut self,
+        const_def: &outrun_parser::ConstDefinition,
+    ) -> Result<TypedConstDefinition, TypeError> {
+        // Type check the constant expression
+        let typed_value = self.convert_expression(&const_def.expression)?;
+
+        // TODO: Validate explicit type annotation if present and ensure it matches the expression type
+
+        Ok(TypedConstDefinition {
+            name: const_def.name.name.clone(),
+            type_id: typed_value.type_id,
+            value: typed_value,
+            span: const_def.span,
+        })
+    }
+
+    /// Convert an untyped struct definition to a typed struct definition
+    ///
+    /// This performs validation of the struct fields and creates a typed struct definition.
+    pub fn convert_struct_definition(
+        &mut self,
+        struct_def: &outrun_parser::StructDefinition,
+    ) -> Result<TypedStructDefinition, TypeError> {
+        // Resolve field types
+        let mut typed_fields = Vec::new();
+        for field in &struct_def.fields {
+            let field_type = Self::resolve_type_annotation(
+                &mut self.context,
+                &field.type_annotation,
+                &[], // No generic parameters in structs yet
+            )?;
+            typed_fields.push((field.name.name.clone(), field_type));
+        }
+
+        // TODO: Handle struct methods when they are added to the parser
+
+        Ok(TypedStructDefinition {
+            name: struct_def.name.name.clone(),
+            fields: typed_fields,
+            methods: Vec::new(), // No methods yet in struct definitions
+            span: struct_def.span,
+        })
+    }
+
+    /// Convert an untyped trait definition to a typed trait definition
+    ///
+    /// This performs validation of trait functions and constraints.
+    pub fn convert_trait_definition(
+        &mut self,
+        trait_def: &outrun_parser::TraitDefinition,
+    ) -> Result<TypedTraitDefinition, TypeError> {
+        // Process trait functions
+        let mut typed_functions = Vec::new();
+
+        for trait_func in &trait_def.functions {
+            match trait_func {
+                outrun_parser::TraitFunction::Signature(sig) => {
+                    let typed_sig = self.convert_trait_function_signature(sig)?;
+                    typed_functions.push(typed_sig);
+                }
+                outrun_parser::TraitFunction::Definition(_def) => {
+                    // TODO: Handle trait function definitions with bodies
+                    return Err(TypeError::UnimplementedFeature {
+                        feature:
+                            "Trait function definitions with bodies not yet supported in conversion"
+                                .to_string(),
+                        span: crate::error::span_to_source_span(trait_def.span),
+                    });
+                }
+                outrun_parser::TraitFunction::StaticDefinition(_static_def) => {
+                    // TODO: Handle static trait function definitions
+                    return Err(TypeError::UnimplementedFeature {
+                        feature:
+                            "Static trait function definitions not yet supported in conversion"
+                                .to_string(),
+                        span: crate::error::span_to_source_span(trait_def.span),
+                    });
+                }
+            }
+        }
+
+        Ok(TypedTraitDefinition {
+            name: trait_def.name.name.clone(),
+            functions: typed_functions,
+            span: trait_def.span,
+        })
+    }
+
+    /// Convert an untyped trait function signature to a typed function signature
+    ///
+    /// This performs parameter and return type validation for trait function signatures.
+    pub fn convert_trait_function_signature(
+        &mut self,
+        sig: &outrun_parser::FunctionSignature,
+    ) -> Result<TypedFunctionSignature, TypeError> {
+        // Pre-intern the Self type to avoid borrow conflicts
+        let self_type_id = self.context.interner.intern_type("Self");
+        let generic_params = vec![("Self".to_string(), self_type_id)];
+
+        // Resolve parameter types
+        let mut typed_params = Vec::new();
+        for param in &sig.parameters {
+            let param_type = Self::resolve_type_annotation(
+                &mut self.context,
+                &param.type_annotation,
+                &generic_params, // Include Self for trait functions
+            )?;
+            typed_params.push((param.name.name.clone(), param_type));
+        }
+
+        // Resolve return type
+        let return_type = if let Some(ret_type) = &sig.return_type {
+            Self::resolve_type_annotation(
+                &mut self.context,
+                ret_type,
+                &generic_params, // Include Self for trait functions
+            )?
+        } else {
+            self.context.interner.intern_type("Outrun.Core.Unit")
+        };
+
+        Ok(TypedFunctionSignature {
+            name: sig.name.name.clone(),
+            params: typed_params,
+            return_type,
+            span: sig.span,
+        })
+    }
+
+    /// Convert an untyped impl block to a typed impl block
+    ///
+    /// This performs validation of impl block methods and trait implementation requirements.
+    pub fn convert_impl_block(
+        &mut self,
+        impl_block: &outrun_parser::ImplBlock,
+    ) -> Result<TypedImplBlock, TypeError> {
+        // Convert impl block methods
+        let mut typed_methods = Vec::new();
+
+        for method in &impl_block.methods {
+            let typed_method = self.convert_function_definition(method)?;
+            typed_methods.push(typed_method);
+        }
+
+        // Extract trait and type names from TypeSpec
+        let trait_name = Self::extract_type_name_from_spec(&impl_block.trait_spec)?;
+        let type_name = Self::extract_type_name_from_spec(&impl_block.type_spec)?;
+
+        Ok(TypedImplBlock {
+            trait_name,
+            type_name,
+            methods: typed_methods,
+            span: impl_block.span,
+        })
+    }
+
+    /// Helper function to extract a simple type name from a TypeSpec
+    ///
+    /// This handles simple type paths but will need enhancement for complex generics.
+    fn extract_type_name_from_spec(
+        type_spec: &outrun_parser::TypeSpec,
+    ) -> Result<String, TypeError> {
+        // TypeSpec is a struct with path field
+        let type_name = type_spec
+            .path
+            .iter()
+            .map(|segment| &segment.name)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".");
+
+        // Check if it has generic arguments (not yet supported in conversion)
+        if type_spec.generic_args.is_some() {
+            return Err(TypeError::UnimplementedFeature {
+                feature: "Generic type specs in impl blocks not yet supported in conversion"
+                    .to_string(),
+                span: crate::error::span_to_source_span(type_spec.span),
+            });
+        }
+
+        Ok(type_name)
     }
 
     /// Type check a complete program
@@ -725,10 +1319,13 @@ impl TypeChecker {
         // Process the pattern and register variables in scope
         self.check_pattern_and_register_variables(&let_binding.pattern, binding_type)?;
 
-        // Create a typed let binding (we'll represent it as an expression for now)
+        // Convert pattern to typed pattern
+        let typed_pattern = self.convert_pattern(&let_binding.pattern, binding_type)?;
+
+        // Create a typed let binding
         Ok(TypedItem {
             kind: TypedItemKind::LetBinding(Box::new(TypedLetBinding {
-                pattern: let_binding.pattern.clone(), // TODO: Create typed pattern
+                pattern: typed_pattern,
                 type_id: binding_type,
                 expression: typed_expression,
                 span: let_binding.span,

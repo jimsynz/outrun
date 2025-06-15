@@ -77,12 +77,11 @@ impl ExpressionChecker {
             ExpressionKind::AnonymousFunction(anon_fn) => {
                 Self::check_anonymous_function(context, anon_fn)
             }
-            _ => {
-                // TODO: Implement remaining expression types (Sigil, MacroInjection)
-                Err(TypeError::UnimplementedFeature {
-                    feature: format!("Expression type checking for {:?}", expr.kind),
-                    span: crate::error::span_to_source_span(expr.span),
-                })
+            ExpressionKind::Sigil(sigil_lit) => {
+                Self::check_sigil_literal(context, sigil_lit, expr.span)
+            }
+            ExpressionKind::MacroInjection(macro_injection) => {
+                Self::check_macro_injection(context, macro_injection, expr.span)
             }
         }
     }
@@ -1538,8 +1537,24 @@ impl ExpressionChecker {
                         }
                     }
 
+                    // Convert pattern to typed pattern (currently only supports identifiers)
+                    let typed_pattern = match &let_binding.pattern {
+                        outrun_parser::Pattern::Identifier(identifier) => {
+                            crate::checker::TypedPattern::Identifier {
+                                name: identifier.name.clone(),
+                                type_id: binding_type,
+                            }
+                        }
+                        _ => {
+                            return Err(TypeError::UnimplementedFeature {
+                                feature: "Complex patterns in block let bindings".to_string(),
+                                span: crate::error::span_to_source_span(let_binding.span),
+                            });
+                        }
+                    };
+
                     let typed_let_binding = crate::checker::TypedLetBinding {
-                        pattern: let_binding.pattern.clone(),
+                        pattern: typed_pattern,
                         type_id: binding_type,
                         expression: typed_expression,
                         span: let_binding.span,
@@ -2176,6 +2191,112 @@ impl ExpressionChecker {
         context
             .trait_registry
             .implements_trait(type_id, display_trait_id)
+    }
+
+    /// Type check sigil literal  
+    fn check_sigil_literal(
+        context: &mut TypeContext,
+        sigil_lit: &outrun_parser::SigilLiteral,
+        span: outrun_parser::Span,
+    ) -> TypeResult<TypedExpression> {
+        // For now, we'll treat sigils as returning String type
+        // In a full implementation, different sigil types (r"", json"", etc.)
+        // would return different types based on their processing
+        let result_type = context.interner.intern_type("Outrun.Core.String");
+
+        // Type check any interpolated expressions within the sigil's string content
+        let mut interpolated_expressions = Vec::new();
+
+        // Process the sigil's string content for interpolations
+        // Sigils contain a StringLiteral, so we process its parts
+        for part in &sigil_lit.string.parts {
+            match part {
+                outrun_parser::StringPart::Text { .. } => {
+                    // Text parts don't need type checking
+                }
+                outrun_parser::StringPart::Interpolation {
+                    expression,
+                    span: interp_span,
+                } => {
+                    // Type check the interpolated expression
+                    let typed_expr = Self::check_expression(context, expression)?;
+
+                    // For sigils, we might have different requirements than Display
+                    // For now, we'll require Display trait like strings
+                    if !Self::implements_display_trait(context, typed_expr.type_id) {
+                        let type_name = context
+                            .get_type_name(typed_expr.type_id)
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        return Err(TypeError::string_interpolation_display(
+                            type_name,
+                            crate::error::span_to_source_span(*interp_span),
+                        ));
+                    }
+
+                    interpolated_expressions.push(typed_expr);
+                }
+            }
+        }
+
+        // Reconstruct content with interpolation placeholders
+        let processed_content =
+            sigil_lit
+                .string
+                .parts
+                .iter()
+                .fold(String::new(), |mut acc, part| {
+                    match part {
+                        outrun_parser::StringPart::Text { content, .. } => {
+                            acc.push_str(content);
+                        }
+                        outrun_parser::StringPart::Interpolation { .. } => {
+                            acc.push_str("#{...}");
+                        }
+                    }
+                    acc
+                });
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::Sigil {
+                name: sigil_lit.sigil_type.name.clone(),
+                content: processed_content,
+                raw_content: format!("~{}{}", sigil_lit.sigil_type.name, sigil_lit.string),
+                interpolated_expressions,
+                result_type,
+            },
+            type_id: result_type,
+            span,
+        })
+    }
+
+    /// Type check macro injection
+    fn check_macro_injection(
+        context: &mut TypeContext,
+        macro_injection: &outrun_parser::MacroInjection,
+        span: outrun_parser::Span,
+    ) -> TypeResult<TypedExpression> {
+        // Macro injections reference macro parameters
+        // For type checking purposes, we need to look up the parameter type
+        // This would typically be resolved during macro expansion
+
+        // For now, we'll return a generic "any" type since macro injection
+        // types depend on the macro expansion context
+        let injected_type = context.interner.intern_type("Outrun.Core.Any");
+
+        // TODO: In a full implementation, this would:
+        // 1. Look up the macro parameter in the current macro expansion context
+        // 2. Get the actual type of the injected value
+        // 3. Validate that the injection is happening within a macro definition
+
+        Ok(TypedExpression {
+            kind: TypedExpressionKind::MacroInjection {
+                name: macro_injection.parameter.name.clone(),
+                injected_type,
+            },
+            type_id: injected_type,
+            span,
+        })
     }
 }
 

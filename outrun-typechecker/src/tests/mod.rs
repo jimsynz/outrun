@@ -3,6 +3,7 @@
 //! All test files must be declared as modules here.
 
 mod test_anonymous_functions;
+mod test_ast_conversion_utilities;
 mod test_basic_type_checking;
 mod test_default_implementations;
 mod test_default_trait_implementations;
@@ -19,3 +20,4 @@ mod test_traits_unit;
 mod test_type_checker_core;
 mod test_type_interning;
 mod test_type_introspection;
+mod test_typed_patterns;
