@@ -9,6 +9,7 @@ mod test_default_implementations;
 mod test_default_trait_implementations;
 mod test_dispatch_table_construction;
 mod test_enhanced_function_calls;
+mod test_exhaustiveness_integration;
 mod test_function_definitions;
 mod test_function_overloading;
 mod test_static_trait_functions;

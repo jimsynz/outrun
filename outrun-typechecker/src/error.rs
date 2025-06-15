@@ -432,6 +432,41 @@ pub enum TypeError {
         span: SourceSpan,
         type_name: String,
     },
+
+    #[error("Function with guards is not exhaustive")]
+    #[diagnostic(
+        code(outrun::exhaustiveness::function_not_exhaustive),
+        help("Add a default case (function clause without guard) or ensure all possible values are covered by guards")
+    )]
+    FunctionNotExhaustive {
+        #[label("this function is missing coverage")]
+        span: SourceSpan,
+        function_name: String,
+        missing_cases: Vec<String>,
+    },
+
+    #[error("Boolean case statement is not exhaustive")]
+    #[diagnostic(
+        code(outrun::exhaustiveness::boolean_not_exhaustive),
+        help("Boolean case statements must handle both 'true' and 'false' values. Missing: {}", missing_values.join(", "))
+    )]
+    BooleanNotExhaustive {
+        #[label("missing boolean patterns")]
+        span: SourceSpan,
+        missing_values: Vec<String>,
+    },
+
+    #[error("Trait case statement is not exhaustive")]
+    #[diagnostic(
+        code(outrun::exhaustiveness::trait_not_exhaustive),
+        help("Trait case statements must handle all implementing types. Missing: {}", missing_types.join(", "))
+    )]
+    TraitNotExhaustive {
+        #[label("missing trait implementation patterns")]
+        span: SourceSpan,
+        trait_name: String,
+        missing_types: Vec<String>,
+    },
 }
 
 impl TypeError {
@@ -542,6 +577,53 @@ impl TypeError {
     /// Create a string interpolation display error
     pub fn string_interpolation_display(type_name: String, span: SourceSpan) -> Self {
         Self::StringInterpolationDisplayError { span, type_name }
+    }
+
+    /// Create a function not exhaustive error
+    pub fn function_not_exhaustive(
+        function_name: String,
+        missing_cases: Vec<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self::FunctionNotExhaustive {
+            span,
+            function_name,
+            missing_cases,
+        }
+    }
+
+    /// Create a boolean not exhaustive error
+    pub fn boolean_not_exhaustive(missing_values: Vec<String>, span: SourceSpan) -> Self {
+        Self::BooleanNotExhaustive {
+            span,
+            missing_values,
+        }
+    }
+
+    /// Create a trait not exhaustive error
+    pub fn trait_not_exhaustive(
+        trait_name: String,
+        missing_types: Vec<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self::TraitNotExhaustive {
+            span,
+            trait_name,
+            missing_types,
+        }
+    }
+
+    /// Create a case not exhaustive error (for trait cases)
+    pub fn case_not_exhaustive_trait(
+        trait_name: String,
+        missing_types: String,
+        span: SourceSpan,
+    ) -> Self {
+        Self::CaseNotExhaustive {
+            span,
+            trait_name,
+            missing_types,
+        }
     }
 }
 

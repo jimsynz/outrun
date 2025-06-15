@@ -86,7 +86,8 @@ impl DispatchTable {
         right_type: TypeId,
         function_id: FunctionId,
     ) {
-        self.binary_ops.insert((operator, left_type, right_type), function_id);
+        self.binary_ops
+            .insert((operator, left_type, right_type), function_id);
     }
 
     /// Look up binary operator implementation
@@ -96,7 +97,9 @@ impl DispatchTable {
         left_type: TypeId,
         right_type: TypeId,
     ) -> Option<FunctionId> {
-        self.binary_ops.get(&(operator, left_type, right_type)).copied()
+        self.binary_ops
+            .get(&(operator, left_type, right_type))
+            .copied()
     }
 
     /// Register unary operator implementation

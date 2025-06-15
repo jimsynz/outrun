@@ -1080,8 +1080,41 @@ impl ExpressionChecker {
             }
         }
 
-        // TODO: Add exhaustiveness checking for concrete case expressions
-        // For now, we accept any concrete case expressions as potentially exhaustive
+        // Add exhaustiveness checking for concrete case expressions
+        use crate::exhaustiveness::{CaseType, ExhaustivenessAnalyzer};
+        let analyzer = ExhaustivenessAnalyzer::new(context);
+        let case_type = CaseType::Pattern(typed_expression.type_id);
+
+        // Extract covered patterns from when clauses
+        // For now, we can't easily extract patterns from guards since they're arbitrary expressions
+        // This is a placeholder that treats concrete cases as requiring manual verification
+        let covered_patterns = Vec::new(); // TODO: Extract actual patterns from guards
+
+        let exhaustiveness_result = analyzer.analyze_case_exhaustiveness(
+            case_type.clone(),
+            &covered_patterns,
+            case_expr.span,
+        )?;
+
+        // Convert to error if not exhaustive (but only for specific types we can analyze)
+        if let Some(concrete_type) = context.get_concrete_type(typed_expression.type_id) {
+            if matches!(
+                concrete_type,
+                crate::types::ConcreteType::Boolean
+                    | crate::types::ConcreteType::Option { .. }
+                    | crate::types::ConcreteType::Result { .. }
+            ) {
+                // For these types, we require exhaustiveness
+                if let Some(error) =
+                    exhaustiveness_result.to_case_error(case_type, context, case_expr.span)
+                {
+                    // For now, treat as warning by adding to context errors rather than failing
+                    context.add_error(error);
+                }
+            }
+            // For other types (String, Integer, etc.), exhaustiveness is not required
+            // as they're infinite types that need catch-all patterns
+        }
 
         Ok(TypedExpression {
             kind: TypedExpressionKind::CaseExpression {

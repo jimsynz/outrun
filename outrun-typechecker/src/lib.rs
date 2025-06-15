@@ -7,6 +7,7 @@
 pub mod checker;
 pub mod dispatch;
 pub mod error;
+pub mod exhaustiveness;
 pub mod types;
 
 #[cfg(test)]
@@ -16,6 +17,7 @@ mod tests;
 pub use checker::{TypeChecker, TypeContext, TypedProgram};
 pub use dispatch::DispatchTable;
 pub use error::{TypeError, TypeResult};
+pub use exhaustiveness::{ExhaustivenessAnalyzer, ExhaustivenessResult, MissingPattern};
 pub use types::{AtomId, ConcreteType, TraitId, TypeId, TypeInterner};
 
 // Main type checking API
