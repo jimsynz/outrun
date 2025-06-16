@@ -12,10 +12,16 @@ outrun/
 ├── LANGUAGE_SPEC.md             # Complete language syntax specification
 ├── GRAMMAR.bnf                 # Formal BNF grammar
 ├── outrun.toml                 # Package manifest (when created)
-└── outrun-parser/              # Parser implementation (Rust)
+├── outrun-parser/              # Parser implementation (Rust)
+│   ├── CLAUDE.md               # Parser-specific development guide
+│   ├── Cargo.toml
+│   ├── src/
+│   └── tests/                  # Parser integration tests
+└── outrun-typechecker/         # Type checker implementation (Rust)
+    ├── CLAUDE.md               # Type checker development guide
     ├── Cargo.toml
-    └── src/
-        └── lib.rs
+    ├── src/
+    └── tests/                  # Type checker integration tests
 ```
 
 ## Core Design Principles
@@ -61,24 +67,26 @@ macro unless(condition, do_block) {
 }
 ```
 
+### Notes to reduce confusion:
+- Outrun is functional, not OOP. There are no methods, instances, objects or classes.
+- All functions take keyword arguments.
+- All function calls must provide keyword arguments (althought shorthand is available).
+- There are no Enum or union types. Instead define structs and implement the same trait for them.
+- The only constructors are struct constructors.
+
 ## Development Workflow
 
 ### Adding New Syntax
 
 1. **Update LANGUAGE_SPEC.md** with examples and explanation
 2. **Update GRAMMAR.bnf** with formal grammar rules
-3. **Add test cases** in `outrun-parser/tests/`
-4. **Update Pest grammar** if needed
+3. **Add parser support** following `outrun-parser/CLAUDE.md`
+4. **Add type checking support** following `outrun-typechecker/CLAUDE.md`
 
-### Parser Development
+### Component Development
 
-The Rust parser is in `outrun-parser/`. This will eventually become the main compiler frontend.
-
-```bash
-cd outrun-parser
-cargo build
-cargo test
-```
+- **Parser**: See `outrun-parser/CLAUDE.md` for Pest grammar and AST development
+- **Type Checker**: See `outrun-typechecker/CLAUDE.md` for type system implementation
 
 ## File Extensions
 
@@ -87,43 +95,90 @@ cargo test
 
 ## Standard Library
 
-Core traits live in the `Outrun.` namespace to avoid conflicts:
-- `Outrun.Option<T>`
-- `Outrun.Result<T, E>`
-- `Outrun.Iterator<T>`
+Core traits that will be used every day by developers are in the root namespace:
+- `Option<T>`
+- `Result<T, E>`
+- `Iterator<T>`
+- etc.
+
+Traits which are for syntax support, or not commonly needed devs live in the `Outrun` namespace:
 - `Outrun.BinaryAddition<T>`
 - etc.
 
 Users must explicitly alias them:
 ```outrun
-alias Outrun.Option as Option
-alias Outrun.Result as Result
+alias Outrun.BinaryAddition<T> as BinAdd<T>
 ```
-
-## Testing Syntax Ideas
-
-Create test files in `outrun-parser/tests/` to validate syntax using Rust unit tests.
 
 ## Current Status
 
-- ✅ Core syntax specification complete
-- ✅ BNF grammar written
-- ✅ **All LANGUAGE_SPEC.md features implemented and tested**
-- ✅ **Pest parser implementation**: Complete string interpolation with expression parsing
-- ✅ **CLI tool**: Parse command with pretty-printed s-expressions and stdin support
-- ✅ **Recursive destructuring patterns**: Fully implemented with unified pattern system across let bindings, case statements, and function parameters
-- ⭐ Type checker needed  
-- ⭐ Interpreter/compiler needed
+- ✅ **Core syntax specification complete**
+- ✅ **BNF grammar written**
+- ✅ **Parser implementation complete**: Full Outrun language parsing with 400+ tests
+- ✅ **Type checker implementation**: Comprehensive type checking with trait system
+- ✅ **CLI tool**: Parse and typecheck commands with beautiful error reporting
+- ✅ **Test cleanup complete**: All 649 tests passing (448 parser, 201 typechecker) with proper organisation
+- ✅ **Constraint validation**: Undefined trait detection in impl block constraints
+- 🔄 **Next priorities**: Trait implementation validation, dispatch table construction
+- ⭐ **Interpreter/compiler needed**
 
 ## Contributing
 
 When working on the language:
 
 1. **Syntax changes** require updates to both LANGUAGE_SPEC.md and GRAMMAR.bnf
-2. **Test thoroughly** with Rust unit tests
+2. **Test thoroughly** following component-specific testing guidelines
 3. **Keep "everything is traits"** philosophy consistent
 4. **Maintain immutability** and functional approach
 5. **Document design decisions** in commit messages
+
+### Rust Test Organization Rules
+
+**IMPORTANT**: All Rust tests MUST follow these conventions:
+
+1. **Test files MUST be in separate test directories**, not inline with implementation code
+2. **Test files MUST start with `test_` prefix**
+3. **Tests must not contain any debug prints** unless actively debugging a test failure
+4. **Less comments** there's no need to add spurious comments that describe easily understandable assertions or setup
+5. **Assertions over panics** use assertions to pass/fail tests rather than panics.
+
+```
+✅ Correct (Current Parser Pattern):
+outrun-parser/tests/test_string_literals.rs
+outrun-parser/tests/test_arithmetic_operators.rs
+
+✅ Alternative (src/tests/ subdirectory):
+outrun-typechecker/src/tests/test_trait_definitions.rs
+outrun-typechecker/src/tests/test_expression_checking.rs
+
+❌ Incorrect:
+outrun-parser/tests/string_literals.rs        # Missing test_ prefix
+outrun-parser/src/parser/literals.rs          # Inline #[cfg(test)] modules
+outrun-typechecker/src/types/mod.rs           # Inline tests
+outrun-typechecker/tests/trait_definitions.rs # Missing test_ prefix
+```
+
+**Recommended Structure**:
+```
+outrun-component/
+├── src/
+│   ├── lib.rs
+│   ├── module/
+│   │   ├── implementation.rs    # Implementation only
+│   │   └── other_logic.rs       # Implementation only
+│   └── tests/                   # Tests in src/tests/ subdirectory
+│       ├── test_integration.rs
+│       ├── test_basic_features.rs
+│       └── test_edge_cases.rs
+```
+
+**Rationale**: 
+- Keeps source code clean and focused on implementation
+- `test_` prefix makes test files immediately identifiable
+- Enables comprehensive integration testing  
+- Improves compilation times for production builds
+- Separates unit logic from test logic clearly
+- Tests can access internal modules more easily when in src/tests/
 
 ## Useful Commands
 

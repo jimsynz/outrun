@@ -13,7 +13,7 @@ TYPE_IDENTIFIER ::= [A-Z][a-zA-Z0-9_]*
 MODULE_PATH ::= TYPE_IDENTIFIER ("." TYPE_IDENTIFIER)*
 
 # Keywords
-KEYWORDS ::= "struct" | "trait" | "impl" | "def" | "defp" | "let" | "const" | "fn" | "if" | "else" | "case" | "when" | "alias" | "true" | "false" | "for" | "Self"
+KEYWORDS ::= "struct" | "trait" | "impl" | "def" | "defs" | "defp" | "let" | "const" | "fn" | "if" | "else" | "case" | "when" | "alias" | "true" | "false" | "for" | "Self"
 
 # Literals
 INTEGER ::= DECIMAL | BINARY | OCTAL | HEXADECIMAL
@@ -78,7 +78,9 @@ struct_impl_block ::= function_definition*
 trait_definition ::= attribute* "trait" TYPE_IDENTIFIER generic_params? trait_constraints? "{" trait_body "}"
 
 trait_body ::= trait_function*
-trait_function ::= function_signature | function_definition
+trait_function ::= function_signature | function_definition | static_function_definition
+
+static_function_definition ::= "defs" IDENTIFIER function_signature function_body
 
 # Implementation Block
 impl_block ::= "impl" generic_params? trait_spec "for" type_spec trait_constraints? "{" impl_body "}"
@@ -244,9 +246,16 @@ struct_update ::= ".." expression
 if_expression ::= "if" expression "{" function_body "}" ("else" "{" function_body "}")?
 
 # Case Expression  
-case_expression ::= "case" expression "{" case_clause+ "}"
+case_expression ::= concrete_case_expression | trait_case_expression
+
+concrete_case_expression ::= "case" expression "{" case_clause+ "}"
+trait_case_expression ::= "case" expression "as" TYPE_IDENTIFIER "{" trait_case_clause+ "}"
+
 case_clause ::= case_pattern "->" (expression | "{" function_body "}")
+trait_case_clause ::= trait_case_pattern "->" (expression | "{" function_body "}")
+
 case_pattern ::= destructure_pattern guard_clause?
+trait_case_pattern ::= TYPE_IDENTIFIER "{" struct_pattern_fields? "}" guard_clause?
 
 destructure_pattern ::= struct_pattern 
                       | tuple_pattern

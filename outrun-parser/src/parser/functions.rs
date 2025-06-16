@@ -365,7 +365,7 @@ impl OutrunParser {
         Ok(functions)
     }
 
-    /// Parse a trait function (signature or definition)
+    /// Parse a trait function (signature, definition, or static definition)
     pub(crate) fn parse_trait_function(
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<TraitFunction> {
@@ -379,6 +379,10 @@ impl OutrunParser {
             Rule::function_definition => {
                 let definition = Self::parse_function_definition(inner)?;
                 Ok(TraitFunction::Definition(definition))
+            }
+            Rule::static_function_definition => {
+                let static_def = Self::parse_static_function_definition(inner)?;
+                Ok(TraitFunction::StaticDefinition(static_def))
             }
             _ => unreachable!("Invalid trait function rule"),
         }
@@ -726,5 +730,56 @@ impl OutrunParser {
         })?;
 
         Ok((module_path, function_name, arity))
+    }
+
+    /// Parse a static function definition
+    pub(crate) fn parse_static_function_definition(
+        pair: pest::iterators::Pair<Rule>,
+    ) -> ParseResult<StaticFunctionDefinition> {
+        let span = Self::extract_span(&pair);
+        let mut inner_pairs = pair.into_inner();
+
+        // Skip the 'defs' keyword
+        let defs_keyword = inner_pairs.next().unwrap();
+        assert_eq!(defs_keyword.as_rule(), Rule::keyword_defs);
+
+        // Parse function name
+        let name_pair = inner_pairs.next().unwrap();
+        let name = Self::parse_identifier(name_pair)?;
+
+        let mut parameters = Vec::new();
+        let mut return_type = None;
+        let mut body = None;
+
+        for remaining_pair in inner_pairs {
+            match remaining_pair.as_rule() {
+                Rule::parameter_list => {
+                    parameters = Self::parse_parameter_list(remaining_pair)?;
+                }
+                Rule::return_type => {
+                    return_type = Some(Self::parse_return_type(remaining_pair)?);
+                }
+                Rule::block => {
+                    body = Some(Self::parse_block(remaining_pair)?);
+                }
+                _ => {} // Skip other rules
+            }
+        }
+
+        let body = body.ok_or_else(|| {
+            ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(span.start..span.end),
+                "Static function definition must have a body".to_string(),
+            )
+        })?;
+
+        Ok(StaticFunctionDefinition {
+            name,
+            parameters,
+            return_type,
+            body,
+            span,
+        })
     }
 }

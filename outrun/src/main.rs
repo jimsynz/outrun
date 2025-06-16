@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, MietteHandlerOpts, Result};
 use outrun_parser::parse_program_with_diagnostics_and_source;
+use outrun_typechecker::typecheck_program_with_source;
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -33,6 +34,16 @@ enum Commands {
         #[arg(short, long)]
         spans: bool,
     },
+    /// Type check Outrun source files and display parsing and type checking results
+    Typecheck {
+        /// Outrun source files to type check (use '-' to read from stdin)
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<PathBuf>,
+
+        /// Show detailed span information in output
+        #[arg(short, long)]
+        spans: bool,
+    },
 }
 
 fn main() {
@@ -44,6 +55,9 @@ fn main() {
     match cli.command {
         Some(Commands::Parse { files, spans }) => {
             handle_parse_command(files, spans);
+        }
+        Some(Commands::Typecheck { files, spans }) => {
+            handle_typecheck_command(files, spans);
         }
         None => {
             // No subcommand provided, show help
@@ -216,4 +230,136 @@ fn print_ast(ast: &outrun_parser::Program, spans: bool) {
 
 fn format_ast_clean(ast: &outrun_parser::Program) -> String {
     sexpr::format_program_as_sexpr(ast)
+}
+
+fn handle_typecheck_command(files: Vec<PathBuf>, spans: bool) {
+    let mut success = true;
+    let multiple_files = files.len() > 1;
+
+    for file_path in files {
+        let display_name = if file_path.to_str() == Some("-") {
+            "<stdin>".to_string()
+        } else {
+            file_path.display().to_string()
+        };
+
+        match typecheck_single_file(&file_path, spans) {
+            Ok(()) => {
+                if multiple_files {
+                    println!("✅ {}", display_name);
+                }
+            }
+            Err(e) => {
+                // Use miette's beautiful error reporting
+                eprintln!("{:?}", e);
+                success = false;
+            }
+        }
+    }
+
+    if !success {
+        process::exit(1);
+    }
+}
+
+fn typecheck_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
+    let (source, source_name) = if file_path.to_str() == Some("-") {
+        // Read from stdin
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer).into_diagnostic()?;
+        (buffer, "<stdin>".to_string())
+    } else {
+        // Validate file exists and has .outrun extension
+        if !file_path.exists() {
+            return Err(miette::miette!("File not found: {}", file_path.display()));
+        }
+
+        if file_path.extension().and_then(|s| s.to_str()) != Some("outrun") {
+            return Err(miette::miette!(
+                "Expected .outrun file, got: {}",
+                file_path.display()
+            ));
+        }
+
+        // Read file contents
+        let source = fs::read_to_string(file_path).into_diagnostic()?;
+        (source, file_path.display().to_string())
+    };
+
+    // Parse with outrun-parser using comprehensive diagnostics and source file tracking
+    let (maybe_ast, diagnostics) =
+        parse_program_with_diagnostics_and_source(&source, Some(source_name.clone()));
+
+    // Print parsing results
+    println!("🔍 PARSING RESULTS for {}", source_name);
+    println!("{}", "=".repeat(60));
+
+    // Print any diagnostics (errors, warnings, info) with beautiful formatting
+    if diagnostics.has_diagnostics() {
+        for report in diagnostics.create_reports_with_filename(&source_name) {
+            eprintln!("{:?}", report);
+        }
+
+        // Print summary
+        let summary = diagnostics.summary();
+        if summary.total > 0 {
+            eprintln!("\n📊 Parsing Diagnostics Summary: {}", summary);
+        }
+
+        // Return error if there were actual errors (not just warnings/info)
+        if diagnostics.has_errors() {
+            return Err(miette::miette!(
+                "Parsing failed with {} errors",
+                diagnostics.error_count()
+            ));
+        }
+    } else {
+        println!("✅ No parsing errors");
+    }
+
+    // If we have a successfully parsed AST, print it and try to type check it
+    if let Some(ast) = maybe_ast {
+        // Print AST
+        println!("\n📄 PARSED AST:");
+        println!("{}", "-".repeat(40));
+        print_ast(&ast, spans);
+
+        // Now try to type check it
+        println!("\n🔬 TYPE CHECKING RESULTS:");
+        println!("{}", "=".repeat(60));
+
+        match typecheck_program_with_source(ast, &source, &source_name) {
+            Ok(typed_program) => {
+                println!("✅ Type checking successful!");
+                println!("\n📋 TYPED PROGRAM:");
+                println!("{}", "-".repeat(40));
+                if spans {
+                    println!("{:#?}", typed_program);
+                } else {
+                    println!("{:?}", typed_program);
+                }
+            }
+            Err(error_report) => {
+                let summary = error_report.error_summary();
+                println!("❌ Type checking failed: {}", summary);
+                println!("{}", "-".repeat(40));
+
+                // Display each error individually with beautiful miette formatting
+                for report in error_report.create_individual_reports() {
+                    eprintln!("{:?}", report);
+                    eprintln!(); // Add spacing between errors
+                }
+
+                return Err(miette::miette!(
+                    "Type checking failed with {} errors",
+                    error_report.error_count()
+                ));
+            }
+        }
+
+        Ok(())
+    } else {
+        // This case should not happen since we checked has_errors above
+        Err(miette::miette!("Unknown parsing failure"))
+    }
 }

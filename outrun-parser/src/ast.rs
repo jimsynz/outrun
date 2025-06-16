@@ -285,7 +285,7 @@ pub enum StructLiteralField {
 /// Struct literals TypeName { field: value, ..spread }
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteral {
-    pub type_name: TypeIdentifier,
+    pub type_path: Vec<TypeIdentifier>,
     pub fields: Vec<StructLiteralField>,
     pub span: Span,
 }
@@ -350,7 +350,7 @@ pub struct BinaryOperation {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOperator {
     // Arithmetic operators
     Add,      // +
@@ -392,7 +392,7 @@ pub struct UnaryOperation {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOperator {
     Plus,       // +
     Minus,      // -
@@ -593,7 +593,7 @@ pub struct TuplePattern {
 /// Struct destructuring pattern with recursive field patterns
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructPattern {
-    pub type_name: TypeIdentifier,
+    pub type_path: Vec<TypeIdentifier>,
     pub fields: Vec<StructFieldPattern>, // Changed to support recursive patterns
     pub span: Span,
 }
@@ -641,16 +641,31 @@ pub struct IfExpression {
     pub span: Span,
 }
 
-/// Case expression with when clauses and else clause
+/// Case expression with two variants: concrete type matching and trait dispatch
 #[derive(Debug, Clone, PartialEq)]
-pub struct CaseExpression {
+pub enum CaseExpression {
+    Concrete(ConcreteCaseExpression),
+    Trait(TraitCaseExpression),
+}
+
+/// Concrete case expression with when clauses (exhaustiveness checked)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConcreteCaseExpression {
     pub expression: Box<Expression>, // The value being matched
     pub when_clauses: Vec<CaseWhenClause>,
-    pub else_clause: CaseElseClause,
     pub span: Span,
 }
 
-/// When clause in case expression
+/// Trait case expression for trait-based exhaustiveness checking
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitCaseExpression {
+    pub expression: Box<Expression>, // The value being matched
+    pub trait_name: TypeIdentifier,  // The trait for dispatch
+    pub type_clauses: Vec<TraitCaseClause>,
+    pub span: Span,
+}
+
+/// When clause in concrete case expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseWhenClause {
     pub guard: Expression,  // The guard condition (must return boolean)
@@ -658,10 +673,13 @@ pub struct CaseWhenClause {
     pub span: Span,
 }
 
-/// Else clause in case expression  
+/// Type clause in trait case expression
 #[derive(Debug, Clone, PartialEq)]
-pub struct CaseElseClause {
-    pub result: CaseResult, // Block or expression result
+pub struct TraitCaseClause {
+    pub type_name: TypeIdentifier, // Concrete type implementing the trait
+    pub pattern: Option<StructPattern>, // Optional struct destructuring pattern
+    pub guard: Option<Expression>, // Optional guard condition
+    pub result: CaseResult,        // Block or expression result
     pub span: Span,
 }
 
@@ -919,7 +937,14 @@ impl std::fmt::Display for StructLiteralField {
 
 impl std::fmt::Display for StructLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{", self.type_name)?;
+        // Format the qualified type path (e.g., "Result.Ok" or "User")
+        for (i, type_id) in self.type_path.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+            write!(f, "{}", type_id.name)?;
+        }
+        write!(f, " {{")?;
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -1268,7 +1293,14 @@ impl std::fmt::Display for TuplePattern {
 
 impl std::fmt::Display for StructPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{ ", self.type_name)?;
+        // Format the qualified type path
+        for (i, type_id) in self.type_path.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+            write!(f, "{}", type_id.name)?;
+        }
+        write!(f, " {{ ")?;
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -1335,26 +1367,56 @@ impl std::fmt::Display for IfExpression {
 
 impl std::fmt::Display for CaseExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CaseExpression::Concrete(concrete) => write!(f, "{}", concrete),
+            CaseExpression::Trait(trait_case) => write!(f, "{}", trait_case),
+        }
+    }
+}
+
+impl std::fmt::Display for ConcreteCaseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "case {} {{", self.expression)?;
 
         for when_clause in &self.when_clauses {
             writeln!(f, "    {}", when_clause)?;
         }
 
-        writeln!(f, "    {}", self.else_clause)?;
         write!(f, "}}")
+    }
+}
+
+impl std::fmt::Display for TraitCaseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "case {} as {} {{", self.expression, self.trait_name)?;
+
+        for type_clause in &self.type_clauses {
+            writeln!(f, "    {}", type_clause)?;
+        }
+
+        write!(f, "}}")
+    }
+}
+
+impl std::fmt::Display for TraitCaseClause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.type_name)?;
+
+        if let Some(pattern) = &self.pattern {
+            write!(f, " {}", pattern)?;
+        }
+
+        if let Some(guard) = &self.guard {
+            write!(f, " when {}", guard)?;
+        }
+
+        write!(f, " -> {}", self.result)
     }
 }
 
 impl std::fmt::Display for CaseWhenClause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "when {} -> {}", self.guard, self.result)
-    }
-}
-
-impl std::fmt::Display for CaseElseClause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "else -> {}", self.result)
     }
 }
 
@@ -1399,11 +1461,22 @@ pub struct TraitDefinition {
     pub span: Span,
 }
 
-/// Trait function (signature or full definition)
+/// Trait function (signature, definition, or static definition)
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraitFunction {
     Signature(FunctionSignature),
     Definition(FunctionDefinition),
+    StaticDefinition(StaticFunctionDefinition),
+}
+
+/// Static function definition in traits (using `defs` keyword)
+#[derive(Debug, Clone, PartialEq)]
+pub struct StaticFunctionDefinition {
+    pub name: Identifier,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<TypeAnnotation>,
+    pub body: Block,
+    pub span: Span,
 }
 
 /// Function signature without body
@@ -1537,6 +1610,7 @@ impl std::fmt::Display for TraitFunction {
         match self {
             TraitFunction::Signature(sig) => write!(f, "{}", sig),
             TraitFunction::Definition(def) => write!(f, "{}", def),
+            TraitFunction::StaticDefinition(static_def) => write!(f, "{}", static_def),
         }
     }
 }
@@ -1559,6 +1633,24 @@ impl std::fmt::Display for FunctionSignature {
             write!(f, " {}", guard)?;
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for StaticFunctionDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "defs {}", self.name)?;
+        write!(f, "(")?;
+        for (i, param) in self.parameters.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", param)?;
+        }
+        write!(f, ")")?;
+        if let Some(return_type) = &self.return_type {
+            write!(f, ": {}", return_type)?;
+        }
+        write!(f, " {}", self.body)
     }
 }
 

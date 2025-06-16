@@ -1,0 +1,50 @@
+//! Integration tests for the Outrun parser
+//!
+//! All test files must be declared as modules here.
+
+mod test_alias_statements;
+mod test_anonymous_functions;
+mod test_api_functions;
+mod test_arithmetic_operators;
+mod test_atom_literals;
+mod test_attributes;
+mod test_basic_parsing;
+mod test_bitwise_operators;
+mod test_collections;
+mod test_comparison_operators;
+mod test_comprehensive_comment_collection;
+mod test_constant_definitions;
+mod test_control_flow_case_simple;
+mod test_control_flow_if;
+mod test_debug_info_comments;
+mod test_destructuring_patterns;
+mod test_diagnostics;
+mod test_diagnostics_unit;
+mod test_field_access_test;
+mod test_float_literals;
+mod test_function_call_ambiguity;
+mod test_function_calls;
+mod test_function_captures;
+mod test_function_definitions;
+mod test_function_types;
+mod test_identifier_precedence;
+mod test_import_statements;
+mod test_integer_formats;
+mod test_let_bindings;
+mod test_logical_operators;
+mod test_macro_definitions;
+mod test_macro_edge_cases;
+mod test_map_literals;
+mod test_multiline_strings;
+mod test_pipe_operators;
+mod test_sigil_literals;
+mod test_source_reconstruction;
+mod test_spread_operator_integration;
+mod test_static_trait_functions;
+mod test_string_interpolation;
+mod test_string_literals;
+mod test_struct_literals;
+mod test_type_system_basic;
+mod test_type_system_impls;
+mod test_type_system_structs;
+mod test_type_system_traits;

@@ -22,7 +22,7 @@ Outrun distinguishes between **concrete types** (actual runtime values) and **tr
 
 - **Concrete types**: `Outrun.Core.Integer64`, `Outrun.Core.Float64`, `Outrun.Core.Boolean`, `Outrun.Core.String`, `Outrun.Core.Atom`
 - **Traits**: `Integer`, `Float`, `Boolean`, `String` define behaviour interface
-- **Runtime dispatch**: Integer literals default to `Outrun.Core.Integer64` but other concrete types can implement `Integer`
+- **Static dispatch**: Integer literals default to `Outrun.Core.Integer64` but other concrete types can implement `Integer`
 - **Type checking**: The type checker maintains trait implementation mappings, not the interpreter
 - **Static analysis**: All trait compatibility validated at compile time, not runtime
 
@@ -89,7 +89,7 @@ Outrun's module system is based on types, with clear separation between static f
 
 - **Type checker responsibility**: Builds `(TraitId, TypeId) -> OpaqueModule` lookup table
 - **Runtime dispatch**: `Display.to_string(value: int)` becomes module lookup + function call within module
-- **Opaque trait modules**: Named like "impl TraitName for TypeName", separate from type's own module
+- **Opaque trait modules**: Named like "TypeName as TraitName", separate from type's own module
 - **No naming conflicts**: Static functions in type module vs trait functions in separate impl modules
 
 ### Module Resolution
@@ -235,7 +235,7 @@ can span multiple lines
 ```outrun
 [1, 2, 3]                         # List
 (42, "hello", true)               # Tuple
-%{name: "James", age: 35}         # Map
+{name: "James", age: 35}          # Map
 
 # List construction with head|tail syntax (similar to Elixir's [head | tail])
 [head, ..tail]                   # Prepend element(s) to existing list
@@ -303,16 +303,241 @@ impl Drawable for User {
 }
 
 # With generics
-impl<T> Container<T> for Box<T> when T: Clone {
-    def get(self: Self): T {
-        self.value.clone()
+impl<T> Display for SynthesizerBank<T> when T: Waveform {
+    def to_string(self: Self): String {
+        "SynthBank: #{self.patches.length()} patches loaded"
     }
     
-    def put(self: Self, value: T): Self {
-        Box { value: value }
+    def add_patch(self: Self, patch: T): Self {
+        SynthesizerBank { patches: [patch, ..self.patches] }
     }
 }
 ```
+
+### Static Trait Functions
+
+Traits can define static functions using the `defs` keyword. These functions are implemented in the trait itself and provide constructor patterns and trait-level utilities without requiring implementation by concrete types. They cannot refer to the `Self` type.
+
+```outrun
+trait Result<T, E> {
+    # Static constructor functions - implemented in the trait
+    defs ok(result: T): Result<T, E> {
+        Result.Ok { result: result}
+    }
+    
+    defs error(error: E): Result<T, E> {
+        Result.Error { error: error }
+    }
+    
+    # Instance functions - must be implemented by concrete types
+    def is_ok?(self: Self): Boolean
+    def unwrap(self: Self): T
+    def map<U>(self: Self, f: Function<(T) -> U>): Result<U, E>
+}
+
+trait Option<T> {
+    # Static constructors
+    defs some(value: T): Option<T> {
+        Option.Some { value: value }
+    }
+    
+    defs none(): Option<T> {
+        Option.None {}
+    }
+    
+    # Instance methods
+    def some?(self: Self): Boolean
+    def unwrap(self: Self): T
+}
+```
+
+**Static Function Characteristics:**
+
+- **No `Self` parameter**: Static functions don't operate on values
+- **Trait-level implementation**: Function body is defined in the trait itself
+- **Constructor patterns**: Commonly used for ergonomic type construction
+- **Callable via trait name**: `Result.ok(value: 42)`, `Option.some(value: "hello")`
+- **Not implemented by types**: Concrete types implementing the trait don't provide these functions
+- **Generic support**: Can use trait's generic parameters in signatures and bodies
+
+**Usage Examples:**
+
+```outrun
+# Create Result values using static constructors
+let success = Result.ok(value: 42)
+let failure = Result.error(error: "Invalid input")
+
+# Create Option values
+let some_value = Option.some(value: "hello")
+let no_value = Option.none()
+```
+
+## Generic Types
+
+Generic types provide parametric polymorphism in Outrun, allowing types and traits to work with multiple concrete types while maintaining type safety. Generic parameters are declared on **structs and traits only** - functions do not declare their own generic parameters.
+
+### Generic Type Declaration
+
+Generic parameters are declared using angle brackets `<T>` on structs and traits:
+
+```outrun
+# Generic struct with single parameter
+struct Container<T>(value: T) {
+    def get(self: Self): T { self.value }
+}
+
+# Generic struct with multiple parameters
+struct Pair<T, U>(first: T, second: U) {
+    def swap(self: Self): Pair<U, T> {
+        Pair { first: self.second, second: self.first }
+    }
+}
+
+# Generic trait with parameter
+trait Serializable<T> {
+    def serialize(self: Self): T
+    def deserialize(data: T): Result<Self, String>
+}
+```
+
+### Generic Constraints
+
+Generic parameters can be constrained to implement specific traits using the `when` clause:
+
+```outrun
+# Single constraint
+struct Processor<T>(data: T) when T: Display {
+    def show(self: Self): String {
+        T.to_string(self.data)
+    }
+}
+
+# Multiple constraints  
+struct RaceTrack<T>(segments: List<T>) when T: Measurable && T: Navigable {
+    def calculate_lap_time(self: Self): Duration {
+        # Can use both Measurable and Navigable operations
+    }
+}
+
+# Trait with constraints
+trait NeonDisplay<T> when T: Illuminated {
+    def render_frame(self: Self): Frame
+}
+```
+
+### Generic Type Usage in Functions
+
+Functions **do not declare generic parameters** like `def foo<T>()`. Instead, functions use existing generic types in their signatures:
+
+```outrun
+# ✅ Valid: Using existing generic types
+def process_list(items: List<String>): List<Integer> {
+    # Process List<String> to produce List<Integer>
+}
+
+def handle_result(result: Result<User, DatabaseError>): Option<User> {
+    # Process Result to produce Option
+}
+
+def create_container(value: String): Container<String> {
+    Container { value: value }
+}
+
+# ❌ Invalid: Functions cannot declare generic parameters
+# def map<T, U>(list: List<T>, fn: T -> U): List<U>  # Not supported
+```
+
+The only generic types that can be referred to by function arguments or return values are those which are defined in the surrounding type, eg:
+
+```outrun
+struct Point<T>(x: T, y: T) {
+    def as_tuple(point: Self): (T, T) {
+        (point.x, point.y)
+    }
+}
+```
+
+### Generic Type Arguments
+
+When using generic types, you specify concrete type or trait arguments:
+
+```outrun
+# Creating values of generic types
+let numbers: List<Integer> = List.new()
+let user_result: Result<User, String> = Result.ok(value: user)
+let name_option: Option<String> = Option.some(value: "Alice")
+
+# Generic types in struct literals
+let container = Container<String> { value: "hello" }
+let pair = Pair<Integer, String> { first: 42, second: "answer" }
+```
+
+### Generic Implementation Blocks
+
+Implementations can be generic over type parameters:
+
+```outrun
+# Generic implementation
+impl Display<T> for Container<T> when T: Display {
+    def to_string(self: Self): String {
+        "Container(#{T.to_string(self.value)})"
+    }
+}
+
+# Implementation for specific generic instantiation
+impl Double for Pair<Integer> {
+    def double(self: Self): Integer {
+        Self { a: self.a * 2, b: self.b * 2 }
+    }
+}
+```
+
+### Built-in Generic Types
+
+Outrun provides several built-in generic types:
+
+- **`Option<T>`**: Optional values that may be `Some<T>` or `None`
+- **`Result<T, E>`**: Success (`Ok<T>`) or failure (`Err<E>`) values
+- **`List<T>`**: Homogeneous collections of type `T`
+- **`Map<K, V>`**: Key-value associations from `K` to `V`
+- **`Function<(args...) -> ReturnType>`**: Function types with specified signatures
+
+### The Self Type
+
+`Self` is a special generic type that always refers to the implementing concrete type:
+
+```outrun
+trait Synthesizable {
+    def create_waveform(self: Self): Waveform  # Self refers to the implementing type
+}
+
+impl Synthesizable for CyberSynth {
+    def create_waveform(self: Self): Waveform {  # Self = CyberSynth in this implementation
+        Waveform { frequency: self.frequency, amplitude: self.amplitude }
+    }
+}
+
+impl Synthesizable for LaserHarp<String> {
+    def create_waveform(self: Self): Waveform {  # Self = LaserHarp<String> in this implementation
+        Waveform.from_note(note: self.current_note)
+    }
+}
+```
+
+**Self Type Characteristics:**
+- **Always available**: `Self` is implicitly available in all trait and struct function definitions
+- **Refers to implementer**: In trait implementations, `Self` refers to the concrete implementing type
+- **Type-safe**: Ensures methods return the correct concrete type, not a generic
+- **No explicit declaration**: `Self` doesn't need to be declared like other generic parameters
+
+### Generic Type Rules
+
+1. **Declaration Scope**: Only structs and traits can declare generic parameters
+2. **Usage Scope**: Functions, variables, and expressions can use existing generic types
+3. **Constraint Scope**: Generic constraints (`when T: Trait`) are only valid on struct and trait declarations
+4. **Type Arguments**: Must be provided when creating values of generic types
+5. **Variance**: Generic types are invariant (no subtyping between `Container<A>` and `Container<B>`)
+6. **Self Type**: `Self` is a special generic that always refers to the implementing concrete type
 
 ### Function Types
 
@@ -321,11 +546,11 @@ Function types provide explicit type annotations for first-class functions. They
 ```outrun
 # Basic function type syntax: Function<(param: Type) -> ReturnType>
 def process(callback: Function<(x: Integer) -> String>) {
-    callback(42)
+    callback(x: 42)
 }
 
 # Function type with no parameters  
-def run(task: Function<() -> Unit>) {
+def run(task: Function<() -> Option>) {
     task()
 }
 
@@ -346,11 +571,11 @@ struct EventHandler(
     }
 }
 
-# Function types with generic return types
-def map_list<T, U>(
-    list: List<T>, 
-    mapper: Function<(item: T) -> U>
-): List<U> {
+# Functions using existing generic types in signatures
+def process_list(
+    list: List<String>, 
+    mapper: Function<(item: String) -> Integer>
+): List<Integer> {
     List.map(list, mapper)
 }
 
@@ -386,20 +611,55 @@ def add(left: Integer, right: Integer): Integer {
 
 # Private function
 defp validate_email(email: String): Boolean {
-    String.contains?(email, "@")
+    String.contains?(string: email, pattern: "@")
 }
 
 # Function with guards
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
 when Integer.non_zero?(value: denominator) {
-    Ok(numerator / denominator)
+    Result.ok(result: numerator / denominator)
 }
 
 def divide(numerator: Integer, denominator: Integer): Result<Integer, DivisionError>
 when Integer.zero?(value: denominator) {
-    Err(DivisionError("Cannot divide by zero"))
+    Result.error(DivisionError.error(message: "Cannot divide by zero"))
 }
 ```
+
+### Function Return Types
+
+All functions in Outrun **must have explicit return type annotations** and **must return a value**. Every function body contains at least one expression, and all expressions produce values:
+
+```outrun
+# ✅ Valid: Function returns calculated value
+def calculate(x: Integer): Integer { x * 2 }
+
+# ✅ Valid: Function returns Option value
+def process_data(msg: String): Option<String> { 
+    if String.empty?(string: msg) {
+        Option.none()
+    } else {
+        Option.some(option: String.uppercase(string: msg))
+    }
+}
+
+# ✅ Valid: Function that performs side effects but still returns a value
+def log_and_return(msg: String): String {
+    Logger.info(msg)  # Side effect
+    msg              # Return value
+}
+
+# ❌ Invalid: Missing return type annotation
+# def invalid_function(x: Integer) { x * 2 }  # Compilation error
+```
+
+**Return Type Rules:**
+
+1. **Mandatory Annotations**: Every function must specify its return type explicitly
+2. **Must Return Value**: All functions must contain at least one expression that produces the return value
+3. **Type Matching**: Function body must produce a value that matches the declared return type exactly
+4. **Guard Functions**: Functions ending with `?` must return `Boolean`
+5. **Generic Returns**: Functions can return generic types like `Option<User>`, `Result<T, E>`
 
 ### Function Calls
 
@@ -416,7 +676,7 @@ result = add(left, right)           # Equivalent to add(left: left, right: right
 result = add(left, right: 10)      # Equivalent to add(left: left, right: 10)
 
 # Remote function calls
-user = User.create(email: "test@example.com", name: Some("James"))
+user = User.create(email: "test@example.com", name: Option.some(option: "James"))
 
 # Parentheses required even for no arguments
 current_time = DateTime.now()
@@ -452,7 +712,7 @@ def process_user(user: User, session: Session, timestamp: DateTime): Result<(), 
     # Function implementation
 }
 
-# The compiler auto-generates:
+# The compiler auto-generates a type whose name is opaque but is discoverable via the `Function` trait.
 struct ProcessUserInput(user: User, session: Session, timestamp: DateTime)
 
 # And automatically implements Spreadable<ProcessUserInput> for compatible structs:
@@ -476,6 +736,8 @@ When multiple sources provide the same parameter:
 
 ### Anonymous Functions
 
+Anonymous functions provide lambda expressions with multiple clauses, guards, and pattern matching. They support the same guard-based dispatch as regular functions but with strict type consistency requirements.
+
 ```outrun
 # Single expression
 increment = fn { x: Integer -> x + 1 }
@@ -485,7 +747,7 @@ logger = fn {
     message: String -> {
         let timestamp = DateTime.now()
         IO.puts("#{timestamp}: #{message}")
-        Ok(())
+        Result.ok(result: ())
     }
 }
 
@@ -502,7 +764,140 @@ comparer = fn {
     (x: Integer, y: Integer) when Integer.less?(left: x, right: y) -> "second is greater"
     (x: Integer, y: Integer) when Integer.equal?(left: x, right: y) -> "equal"
 }
+
+# No parameters
+generator = fn { () -> UUID.new() }
+
+# Complex parameter patterns
+processor = fn {
+    _user: User { name, email } when String.contains?(string: email, substring: "@") -> process_user(name: name, email: email)
+    _user: Guest { session_id } -> process_guest(id: session_id)
+    _user: Admin { permissions } -> process_admin(perms: permissions)
+}
 ```
+
+#### Anonymous Function Type Rules
+
+Anonymous functions follow strict type consistency rules to enable static analysis and efficient dispatch:
+
+**1. Parameter Signature Consistency**
+- All clauses in an anonymous function **must have identical parameter signatures**
+- Parameter names, types, and arity must match exactly across all clauses
+- Pattern types are considered part of the parameter signature
+
+```outrun
+# ✅ Valid: Same parameter signature across clauses
+processor = fn {
+    x: Integer when Integer.positive?(value: x) -> x * 2
+    x: Integer when Integer.negative?(value: x) -> x * -1
+    x: Integer -> 0  # Default case, same signature
+}
+
+# ❌ Invalid: Different parameter types
+mixed_processor = fn {
+    x: Integer -> x * 2      # Parameter type: Integer
+    x: String -> x.length()  # Parameter type: String - COMPILATION ERROR
+}
+
+# ❌ Invalid: Different parameter arity
+arity_mismatch = fn {
+    x: Integer -> x * 2                    # One parameter
+    (x: Integer, y: Integer) -> x + y      # Two parameters - COMPILATION ERROR
+}
+```
+
+**2. Return Type Consistency**
+- All clauses **must return the same concrete type**
+- Return type is inferred from the first clause and validated against all subsequent clauses
+- No implicit type conversions or common supertype inference
+
+```outrun
+# ✅ Valid: All clauses return String
+formatter = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive: #{x}"
+    x: Integer when Integer.negative?(value: x) -> "negative: #{x}"
+    x: Integer -> "zero"
+}
+
+# ❌ Invalid: Mixed return types
+mixed_returns = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive"  # Returns String
+    x: Integer when Integer.negative?(value: x) -> x          # Returns Integer - COMPILATION ERROR
+    x: Integer -> 0                                           # Returns Integer - COMPILATION ERROR
+}
+
+# ❌ Invalid: Option vs concrete type mismatch
+option_mismatch = fn {
+    x: Integer when Integer.positive?(value: x) -> Option.some(value: x)  # Returns Option<Integer>
+    x: Integer -> x                                                       # Returns Integer - COMPILATION ERROR
+}
+```
+
+**3. Guard Function Requirements**
+- Guards must be side-effect-free functions returning Boolean
+- Guards can access all parameters bound by the clause pattern
+- Guards follow the same rules as function guards (functions ending with `?`)
+
+```outrun
+# ✅ Valid: Guards return Boolean
+validator = fn {
+    _user: User { age } when Integer.greater?(value: age, other: 18) -> "adult"
+    _user: User { age } when Integer.positive?(value: age) -> "minor"
+    _user: User { age } -> "invalid age"
+}
+
+# ❌ Invalid: Guard doesn't return Boolean
+invalid_guard = fn {
+    x: Integer when Integer.abs(value: x) -> "processed"  # Guard returns Integer, not Boolean - COMPILATION ERROR
+    x: Integer -> "unprocessed"
+}
+```
+
+**4. Pattern Matching Consistency**
+- When using pattern matching in parameters, all clauses must use the same pattern structure
+- Cannot mix simple parameters with pattern parameters
+
+```outrun
+# ✅ Valid: All clauses use struct patterns
+struct_processor = fn {
+    _user: User { name } when String.not_empty?(value: name) -> process_user(name: name)
+    _user: User { name } -> process_anonymous_user()
+}
+
+# ❌ Invalid: Mixing pattern types
+pattern_mismatch = fn {
+    _user: User { name } -> process_user(name: name)    # Struct pattern
+    x: User -> process_user_simple(user: x)      # Simple parameter - COMPILATION ERROR
+}
+```
+
+**5. Function Type Inference**
+- Anonymous functions have type `Function<(params...) -> ReturnType>`
+- Parameter and return types are inferred from clause analysis
+- Function type is used for type checking in assignments and function calls
+
+```outrun
+# Function type: Function<(x: Integer) -> String>
+let processor: Function<(x: Integer) -> String> = fn {
+    x: Integer when Integer.positive?(value: x) -> "positive"
+    x: Integer -> "non-positive"
+}
+
+# Type compatibility checking
+def apply_processor(data: Integer, proc: Function<(x: Integer) -> String>): String {
+    proc(x: data)
+}
+
+let result = apply_processor(data: 42, proc: processor)  # ✅ Valid: types match
+```
+
+**Error Messages:**
+- Parameter signature mismatches produce clear compilation errors
+- Return type inconsistencies highlight the conflicting clauses
+- Guard validation errors specify the problematic guard expression
+- Type inference failures provide expected vs actual type information
+
+These rules ensure that anonymous functions are statically analyzable, enabling efficient compilation and clear error reporting while maintaining the flexibility of guard-based dispatch.
 
 ### Function Capture Syntax
 
@@ -523,12 +918,12 @@ let simple_logger = &Logger.log/1
 let detailed_logger = &Logger.log/2
 
 # Used in higher-order functions
-users |> List.filter(&User.verified?)
-names |> List.map(&String.upcase)
+users |> List.filter(filter: &User.verified?)
+names |> List.map(map: &String.upcase)
 
 # For complex expressions, use full anonymous function syntax
-users |> List.filter(fn { user: User -> user.age >= 18 && user.verified })
-coordinates |> List.map(fn { point: Point -> Point { x: point.x * 2, y: point.y * 2 } })
+users |> List.filter(filter: fn { user: User -> user.age >= 18 && user.verified })
+coordinates |> List.map(map: fn { point: Point -> Point { x: point.x * 2, y: point.y * 2 } })
 ```
 
 ## Control Flow
@@ -548,7 +943,11 @@ value = if check { 1 } else { 0 }
 
 ### Case Statements
 
-Case statements use pattern matching with optional guards. All case clauses must start with a destructuring pattern:
+Case statements use pattern matching with optional guards and support two distinct syntax forms for different use cases:
+
+#### Case with Concrete Type Matching
+
+Standard case statements match against the concrete type of the expression, with patterns destructuring the value:
 
 ```outrun
 result = case user {
@@ -597,6 +996,48 @@ result = case value {
     _ -> "unknown"
 }
 ```
+
+#### Case with Trait Dispatch
+
+The enhanced case syntax `case expr as TraitName` enables trait-based exhaustiveness checking and dispatch, allowing pattern matching based on trait implementations rather than concrete types:
+
+```outrun
+# Trait-based case with exhaustiveness checking
+result = case mixed_values as Display {
+    # Must handle all concrete types that implement Display
+    # Compiler enforces exhaustiveness using orphan rules
+    User { name } -> "User: #{name}"
+    Product { title, price } -> "Product: #{title} (#{price})"
+    Order { id, total } -> "Order ##{id}: #{total}"
+    # Compiler error if any Display implementor is missing
+}
+
+# Trait dispatch with value binding
+result = case data as Serializable {
+    config: Config when Config.valid?(config) -> config.serialize()
+    settings: Settings -> settings.to_json()
+    metadata: Metadata -> metadata.to_string()
+    # Each case binds the value with its concrete type for trait method calls
+}
+```
+
+#### Exhaustiveness Checking
+
+The trait-based syntax enables comprehensive exhaustiveness checking:
+
+- **Concrete type cases**: Traditional exhaustiveness based on value patterns and wildcards
+- **Trait-based cases**: Exhaustiveness determined by all concrete types implementing the trait  
+- **Orphan rule analysis**: Compiler uses orphan rules to determine which types could implement the trait
+- **Open trait system**: New implementations require case statement updates for exhaustiveness
+
+#### Case Syntax Summary
+
+Two distinct case statement forms serve different purposes:
+
+1. **`case expr { patterns... }`** - Traditional pattern matching against concrete types
+2. **`case expr as Trait { type_patterns... }`** - Trait dispatch with exhaustiveness checking
+
+The trait syntax provides stronger type safety and exhaustiveness guarantees when working with trait abstractions.
 
 #### Pattern Types
 
@@ -1002,8 +1443,8 @@ import Logger, except: [debug: 1]       # Exclude specific functions
 Attributes are trait-based and use named parameter syntax:
 
 ```outrun
-@Derive(traits: [Debug, Clone])
-struct User(email: String, name: String) {
+@Derive(traits: [Debug, Display])
+struct SportsCar(model: String, speed: Integer) {
     # Functions go here
 }
 
@@ -1185,7 +1626,7 @@ trait Attribute {
     def apply(target: AST, args: Map<Atom, Any>): Result<AST, AttributeError>
 }
 
-# Usage: @Derive(traits: [Debug, Clone])
+# Usage: @Derive(traits: [Debug, Display])
 ```
 
 **Destructuring:**

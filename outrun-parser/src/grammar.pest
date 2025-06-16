@@ -65,6 +65,7 @@ keyword_struct = @{ "struct" ~ !ASCII_ALPHANUMERIC }
 keyword_trait = @{ "trait" ~ !ASCII_ALPHANUMERIC }
 keyword_impl = @{ "impl" ~ !ASCII_ALPHANUMERIC }
 keyword_def = @{ "def" ~ !ASCII_ALPHANUMERIC }
+keyword_defs = @{ "defs" ~ !ASCII_ALPHANUMERIC }
 keyword_defp = @{ "defp" ~ !ASCII_ALPHANUMERIC }
 keyword_let = @{ "let" ~ !ASCII_ALPHANUMERIC }
 keyword_const = @{ "const" ~ !ASCII_ALPHANUMERIC }
@@ -82,7 +83,7 @@ keyword_function = @{ "Function" ~ !ASCII_ALPHANUMERIC }
 
 // All keywords combined
 keyword = {
-    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defp |
+    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defs | keyword_defp |
     keyword_let | keyword_const | keyword_fn | keyword_if | keyword_else |
     keyword_case | keyword_when | keyword_alias | keyword_import | keyword_macro |
     keyword_for | keyword_self | keyword_function | keyword_as | keyword_only | keyword_except
@@ -91,7 +92,7 @@ keyword = {
 // === IDENTIFIERS ===
 // Pattern-based, single format
 
-identifier = @{ !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ "?"? }
+identifier = @{ !keyword ~ (ASCII_ALPHA_LOWER | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ "?"? }
 type_identifier = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHANUMERIC | "_")* }
 
 // === LITERALS ===
@@ -164,7 +165,7 @@ tuple = !{ "(" ~ tuple_elements? ~ ")" }
 tuple_elements = { expression ~ ("," ~ expression)* ~ ","? }
 
 // Struct literals TypeName { field: value, ..spread }
-struct_literal = !{ type_identifier ~ "{" ~ struct_literal_fields? ~ "}" }
+struct_literal = !{ module_path ~ "{" ~ struct_literal_fields? ~ "}" }
 struct_literal_fields = { struct_literal_field ~ ("," ~ struct_literal_field)* ~ ","? }
 struct_literal_field = { struct_field_spread | struct_field_assignment | struct_field_shorthand }
 struct_field_assignment = { identifier ~ ":" ~ expression }
@@ -216,11 +217,16 @@ qualified_identifier = ${ type_identifier ~ "." ~ identifier }
 // If expression: if condition { body } else { body }
 if_expression = ${ keyword_if ~ ws_comment+ ~ expression ~ ws_comment+ ~ block ~ (ws_comment* ~ keyword_else ~ ws_comment* ~ block)? }
 
-// Case expression: case value { when guard -> result ... else -> default }
-case_expression = !{ keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
-case_clauses = { case_when_clause+ ~ case_else_clause? }
+// Case expression: case value { when guard -> result ... else -> default } OR case value as Trait { Type { fields } -> result ... }
+case_expression = !{ concrete_case_expression | trait_case_expression }
+concrete_case_expression = !{ keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
+trait_case_expression = !{ keyword_case ~ expression ~ keyword_as ~ type_identifier ~ "{" ~ trait_case_clauses ~ "}" }
+
+case_clauses = { case_when_clause+ }
 case_when_clause = !{ keyword_when ~ expression ~ arrow ~ (block | expression) }
-case_else_clause = !{ keyword_else ~ arrow ~ (block | expression) }
+
+trait_case_clauses = { trait_case_clause+ }
+trait_case_clause = !{ type_identifier ~ "{" ~ struct_field_patterns? ~ "}" ~ guard_clause? ~ arrow ~ (block | expression) }
 
 arrow = { "->" }
 
@@ -296,11 +302,13 @@ struct_field = { identifier ~ ":" ~ type_annotation }
 struct_methods = { struct_method_item+ }
 struct_method_item = !{ function_definition }
 
-// Trait definition: trait Name<T> { function signatures }
+// Trait definition: trait Name<T> [when constraints] { function signatures }
 trait_definition = { attribute* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
 trait_functions = { trait_item+ }
 trait_item = !{ trait_function }
-trait_function = { function_signature | function_definition }
+trait_function = { static_function_definition | function_definition | function_signature }
+
+static_function_definition = { keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
 // Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }

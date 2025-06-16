@@ -569,6 +569,20 @@ impl OutrunParser {
         Ok(TypeIdentifier { name, span })
     }
 
+    /// Parse a module path from a Pest pair (Type.SubType.Module)
+    fn parse_module_path(pair: pest::iterators::Pair<Rule>) -> ParseResult<Vec<TypeIdentifier>> {
+        let mut path = Vec::new();
+
+        for inner_pair in pair.into_inner() {
+            if inner_pair.as_rule() == Rule::type_identifier {
+                let type_id = Self::parse_type_identifier(inner_pair)?;
+                path.push(type_id);
+            }
+        }
+
+        Ok(path)
+    }
+
     /// Parse a qualified identifier from a Pest pair (Type.identifier)
     fn parse_qualified_identifier(
         pair: pest::iterators::Pair<Rule>,
@@ -691,7 +705,7 @@ impl OutrunParser {
         }
 
         Ok(StructPattern {
-            type_name,
+            type_path: vec![type_name],
             fields,
             span,
         })

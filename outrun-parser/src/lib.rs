@@ -6,6 +6,9 @@ pub mod diagnostics;
 pub mod error;
 pub mod parser;
 
+#[cfg(test)]
+mod tests;
+
 pub use ast::*;
 pub use diagnostics::*;
 pub use error::*;

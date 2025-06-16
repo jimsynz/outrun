@@ -371,11 +371,36 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
     if functions_count == 0 {
         format!("(trait {})", name)
     } else {
+        // Count different types of functions
+        let mut signatures = 0;
+        let mut definitions = 0;
+        let mut static_definitions = 0;
+
+        for function in &trait_def.functions {
+            match function {
+                TraitFunction::Signature(_) => signatures += 1,
+                TraitFunction::Definition(_) => definitions += 1,
+                TraitFunction::StaticDefinition(_) => static_definitions += 1,
+            }
+        }
+
+        let mut function_details = Vec::new();
+        if signatures > 0 {
+            function_details.push(format!("signatures {}", signatures));
+        }
+        if definitions > 0 {
+            function_details.push(format!("definitions {}", definitions));
+        }
+        if static_definitions > 0 {
+            function_details.push(format!("static {}", static_definitions));
+        }
+
         format!(
-            "(trait {}\n{}(functions {}))",
+            "(trait {}\n{}(functions {} [{}]))",
             name,
             " ".repeat(indent + 2),
-            functions_count
+            functions_count,
+            function_details.join(", ")
         )
     }
 }
@@ -519,7 +544,12 @@ fn format_tuple_with_indent(tuple_lit: &TupleLiteral, indent: usize) -> String {
 }
 
 fn format_struct_literal_with_indent(struct_lit: &StructLiteral, indent: usize) -> String {
-    let type_name = &struct_lit.type_name.name;
+    let type_name = struct_lit
+        .type_path
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
 
     if struct_lit.fields.is_empty() {
         format!("{} {{}}", type_name)
@@ -590,6 +620,20 @@ fn format_if_expression_with_indent(if_expr: &IfExpression, indent: usize) -> St
 }
 
 fn format_case_expression_with_indent(case_expr: &CaseExpression, indent: usize) -> String {
+    match case_expr {
+        CaseExpression::Concrete(concrete) => {
+            format_concrete_case_expression_with_indent(concrete, indent)
+        }
+        CaseExpression::Trait(trait_case) => {
+            format_trait_case_expression_with_indent(trait_case, indent)
+        }
+    }
+}
+
+fn format_concrete_case_expression_with_indent(
+    case_expr: &ConcreteCaseExpression,
+    indent: usize,
+) -> String {
     let expr = format_expression_with_indent(&case_expr.expression, indent + 2);
     let when_clauses: Vec<String> = case_expr
         .when_clauses
@@ -603,18 +647,89 @@ fn format_case_expression_with_indent(case_expr: &CaseExpression, indent: usize)
         })
         .collect();
 
-    let else_clause = format!(
-        "\n{}(else {})",
-        " ".repeat(indent + 2),
-        format_case_result_with_indent(&case_expr.else_clause.result, indent + 4)
-    );
+    format!(
+        "(case {}\n{})",
+        expr,
+        when_clauses.join(&format!("\n{}", " ".repeat(indent + 2)))
+    )
+}
+
+fn format_trait_case_expression_with_indent(
+    trait_case: &TraitCaseExpression,
+    indent: usize,
+) -> String {
+    let expr = format_expression_with_indent(&trait_case.expression, indent + 2);
+    let trait_name = &trait_case.trait_name.name;
+    let type_clauses: Vec<String> = trait_case
+        .type_clauses
+        .iter()
+        .map(|clause| {
+            let mut clause_parts = vec![format!("(type {})", clause.type_name.name)];
+
+            if let Some(pattern) = &clause.pattern {
+                clause_parts.push(format!("(pattern {})", format_struct_pattern(pattern)));
+            }
+
+            if let Some(guard) = &clause.guard {
+                clause_parts.push(format!(
+                    "(guard {})",
+                    format_expression_with_indent(guard, indent + 6)
+                ));
+            }
+
+            clause_parts.push(format!(
+                "(result {})",
+                format_case_result_with_indent(&clause.result, indent + 6)
+            ));
+
+            format!("(trait-clause {})", clause_parts.join(" "))
+        })
+        .collect();
 
     format!(
-        "(case {}\n{}{})",
+        "(case-as {} (trait {})\n{})",
         expr,
-        when_clauses.join(&format!("\n{}", " ".repeat(indent + 2))),
-        else_clause
+        trait_name,
+        type_clauses.join(&format!("\n{}", " ".repeat(indent + 2)))
     )
+}
+
+fn format_struct_pattern(pattern: &StructPattern) -> String {
+    let fields: Vec<String> = pattern
+        .fields
+        .iter()
+        .map(|field| match &field.pattern {
+            Some(p) => format!("{}: {}", field.name.name, format_pattern(p)),
+            None => field.name.name.clone(),
+        })
+        .collect();
+
+    let type_name = pattern
+        .type_path
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
+    format!("{} {{ {} }}", type_name, fields.join(", "))
+}
+
+fn format_pattern(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Identifier(id) => id.name.clone(),
+        Pattern::Literal(lit) => format!("{:?}", lit.literal), // Basic formatting for now
+        Pattern::Tuple(tuple) => {
+            let elements: Vec<String> = tuple.elements.iter().map(format_pattern).collect();
+            format!("({})", elements.join(", "))
+        }
+        Pattern::List(list) => {
+            let mut elements: Vec<String> = list.elements.iter().map(format_pattern).collect();
+            if let Some(rest) = &list.rest {
+                elements.push(format!("..{}", rest.name));
+            }
+            format!("[{}]", elements.join(", "))
+        }
+        Pattern::Struct(struct_pat) => format_struct_pattern(struct_pat),
+    }
 }
 
 fn format_case_result_with_indent(result: &CaseResult, indent: usize) -> String {
