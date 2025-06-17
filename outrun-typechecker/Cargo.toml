@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Type system and interning
-string-interner = "0.17"
+string-interner = "0.19"
 
 # Error handling and reporting
 miette = { version = "7.0", features = ["fancy", "syntect-highlighter"] }
