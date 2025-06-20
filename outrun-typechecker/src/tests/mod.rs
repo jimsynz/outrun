@@ -64,6 +64,12 @@ mod test_pattern_variable_scoping;
 // TypedProgram conversion tests
 mod test_typed_program_conversion;
 
+// Basic typed AST tests (Week 1 functionality)
+mod test_basic_typed_ast;
+
+// Collection typed AST tests (Week 2 functionality)
+mod test_collection_typed_ast;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

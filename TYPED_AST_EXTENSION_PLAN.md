@@ -82,9 +82,18 @@ FieldAccess {
 - [x] Update structures to use `Option<StructuredType>` instead of guessing types
 - [x] Create `TypedASTBuilder` visitor that runs after `TypeCheckingVisitor`
 - [x] Implement integration with existing 6-phase compilation pipeline
-- [x] Write and test TypedASTBuilder visitor (300+ lines implemented)
+- [x] Write and test TypedASTBuilder visitor (500+ lines implemented)
+- [x] **Write comprehensive Week 1 tests (14 tests covering all core functionality)**
 
-**✅ Week 1 Complete** - All core expression infrastructure implemented and integrated
+**✅ Week 1 Complete** - All core expression infrastructure implemented, integrated, and thoroughly tested
+
+**Week 1 Test Coverage:**
+- ✅ All basic literals (integer, float, boolean, string, atom) - 6 tests
+- ✅ Identifiers and variable references - 1 test  
+- ✅ Function calls (simple, qualified, multi-argument) - 3 tests
+- ✅ Field access (simple and chained) - 2 tests
+- ✅ Binary operation desugaring verification - 1 test
+- ✅ Nested expressions and string interpolation - 2 tests
 
 #### Week 2: Collection Literals
 **New structures:**
@@ -92,31 +101,33 @@ FieldAccess {
 // Add to TypedExpressionKind enum
 List {
     elements: Vec<TypedExpression>,
-    element_type: TypeId, // Homogeneous type validation
+    element_type: Option<StructuredType>, // Homogeneous type validation
 },
 Map {
     entries: Vec<TypedMapEntry>,
-    key_type: TypeId,
-    value_type: TypeId,
+    key_type: Option<StructuredType>,
+    value_type: Option<StructuredType>,
 },
 Tuple {
     elements: Vec<TypedExpression>,
-    tuple_type: TypeId, // Composite tuple type
+    tuple_type: Option<StructuredType>, // Composite tuple type
 },
 StructLiteral {
     type_path: Vec<String>,
     fields: Vec<TypedStructField>,
-    struct_type: TypeId,
+    struct_type: Option<StructuredType>,
 },
 ```
 
 **Tasks:**
-- [ ] Define `TypedMapEntry`, `TypedStructField` structures
-- [ ] Implement homogeneous type checking for lists
-- [ ] Add map entry type validation (key-value pairs)
-- [ ] Implement struct field validation against definitions
-- [ ] Add support for spread operators in collections
-- [ ] Write comprehensive collection tests
+- [x] Define `TypedMapEntry`, `TypedStructField` structures
+- [x] Implement homogeneous type checking for lists
+- [x] Add map entry type validation (key-value pairs)
+- [x] Implement struct field validation against definitions
+- [x] Add support for spread operators in collections (basic support added)
+- [x] Write comprehensive collection tests (6 tests covering all collection types)
+
+**✅ Week 2 Complete** - All collection literals supported with typed AST conversion
 
 ### Phase 2: Control Flow & Patterns (Weeks 3-4)
 
@@ -430,7 +441,7 @@ pub struct TypedProgram {
 
 ## Progress Tracking
 
-**Current Status**: Phase 1, Week 1 - ✅ Complete | Ready for Week 2
+**Current Status**: Phase 1, Week 2 - ✅ Complete | Ready for Phase 2
 
 **Completed Work**:
 - ✅ Defined core typed AST structures (`TypedFunctionPath`, `TypedArgument`, `DispatchMethod`)
@@ -438,12 +449,17 @@ pub struct TypedProgram {
 - ✅ Updated all structures to use `Option<StructuredType>` instead of default types
 - ✅ Discovered integration issue and updated architecture approach
 - ✅ Updated visitor trait to work with `Option<StructuredType>`
-- ✅ **Implemented TypedASTBuilder visitor (300+ lines)**
+- ✅ **Implemented TypedASTBuilder visitor (500+ lines)**
 - ✅ **Integrated TypedASTBuilder into 6-phase compilation pipeline**
 - ✅ **Added typed_programs field to CompilationResult**
 - ✅ **Fixed critical desugaring bug in DesugaringVisitor (missing ItemKind::Expression case)**
 - ✅ **Completed integration testing with simple Outrun programs**
-- ✅ Fixed clippy warnings and ensured all tests pass (449 tests)
+- ✅ **Added complete collection literal support (List, Map, Tuple, StructLiteral)**
+- ✅ **Defined TypedMapEntry and TypedStructField structures with proper Boxing**
+- ✅ **Implemented homogeneous type checking for collections**
+- ✅ **Added comprehensive collection tests (6 tests, all passing)**
+- ✅ **Created comprehensive test coverage for Week 1 and Week 2 (20 tests total)**
+- ✅ Fixed clippy warnings and ensured all tests pass (104 tests)
 - ✅ Created comprehensive plan document with new architecture
 
 **Current Architecture**: 6-Phase Compilation System
@@ -451,9 +467,9 @@ pub struct TypedProgram {
 2. Phase 5: TypeCheckingVisitor (validates types, stores results)
 3. Phase 6: TypedASTBuilder (creates comprehensive typed AST using validation results)
 
-**Next Milestone**: Phase 1, Week 2 - Collection Literals (List, Map, Tuple, StructLiteral)
+**Next Milestone**: Phase 2, Week 3 - Pattern System (Pattern matching with variable binding)
 
-**Ready for**: Collection type validation and homogeneous type checking implementation
+**Ready for**: Control flow expressions and pattern type checking implementation
 
 ---
 

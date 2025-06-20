@@ -38,6 +38,50 @@ pub enum DispatchMethod {
     },
 }
 
+/// Typed map entry with resolved types
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedMapEntry {
+    /// Key-value assignment: key: value or key => value
+    Assignment {
+        key: Box<TypedExpression>,
+        value: Box<TypedExpression>,
+        key_type: Option<StructuredType>,
+        value_type: Option<StructuredType>,
+    },
+    /// Shorthand assignment: name (implies name: name)
+    Shorthand {
+        name: String,
+        value: Box<TypedExpression>,
+        value_type: Option<StructuredType>,
+    },
+    /// Spread operator: ..identifier
+    Spread {
+        identifier: String,
+        spread_type: Option<StructuredType>, // Type of the spread expression
+    },
+}
+
+/// Typed struct field with resolved types
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedStructField {
+    /// Explicit field assignment: field_name: expression
+    Assignment {
+        name: String,
+        expression: Box<TypedExpression>,
+        field_type: Option<StructuredType>,
+    },
+    /// Shorthand field: field_name (implies field_name: field_name)
+    Shorthand {
+        name: String,
+        variable_type: Option<StructuredType>,
+    },
+    /// Spread operator: ..identifier
+    Spread {
+        identifier: String,
+        spread_type: Option<StructuredType>, // Type of the spread expression
+    },
+}
+
 /// Typed expression with structured type information
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedExpression {
@@ -69,6 +113,26 @@ pub enum TypedExpressionKind {
         object: Box<TypedExpression>,
         field: String,
         field_type: Option<StructuredType>, // None = type not yet resolved
+    },
+
+    // Collection literals
+    List {
+        elements: Vec<TypedExpression>,
+        element_type: Option<StructuredType>, // Homogeneous type validation
+    },
+    Map {
+        entries: Vec<TypedMapEntry>,
+        key_type: Option<StructuredType>,
+        value_type: Option<StructuredType>,
+    },
+    Tuple {
+        elements: Vec<TypedExpression>,
+        tuple_type: Option<StructuredType>, // Composite tuple type
+    },
+    StructLiteral {
+        type_path: Vec<String>,
+        fields: Vec<TypedStructField>,
+        struct_type: Option<StructuredType>,
     },
 
     // Placeholder for unsupported expressions (temporary)

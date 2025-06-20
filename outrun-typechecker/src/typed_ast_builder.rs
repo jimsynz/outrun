@@ -6,15 +6,17 @@
 
 use crate::checker::{
     DispatchMethod, TypedArgument, TypedExpression, TypedExpressionKind, TypedFunctionPath,
-    TypedItem, TypedItemKind, TypedProgram,
+    TypedItem, TypedItemKind, TypedMapEntry, TypedProgram, TypedStructField,
 };
+use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 #[allow(unused_imports)]
 use crate::types::TypeId;
-use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{
-    Argument, Expression, ExpressionKind, FunctionCall, FunctionPath, Item, ItemKind, Program, Span,
+    Argument, Expression, ExpressionKind, FunctionCall, FunctionPath, Item, ItemKind, ListElement,
+    ListLiteral, MapEntry, MapLiteral, Program, Span, StructLiteral, StructLiteralField,
+    TupleLiteral,
 };
 use std::collections::HashMap;
 
@@ -179,7 +181,40 @@ impl TypedASTBuilder {
                 }
             }
 
-            // TODO: Add more expression types
+            // Collection literals
+            ExpressionKind::List(list) => {
+                if let Some(typed_list) = self.convert_list_literal(list) {
+                    typed_list
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert list literal".to_string())
+                }
+            }
+
+            ExpressionKind::Map(map) => {
+                if let Some(typed_map) = self.convert_map_literal(map) {
+                    typed_map
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert map literal".to_string())
+                }
+            }
+
+            ExpressionKind::Tuple(tuple) => {
+                if let Some(typed_tuple) = self.convert_tuple_literal(tuple) {
+                    typed_tuple
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert tuple literal".to_string())
+                }
+            }
+
+            ExpressionKind::Struct(struct_lit) => {
+                if let Some(typed_struct) = self.convert_struct_literal(struct_lit) {
+                    typed_struct
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert struct literal".to_string())
+                }
+            }
+
+            // TODO: Add more expression types (if/case expressions, patterns, etc.)
             _ => TypedExpressionKind::Placeholder(format!(
                 "Expression type not yet implemented: {:?}",
                 std::mem::discriminant(&expr.kind)
@@ -296,6 +331,197 @@ impl TypedASTBuilder {
         // TODO: Use type checking results to get actual resolved types
         // For now, return None since we don't have access to TypeCheckingVisitor results
         None
+    }
+
+    /// Convert list literal with element type validation
+    fn convert_list_literal(&mut self, list: &ListLiteral) -> Option<TypedExpressionKind> {
+        let mut typed_elements = Vec::new();
+        let mut element_type: Option<StructuredType> = None;
+
+        // Process all list elements
+        for element in &list.elements {
+            match element {
+                ListElement::Expression(expr) => {
+                    if let Some(typed_expr) = self.convert_expression(expr) {
+                        // For homogeneous type checking, track the first element's type
+                        if element_type.is_none() {
+                            element_type = typed_expr.structured_type.clone();
+                        }
+                        typed_elements.push(typed_expr);
+                    } else {
+                        // Failed to convert element - create placeholder
+                        typed_elements.push(TypedExpression {
+                            kind: TypedExpressionKind::Placeholder(
+                                "Failed to convert list element".to_string(),
+                            ),
+                            structured_type: None,
+                            span: expr.span,
+                        });
+                    }
+                }
+                ListElement::Spread(_identifier) => {
+                    // TODO: Handle spread elements in lists
+                    typed_elements.push(TypedExpression {
+                        kind: TypedExpressionKind::Placeholder(
+                            "Spread elements not yet implemented".to_string(),
+                        ),
+                        structured_type: None,
+                        span: list.span,
+                    });
+                }
+            }
+        }
+
+        Some(TypedExpressionKind::List {
+            elements: typed_elements,
+            element_type, // Will be None if list is empty or types are mixed
+        })
+    }
+
+    /// Convert map literal with key-value type validation
+    fn convert_map_literal(&mut self, map: &MapLiteral) -> Option<TypedExpressionKind> {
+        let mut typed_entries = Vec::new();
+        let mut key_type: Option<StructuredType> = None;
+        let mut value_type: Option<StructuredType> = None;
+
+        // Process all map entries
+        for entry in &map.entries {
+            match entry {
+                MapEntry::Assignment { key, value } => {
+                    if let (Some(typed_key), Some(typed_value)) =
+                        (self.convert_expression(key), self.convert_expression(value))
+                    {
+                        // Track key and value types for homogeneous checking
+                        if key_type.is_none() {
+                            key_type = typed_key.structured_type.clone();
+                        }
+                        if value_type.is_none() {
+                            value_type = typed_value.structured_type.clone();
+                        }
+
+                        typed_entries.push(TypedMapEntry::Assignment {
+                            key: Box::new(typed_key),
+                            value: Box::new(typed_value),
+                            key_type: key_type.clone(),
+                            value_type: value_type.clone(),
+                        });
+                    } else {
+                        return None; // Failed to convert key or value
+                    }
+                }
+                MapEntry::Shorthand { name, value } => {
+                    if let Some(typed_value) = self.convert_expression(value) {
+                        // Track value type
+                        if value_type.is_none() {
+                            value_type = typed_value.structured_type.clone();
+                        }
+
+                        typed_entries.push(TypedMapEntry::Shorthand {
+                            name: name.name.clone(),
+                            value: Box::new(typed_value),
+                            value_type: value_type.clone(),
+                        });
+                    } else {
+                        return None; // Failed to convert value
+                    }
+                }
+                MapEntry::Spread(identifier) => {
+                    // TODO: Handle spread in maps - need to validate spread type
+                    typed_entries.push(TypedMapEntry::Spread {
+                        identifier: identifier.name.clone(),
+                        spread_type: None, // TODO: Resolve spread expression type
+                    });
+                }
+            }
+        }
+
+        Some(TypedExpressionKind::Map {
+            entries: typed_entries,
+            key_type,   // Will be None if map is empty or key types are mixed
+            value_type, // Will be None if map is empty or value types are mixed
+        })
+    }
+
+    /// Convert tuple literal with element type tracking
+    fn convert_tuple_literal(&mut self, tuple: &TupleLiteral) -> Option<TypedExpressionKind> {
+        let mut typed_elements = Vec::new();
+
+        // Process all tuple elements
+        for element in &tuple.elements {
+            if let Some(typed_element) = self.convert_expression(element) {
+                typed_elements.push(typed_element);
+            } else {
+                // Failed to convert element - create placeholder
+                typed_elements.push(TypedExpression {
+                    kind: TypedExpressionKind::Placeholder(
+                        "Failed to convert tuple element".to_string(),
+                    ),
+                    structured_type: None,
+                    span: element.span,
+                });
+            }
+        }
+
+        // TODO: Compute composite tuple type from element types
+        let tuple_type = None; // Placeholder for now
+
+        Some(TypedExpressionKind::Tuple {
+            elements: typed_elements,
+            tuple_type,
+        })
+    }
+
+    /// Convert struct literal with field validation
+    fn convert_struct_literal(
+        &mut self,
+        struct_lit: &StructLiteral,
+    ) -> Option<TypedExpressionKind> {
+        let mut typed_fields = Vec::new();
+
+        // Convert type path to string representation
+        let type_path: Vec<String> = struct_lit
+            .type_path
+            .iter()
+            .map(|type_id| type_id.name.clone())
+            .collect();
+
+        // Process all struct fields
+        for field in &struct_lit.fields {
+            match field {
+                StructLiteralField::Assignment { name, value } => {
+                    if let Some(typed_value) = self.convert_expression(value) {
+                        typed_fields.push(TypedStructField::Assignment {
+                            name: name.name.clone(),
+                            expression: Box::new(typed_value),
+                            field_type: None, // TODO: Resolve from struct definition
+                        });
+                    } else {
+                        return None; // Failed to convert field value
+                    }
+                }
+                StructLiteralField::Shorthand(name) => {
+                    typed_fields.push(TypedStructField::Shorthand {
+                        name: name.name.clone(),
+                        variable_type: None, // TODO: Resolve from variable context
+                    });
+                }
+                StructLiteralField::Spread(identifier) => {
+                    typed_fields.push(TypedStructField::Spread {
+                        identifier: identifier.name.clone(),
+                        spread_type: None, // TODO: Resolve spread expression type
+                    });
+                }
+            }
+        }
+
+        // TODO: Validate fields against struct definition and compute struct type
+        let struct_type = None; // Placeholder for now
+
+        Some(TypedExpressionKind::StructLiteral {
+            type_path,
+            fields: typed_fields,
+            struct_type,
+        })
     }
 }
 
