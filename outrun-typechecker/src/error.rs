@@ -10,7 +10,7 @@ use thiserror::Error;
 pub type TypeResult<T> = Result<T, TypeError>;
 
 /// All possible type checking errors
-#[derive(Error, Diagnostic, Debug, Clone)]
+#[derive(Error, Diagnostic, Debug, Clone, PartialEq)]
 pub enum TypeError {
     #[error("Type mismatch")]
     #[diagnostic(
@@ -1166,15 +1166,6 @@ impl From<crate::unification::UnificationError> for TypeError {
         use crate::unification::UnificationError;
 
         match err {
-            UnificationError::IncompatibleTypes { type1, type2 } => {
-                // Create a placeholder span - this should be improved to track spans through unification
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::TypeMismatch {
-                    span,
-                    expected: format!("{:?}", type1), // TODO: Use proper string representation
-                    found: format!("{:?}", type2),    // TODO: Use proper string representation
-                }
-            }
             UnificationError::ArityMismatch {
                 expected,
                 found,

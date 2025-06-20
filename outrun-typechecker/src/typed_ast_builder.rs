@@ -140,6 +140,11 @@ pub struct TypedASTBuilder {
     generic_context: Option<TypedGenericContext>,
     /// Comment attachment state
     comment_attacher: CommentAttacher,
+    /// Error recovery information collected during AST building
+    error_recovery_info: Vec<crate::checker::ErrorRecoveryInfo>,
+    /// Performance and timing information
+    compilation_start_time: std::time::Instant,
+    phase_timings: std::collections::HashMap<String, u64>,
 }
 
 impl TypedASTBuilder {
@@ -153,6 +158,9 @@ impl TypedASTBuilder {
             typed_programs: HashMap::new(),
             generic_context: None,
             comment_attacher: CommentAttacher::new(Vec::new()), // Will be initialized per program
+            error_recovery_info: Vec::new(),
+            compilation_start_time: std::time::Instant::now(),
+            phase_timings: std::collections::HashMap::new(),
         }
     }
 
@@ -183,28 +191,64 @@ impl TypedASTBuilder {
         Ok(self.typed_programs.clone())
     }
 
-    /// Build typed AST for a single program
-    fn build_typed_program(
+    /// Build typed AST for a single program with error recovery
+    pub(crate) fn build_typed_program(
         &mut self,
         program: &Program,
         filename: &str,
     ) -> Result<TypedProgram, crate::error::TypeError> {
+        let start_time = std::time::Instant::now();
+
         // Initialize comment attacher with this program's comments
         self.comment_attacher = CommentAttacher::new(program.debug_info.comments.clone());
 
-        // Convert all items to typed items
+        // Reset error recovery info for this program
+        self.error_recovery_info.clear();
+
+        // Convert all items to typed items with error recovery
         let mut typed_items = Vec::new();
+        let mut successful_items = 0;
+        let total_items = program.items.len();
+
         for item in &program.items {
-            if let Some(typed_item) = self.convert_item(item) {
-                typed_items.push(typed_item);
+            match self.convert_item_with_recovery(item) {
+                Some(typed_item) => {
+                    typed_items.push(typed_item);
+                    successful_items += 1;
+                }
+                None => {
+                    // Item conversion failed completely - this is rare but handle it
+                    let error_context = crate::checker::ErrorContext::General {
+                        description: format!("Failed to convert item: {:?}", item.kind),
+                    };
+                    let error = crate::error::TypeError::InternalError {
+                        span: crate::error::span_to_source_span(item.span),
+                        message: "Item conversion failed".to_string(),
+                    };
+                    self.record_error_recovery(
+                        error,
+                        error_context,
+                        item.span,
+                        crate::checker::RecoveryStrategy::Skip,
+                        false,
+                    );
+                }
             }
         }
 
+        // Record timing for this phase
+        let conversion_time = start_time.elapsed().as_millis() as u64;
+        self.record_phase_timing("item_conversion", conversion_time);
+
+        // Generate detailed compilation summary
+        let detailed_summary = self.generate_compilation_summary(total_items, successful_items);
+
         let summary = format!(
-            "TypedAST for {}: {} items, {} functions",
+            "TypedAST for {}: {} items, {} functions, {} errors recovered",
             filename,
             typed_items.len(),
-            self.function_registry.len()
+            self.function_registry.len(),
+            self.error_recovery_info.len()
         );
 
         Ok(TypedProgram {
@@ -221,6 +265,62 @@ impl TypedASTBuilder {
                 inferred_types: HashMap::new(),
                 literal_format: None,
             },
+            error_recovery_info: self.error_recovery_info.clone(),
+            detailed_summary: Some(detailed_summary),
+        })
+    }
+
+    /// Convert a parser Item to TypedItem with error recovery
+    fn convert_item_with_recovery(&mut self, item: &Item) -> Option<TypedItem> {
+        // Try the normal conversion first
+        if let Some(typed_item) = self.convert_item(item) {
+            return Some(typed_item);
+        }
+
+        // If normal conversion fails, attempt error recovery
+        let error = crate::error::TypeError::InternalError {
+            span: crate::error::span_to_source_span(item.span),
+            message: format!("Failed to convert item: {:?}", item.kind),
+        };
+        let error_context = crate::checker::ErrorContext::General {
+            description: format!("Item conversion: {:?}", std::mem::discriminant(&item.kind)),
+        };
+
+        // Create placeholder type first to avoid borrow conflicts
+        let placeholder_type_id = self
+            .context
+            .type_interner
+            .intern_type("Outrun.Core.PlaceholderType");
+        let placeholder_type = StructuredType::Simple(placeholder_type_id);
+
+        // Record the error recovery attempt
+        self.record_error_recovery(
+            error.clone(),
+            error_context,
+            item.span,
+            crate::checker::RecoveryStrategy::PlaceholderExpression {
+                placeholder_type: placeholder_type.clone(),
+            },
+            true,
+        );
+
+        // Create a placeholder typed item for error recovery
+        let placeholder_kind = TypedItemKind::Placeholder(format!(
+            "Error recovery placeholder for {:?}",
+            std::mem::discriminant(&item.kind)
+        ));
+
+        Some(TypedItem {
+            kind: placeholder_kind,
+            span: item.span,
+            debug_info: Some(TypedDebugInfo {
+                comments: self.comment_attacher.attach_comments_to_node(item.span),
+                source_file: None,
+                original_span: item.span,
+                type_annotations: Vec::new(),
+                inferred_types: HashMap::new(),
+                literal_format: None,
+            }),
         })
     }
 
@@ -228,11 +328,9 @@ impl TypedASTBuilder {
     fn convert_item(&mut self, item: &Item) -> Option<TypedItem> {
         let kind = match &item.kind {
             ItemKind::Expression(expr) => {
-                if let Some(typed_expr) = self.convert_expression(expr) {
-                    TypedItemKind::Expression(Box::new(typed_expr))
-                } else {
-                    TypedItemKind::Placeholder("Failed to convert expression".to_string())
-                }
+                // Use error recovery conversion for robust handling
+                let typed_expr = self.convert_expression_with_recovery(expr);
+                TypedItemKind::Expression(Box::new(typed_expr))
             }
             ItemKind::FunctionDefinition(func_def) => {
                 if let Some(typed_func) = self.convert_function_definition(func_def) {
@@ -470,6 +568,7 @@ impl TypedASTBuilder {
     }
 
     /// Convert an expression back to source text (best effort)
+    #[allow(clippy::only_used_in_recursion)]
     pub(crate) fn expression_to_text(&self, expr: &outrun_parser::Expression) -> String {
         // For now, a simple implementation - in production this would be more sophisticated
         match &expr.kind {
@@ -535,6 +634,22 @@ impl TypedASTBuilder {
                 format!("<expr:{:?}>", std::mem::discriminant(&expr.kind))
             }
         }
+    }
+
+    /// Convert a parser Expression to TypedExpression with error recovery
+    fn convert_expression_with_recovery(&mut self, expr: &Expression) -> TypedExpression {
+        // Try the normal conversion first
+        if let Some(typed_expr) = self.convert_expression(expr) {
+            return typed_expr;
+        }
+
+        // If normal conversion fails, create an error recovery expression
+        let error = crate::error::TypeError::InternalError {
+            span: crate::error::span_to_source_span(expr.span),
+            message: format!("Failed to convert expression: {:?}", expr.kind),
+        };
+
+        self.recover_expression_failure(expr, error)
     }
 
     /// Convert a parser Expression to TypedExpression with resolved types
@@ -2120,6 +2235,188 @@ impl TypedASTBuilder {
             TypeAnnotation::Simple { span, .. } => *span,
             TypeAnnotation::Tuple { span, .. } => *span,
             TypeAnnotation::Function { span, .. } => *span,
+        }
+    }
+
+    /// Error Recovery Methods for Production-Quality Error Handling
+    ///
+    /// Record an error recovery attempt
+    pub(crate) fn record_error_recovery(
+        &mut self,
+        error: crate::error::TypeError,
+        context: crate::checker::ErrorContext,
+        recovery_span: Span,
+        strategy: crate::checker::RecoveryStrategy,
+        successful: bool,
+    ) {
+        let recovery_info = crate::checker::ErrorRecoveryInfo {
+            error,
+            error_context: context,
+            recovery_span,
+            recovery_strategy: strategy,
+            recovery_successful: successful,
+        };
+        self.error_recovery_info.push(recovery_info);
+    }
+
+    /// Create a TypeError expression for error recovery
+    pub(crate) fn create_error_expression(
+        &mut self,
+        error: crate::error::TypeError,
+        fallback_type: Option<StructuredType>,
+        recovery_expression: Option<Box<TypedExpression>>,
+        span: Span,
+        context: crate::checker::ErrorContext,
+    ) -> TypedExpression {
+        // Precompute placeholder type to avoid borrow conflicts
+        let placeholder_type_id = self
+            .context
+            .type_interner
+            .intern_type("Outrun.Core.PlaceholderType");
+        let default_placeholder_type = StructuredType::Simple(placeholder_type_id);
+
+        // Record the error recovery attempt
+        let strategy = match (&fallback_type, &recovery_expression) {
+            (Some(ft), None) => crate::checker::RecoveryStrategy::FallbackType {
+                fallback_type: ft.clone(),
+            },
+            (_, Some(_)) => crate::checker::RecoveryStrategy::PlaceholderExpression {
+                placeholder_type: fallback_type
+                    .clone()
+                    .unwrap_or_else(|| default_placeholder_type.clone()),
+            },
+            _ => crate::checker::RecoveryStrategy::NoRecovery,
+        };
+
+        self.record_error_recovery(error.clone(), context, span, strategy, true);
+
+        // Create the error expression
+        self.create_typed_expression(
+            TypedExpressionKind::TypeError {
+                error,
+                fallback_type: fallback_type.clone(),
+                recovery_expression,
+            },
+            fallback_type,
+            span,
+        )
+    }
+
+    /// Attempt to recover from expression conversion failure
+    pub(crate) fn recover_expression_failure(
+        &mut self,
+        expr: &Expression,
+        error: crate::error::TypeError,
+    ) -> TypedExpression {
+        // Try to infer a reasonable fallback type based on expression kind
+        let fallback_type = self.infer_fallback_type_for_expression(expr);
+        let context = crate::checker::ErrorContext::Expression {
+            expression_type: format!("{:?}", std::mem::discriminant(&expr.kind)),
+        };
+
+        self.create_error_expression(error, fallback_type, None, expr.span, context)
+    }
+
+    /// Infer a reasonable fallback type for an expression based on its structure
+    fn infer_fallback_type_for_expression(&mut self, expr: &Expression) -> Option<StructuredType> {
+        use outrun_parser::ExpressionKind;
+        match &expr.kind {
+            ExpressionKind::Integer(_) => Some(StructuredType::Simple(
+                self.context
+                    .type_interner
+                    .intern_type("Outrun.Core.Integer64"),
+            )),
+            ExpressionKind::Float(_) => Some(StructuredType::Simple(
+                self.context
+                    .type_interner
+                    .intern_type("Outrun.Core.Float64"),
+            )),
+            ExpressionKind::String(_) => Some(StructuredType::Simple(
+                self.context.type_interner.intern_type("Outrun.Core.String"),
+            )),
+            ExpressionKind::Boolean(_) => Some(StructuredType::Simple(
+                self.context
+                    .type_interner
+                    .intern_type("Outrun.Core.Boolean"),
+            )),
+            ExpressionKind::Atom(_) => Some(StructuredType::Simple(
+                self.context.type_interner.intern_type("Outrun.Core.Atom"),
+            )),
+            ExpressionKind::List(_) => Some(StructuredType::Generic {
+                base: self.context.type_interner.intern_type("List"),
+                args: vec![StructuredType::Simple(
+                    self.context
+                        .type_interner
+                        .intern_type("Outrun.Core.PlaceholderType"),
+                )],
+            }),
+            ExpressionKind::Map(_) => Some(StructuredType::Generic {
+                base: self.context.type_interner.intern_type("Map"),
+                args: vec![
+                    StructuredType::Simple(
+                        self.context
+                            .type_interner
+                            .intern_type("Outrun.Core.PlaceholderType"),
+                    ),
+                    StructuredType::Simple(
+                        self.context
+                            .type_interner
+                            .intern_type("Outrun.Core.PlaceholderType"),
+                    ),
+                ],
+            }),
+            ExpressionKind::Tuple(_) => {
+                // For tuples, we can't easily determine the element types, so use a generic placeholder
+                Some(StructuredType::Simple(
+                    self.context
+                        .type_interner
+                        .intern_type("Outrun.Core.PlaceholderType"),
+                ))
+            }
+            _ => Some(StructuredType::Simple(
+                self.context
+                    .type_interner
+                    .intern_type("Outrun.Core.PlaceholderType"),
+            )),
+        }
+    }
+
+    /// Record timing information for a phase
+    pub(crate) fn record_phase_timing(&mut self, phase_name: &str, duration_ms: u64) {
+        self.phase_timings
+            .insert(phase_name.to_string(), duration_ms);
+    }
+
+    /// Generate detailed compilation summary
+    pub(crate) fn generate_compilation_summary(
+        &self,
+        total_items: usize,
+        successful_items: usize,
+    ) -> crate::checker::CompilationSummary {
+        let compilation_time_ms = self.compilation_start_time.elapsed().as_millis() as u64;
+        let error_items = total_items - successful_items;
+        let recovered_items = self.error_recovery_info.len();
+
+        // Estimate memory usage (simplified)
+        let estimated_ast_memory = total_items * 1024; // Rough estimate: 1KB per item
+        let estimated_context_memory = self.context.type_interner.len() * 256; // 256 bytes per interned type/atom
+        let estimated_registry_memory = self.function_registry.len() * 512; // 512 bytes per function
+
+        crate::checker::CompilationSummary {
+            total_items,
+            successful_items,
+            error_items,
+            recovered_items,
+            compilation_time_ms,
+            memory_usage: crate::checker::MemoryUsage {
+                peak_memory_bytes: estimated_ast_memory
+                    + estimated_context_memory
+                    + estimated_registry_memory,
+                typed_ast_memory_bytes: estimated_ast_memory,
+                type_context_memory_bytes: estimated_context_memory,
+                function_registry_memory_bytes: estimated_registry_memory,
+            },
+            phase_timings: self.phase_timings.clone(),
         }
     }
 }

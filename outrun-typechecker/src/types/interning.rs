@@ -68,6 +68,16 @@ impl TypeInterner {
     pub fn atom_name(&self, atom_id: AtomId) -> Option<String> {
         self.interner.resolve(atom_id.0).map(|s| s.to_string())
     }
+
+    /// Get the number of interned types and atoms
+    pub fn len(&self) -> usize {
+        self.interner.len()
+    }
+
+    /// Check if the interner is empty
+    pub fn is_empty(&self) -> bool {
+        self.interner.is_empty()
+    }
 }
 
 impl Default for TypeInterner {

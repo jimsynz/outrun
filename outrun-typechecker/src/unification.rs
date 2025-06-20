@@ -13,11 +13,6 @@ pub type UnificationResult<T = ()> = Result<T, UnificationError>;
 /// Errors that can occur during type unification
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnificationError {
-    /// Types cannot be unified (fundamental incompatibility)
-    IncompatibleTypes {
-        type1: StructuredType,
-        type2: StructuredType,
-    },
     /// Generic arity mismatch (e.g., Option<T> vs Map<K, V>)
     ArityMismatch {
         expected: usize,
@@ -51,6 +46,15 @@ pub enum StructuredType {
     Function {
         params: Vec<FunctionParam>,
         return_type: Box<StructuredType>,
+    },
+    /// Error type for recovery - represents a type that failed to resolve
+    TypeError {
+        /// The original error that caused this type failure
+        error: crate::error::TypeError,
+        /// Fallback type to use for continued type checking (if any)
+        fallback_type: Option<Box<StructuredType>>,
+        /// Original span where the type error occurred
+        error_span: outrun_parser::Span,
     },
 }
 
@@ -117,6 +121,19 @@ impl StructuredType {
         }
     }
 
+    /// Create an error type for recovery
+    pub fn type_error(
+        error: crate::error::TypeError,
+        fallback_type: Option<StructuredType>,
+        error_span: outrun_parser::Span,
+    ) -> Self {
+        StructuredType::TypeError {
+            error,
+            fallback_type: fallback_type.map(Box::new),
+            error_span,
+        }
+    }
+
     /// Convert to string representation for error messages
     pub fn to_string_representation(&self, interner: &TypeInterner) -> String {
         match self {
@@ -161,6 +178,14 @@ impl StructuredType {
                     param_strs.join(", "),
                     return_type.to_string_representation(interner)
                 )
+            }
+            StructuredType::TypeError { fallback_type, .. } => {
+                // For error types, show the fallback type if available, otherwise show error marker
+                if let Some(fallback) = fallback_type {
+                    format!("<ERROR: {}>", fallback.to_string_representation(interner))
+                } else {
+                    "<ERROR>".to_string()
+                }
             }
         }
     }
@@ -295,7 +320,25 @@ pub fn unify_structured_types(
             unify_trait_with_generic_implementation(*trait_type, *base, context)
         }
 
-        // 7. Cross-Type Unification (always fails)
+        // 7. TypeError Unification - Use fallback type if available
+        (StructuredType::TypeError { fallback_type, .. }, other) => {
+            if let Some(fallback) = fallback_type {
+                unify_structured_types(fallback, other, context)
+            } else {
+                // No fallback - can't unify with error type
+                Ok(false)
+            }
+        }
+        (other, StructuredType::TypeError { fallback_type, .. }) => {
+            if let Some(fallback) = fallback_type {
+                unify_structured_types(other, fallback, context)
+            } else {
+                // No fallback - can't unify with error type
+                Ok(false)
+            }
+        }
+
+        // 8. Cross-Type Unification (always fails)
         _ => Ok(false),
     }
 }
@@ -575,6 +618,24 @@ impl UnificationContext {
                     params: resolved_params?,
                     return_type: Box::new(resolved_return),
                 })
+            }
+            StructuredType::TypeError {
+                error,
+                fallback_type,
+                error_span,
+            } => {
+                // For error types, resolve the fallback type if it exists
+                if let Some(fallback) = fallback_type {
+                    let resolved_fallback = self.resolve_type(fallback)?;
+                    Ok(StructuredType::TypeError {
+                        error: error.clone(),
+                        fallback_type: Some(Box::new(resolved_fallback)),
+                        error_span: *error_span,
+                    })
+                } else {
+                    // No fallback to resolve
+                    Ok(type_ref.clone())
+                }
             }
         }
     }

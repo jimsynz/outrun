@@ -85,6 +85,9 @@ mod test_generics_and_type_annotations;
 // Debug info and comment attachment tests (Week 9 functionality)
 mod test_debug_info_comments;
 
+// Error recovery and production polish tests (Week 10 functionality)
+mod test_error_recovery_production;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

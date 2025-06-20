@@ -158,6 +158,13 @@ pub enum TypedExpressionKind {
         original_span: Span,                               // Original injection location
     },
 
+    // Error recovery for malformed expressions
+    TypeError {
+        error: crate::error::TypeError,
+        fallback_type: Option<StructuredType>,
+        recovery_expression: Option<Box<TypedExpression>>,
+    },
+
     // Placeholder for unsupported expressions (temporary)
     Placeholder(String),
 }
@@ -560,6 +567,98 @@ pub enum TypedItemKind {
     Placeholder(String), // For debugging - will be removed
 }
 
+/// Error recovery information for production-quality error handling
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorRecoveryInfo {
+    /// The original error that occurred
+    pub error: crate::error::TypeError,
+    /// Context where the error occurred (e.g., "function parameter", "let binding")
+    pub error_context: ErrorContext,
+    /// Span where recovery was attempted
+    pub recovery_span: Span,
+    /// Strategy used for recovery
+    pub recovery_strategy: RecoveryStrategy,
+    /// Whether recovery was successful (partial type checking)
+    pub recovery_successful: bool,
+}
+
+/// Context information for error recovery
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorContext {
+    /// Error in function parameter type checking
+    FunctionParameter {
+        function_name: String,
+        parameter_name: String,
+    },
+    /// Error in function body type checking
+    FunctionBody { function_name: String },
+    /// Error in let binding type checking
+    LetBinding { variable_name: String },
+    /// Error in expression type checking
+    Expression { expression_type: String },
+    /// Error in struct field type checking
+    StructField {
+        struct_name: String,
+        field_name: String,
+    },
+    /// Error in trait implementation checking
+    TraitImplementation {
+        trait_name: String,
+        type_name: String,
+    },
+    /// Error in pattern matching type checking
+    PatternMatching { pattern_type: String },
+    /// General context not covered by specific cases
+    General { description: String },
+}
+
+/// Strategy used for error recovery
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecoveryStrategy {
+    /// Skip the problematic node and continue
+    Skip,
+    /// Use a fallback type and continue type checking
+    FallbackType { fallback_type: StructuredType },
+    /// Use a placeholder expression with known type
+    PlaceholderExpression { placeholder_type: StructuredType },
+    /// Partial type checking - check what we can, mark rest as errors
+    PartialChecking,
+    /// No recovery attempted - propagate error
+    NoRecovery,
+}
+
+/// Compilation summary with detailed metrics
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompilationSummary {
+    /// Total number of items processed
+    pub total_items: usize,
+    /// Number of successful type checks
+    pub successful_items: usize,
+    /// Number of items with errors
+    pub error_items: usize,
+    /// Number of items that used error recovery
+    pub recovered_items: usize,
+    /// Total compilation time in milliseconds
+    pub compilation_time_ms: u64,
+    /// Memory usage statistics
+    pub memory_usage: MemoryUsage,
+    /// Per-phase timing information
+    pub phase_timings: std::collections::HashMap<String, u64>,
+}
+
+/// Memory usage statistics for performance monitoring
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryUsage {
+    /// Peak memory usage during compilation (bytes)
+    pub peak_memory_bytes: usize,
+    /// Memory used by typed AST (bytes)
+    pub typed_ast_memory_bytes: usize,
+    /// Memory used by type context (bytes)
+    pub type_context_memory_bytes: usize,
+    /// Memory used by function registry (bytes)
+    pub function_registry_memory_bytes: usize,
+}
+
 /// Simplified typed program with essential compilation artifacts
 #[derive(Debug, Clone)]
 pub struct TypedProgram {
@@ -575,6 +674,10 @@ pub struct TypedProgram {
     pub compilation_summary: String,
     /// Program-level debug information
     pub debug_info: TypedDebugInfo,
+    /// Error recovery information for production-quality error handling
+    pub error_recovery_info: Vec<ErrorRecoveryInfo>,
+    /// Detailed compilation metrics and performance data
+    pub detailed_summary: Option<CompilationSummary>,
 }
 
 /// Main type checker that uses the new multi-program visitor architecture
@@ -631,6 +734,8 @@ impl TypeChecker {
                 inferred_types: std::collections::HashMap::new(),
                 literal_format: None,
             },
+            error_recovery_info: Vec::new(), // Will be populated by error recovery system
+            detailed_summary: None,          // Will be populated by performance monitoring
         }
     }
 
