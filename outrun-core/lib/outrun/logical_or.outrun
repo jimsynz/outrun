@@ -1,0 +1,24 @@
+@Doc(content: """
+Logical OR trait for the || operator.
+
+The LogicalOr trait defines the behaviour for the || operator.
+When you write `a || b`, it becomes `LogicalOr.or(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically Boolean)
+- The result must be the same concrete type as the operands
+- Should support short-circuiting (if left is true, don't evaluate right)
+- Must satisfy logical laws: associative, commutative, idempotent
+
+## Examples
+
+```outrun
+true || false                 # LogicalOr.or(lhs: true, rhs: false): Boolean
+user.admin? || user.moderator?  # LogicalOr.or(lhs: user.admin?, rhs: user.moderator?): Boolean
+```
+""")
+trait LogicalOr {
+    @Doc(content: "Perform logical OR on two values")
+    def or(lhs: Self, rhs: Self): Self
+}

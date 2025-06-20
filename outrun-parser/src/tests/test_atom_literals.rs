@@ -1,9 +1,5 @@
-// Atom literal parsing tests
-// Tests for simple and quoted atom literals
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract atom from expression
 fn extract_atom_from_expression(expr: &Expression) -> &AtomLiteral {
     match &expr.kind {
         ExpressionKind::Atom(atom) => atom,
@@ -175,13 +171,11 @@ fn test_parse_quoted_atom_empty() {
 
 #[test]
 fn test_atom_display_preserves_format() {
-    // Test simple atom display
     let input1 = ":hello";
     let result1 = parse_program(input1).unwrap();
     let formatted1 = format!("{}", result1);
     assert_eq!(formatted1, input1);
 
-    // Test quoted atom display
     let input2 = r#":"hello world""#;
     let result2 = parse_program(input2).unwrap();
     let formatted2 = format!("{}", result2);
@@ -193,7 +187,6 @@ fn test_comprehensive_mix_with_atoms() {
     let input = r#"true :simple :"quoted atom" 42 :test"#;
     let result = parse_program(input).unwrap();
 
-    // Should parse: boolean, simple atom, quoted atom, integer, simple atom
     assert_eq!(result.items.len(), 5);
 
     match &result.items[0].kind {
@@ -242,7 +235,6 @@ fn test_comprehensive_mix_with_atoms() {
 
 #[test]
 fn test_atom_vs_identifier_precedence() {
-    // Test that `:symbol` is parsed as atom, not as `:` + `symbol`
     let input = ":test identifier";
     let result = parse_program(input).unwrap();
 

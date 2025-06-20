@@ -1,9 +1,5 @@
-// Multiline string literal parsing tests
-// Tests for triple-quoted multiline strings
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract string from expression
 fn extract_string_from_expression(expr: &Expression) -> &StringLiteral {
     match &expr.kind {
         ExpressionKind::String(string) => string,
@@ -11,7 +7,6 @@ fn extract_string_from_expression(expr: &Expression) -> &StringLiteral {
     }
 }
 
-// Helper function to extract text content from string parts
 fn extract_text_content(parts: &[StringPart]) -> String {
     parts
         .iter()
@@ -22,7 +17,6 @@ fn extract_text_content(parts: &[StringPart]) -> String {
         .collect()
 }
 
-// Helper function to extract raw content from string parts
 fn extract_raw_content(parts: &[StringPart]) -> String {
     parts
         .iter()
@@ -177,7 +171,6 @@ fn test_parse_multiline_string_indented() {
 
 #[test]
 fn test_multiline_vs_basic_string_precedence() {
-    // Test that triple quotes are parsed as multiline, not as three separate quotes
     let input1 = "\"\"\"Hello\"\"\"";
     let result1 = parse_program(input1).unwrap();
 
@@ -191,7 +184,6 @@ fn test_multiline_vs_basic_string_precedence() {
         _ => panic!("Expected expression"),
     }
 
-    // Test that single quotes still work as basic strings
     let input2 = "\"Hello\"";
     let result2 = parse_program(input2).unwrap();
 
@@ -211,7 +203,6 @@ fn test_multiline_string_display_preserves_format() {
     let input = "\"\"\"Hello\nWorld\"\"\"";
     let result = parse_program(input).unwrap();
 
-    // Test that Display preserves the multiline format
     let formatted = format!("{}", result);
     assert_eq!(formatted, input);
 }
@@ -221,7 +212,6 @@ fn test_comprehensive_mix_with_multiline_strings() {
     let input = "true \"\"\"multiline\nstring\"\"\" 42 \"basic\"";
     let result = parse_program(input).unwrap();
 
-    // Should parse: boolean, multiline string, integer, basic string
     assert_eq!(result.items.len(), 4);
 
     match &result.items[0].kind {

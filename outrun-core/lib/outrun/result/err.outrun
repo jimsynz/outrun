@@ -1,0 +1,23 @@
+@Doc(content: """
+Err variant of the Result type.
+
+Represents a failed computation with an error value of type E.
+This is one of the two concrete implementations of the Result trait.
+
+## Examples
+
+```outrun
+Result.err(error: "file not found")     # Creates Err containing string error
+Result.err(error: ValidationError())    # Creates Err containing custom error
+```
+
+## Type Parameters
+
+- `E` - The type of the error value
+
+## Usage
+
+This type is typically created using the `Result.err/1` constructor function
+rather than being constructed directly.
+""")
+struct Outrun.Result.Err<E>(error: E)

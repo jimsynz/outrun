@@ -1,0 +1,86 @@
+@Doc(content: """
+List trait for ordered collections of homogeneous elements.
+
+This trait defines the most basic operations for list-like data structures.
+More complex operations like mapping, filtering, and folding are provided
+through the Iterator trait.
+
+## Examples
+
+```outrun
+List.head(value: [1, 2, 3])        # Some(1)
+List.tail(value: [1, 2, 3])        # [2, 3]
+List.prepend(list: [2, 3], elem: 1) # [1, 2, 3]
+List.empty?(value: [])              # true
+```
+""")
+trait List<T> {
+    @Doc(content: """
+    Returns the first element of the list as an Option.
+    
+    Returns None if the list is empty.
+    
+    ## Examples
+    
+    ```outrun
+    List.head(value: [1, 2, 3])  # Some(1)
+    List.head(value: [])         # None
+    ```
+    """)
+    def head(value: Self): Option<T>
+    
+    @Doc(content: """
+    Returns a new list with all elements except the first.
+    
+    Returns empty list if the original list is empty.
+    
+    ## Examples
+    
+    ```outrun
+    List.tail(value: [1, 2, 3])  # [2, 3]
+    List.tail(value: [1])        # []
+    List.tail(value: [])         # []
+    ```
+    """)
+    def tail(value: Self): Self
+    
+    @Doc(content: """
+    Returns a new list with the element added to the front.
+    
+    This is the fundamental cons operation for functional lists.
+    
+    ## Examples
+    
+    ```outrun
+    List.prepend(list: [2, 3], elem: 1)  # [1, 2, 3]
+    List.prepend(list: [], elem: 42)     # [42]
+    ```
+    """)
+    def prepend(list: Self, elem: T): Self
+    
+    @Doc(content: """
+    Returns the number of elements in the list.
+    
+    ## Examples
+    
+    ```outrun
+    List.length(value: [1, 2, 3])  # 3
+    List.length(value: [])         # 0
+    ```
+    """)
+    def length(value: Self): Integer
+    
+    @Doc(content: """
+    Checks if the list is empty.
+    
+    ## Examples
+    
+    ```outrun
+    List.empty?(value: [])     # true
+    List.empty?(value: [1])    # false
+    ```
+    """)
+    def empty?(value: Self): Boolean {
+        List.length(value: value) == 0
+    }
+}

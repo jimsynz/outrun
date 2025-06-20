@@ -1,6 +1,3 @@
-// Test constant definitions parsing with Pest
-// Comprehensive tests for const declarations with required type annotations
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -12,10 +9,8 @@ fn test_const_definition_with_integer() {
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
         ItemKind::ConstDefinition(const_def) => {
-            // Check constant name (uses TypeIdentifier for constants)
             assert_eq!(const_def.name.name, "MAX_USERS");
 
-            // Check type annotation (required for constants)
             match &const_def.type_annotation {
                 TypeAnnotation::Simple { path, .. } => {
                     assert_eq!(path.len(), 1);
@@ -24,7 +19,6 @@ fn test_const_definition_with_integer() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check expression
             match &const_def.expression.kind {
                 ExpressionKind::Integer(int_lit) => {
                     assert_eq!(int_lit.value, 1000);
@@ -47,7 +41,6 @@ fn test_const_definition_with_string() {
         ItemKind::ConstDefinition(const_def) => {
             assert_eq!(const_def.name.name, "DEFAULT_MESSAGE");
 
-            // Check type
             match &const_def.type_annotation {
                 TypeAnnotation::Simple { path, .. } => {
                     assert_eq!(path[0].name, "String");
@@ -55,7 +48,6 @@ fn test_const_definition_with_string() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check string value
             match &const_def.expression.kind {
                 ExpressionKind::String(string_lit) => {
                     assert_eq!(string_lit.format, StringFormat::Basic);
@@ -134,7 +126,6 @@ fn test_const_definition_with_module_type() {
         ItemKind::ConstDefinition(const_def) => {
             assert_eq!(const_def.name.name, "DEFAULT_TIMEOUT");
 
-            // Check module-qualified type
             match &const_def.type_annotation {
                 TypeAnnotation::Simple { path, .. } => {
                     assert_eq!(path.len(), 1);
@@ -143,7 +134,6 @@ fn test_const_definition_with_module_type() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check function call expression
             match &const_def.expression.kind {
                 ExpressionKind::FunctionCall(call) => match &call.path {
                     FunctionPath::Qualified { module, name } => {
@@ -218,7 +208,6 @@ fn test_const_definition_with_complex_module_type() {
         ItemKind::ConstDefinition(const_def) => {
             assert_eq!(const_def.name.name, "HTTP_CLIENT");
 
-            // Check complex module-qualified type
             match &const_def.type_annotation {
                 TypeAnnotation::Simple { path, .. } => {
                     assert_eq!(path.len(), 2);
@@ -228,7 +217,6 @@ fn test_const_definition_with_complex_module_type() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check qualified function call
             match &const_def.expression.kind {
                 ExpressionKind::FunctionCall(call) => match &call.path {
                     FunctionPath::Qualified { module, name } => {
@@ -254,12 +242,10 @@ fn test_const_definition_with_arithmetic_expression() {
         ItemKind::ConstDefinition(const_def) => {
             assert_eq!(const_def.name.name, "BUFFER_SIZE");
 
-            // Check arithmetic expression
             match &const_def.expression.kind {
                 ExpressionKind::BinaryOp(op) => {
                     assert_eq!(op.operator, BinaryOperator::Multiply);
 
-                    // Check left operand
                     match &op.left.kind {
                         ExpressionKind::Integer(int_lit) => {
                             assert_eq!(int_lit.value, 1024);
@@ -267,7 +253,6 @@ fn test_const_definition_with_arithmetic_expression() {
                         _ => panic!("Expected integer literal on left"),
                     }
 
-                    // Check right operand
                     match &op.right.kind {
                         ExpressionKind::Integer(int_lit) => {
                             assert_eq!(int_lit.value, 8);
@@ -318,7 +303,6 @@ const DEFAULT_PORT: Integer = 8080
 const ENABLED: Boolean = true"#;
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Filter out newlines and get only const definitions
     let const_defs: Vec<_> = program
         .items
         .iter()
@@ -330,7 +314,6 @@ const ENABLED: Boolean = true"#;
 
     assert_eq!(const_defs.len(), 3);
 
-    // Check first constant
     assert_eq!(const_defs[0].name.name, "MAX_CONNECTIONS");
     match &const_defs[0].expression.kind {
         ExpressionKind::Integer(int_lit) => {
@@ -339,7 +322,6 @@ const ENABLED: Boolean = true"#;
         _ => panic!("Expected integer literal"),
     }
 
-    // Check second constant
     assert_eq!(const_defs[1].name.name, "DEFAULT_PORT");
     match &const_defs[1].expression.kind {
         ExpressionKind::Integer(int_lit) => {
@@ -348,7 +330,6 @@ const ENABLED: Boolean = true"#;
         _ => panic!("Expected integer literal"),
     }
 
-    // Check third constant
     assert_eq!(const_defs[2].name.name, "ENABLED");
     match &const_defs[2].expression.kind {
         ExpressionKind::Boolean(bool_lit) => {
@@ -396,7 +377,6 @@ fn test_const_vs_let_binding_difference() {
     let const_program = OutrunParser::parse_program(const_input).unwrap();
     let let_program = OutrunParser::parse_program(let_input).unwrap();
 
-    // Verify const creates ConstDefinition
     match &const_program.items[0].kind {
         ItemKind::ConstDefinition(const_def) => {
             assert_eq!(const_def.name.name, "VALUE");
@@ -404,7 +384,6 @@ fn test_const_vs_let_binding_difference() {
         _ => panic!("Expected const definition"),
     }
 
-    // Verify let creates LetBinding
     match &let_program.items[0].kind {
         ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
             Pattern::Identifier(identifier) => assert_eq!(identifier.name, "value"),
@@ -429,7 +408,6 @@ def main(): Integer {
 "#;
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Find constants and function
     let const_defs: Vec<_> = program
         .items
         .iter()
@@ -451,10 +429,8 @@ def main(): Integer {
     assert_eq!(const_defs.len(), 2);
     assert_eq!(func_defs.len(), 1);
 
-    // Verify constants
     assert_eq!(const_defs[0].name.name, "VERSION");
     assert_eq!(const_defs[1].name.name, "MAX_RETRIES");
 
-    // Verify function
     assert_eq!(func_defs[0].name.name, "main");
 }

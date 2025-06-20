@@ -1,8 +1,5 @@
-// Function call parsing tests with shorthand argument expansion
-
 use crate::*;
 
-// Helper function to extract named argument fields for tests
 fn extract_named_arg(arg: &Argument) -> (&Identifier, &Expression, &ArgumentFormat) {
     match arg {
         Argument::Named {
@@ -24,7 +21,6 @@ fn test_function_call_no_arguments() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "greet");
@@ -32,7 +28,6 @@ fn test_function_call_no_arguments() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check no arguments
                 assert_eq!(call.arguments.len(), 0);
             }
             _ => panic!("Expected function call in expression"),
@@ -50,7 +45,6 @@ fn test_function_call_explicit_arguments() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "add");
@@ -58,10 +52,8 @@ fn test_function_call_explicit_arguments() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check arguments
                 assert_eq!(call.arguments.len(), 2);
 
-                // First argument: left: 5
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "left");
                 assert_eq!(*format, ArgumentFormat::Explicit);
@@ -72,7 +64,6 @@ fn test_function_call_explicit_arguments() {
                     _ => panic!("Expected integer expression in first argument"),
                 }
 
-                // Second argument: right: 3
                 let (name, expression, format) = extract_named_arg(&call.arguments[1]);
                 assert_eq!(name.name, "right");
                 assert_eq!(*format, ArgumentFormat::Explicit);
@@ -98,7 +89,6 @@ fn test_function_call_shorthand_arguments() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "add");
@@ -106,10 +96,8 @@ fn test_function_call_shorthand_arguments() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check arguments - should be expanded to named form
                 assert_eq!(call.arguments.len(), 2);
 
-                // First argument: left (expanded to left: left)
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "left");
                 assert_eq!(*format, ArgumentFormat::Shorthand);
@@ -120,7 +108,6 @@ fn test_function_call_shorthand_arguments() {
                     _ => panic!("Expected identifier expression in first shorthand argument"),
                 }
 
-                // Second argument: right (expanded to right: right)
                 let (name, expression, format) = extract_named_arg(&call.arguments[1]);
                 assert_eq!(name.name, "right");
                 assert_eq!(*format, ArgumentFormat::Shorthand);
@@ -146,7 +133,6 @@ fn test_function_call_mixed_arguments() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "process");
@@ -154,10 +140,8 @@ fn test_function_call_mixed_arguments() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check arguments
                 assert_eq!(call.arguments.len(), 2);
 
-                // First argument: data (shorthand)
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "data");
                 assert_eq!(*format, ArgumentFormat::Shorthand);
@@ -168,7 +152,6 @@ fn test_function_call_mixed_arguments() {
                     _ => panic!("Expected identifier expression in shorthand argument"),
                 }
 
-                // Second argument: timeout: 30 (explicit)
                 let (name, expression, format) = extract_named_arg(&call.arguments[1]);
                 assert_eq!(name.name, "timeout");
                 assert_eq!(*format, ArgumentFormat::Explicit);
@@ -194,7 +177,6 @@ fn test_qualified_function_call() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check qualified function path
                 match &call.path {
                     FunctionPath::Qualified { module, name } => {
                         assert_eq!(module.name, "Database");
@@ -203,14 +185,12 @@ fn test_qualified_function_call() {
                     _ => panic!("Expected qualified function path"),
                 }
 
-                // Check argument
                 assert_eq!(call.arguments.len(), 1);
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "table");
                 assert_eq!(*format, ArgumentFormat::Explicit);
                 match &expression.kind {
                     ExpressionKind::String(string) => {
-                        // Verify string content - should be "users"
                         assert_eq!(string.format, StringFormat::Basic);
                         assert_eq!(string.parts.len(), 1);
                         match &string.parts[0] {
@@ -238,7 +218,6 @@ fn test_nested_function_calls() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check outer function
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "format");
@@ -246,13 +225,11 @@ fn test_nested_function_calls() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check argument - should contain nested function call
                 assert_eq!(call.arguments.len(), 1);
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "message");
                 assert_eq!(*format, ArgumentFormat::Explicit);
 
-                // Check nested function call
                 match &expression.kind {
                     ExpressionKind::FunctionCall(nested_call) => {
                         match &nested_call.path {
@@ -262,7 +239,6 @@ fn test_nested_function_calls() {
                             _ => panic!("Expected simple function path for nested call"),
                         }
 
-                        // Check nested argument
                         assert_eq!(nested_call.arguments.len(), 1);
                         let (name, expression, format) =
                             extract_named_arg(&nested_call.arguments[0]);
@@ -293,7 +269,6 @@ fn test_function_call_with_complex_expressions() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "calculate");
@@ -301,24 +276,20 @@ fn test_function_call_with_complex_expressions() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check arguments
                 assert_eq!(call.arguments.len(), 2);
 
-                // First argument: x: a + b
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "x");
                 assert_eq!(*format, ArgumentFormat::Explicit);
                 match &expression.kind {
                     ExpressionKind::BinaryOp(binop) => {
                         assert_eq!(binop.operator, BinaryOperator::Add);
-                        // Check left operand
                         match &binop.left.kind {
                             ExpressionKind::Identifier(id) => {
                                 assert_eq!(id.name, "a");
                             }
                             _ => panic!("Expected identifier on left side of addition"),
                         }
-                        // Check right operand
                         match &binop.right.kind {
                             ExpressionKind::Identifier(id) => {
                                 assert_eq!(id.name, "b");
@@ -329,7 +300,6 @@ fn test_function_call_with_complex_expressions() {
                     _ => panic!("Expected binary operation in first argument"),
                 }
 
-                // Second argument: y: list
                 let (name, expression, format) = extract_named_arg(&call.arguments[1]);
                 assert_eq!(name.name, "y");
                 assert_eq!(*format, ArgumentFormat::Explicit);
@@ -355,7 +325,6 @@ fn test_function_call_single_shorthand_argument() {
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::FunctionCall(call) => {
-                // Check function path
                 match &call.path {
                     FunctionPath::Simple { name } => {
                         assert_eq!(name.name, "process");
@@ -363,7 +332,6 @@ fn test_function_call_single_shorthand_argument() {
                     _ => panic!("Expected simple function path"),
                 }
 
-                // Check single shorthand argument
                 assert_eq!(call.arguments.len(), 1);
                 let (name, expression, format) = extract_named_arg(&call.arguments[0]);
                 assert_eq!(name.name, "data");
@@ -388,7 +356,6 @@ fn test_multiple_function_calls() {
 
     assert_eq!(result.items.len(), 3);
 
-    // Check each function call
     let expected_names = ["init", "process", "cleanup"];
     let expected_arg_counts = [0, 1, 0];
 
@@ -413,14 +380,12 @@ fn test_multiple_function_calls() {
 
 #[test]
 fn test_function_call_display_formatting() {
-    // Test that Display impl correctly reconstructs original syntax
     let input = "add(left, right: 10)";
     let result = parse_program(input).unwrap();
 
     match &result.items[0].kind {
         ItemKind::Expression(expr) => {
             let formatted = format!("{}", expr);
-            // Should preserve shorthand vs explicit argument formatting
             assert!(formatted.contains("add(left, right: 10)"));
         }
         _ => panic!("Expected expression"),

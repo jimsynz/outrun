@@ -188,6 +188,14 @@ impl OutrunParser {
             )
         })?;
 
+        let return_type = return_type.ok_or_else(|| {
+            ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(span.start..span.end),
+                "Function definition missing required return type annotation".to_string(),
+            )
+        })?;
+
         Ok(FunctionDefinition {
             attributes,
             visibility,
@@ -395,13 +403,33 @@ impl OutrunParser {
         let span = Self::extract_span(&pair);
         let mut inner_pairs = pair.into_inner();
 
+        // Parse attributes first
+        let mut attributes = Vec::new();
+        let mut visibility_pair = None;
+        let mut name_pair = None;
+
+        // Parse attributes and find visibility/name
+        for inner_pair in inner_pairs.by_ref() {
+            match inner_pair.as_rule() {
+                Rule::attribute => {
+                    attributes.push(Self::parse_attribute(inner_pair)?);
+                }
+                Rule::function_visibility => {
+                    visibility_pair = Some(inner_pair);
+                }
+                Rule::identifier if visibility_pair.is_some() => {
+                    name_pair = Some(inner_pair);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
         // Parse function visibility
-        let visibility_pair = inner_pairs.next().unwrap();
-        let visibility = Self::parse_function_visibility(visibility_pair)?;
+        let visibility = Self::parse_function_visibility(visibility_pair.unwrap())?;
 
         // Parse function name
-        let name_pair = inner_pairs.next().unwrap();
-        let name = Self::parse_identifier(name_pair)?;
+        let name = Self::parse_identifier(name_pair.unwrap())?;
 
         let mut parameters = Vec::new();
         let mut return_type = None;
@@ -422,7 +450,16 @@ impl OutrunParser {
             }
         }
 
+        let return_type = return_type.ok_or_else(|| {
+            ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(span.start..span.end),
+                "Function signature missing required return type annotation".to_string(),
+            )
+        })?;
+
         Ok(FunctionSignature {
+            attributes,
             visibility,
             name,
             parameters,
@@ -739,13 +776,30 @@ impl OutrunParser {
         let span = Self::extract_span(&pair);
         let mut inner_pairs = pair.into_inner();
 
-        // Skip the 'defs' keyword
-        let defs_keyword = inner_pairs.next().unwrap();
-        assert_eq!(defs_keyword.as_rule(), Rule::keyword_defs);
+        // Parse attributes first
+        let mut attributes = Vec::new();
+        let mut defs_keyword = None;
+        let mut name_pair = None;
+
+        // Parse attributes and find the defs keyword and name
+        for inner_pair in inner_pairs.by_ref() {
+            match inner_pair.as_rule() {
+                Rule::attribute => {
+                    attributes.push(Self::parse_attribute(inner_pair)?);
+                }
+                Rule::keyword_defs => {
+                    defs_keyword = Some(inner_pair);
+                }
+                Rule::identifier if defs_keyword.is_some() => {
+                    name_pair = Some(inner_pair);
+                    break;
+                }
+                _ => {}
+            }
+        }
 
         // Parse function name
-        let name_pair = inner_pairs.next().unwrap();
-        let name = Self::parse_identifier(name_pair)?;
+        let name = Self::parse_identifier(name_pair.unwrap())?;
 
         let mut parameters = Vec::new();
         let mut return_type = None;
@@ -774,7 +828,16 @@ impl OutrunParser {
             )
         })?;
 
+        let return_type = return_type.ok_or_else(|| {
+            ParseError::unexpected_token(
+                "".to_string(),
+                miette::SourceSpan::from(span.start..span.end),
+                "Static function definition missing required return type annotation".to_string(),
+            )
+        })?;
+
         Ok(StaticFunctionDefinition {
+            attributes,
             name,
             parameters,
             return_type,

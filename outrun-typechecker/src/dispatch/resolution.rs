@@ -6,13 +6,13 @@
 use crate::dispatch::DispatchTable;
 use crate::error::{TypeError, TypeResult};
 use crate::types::traits::FunctionId;
-use crate::types::{AtomId, TraitId, TypeId};
+use crate::types::{AtomId, TypeId};
 use outrun_parser::Span;
 
 /// Resolve a trait function call to its implementation
 pub fn resolve_trait_function(
     table: &DispatchTable,
-    trait_id: TraitId,
+    trait_id: TypeId,
     type_id: TypeId,
     _function_name: AtomId,
     span: Span,

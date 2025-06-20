@@ -18,10 +18,8 @@ fn test_concrete_case_with_multiple_when_clauses() {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::CaseExpression(case_expr) => match case_expr {
                 CaseExpression::Concrete(concrete) => {
-                    // Should have 3 when clauses, no else clause
                     assert_eq!(concrete.when_clauses.len(), 3);
 
-                    // Check that we can access the expression
                     match &concrete.expression.kind {
                         ExpressionKind::Identifier(id) => assert_eq!(id.name, "x"),
                         _ => panic!("Expected identifier"),
@@ -48,13 +46,10 @@ fn test_trait_case_expression() {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::CaseExpression(case_expr) => match case_expr {
                 CaseExpression::Trait(trait_case) => {
-                    // Should have 2 type clauses
                     assert_eq!(trait_case.type_clauses.len(), 2);
 
-                    // Check trait name
                     assert_eq!(trait_case.trait_name.name, "Display");
 
-                    // Check expression
                     match &trait_case.expression.kind {
                         ExpressionKind::Identifier(id) => assert_eq!(id.name, "value"),
                         _ => panic!("Expected identifier"),

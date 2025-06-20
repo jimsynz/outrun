@@ -1,6 +1,3 @@
-// Test comprehensive comment collection from all AST positions
-// Verifies that the pre-walk comment extraction captures comments from anywhere in the source
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -18,10 +15,8 @@ const SECOND: Integer = 100
 
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Should collect all comments regardless of position
     assert_eq!(program.debug_info.comments.len(), 5);
 
-    // Verify comment content and types
     assert_eq!(program.debug_info.comments[0].content, " Top level comment");
     assert_eq!(program.debug_info.comments[0].kind, CommentKind::Line);
 
@@ -43,7 +38,6 @@ const SECOND: Integer = 100
     assert_eq!(program.debug_info.comments[4].content, " Final comment");
     assert_eq!(program.debug_info.comments[4].kind, CommentKind::Line);
 
-    // Verify comments are ordered by span position
     for i in 1..program.debug_info.comments.len() {
         assert!(
             program.debug_info.comments[i - 1].span.start
@@ -52,7 +46,6 @@ const SECOND: Integer = 100
         );
     }
 
-    // Verify that comments don't appear as items anymore
     let comment_items: Vec<_> = program
         .items
         .iter()
@@ -65,7 +58,6 @@ const SECOND: Integer = 100
         "Comments should not appear as items"
     );
 
-    // Should still have the non-comment items
     let const_items: Vec<_> = program
         .items
         .iter()
@@ -77,9 +69,6 @@ const SECOND: Integer = 100
 
 #[test]
 fn test_pre_walk_comment_extraction_vs_inline_collection() {
-    // This test verifies that the pre-walk approach captures comments
-    // that would be missed by inline collection during AST construction
-
     let input = r#"# Comment 1
 # Comment 2  
 const VALUE: Integer = 42
@@ -87,10 +76,8 @@ const VALUE: Integer = 42
 
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Pre-walk should capture all 3 comments
     assert_eq!(program.debug_info.comments.len(), 3);
 
-    // Verify all comments are captured with correct content
     let comment_contents: Vec<&str> = program
         .debug_info
         .comments
@@ -116,7 +103,6 @@ const FIRST: Integer = 1
 
     assert_eq!(program.debug_info.comments.len(), 4);
 
-    // Verify mixed comment types are all captured
     let line_comments: Vec<_> = program
         .debug_info
         .comments

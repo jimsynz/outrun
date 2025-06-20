@@ -1,0 +1,13 @@
+[package]
+authors = ["James Harton <james@harton.nz>"]
+description = "Core library for the Outrun programming language"
+license = "MIT"
+name = "outrun-core"
+version = "0.1.0"
+
+[lib]
+# Source files are in lib/ subdirectory
+path = "lib"
+
+[dependencies]
+# No external dependencies - this is the foundational core library

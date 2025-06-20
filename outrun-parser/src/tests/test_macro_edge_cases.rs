@@ -17,7 +17,6 @@ macro nested(outer, inner) {
             assert_eq!(macro_def.name.name, "nested");
             assert_eq!(macro_def.parameters.len(), 2);
 
-            // Should have two statements: let binding and function call
             assert_eq!(macro_def.body.statements.len(), 2);
             found_macro = true;
             break;
@@ -42,12 +41,9 @@ macro calc(a, b, c) {
             assert_eq!(macro_def.name.name, "calc");
             assert_eq!(macro_def.parameters.len(), 3);
 
-            // Should have an expression in the body
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
-                // Should be a binary operation (addition)
                 if let ExpressionKind::BinaryOp(_) = &expr.kind {
-                    // Detailed validation would require deeper inspection
                 } else {
                     panic!("Expected binary operation in macro body");
                 }
@@ -123,7 +119,6 @@ macro log_debug(var) {
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "var");
 
-            // Check that we can parse a function call with string interpolation containing macro injection
             assert_eq!(macro_def.body.statements.len(), 1);
             found_macro = true;
             break;
@@ -147,7 +142,6 @@ fn test_macro_with_simple_expression_body() {
             assert_eq!(macro_def.name.name, "simple");
             assert_eq!(macro_def.parameters.len(), 0);
 
-            // Should have a single expression statement
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
                 if let ExpressionKind::Integer(int_lit) = &expr.kind {
@@ -175,7 +169,6 @@ fn test_macro_injection_display_format() {
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
 
-    // Should preserve the macro injection syntax
     assert!(
         reconstructed.contains("^x"),
         "Should preserve macro injection syntax in display"

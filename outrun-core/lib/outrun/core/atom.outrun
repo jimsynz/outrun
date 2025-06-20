@@ -1,0 +1,49 @@
+@Doc(content: """
+Atom concrete type.
+
+This is the default concrete implementation of the Atom trait in Outrun.
+Atom literals without explicit type annotations default to this type.
+Atoms are interned for fast equality comparisons.
+
+## Examples
+
+```outrun
+:name                              # Basic atom
+:user_id                          # Atom with underscore
+:some_atom                        # Atom with multiple parts
+:"arbitrary string"               # Atom with arbitrary string content
+:"with spaces and symbols!"       # Atom with special characters
+```
+""")
+struct Outrun.Core.Atom() {}
+
+# Equality trait implementation
+impl Equality for Outrun.Core.Atom {
+    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.atom_eq(lhs: lhs, rhs: rhs)
+    }
+    
+    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        !Outrun.Intrinsic.atom_eq(lhs: lhs, rhs: rhs)
+    }
+}
+
+# Display trait implementation
+impl Display for Outrun.Core.Atom {
+    def to_string(value: Self): Outrun.Core.String {
+        Outrun.Intrinsic.atom_to_string(value: value)
+    }
+}
+
+# Inspect trait implementation
+impl Inspect for Outrun.Core.Atom {
+    def inspect(value: Self): Outrun.Core.String {
+        # For inspect, we want to show the atom with its colon prefix
+        Outrun.Intrinsic.atom_inspect(value: value)
+    }
+}
+
+# Atom trait implementation
+impl Atom for Outrun.Core.Atom {
+    # Empty implementation - behavior comes from constrained traits
+}

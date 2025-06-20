@@ -9,7 +9,6 @@ fn test_simple_field_access() {
 
     match expr.kind {
         ExpressionKind::FieldAccess(field_access) => {
-            // Check the object is 'self'
             match &field_access.object.kind {
                 ExpressionKind::Identifier(id) => {
                     assert_eq!(id.name, "self");
@@ -17,7 +16,6 @@ fn test_simple_field_access() {
                 _ => panic!("Expected identifier for object"),
             }
 
-            // Check the field is 'name'
             assert_eq!(field_access.field.name, "name");
         }
         _ => panic!("Expected field access expression, got: {:?}", expr.kind),
@@ -34,12 +32,10 @@ fn test_chained_field_access() {
         ExpressionKind::FieldAccess(outer) => {
             assert_eq!(outer.field.name, "name");
 
-            // Check the object is also a field access (user.profile)
             match &outer.object.kind {
                 ExpressionKind::FieldAccess(inner) => {
                     assert_eq!(inner.field.name, "profile");
 
-                    // Check the innermost object is 'user'
                     match &inner.object.kind {
                         ExpressionKind::Identifier(id) => {
                             assert_eq!(id.name, "user");

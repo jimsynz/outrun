@@ -1,9 +1,5 @@
-// Sigil literal parsing tests
-// Tests for embedded DSL syntax with ~TypeName"content"
-
 use crate::{ast::*, parse_program};
 
-// Helper function to check if an expression is an identifier with a specific name
 fn assert_identifier_expression(expr: &Expression, expected_name: &str) {
     match &expr.kind {
         ExpressionKind::Identifier(id) => assert_eq!(id.name, expected_name),
@@ -52,7 +48,6 @@ fn test_parse_sigil_with_interpolation() {
             assert_eq!(sigil.sigil_type.name, "SQL");
             assert_eq!(sigil.string.parts.len(), 2);
 
-            // Part 1: "SELECT * FROM users WHERE id = "
             match &sigil.string.parts[0] {
                 StringPart::Text { content, .. } => {
                     assert_eq!(content, "SELECT * FROM users WHERE id = ");
@@ -60,7 +55,6 @@ fn test_parse_sigil_with_interpolation() {
                 _ => panic!("Expected text part"),
             }
 
-            // Part 2: #{user_id}
             match &sigil.string.parts[1] {
                 StringPart::Interpolation { expression, .. } => {
                     assert_identifier_expression(expression, "user_id");
@@ -87,7 +81,6 @@ WHERE users.active = true
             assert_eq!(sigil.sigil_type.name, "SQL");
             assert_eq!(sigil.string.format, StringFormat::Multiline);
 
-            // Check that the content includes newlines
             let content: String = sigil
                 .string
                 .parts
@@ -120,7 +113,6 @@ WHERE status = #{status}
             assert_eq!(sigil.sigil_type.name, "SQL");
             assert_eq!(sigil.string.format, StringFormat::Multiline);
 
-            // Should have text, interpolation, text, interpolation, text parts
             let interpolation_count = sigil
                 .string
                 .parts
@@ -129,7 +121,6 @@ WHERE status = #{status}
                 .count();
             assert_eq!(interpolation_count, 2);
 
-            // Check for the interpolated variables
             let has_table_name = sigil.string.parts.iter().any(|part|
                 matches!(part, StringPart::Interpolation { expression, .. } if matches!(expression.kind, ExpressionKind::Identifier(ref id) if id.name == "table_name"))
             );
@@ -169,7 +160,6 @@ fn test_parse_json_sigil() {
         ItemKind::SigilLiteral(sigil) => {
             assert_eq!(sigil.sigil_type.name, "JSON");
 
-            // Should contain both text parts and interpolations
             let has_name_interpolation = sigil.string.parts.iter().any(|part|
                 matches!(part, StringPart::Interpolation { expression, .. } if matches!(expression.kind, ExpressionKind::Identifier(ref id) if id.name == "name"))
             );
@@ -195,7 +185,6 @@ fn test_parse_regex_sigil() {
             assert_eq!(sigil.sigil_type.name, "Regex");
             assert_eq!(sigil.string.parts.len(), 3);
 
-            // Check that the regex pattern is correctly split and contains the expected parts
             let full_content: String = sigil
                 .string
                 .parts
@@ -218,7 +207,6 @@ fn test_sigil_display_preserves_format() {
     let input = "~SQL\"SELECT * FROM users WHERE id = #{user_id}\"";
     let result = parse_program(input).unwrap();
 
-    // Test that Display preserves the sigil format
     let formatted = format!("{}", result);
     assert_eq!(formatted, input);
 }
@@ -233,7 +221,6 @@ fn test_multiline_sigil_display_preserves_format() {
 \"\"\"";
     let result = parse_program(input).unwrap();
 
-    // Test that Display preserves the multiline sigil format
     let formatted = format!("{}", result);
     assert_eq!(formatted, input);
 }
@@ -243,7 +230,6 @@ fn test_comprehensive_mix_with_sigils() {
     let input = "true ~SQL\"SELECT * FROM users\" 42 ~HTML\"<div>#{content}</div>\" false";
     let result = parse_program(input).unwrap();
 
-    // Should parse: boolean, sigil, integer, sigil, boolean
     assert_eq!(result.items.len(), 5);
 
     match &result.items[0].kind {

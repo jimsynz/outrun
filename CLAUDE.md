@@ -110,18 +110,6 @@ Users must explicitly alias them:
 alias Outrun.BinaryAddition<T> as BinAdd<T>
 ```
 
-## Current Status
-
-- ✅ **Core syntax specification complete**
-- ✅ **BNF grammar written**
-- ✅ **Parser implementation complete**: Full Outrun language parsing with 400+ tests
-- ✅ **Type checker implementation**: Comprehensive type checking with trait system
-- ✅ **CLI tool**: Parse and typecheck commands with beautiful error reporting
-- ✅ **Test cleanup complete**: All 649 tests passing (448 parser, 201 typechecker) with proper organisation
-- ✅ **Constraint validation**: Undefined trait detection in impl block constraints
-- 🔄 **Next priorities**: Trait implementation validation, dispatch table construction
-- ⭐ **Interpreter/compiler needed**
-
 ## Contributing
 
 When working on the language:

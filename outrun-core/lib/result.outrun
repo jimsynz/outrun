@@ -1,0 +1,55 @@
+@Doc(content: """
+Result trait for computations that can succeed or fail.
+
+The Result trait represents the outcome of operations that can either succeed 
+with a value of type T or fail with an error of type E. This is Outrun's
+approach to explicit error handling without exceptions.
+
+## Concrete Implementations
+
+- `Outrun.Result.Ok<T>` - Contains a success value of type T
+- `Outrun.Result.Err<E>` - Contains an error value of type E
+
+## Constructor Functions
+
+```outrun
+Result.ok(value: T): Outrun.Result.Ok<T>
+Result.err(error: E): Outrun.Result.Err<E>
+```
+
+## Examples
+
+```outrun
+let division_result: Result<Float, String> = case denominator {
+    0 -> Result.err(error: "Cannot divide by zero")
+    n -> Result.ok(value: numerator / n)
+}
+
+case division_result {
+    ok_value: Outrun.Result.Ok<Float> -> "Result: #{ok_value.value}"
+    err_value: Outrun.Result.Err<String> -> "Error: #{err_value.error}"
+}
+```
+
+## Type Parameters
+
+- `T` - The type of the success value
+- `E` - The type of the error value
+""")
+trait Result<T, E> {
+    @Doc(content: "Create an Ok variant containing the given success value")
+    defs ok(value: T): Outrun.Result.Ok<T> {
+        Outrun.Result.Ok { value: value }
+    }
+    
+    @Doc(content: "Create an Err variant containing the given error value")
+    defs err(error: E): Outrun.Result.Err<E> {
+        Outrun.Result.Err { error: error }
+    }
+    
+    @Doc(content: "Check if this Result represents success")
+    def ok?(self: Self): Boolean
+    
+    @Doc(content: "Check if this Result represents failure")
+    def err?(self: Self): Boolean
+}

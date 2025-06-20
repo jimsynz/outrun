@@ -1,8 +1,6 @@
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
-// Test basic attribute parsing
-
 #[test]
 fn test_struct_with_basic_attribute() {
     let input = r#"@Derive(traits: [Debug])
@@ -15,13 +13,11 @@ struct User(name: String) {
 
     match &result.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            // Check attributes
             assert_eq!(struct_def.attributes.len(), 1);
             assert_eq!(struct_def.attributes[0].name.name, "Derive");
             assert!(struct_def.attributes[0].args.is_some());
 
-            // Check struct properties
-            assert_eq!(struct_def.name.name, "User");
+            assert_eq!(struct_def.name[0].name, "User");
             assert_eq!(struct_def.fields.len(), 1);
             assert_eq!(struct_def.fields[0].name.name, "name");
         }
@@ -41,13 +37,11 @@ struct Config(value: String) {
 
     match &result.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            // Check attributes
             assert_eq!(struct_def.attributes.len(), 1);
             assert_eq!(struct_def.attributes[0].name.name, "Serializable");
             assert!(struct_def.attributes[0].args.is_none());
 
-            // Check struct properties
-            assert_eq!(struct_def.name.name, "Config");
+            assert_eq!(struct_def.name[0].name, "Config");
         }
         _ => panic!("Expected struct definition"),
     }
@@ -65,7 +59,6 @@ struct DatabaseConnection(url: String) {
 
     match &result.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            // Check attributes
             assert_eq!(struct_def.attributes.len(), 1);
             assert_eq!(struct_def.attributes[0].name.name, "Config");
             assert!(struct_def.attributes[0].args.is_some());
@@ -73,8 +66,7 @@ struct DatabaseConnection(url: String) {
             let args = struct_def.attributes[0].args.as_ref().unwrap();
             assert_eq!(args.arguments.len(), 2);
 
-            // Check struct properties
-            assert_eq!(struct_def.name.name, "DatabaseConnection");
+            assert_eq!(struct_def.name[0].name, "DatabaseConnection");
         }
         _ => panic!("Expected struct definition"),
     }
@@ -93,12 +85,10 @@ def old_function(): String {
 
     match &result.items[0].kind {
         ItemKind::FunctionDefinition(func_def) => {
-            // Check attributes
             assert_eq!(func_def.attributes.len(), 1);
             assert_eq!(func_def.attributes[0].name.name, "Deprecated");
             assert!(func_def.attributes[0].args.is_some());
 
-            // Check function properties
             assert_eq!(func_def.name.name, "old_function");
         }
         _ => panic!("Expected function definition"),
@@ -119,7 +109,6 @@ struct User(name: String, age: Integer) {
 
     match &result.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            // Check attributes
             assert_eq!(struct_def.attributes.len(), 3);
 
             assert_eq!(struct_def.attributes[0].name.name, "Derive");
@@ -131,8 +120,7 @@ struct User(name: String, age: Integer) {
             assert_eq!(struct_def.attributes[2].name.name, "CustomAttribute");
             assert!(struct_def.attributes[2].args.is_some());
 
-            // Check struct properties
-            assert_eq!(struct_def.name.name, "User");
+            assert_eq!(struct_def.name[0].name, "User");
             assert_eq!(struct_def.fields.len(), 2);
         }
         _ => panic!("Expected struct definition"),
@@ -152,13 +140,11 @@ trait Drawable {
 
     match &result.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            // Check attributes
             assert_eq!(trait_def.attributes.len(), 1);
             assert_eq!(trait_def.attributes[0].name.name, "Exportable");
             assert!(trait_def.attributes[0].args.is_none());
 
-            // Check trait properties
-            assert_eq!(trait_def.name.name, "Drawable");
+            assert_eq!(trait_def.name_as_string(), "Drawable");
         }
         _ => panic!("Expected trait definition"),
     }
@@ -176,7 +162,6 @@ struct User(name: String) {
         ItemKind::StructDefinition(struct_def) => {
             let formatted = format!("{}", struct_def);
 
-            // Check that the formatted output includes the attribute
             assert!(formatted.contains("@Derive"));
             assert!(formatted.contains("traits:"));
             assert!(formatted.contains("struct User"));

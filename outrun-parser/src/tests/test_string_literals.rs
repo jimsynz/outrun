@@ -1,9 +1,5 @@
-// String literal parsing tests
-// Tests for basic string literals with escape sequences
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract string from expression
 fn extract_string_from_expression(expr: &Expression) -> &StringLiteral {
     match &expr.kind {
         ExpressionKind::String(string) => string,
@@ -11,7 +7,6 @@ fn extract_string_from_expression(expr: &Expression) -> &StringLiteral {
     }
 }
 
-// Helper function to extract text content from string parts
 fn extract_text_content(parts: &[StringPart]) -> String {
     parts
         .iter()
@@ -22,7 +17,6 @@ fn extract_text_content(parts: &[StringPart]) -> String {
         .collect()
 }
 
-// Helper function to extract raw content from string parts
 fn extract_raw_content(parts: &[StringPart]) -> String {
     parts
         .iter()
@@ -177,7 +171,6 @@ fn test_string_display_preserves_raw_format() {
     let input = r#""Hello\nWorld""#;
     let result = parse_program(input).unwrap();
 
-    // Test that Display preserves the raw content format
     let formatted = format!("{}", result);
     assert_eq!(formatted, input);
 }
@@ -187,7 +180,6 @@ fn test_comprehensive_mix_with_strings() {
     let input = r#"true "hello" 42 false "world\n""#;
     let result = parse_program(input).unwrap();
 
-    // Should parse: boolean, string, integer, boolean, string
     assert_eq!(result.items.len(), 5);
 
     match &result.items[0].kind {

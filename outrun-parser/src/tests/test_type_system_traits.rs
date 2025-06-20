@@ -1,6 +1,3 @@
-// Test trait definitions parsing
-// Comprehensive tests for trait definition syntax
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -15,17 +12,15 @@ fn test_basic_trait_definition() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Drawable");
+            assert_eq!(trait_def.name_as_string(), "Drawable");
             assert!(trait_def.generic_params.is_none());
             assert!(trait_def.constraints.is_none());
             assert_eq!(trait_def.functions.len(), 1);
 
-            // Check function signature
             match &trait_def.functions[0] {
                 TraitFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "draw");
                     assert_eq!(sig.parameters.len(), 1);
-                    assert!(sig.return_type.is_some());
                 }
                 _ => panic!("Expected function signature"),
             }
@@ -46,15 +41,13 @@ fn test_trait_with_generics() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Serializable");
+            assert_eq!(trait_def.name_as_string(), "Serializable");
 
-            // Check generics
             assert!(trait_def.generic_params.is_some());
             let generics = trait_def.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 1);
             assert_eq!(generics.params[0].name.name, "T");
 
-            // Check functions
             assert_eq!(trait_def.functions.len(), 2);
         }
         _ => panic!("Expected trait definition"),
@@ -72,9 +65,8 @@ fn test_trait_with_constraints() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Comparable");
+            assert_eq!(trait_def.name_as_string(), "Comparable");
 
-            // Check constraints
             assert!(trait_def.constraints.is_some());
             match trait_def.constraints.as_ref().unwrap() {
                 ConstraintExpression::Constraint {
@@ -105,10 +97,9 @@ fn test_trait_with_default_implementation() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Logger");
+            assert_eq!(trait_def.name_as_string(), "Logger");
             assert_eq!(trait_def.functions.len(), 2);
 
-            // Check first function is signature
             match &trait_def.functions[0] {
                 TraitFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "log");
@@ -116,7 +107,6 @@ fn test_trait_with_default_implementation() {
                 _ => panic!("Expected function signature"),
             }
 
-            // Check second function is also a signature
             match &trait_def.functions[1] {
                 TraitFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "log_info");
@@ -137,10 +127,153 @@ fn test_empty_trait() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Marker");
+            assert_eq!(trait_def.name_as_string(), "Marker");
             assert!(trait_def.generic_params.is_none());
             assert!(trait_def.constraints.is_none());
             assert_eq!(trait_def.functions.len(), 0);
+        }
+        _ => panic!("Expected trait definition"),
+    }
+}
+
+#[test]
+fn test_trait_with_self_constraint() {
+    let input = r#"trait Addable when Self: BinaryAddition {
+        def add_to_self(value: Self, other: Self): Self
+    }"#;
+
+    let program = OutrunParser::parse_program(input).unwrap();
+    assert_eq!(program.items.len(), 1);
+
+    match &program.items[0].kind {
+        ItemKind::TraitDefinition(trait_def) => {
+            assert_eq!(trait_def.name_as_string(), "Addable");
+            assert!(trait_def.constraints.is_some());
+
+            match trait_def.constraints.as_ref().unwrap() {
+                ConstraintExpression::Constraint {
+                    type_param,
+                    trait_bound,
+                    ..
+                } => {
+                    assert_eq!(type_param.name, "Self");
+                    assert_eq!(trait_bound.len(), 1);
+                    assert_eq!(trait_bound[0].name, "BinaryAddition");
+                }
+                _ => panic!("Expected simple Self constraint"),
+            }
+        }
+        _ => panic!("Expected trait definition"),
+    }
+}
+
+#[test]
+fn test_trait_with_multiple_self_constraints() {
+    let input = r#"trait Numeric when Self: BinaryAddition && Self: BinaryMultiplication && Self: Comparison {
+        def compute(a: Self, b: Self): Self
+    }"#;
+
+    let program = OutrunParser::parse_program(input).unwrap();
+    assert_eq!(program.items.len(), 1);
+
+    match &program.items[0].kind {
+        ItemKind::TraitDefinition(trait_def) => {
+            assert_eq!(trait_def.name_as_string(), "Numeric");
+            assert!(trait_def.constraints.is_some());
+
+            match trait_def.constraints.as_ref().unwrap() {
+                ConstraintExpression::And { left, right, .. } => {
+                    match left.as_ref() {
+                        ConstraintExpression::And {
+                            left: nested_left,
+                            right: nested_right,
+                            ..
+                        } => {
+                            match nested_left.as_ref() {
+                                ConstraintExpression::Constraint {
+                                    type_param,
+                                    trait_bound,
+                                    ..
+                                } => {
+                                    assert_eq!(type_param.name, "Self");
+                                    assert_eq!(trait_bound[0].name, "BinaryAddition");
+                                }
+                                _ => panic!("Expected first Self constraint"),
+                            }
+                            match nested_right.as_ref() {
+                                ConstraintExpression::Constraint {
+                                    type_param,
+                                    trait_bound,
+                                    ..
+                                } => {
+                                    assert_eq!(type_param.name, "Self");
+                                    assert_eq!(trait_bound[0].name, "BinaryMultiplication");
+                                }
+                                _ => panic!("Expected second Self constraint"),
+                            }
+                        }
+                        _ => panic!("Expected nested And constraint"),
+                    }
+                    match right.as_ref() {
+                        ConstraintExpression::Constraint {
+                            type_param,
+                            trait_bound,
+                            ..
+                        } => {
+                            assert_eq!(type_param.name, "Self");
+                            assert_eq!(trait_bound[0].name, "Comparison");
+                        }
+                        _ => panic!("Expected third Self constraint"),
+                    }
+                }
+                _ => panic!("Expected And constraint"),
+            }
+        }
+        _ => panic!("Expected trait definition"),
+    }
+}
+
+#[test]
+fn test_trait_with_mixed_constraints() {
+    let input = r#"trait Complex<T> when Self: Addable && T: Comparable {
+        def process(self_val: Self, other_val: T): Self
+    }"#;
+
+    let program = OutrunParser::parse_program(input).unwrap();
+    assert_eq!(program.items.len(), 1);
+
+    match &program.items[0].kind {
+        ItemKind::TraitDefinition(trait_def) => {
+            assert_eq!(trait_def.name_as_string(), "Complex");
+            assert!(trait_def.constraints.is_some());
+
+            match trait_def.constraints.as_ref().unwrap() {
+                ConstraintExpression::And { left, right, .. } => {
+                    match left.as_ref() {
+                        ConstraintExpression::Constraint {
+                            type_param,
+                            trait_bound,
+                            ..
+                        } => {
+                            assert_eq!(type_param.name, "Self");
+                            assert_eq!(trait_bound[0].name, "Addable");
+                        }
+                        _ => panic!("Expected Self constraint"),
+                    }
+                    match right.as_ref() {
+                        ConstraintExpression::Constraint {
+                            type_param,
+                            trait_bound,
+                            ..
+                        } => {
+                            assert_eq!(type_param.name, "T");
+                            assert_eq!(trait_bound[0].name, "Comparable");
+                        }
+                        _ => panic!("Expected T constraint"),
+                    }
+                }
+                _ => panic!("Expected And constraint"),
+            }
         }
         _ => panic!("Expected trait definition"),
     }
@@ -157,6 +290,10 @@ fn test_trait_display_formatting() {
         (
             r#"trait Comparable<T> when T: Orderable {}"#,
             vec!["trait Comparable<T>", "when T: Orderable"],
+        ),
+        (
+            r#"trait Addable when Self: BinaryAddition {}"#,
+            vec!["trait Addable", "when Self: BinaryAddition"],
         ),
     ];
 

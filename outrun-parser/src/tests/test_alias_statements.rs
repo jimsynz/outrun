@@ -1,6 +1,5 @@
 use crate::{parse_program, AliasDefinition, AliasPath, ItemKind};
 
-/// Helper function to extract alias definition from parse result
 fn extract_alias(input: &str) -> AliasDefinition {
     let result = parse_program(input).expect("Failed to parse");
     assert_eq!(result.items.len(), 1, "Expected exactly one item");
@@ -100,16 +99,13 @@ fn test_alias_brace_expansion_with_as_clauses() {
 
             assert_eq!(items.len(), 3);
 
-            // Option as Opt
             assert_eq!(items[0].name.name, "Option");
             let opt_alias = items[0].alias_name.as_ref().expect("Expected alias name");
             assert_eq!(opt_alias.name, "Opt");
 
-            // Result (no alias)
             assert_eq!(items[1].name.name, "Result");
             assert!(items[1].alias_name.is_none());
 
-            // Iterator as Iter
             assert_eq!(items[2].name.name, "Iterator");
             let iter_alias = items[2].alias_name.as_ref().expect("Expected alias name");
             assert_eq!(iter_alias.name, "Iter");

@@ -1,0 +1,24 @@
+@Doc(content: """
+Binary addition trait for the + operator.
+
+The BinaryAddition trait defines the behaviour for the + operator.
+When you write `a + b`, it becomes `BinaryAddition.add(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type
+- The result must be the same concrete type as the operands
+- No implicit conversions are performed
+
+## Examples
+
+```outrun
+42 + 13                       # BinaryAddition.add(lhs: 42, rhs: 13): Integer64
+3.14 + 2.86                   # BinaryAddition.add(lhs: 3.14, rhs: 2.86): Float64
+"hello" + " world"            # BinaryAddition.add(lhs: "hello", rhs: " world"): String
+```
+""")
+trait BinaryAddition {
+    @Doc(content: "Add two values of the same type")
+    def add(lhs: Self, rhs: Self): Self
+}

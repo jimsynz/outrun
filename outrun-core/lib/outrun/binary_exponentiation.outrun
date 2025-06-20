@@ -1,0 +1,23 @@
+@Doc(content: """
+Binary exponentiation trait for the ** operator.
+
+The BinaryExponentiation trait defines the behaviour for the ** operator.
+When you write `a ** b`, it becomes `BinaryExponentiation.exponentiate(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type
+- The result must be the same concrete type as the operands
+- No implicit conversions are performed
+
+## Examples
+
+```outrun
+2 ** 3                        # BinaryExponentiation.exponentiate(lhs: 2, rhs: 3): Integer64
+2.0 ** 3.0                    # BinaryExponentiation.exponentiate(lhs: 2.0, rhs: 3.0): Float64
+```
+""")
+trait BinaryExponentiation {
+    @Doc(content: "Raise the left value to the power of the right value")
+    def exponentiate(lhs: Self, rhs: Self): Self
+}

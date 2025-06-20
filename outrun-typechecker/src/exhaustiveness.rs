@@ -224,9 +224,6 @@ impl<'a> ExhaustivenessAnalyzer<'a> {
         _has_default_case: bool,
         _span: Span,
     ) -> Result<ExhaustivenessResult, TypeError> {
-        // TODO: Implement sophisticated guard analysis
-        // For now, require explicit default case for exhaustiveness
-        // This would analyze Boolean guard parameters and determine coverage
         Ok(ExhaustivenessResult::OpenType)
     }
 }

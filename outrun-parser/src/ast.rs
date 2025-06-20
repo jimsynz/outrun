@@ -468,7 +468,7 @@ pub struct FunctionDefinition {
     pub visibility: FunctionVisibility,
     pub name: Identifier,
     pub parameters: Vec<Parameter>,
-    pub return_type: Option<TypeAnnotation>,
+    pub return_type: TypeAnnotation,
     pub guard: Option<GuardClause>,
     pub body: Block,
     pub span: Span,
@@ -1142,9 +1142,7 @@ impl std::fmt::Display for FunctionDefinition {
         write!(f, ")")?;
 
         // Return type
-        if let Some(return_type) = &self.return_type {
-            write!(f, ": {}", return_type)?;
-        }
+        write!(f, ": {}", self.return_type)?;
 
         // Guard clause
         if let Some(guard) = &self.guard {
@@ -1435,7 +1433,7 @@ impl std::fmt::Display for CaseResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDefinition {
     pub attributes: Vec<Attribute>,
-    pub name: TypeIdentifier,
+    pub name: Vec<TypeIdentifier>,
     pub generic_params: Option<GenericParams>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FunctionDefinition>,
@@ -1454,11 +1452,22 @@ pub struct StructField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitDefinition {
     pub attributes: Vec<Attribute>,
-    pub name: TypeIdentifier,
+    pub name: Vec<TypeIdentifier>,
     pub generic_params: Option<GenericParams>,
     pub constraints: Option<ConstraintExpression>,
     pub functions: Vec<TraitFunction>,
     pub span: Span,
+}
+
+impl TraitDefinition {
+    /// Get the trait name as a string
+    pub fn name_as_string(&self) -> String {
+        self.name
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
 }
 
 /// Trait function (signature, definition, or static definition)
@@ -1472,9 +1481,10 @@ pub enum TraitFunction {
 /// Static function definition in traits (using `defs` keyword)
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticFunctionDefinition {
+    pub attributes: Vec<Attribute>,
     pub name: Identifier,
     pub parameters: Vec<Parameter>,
-    pub return_type: Option<TypeAnnotation>,
+    pub return_type: TypeAnnotation,
     pub body: Block,
     pub span: Span,
 }
@@ -1482,10 +1492,11 @@ pub struct StaticFunctionDefinition {
 /// Function signature without body
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionSignature {
+    pub attributes: Vec<Attribute>,
     pub visibility: FunctionVisibility,
     pub name: Identifier,
     pub parameters: Vec<Parameter>,
-    pub return_type: Option<TypeAnnotation>,
+    pub return_type: TypeAnnotation,
     pub guard: Option<GuardClause>,
     pub span: Span,
 }
@@ -1549,6 +1560,17 @@ pub enum ConstraintExpression {
     },
 }
 
+impl StructDefinition {
+    /// Get the struct name as a dotted string
+    pub fn name_as_string(&self) -> String {
+        self.name
+            .iter()
+            .map(|i| i.name.clone())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
 // Display implementations for type system
 
 impl std::fmt::Display for StructDefinition {
@@ -1558,7 +1580,7 @@ impl std::fmt::Display for StructDefinition {
             writeln!(f, "{}", attr)?;
         }
 
-        write!(f, "struct {}", self.name)?;
+        write!(f, "struct {}", self.name_as_string())?;
         if let Some(generics) = &self.generic_params {
             write!(f, "{}", generics)?;
         }
@@ -1590,7 +1612,7 @@ impl std::fmt::Display for TraitDefinition {
             writeln!(f, "{}", attr)?;
         }
 
-        write!(f, "trait {}", self.name)?;
+        write!(f, "trait {}", self.name_as_string())?;
         if let Some(generics) = &self.generic_params {
             write!(f, "{}", generics)?;
         }
@@ -1626,9 +1648,7 @@ impl std::fmt::Display for FunctionSignature {
             write!(f, "{}", param)?;
         }
         write!(f, ")")?;
-        if let Some(return_type) = &self.return_type {
-            write!(f, ": {}", return_type)?;
-        }
+        write!(f, ": {}", self.return_type)?;
         if let Some(guard) = &self.guard {
             write!(f, " {}", guard)?;
         }
@@ -1638,6 +1658,11 @@ impl std::fmt::Display for FunctionSignature {
 
 impl std::fmt::Display for StaticFunctionDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Display attributes
+        for attr in &self.attributes {
+            writeln!(f, "{}", attr)?;
+        }
+
         write!(f, "defs {}", self.name)?;
         write!(f, "(")?;
         for (i, param) in self.parameters.iter().enumerate() {
@@ -1647,9 +1672,7 @@ impl std::fmt::Display for StaticFunctionDefinition {
             write!(f, "{}", param)?;
         }
         write!(f, ")")?;
-        if let Some(return_type) = &self.return_type {
-            write!(f, ": {}", return_type)?;
-        }
+        write!(f, ": {}", self.return_type)?;
         write!(f, " {}", self.body)
     }
 }

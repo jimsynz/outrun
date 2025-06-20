@@ -1,6 +1,3 @@
-// Test public API functions
-// Ensures public parse functions work correctly
-
 use crate::*;
 
 #[test]
@@ -8,18 +5,15 @@ fn test_parse_expression_api() {
     let input = "1 + 2 * 3";
     let result = parse_expression(input).unwrap();
 
-    // Should parse as: 1 + (2 * 3) due to precedence
     match result.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::Add);
-            // Left should be integer 1
             match &op.left.kind {
                 ExpressionKind::Integer(int_lit) => {
                     assert_eq!(int_lit.value, 1);
                 }
                 _ => panic!("Expected integer literal on left"),
             }
-            // Right should be 2 * 3
             match &op.right.kind {
                 ExpressionKind::BinaryOp(right_op) => {
                     assert_eq!(right_op.operator, BinaryOperator::Multiply);

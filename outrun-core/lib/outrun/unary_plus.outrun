@@ -1,0 +1,23 @@
+@Doc(content: """
+Unary plus trait for the unary + operator.
+
+The UnaryPlus trait defines the behaviour for the unary + operator.
+When you write `+a`, it becomes `UnaryPlus.plus(value: a)`.
+
+## Requirements
+
+- The operand and result must be the same concrete type
+- Usually a no-op for numeric types but may perform conversions or validations
+- No implicit conversions are performed
+
+## Examples
+
+```outrun
++42                           # UnaryPlus.plus(value: 42): Integer64
++3.14                         # UnaryPlus.plus(value: 3.14): Float64
+```
+""")
+trait UnaryPlus {
+    @Doc(content: "Apply unary plus to a value")
+    def plus(value: Self): Self
+}

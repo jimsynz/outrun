@@ -4,32 +4,277 @@
 
 The Outrun type checker is a comprehensive static type analysis system for the Outrun programming language. It validates trait constraints, function signatures, and expressions at compile time, generating efficient dispatch tables for the interpreter.
 
-## Project Structure
+#### Recursive Type Unification Algorithm
+Instead of string comparison, the system uses recursive unification:
 
+```rust
+// Option<Self> vs Option<Outrun.Core.String> when Self = Outrun.Core.String
+fn unify_structured_types(type1: &StructuredType, type2: &StructuredType) -> bool {
+    match (type1, type2) {
+        // Generic type unification: Generic<A1, A2, ...> vs Generic<B1, B2, ...>
+        (StructuredType::Generic { base: base1, args: args1 },
+         StructuredType::Generic { base: base2, args: args2 }) => {
+            // 1. Base types must unify (Option = Option) ✓
+            unify_simple_types(base1, base2) &&
+            // 2. Argument arity must match (1 = 1) ✓  
+            args1.len() == args2.len() &&
+            // 3. All arguments must unify recursively (Self = Outrun.Core.String) ✓
+            args1.iter().zip(args2.iter()).all(|(a1, a2)| unify_structured_types(a1, a2))
+        }
+        // ... other cases
+    }
+}
 ```
-outrun-typechecker/
-├── src/
-│   ├── lib.rs                    # Main library interface and public API
-│   ├── error.rs                  # Type error definitions with miette integration
-│   ├── checker/
-│   │   ├── mod.rs               # Main TypeChecker struct and typed AST
-│   │   ├── context.rs           # Type context and scope management
-│   │   ├── expressions.rs       # Expression type checking (core logic)
-│   │   ├── functions.rs         # Function definition and call validation
-│   │   └── patterns.rs          # Pattern type checking for destructuring
-│   ├── types/
-│   │   ├── mod.rs              # Type system module exports
-│   │   ├── interning.rs        # TypeId/AtomId interning for performance
-│   │   ├── concrete.rs         # Concrete type definitions and compatibility
-│   │   └── traits.rs           # Trait system and implementation tracking
-│   └── dispatch/
-│       ├── mod.rs              # Dispatch system exports
-│       ├── lookup.rs           # Trait method dispatch table construction
-│       └── resolution.rs      # Runtime trait method resolution
-├── src/
-│   └── tests/                  # Integration tests for type checking
-└── Cargo.toml                 # Dependencies and configuration
+
+#### Function Type Handling with Named Parameters
+Outrun requires named parameters, so function types track both names and types:
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionParam {
+    pub name: AtomId,           // Parameter name (required for Outrun)
+    pub param_type: StructuredType,
+}
+
+// Function type: (name: String, age: Integer) -> Boolean
+StructuredType::Function {
+    params: vec![
+        FunctionParam { name: "name".into(), param_type: StructuredType::Simple("String".into()) },
+        FunctionParam { name: "age".into(), param_type: StructuredType::Simple("Integer".into()) },
+    ],
+    return_type: Box::new(StructuredType::Simple("Boolean".into())),
+}
 ```
+
+#### Type Resolution Pipeline
+1. **Parser** → `TypeAnnotation` with `GenericArgs` (structured representation preserved)
+2. **Type Resolver** → `StructuredType::from_type_annotation()` (recursive resolution with Self support)
+3. **Type Checker** → `unify_structured_types()` (recursive unification with trait compatibility)
+4. **Error Reporting** → `StructuredType::to_string_representation()` (readable error messages)
+
+#### Key Benefits
+- **Correct Generic Unification**: `Option<Self>` properly unifies with `Option<ConcreteType>`
+- **Trait-Based Compatibility**: `Boolean` trait unifies with `Outrun.Core.Boolean` implementation
+- **Precise Error Messages**: Show exact generic type mismatches with proper structure
+- **Performance**: Avoid string parsing/reconstruction during type checking
+- **Extensibility**: Easy to add new type constructs (unions, intersections, etc.)
+
+### Implementation Strategy for Structured Types
+
+#### Critical Implementation Rules
+1. **Never flatten to strings during type checking** - only for error reporting
+2. **Always use recursive unification** for generic type compatibility
+3. **Preserve Self binding context** when resolving type annotations in impl blocks
+4. **Handle trait vs concrete type relationships** in unification algorithm
+5. **Maintain TypeId compatibility** only where absolutely necessary for legacy code
+
+#### Common Pitfalls to Avoid
+- ❌ Converting StructuredType → string → TypeId → StructuredType (loses structure)
+- ❌ Using string comparison for generic types (`"Option<T>"` == `"Option<U>"`)
+- ❌ Forgetting Self binding in impl block function signatures
+- ❌ Not handling trait implementation in unification (Boolean vs Outrun.Core.Boolean)
+- ❌ Mixing TypeId and StructuredType incompatibly in the same code path
+
+## Comprehensive Type Unification Algorithm
+
+### Overview
+
+The type unification algorithm is the core of Outrun's type system. It determines when two types are compatible, handling generic types recursively and trait-based relationships. This replaces the flawed string-based comparison with proper structural analysis.
+
+### Unification Rules
+
+The algorithm follows these fundamental rules in order:
+
+#### 1. Exact Match (Fast Path)
+```rust
+if type1 == type2 { return true; }
+```
+If both types are structurally identical, they unify immediately.
+
+#### 2. Generic Type Unification
+For types like `Option<T>` vs `Option<U>`:
+```rust
+(StructuredType::Generic { base: base1, args: args1 },
+ StructuredType::Generic { base: base2, args: args2 }) => {
+    // Base types must unify (Option = Option)
+    unify_simple_types(base1, base2) &&
+    // Argument count must match (arity check)
+    args1.len() == args2.len() &&
+    // All arguments must unify recursively
+    args1.iter().zip(args2.iter()).all(|(a1, a2)| unify_structured_types(a1, a2))
+}
+```
+
+**Examples:**
+- ✅ `Option<String>` ∪ `Option<String>` → unified (exact match)
+- ✅ `Option<Self>` ∪ `Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
+- ✅ `Map<String, Integer>` ∪ `Map<String, Integer>` → unified (exact match)
+- ❌ `Option<String>` ∪ `Option<Integer>` → not unified (different argument types)
+- ❌ `Option<T>` ∪ `Map<T, U>` → not unified (different base types)
+- ❌ `Option<T>` ∪ `Map<T>` → not unified (different arity: 1 vs 2)
+
+#### 3. Tuple Type Unification
+For tuple types like `(String, Integer)`:
+```rust
+(StructuredType::Tuple(elems1), StructuredType::Tuple(elems2)) => {
+    // Element count must match
+    elems1.len() == elems2.len() &&
+    // All elements must unify positionally
+    elems1.iter().zip(elems2.iter()).all(|(e1, e2)| unify_structured_types(e1, e2))
+}
+```
+
+**Examples:**
+- ✅ `(String, Integer)` ∪ `(String, Integer)` → unified
+- ✅ `(Self, Boolean)` ∪ `(Outrun.Core.String, Outrun.Core.Boolean)` → unified (when Self = Outrun.Core.String, Boolean trait implemented by Outrun.Core.Boolean)
+- ❌ `(String, Integer)` ∪ `(Integer, String)` → not unified (order matters)
+- ❌ `(String)` ∪ `(String, Integer)` → not unified (different arity)
+
+#### 4. Function Type Unification
+For function types with named parameters:
+```rust
+(StructuredType::Function { params: params1, return_type: ret1 },
+ StructuredType::Function { params: params2, return_type: ret2 }) => {
+    // Parameter count must match
+    params1.len() == params2.len() &&
+    // All parameters must have matching names AND types (Outrun requirement)
+    params1.iter().zip(params2.iter()).all(|(p1, p2)| {
+        p1.name == p2.name && unify_structured_types(&p1.param_type, &p2.param_type)
+    }) &&
+    // Return types must unify
+    unify_structured_types(ret1, ret2)
+}
+```
+
+**Examples:**
+- ✅ `(name: String) -> Boolean` ∪ `(name: String) -> Boolean` → unified
+- ✅ `(value: Self) -> Option<Self>` ∪ `(value: Outrun.Core.String) -> Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
+- ❌ `(name: String) -> Boolean` ∪ `(title: String) -> Boolean` → not unified (different parameter names)
+- ❌ `(name: String) -> Boolean` ∪ `(name: String, age: Integer) -> Boolean` → not unified (different arity)
+
+#### 5. Simple Type Unification (Traits + Concrete)
+For non-generic types, the algorithm handles trait-based compatibility:
+
+```rust
+fn unify_simple_types(type1: TypeId, type2: TypeId) -> bool {
+    // Fast path: exact match
+    if type1 == type2 { return true; }
+    
+    // Determine if types are traits or concrete
+    let type1_is_trait = interner.get_trait(&type1_name).is_some();
+    let type2_is_trait = interner.get_trait(&type2_name).is_some();
+    
+    match (type1_is_trait, type2_is_trait) {
+        // Both traits: must be exactly equal
+        (true, true) => false,
+        
+        // Type1 is trait, type2 is concrete: type2 must implement type1
+        (true, false) => trait_registry.implements_trait(type2, type1_trait_id),
+        
+        // Type1 is concrete, type2 is trait: type1 must implement type2
+        (false, true) => trait_registry.implements_trait(type1, type2_trait_id),
+        
+        // Both concrete: must be exactly equal
+        (false, false) => false,
+    }
+}
+```
+
+**Examples:**
+- ✅ `Boolean` ∪ `Outrun.Core.Boolean` → unified (concrete type implements trait)
+- ✅ `Outrun.Core.Boolean` ∪ `Boolean` → unified (trait compatibility is symmetric)
+- ✅ `Integer` ∪ `Outrun.Core.Integer64` → unified (if Integer64 implements Integer)
+- ❌ `String` ∪ `Integer` → not unified (different concrete types)
+- ❌ `Display` ∪ `Debug` → not unified (different traits)
+
+#### 6. Cross-Type Unification
+Different type categories never unify:
+```rust
+// These combinations always return false:
+(StructuredType::Simple(_), StructuredType::Generic { .. }) => false,
+(StructuredType::Generic { .. }, StructuredType::Simple(_)) => false,
+(StructuredType::Function { .. }, StructuredType::Tuple(_)) => false,
+// ... etc
+```
+
+### Self Type Resolution
+
+The algorithm handles `Self` type resolution in impl blocks:
+
+```rust
+// In impl Display for String { def show(value: Self): Self { ... } }
+StructuredType::from_type_annotation(
+    type_annotation,
+    &mut interner,
+    generic_params,
+    Some(string_type_id), // Self resolves to String
+)
+```
+
+**Self Resolution Rules:**
+1. `Self` in trait definitions → remains as generic parameter
+2. `Self` in impl blocks → resolves to implementing type
+3. `Self` in standalone functions → error (no context)
+4. `Self` in generic arguments → recursive resolution (`Option<Self>` → `Option<ConcreteType>`)
+
+### Generic Parameter Substitution
+
+The algorithm supports generic parameter substitution:
+
+```rust
+// trait Iterator<T> { def next(iter: Self): Option<T> }
+// impl Iterator<String> for StringIterator { ... }
+
+// During impl validation:
+// Generic context: [("T", string_type_id)]
+// Self context: string_iterator_type_id
+
+// Function signature: (iter: Self) -> Option<T>
+// Resolves to: (iter: StringIterator) -> Option<String>
+```
+
+### Error Cases and Debugging
+
+#### Common Unification Failures
+1. **Arity Mismatch**: `Option<T>` vs `Map<K, V>` (1 ≠ 2 arguments)
+2. **Base Type Mismatch**: `Option<String>` vs `List<String>` (Option ≠ List)
+3. **Argument Type Mismatch**: `Option<String>` vs `Option<Integer>` (String ≠ Integer)
+4. **Parameter Name Mismatch**: `(name: String)` vs `(title: String)` (name ≠ title)
+5. **Trait Implementation Missing**: `Boolean` vs `String` (String doesn't implement Boolean)
+
+#### Debugging Unification
+```rust
+// Enable debug output for unification failures
+if cfg!(debug_assertions) {
+    eprintln!("Unification failed: {} vs {}", 
+        type1.to_string_representation(&interner),
+        type2.to_string_representation(&interner));
+}
+```
+
+### Performance Considerations
+
+#### Fast Paths
+1. **Structural equality check first** (avoids trait lookups)
+2. **Early arity mismatch detection** (avoids recursive calls)
+3. **TypeId interning** (fast equality for simple types)
+
+#### Optimization Opportunities
+1. **Memoization** for expensive trait implementation checks
+2. **Type canonicalization** for equivalent types
+3. **Parallel unification** for independent generic arguments
+
+### Integration with Type Checking
+
+The unification algorithm integrates with key type checking phases:
+
+1. **Function Return Type Checking**: Unify body type with declared return type
+2. **Function Call Validation**: Unify argument types with parameter types
+3. **Variable Assignment**: Unify expression type with variable type
+4. **Pattern Matching**: Unify pattern type with matched expression type
+5. **Trait Implementation**: Unify impl function signatures with trait signatures
+
+This comprehensive unification system ensures that Outrun's type system correctly handles all combinations of generic types, traits, and concrete types while providing clear error messages when unification fails.
 
 ## Key Design Principles
 
@@ -219,21 +464,6 @@ Type checker produces:
 
 ## Common Patterns
 
-### Type Context Usage
-```rust
-// Always check if type exists before using
-let type_id = context.interner.get_type(type_name).ok_or_else(|| {
-    TypeError::UndefinedType { 
-        span: span_to_source_span(span),
-        name: type_name.clone() 
-    }
-})?;
-
-// Use concrete type for validation
-let concrete_type = context.get_concrete_type(type_id)
-    .ok_or_else(|| TypeError::internal("Type not in registry".to_string()))?;
-```
-
 ### Error Creation
 ```rust
 // Type mismatch with helpful messages
@@ -267,24 +497,6 @@ context.push_scope(false);  // Expression scope
 // ... check expression in scope
 context.pop_scope();
 ```
-
-## Current Status (June 2025)
-
-✅ **Completed Features**:
-- Complete expression type checking with all Outrun expressions
-- Comprehensive pattern type checking with recursive validation
-- Trait definition processing with constraint validation
-- Enhanced case statements with trait dispatch
-- Pattern validation integration for case expressions
-- Exhaustiveness checking for trait case expressions
-- Beautiful error reporting with miette integration
-- 94+ comprehensive tests with 100% pass rate
-
-🔄 **Next Priorities**:
-- Trait implementation validation (impl blocks)
-- Dispatch table construction for runtime
-- Function signature validation
-- Function call resolution with overloading
 
 ## Useful Commands
 

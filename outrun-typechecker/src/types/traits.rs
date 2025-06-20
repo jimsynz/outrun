@@ -3,14 +3,14 @@
 //! This module handles trait definitions, implementations, and the complex
 //! trait constraint system that powers Outrun's "everything is traits" philosophy.
 
-use super::{AtomId, TraitId, TypeId};
+use super::{AtomId, TypeId};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
 /// A trait definition with functions and constraints
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitDefinition {
-    pub id: TraitId,
+    pub id: TypeId,
     pub name: String,
     pub functions: Vec<TraitFunction>,
     pub generic_params: Vec<TypeId>,
@@ -34,14 +34,14 @@ pub struct TraitFunction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitConstraint {
     pub type_param: TypeId,
-    pub required_traits: Vec<TraitId>,
+    pub required_traits: Vec<TypeId>,
     pub span: Span,
 }
 
 /// Implementation of a trait for a specific type
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitImplementation {
-    pub trait_id: TraitId,
+    pub trait_id: TypeId,
     pub type_id: TypeId,
     pub functions: HashMap<AtomId, FunctionId>,
     pub generic_params: Vec<TypeId>,
@@ -64,7 +64,7 @@ pub enum ExhaustivenessResult {
 
 impl TraitDefinition {
     /// Create a new trait definition
-    pub fn new(id: TraitId, name: String, functions: Vec<TraitFunction>, span: Span) -> Self {
+    pub fn new(id: TypeId, name: String, functions: Vec<TraitFunction>, span: Span) -> Self {
         Self {
             id,
             name,
@@ -167,7 +167,7 @@ impl TraitFunction {
 impl TraitImplementation {
     /// Create a new trait implementation
     pub fn new(
-        trait_id: TraitId,
+        trait_id: TypeId,
         type_id: TypeId,
         functions: HashMap<AtomId, FunctionId>,
         span: Span,
@@ -200,7 +200,7 @@ impl TraitImplementation {
 
 impl TraitConstraint {
     /// Create a new trait constraint
-    pub fn new(type_param: TypeId, required_traits: Vec<TraitId>, span: Span) -> Self {
+    pub fn new(type_param: TypeId, required_traits: Vec<TypeId>, span: Span) -> Self {
         Self {
             type_param,
             required_traits,
@@ -209,7 +209,7 @@ impl TraitConstraint {
     }
 
     /// Check if this constraint requires a specific trait
-    pub fn requires_trait(&self, trait_id: TraitId) -> bool {
+    pub fn requires_trait(&self, trait_id: TypeId) -> bool {
         self.required_traits.contains(&trait_id)
     }
 }
@@ -217,8 +217,8 @@ impl TraitConstraint {
 /// Trait registry for managing all trait definitions and implementations
 #[derive(Debug, Default, Clone)]
 pub struct TraitRegistry {
-    definitions: HashMap<TraitId, TraitDefinition>,
-    implementations: HashMap<(TraitId, TypeId), TraitImplementation>,
+    definitions: HashMap<TypeId, TraitDefinition>,
+    implementations: HashMap<(TypeId, TypeId), TraitImplementation>,
     next_function_id: u32,
 }
 
@@ -240,26 +240,26 @@ impl TraitRegistry {
     }
 
     /// Get a trait definition by ID
-    pub fn get_trait(&self, trait_id: TraitId) -> Option<&TraitDefinition> {
+    pub fn get_trait(&self, trait_id: TypeId) -> Option<&TraitDefinition> {
         self.definitions.get(&trait_id)
     }
 
     /// Check if a trait definition exists with the given TraitId
-    pub fn has_trait(&self, trait_id: TraitId) -> bool {
+    pub fn has_trait(&self, trait_id: TypeId) -> bool {
         self.definitions.contains_key(&trait_id)
     }
 
     /// Get a trait implementation
     pub fn get_implementation(
         &self,
-        trait_id: TraitId,
+        trait_id: TypeId,
         type_id: TypeId,
     ) -> Option<&TraitImplementation> {
         self.implementations.get(&(trait_id, type_id))
     }
 
     /// Check if a type implements a trait
-    pub fn implements_trait(&self, type_id: TypeId, trait_id: TraitId) -> bool {
+    pub fn implements_trait(&self, type_id: TypeId, trait_id: TypeId) -> bool {
         self.implementations.contains_key(&(trait_id, type_id))
     }
 
@@ -271,7 +271,7 @@ impl TraitRegistry {
     }
 
     /// Get all implementations of a trait
-    pub fn get_trait_implementations(&self, trait_id: TraitId) -> Vec<&TraitImplementation> {
+    pub fn get_trait_implementations(&self, trait_id: TypeId) -> Vec<&TraitImplementation> {
         self.implementations
             .iter()
             .filter(|((t_id, _), _)| *t_id == trait_id)
@@ -289,7 +289,7 @@ impl TraitRegistry {
     }
 
     /// Get all concrete types that implement a trait (for exhaustiveness checking)
-    pub fn get_trait_implementors(&self, trait_id: TraitId) -> Vec<TypeId> {
+    pub fn get_trait_implementors(&self, trait_id: TypeId) -> Vec<TypeId> {
         self.implementations
             .iter()
             .filter(|((t_id, _), _)| *t_id == trait_id)
@@ -300,7 +300,7 @@ impl TraitRegistry {
     /// Check if a trait case statement is exhaustive by verifying all implementors are covered
     pub fn check_trait_case_exhaustiveness(
         &self,
-        trait_id: TraitId,
+        trait_id: TypeId,
         covered_types: &[TypeId],
     ) -> ExhaustivenessResult {
         let all_implementors = self.get_trait_implementors(trait_id);

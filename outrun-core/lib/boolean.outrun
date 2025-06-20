@@ -1,0 +1,53 @@
+@Doc(content: """
+Boolean trait for types that can behave like booleans.
+
+This trait is for types that want to provide boolean-like behavior but aren't
+the core Boolean type. It requires implementers to support all logical operations
+and provides methods to test truthiness.
+
+## Examples
+
+```outrun
+# A custom type that behaves like a boolean
+struct Status(active: Boolean) {}
+
+impl LogicalAnd for Status { ... }
+impl LogicalOr for Status { ... } 
+impl LogicalNot for Status { ... }
+
+impl Boolean for Status {
+    def true?(value: Self): Boolean {
+        value.active
+    }
+    
+    def false?(value: Self): Boolean {
+        !value.active
+    }
+}
+```
+""")
+trait Boolean when Self: LogicalAnd && Self: LogicalOr && Self: LogicalNot {
+    @Doc(content: """
+    Returns true if the value should be considered true in a boolean context.
+    
+    ## Examples
+    
+    ```outrun
+    Boolean.true?(value: some_value)  # true or false
+    ```
+    """)
+    def true?(value: Self): Outrun.Core.Boolean
+
+    @Doc(content: """
+    Returns true if the value should be considered false in a boolean context.
+    
+    ## Examples
+    
+    ```outrun
+    Boolean.false?(value: some_value)  # true or false
+    ```
+    """)
+    def false?(value: Self): Outrun.Core.Boolean {
+        !Boolean.true?(value: value)
+    }
+}

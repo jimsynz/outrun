@@ -1,6 +1,3 @@
-// Test let bindings parsing with Pest
-// Comprehensive tests for let bindings with type inference support
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -12,13 +9,11 @@ fn test_let_binding_with_explicit_type() {
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
         ItemKind::LetBinding(let_binding) => {
-            // Check variable name
             match &let_binding.pattern {
                 Pattern::Identifier(identifier) => assert_eq!(identifier.name, "name"),
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check explicit type annotation
             assert!(let_binding.type_annotation.is_some());
             let type_ann = let_binding.type_annotation.as_ref().unwrap();
             match type_ann {
@@ -29,7 +24,6 @@ fn test_let_binding_with_explicit_type() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check expression
             match &let_binding.expression.kind {
                 ExpressionKind::String(string_lit) => {
                     assert_eq!(string_lit.format, StringFormat::Basic);
@@ -49,16 +43,13 @@ fn test_let_binding_with_type_inference() {
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
         ItemKind::LetBinding(let_binding) => {
-            // Check variable name
             match &let_binding.pattern {
                 Pattern::Identifier(identifier) => assert_eq!(identifier.name, "timestamp"),
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check NO type annotation (for inference)
             assert!(let_binding.type_annotation.is_none());
 
-            // Check function call expression
             match &let_binding.expression.kind {
                 ExpressionKind::FunctionCall(call) => match &call.path {
                     FunctionPath::Qualified { module, name } => {
@@ -87,7 +78,6 @@ fn test_let_binding_with_integer() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check explicit type
             assert!(let_binding.type_annotation.is_some());
             let type_ann = let_binding.type_annotation.as_ref().unwrap();
             match type_ann {
@@ -97,7 +87,6 @@ fn test_let_binding_with_integer() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check integer value
             match &let_binding.expression.kind {
                 ExpressionKind::Integer(int_lit) => {
                     assert_eq!(int_lit.value, 35);
@@ -123,10 +112,8 @@ fn test_let_binding_inferred_integer() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check NO type annotation (infer from integer literal)
             assert!(let_binding.type_annotation.is_none());
 
-            // Check integer value
             match &let_binding.expression.kind {
                 ExpressionKind::Integer(int_lit) => {
                     assert_eq!(int_lit.value, 42);
@@ -151,7 +138,6 @@ fn test_let_binding_with_module_type() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check module-qualified type
             assert!(let_binding.type_annotation.is_some());
             let type_ann = let_binding.type_annotation.as_ref().unwrap();
             match type_ann {
@@ -163,7 +149,6 @@ fn test_let_binding_with_module_type() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check function call expression
             match &let_binding.expression.kind {
                 ExpressionKind::FunctionCall(call) => match &call.path {
                     FunctionPath::Qualified { module, name } => {
@@ -192,10 +177,8 @@ fn test_let_binding_with_complex_expression() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Type should be inferred
             assert!(let_binding.type_annotation.is_none());
 
-            // Check complex arithmetic expression
             match &let_binding.expression.kind {
                 ExpressionKind::BinaryOp(op) => {
                     assert_eq!(op.operator, BinaryOperator::Add);
@@ -220,7 +203,6 @@ fn test_let_binding_with_list_literal() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Check explicit type (simplified - just List for now)
             assert!(let_binding.type_annotation.is_some());
             let type_ann = let_binding.type_annotation.as_ref().unwrap();
             match type_ann {
@@ -231,7 +213,6 @@ fn test_let_binding_with_list_literal() {
                 _ => panic!("Expected simple type annotation"),
             }
 
-            // Check list literal
             match &let_binding.expression.kind {
                 ExpressionKind::List(list_lit) => {
                     assert_eq!(list_lit.elements.len(), 3);
@@ -256,10 +237,8 @@ fn test_let_binding_inferred_from_list() {
                 _ => panic!("Expected identifier pattern"),
             }
 
-            // Type should be inferred from list contents
             assert!(let_binding.type_annotation.is_none());
 
-            // Check list literal
             match &let_binding.expression.kind {
                 ExpressionKind::List(list_lit) => {
                     assert_eq!(list_lit.elements.len(), 3);
@@ -286,7 +265,6 @@ fn test_let_binding_in_function_body() {
             assert_eq!(func.name.name, "calculate");
             assert_eq!(func.body.statements.len(), 3);
 
-            // Check first let binding (inferred)
             match &func.body.statements[0].kind {
                 StatementKind::LetBinding(let_binding) => {
                     match &let_binding.pattern {
@@ -298,7 +276,6 @@ fn test_let_binding_in_function_body() {
                 _ => panic!("Expected let binding"),
             }
 
-            // Check second let binding (explicit type)
             match &func.body.statements[1].kind {
                 StatementKind::LetBinding(let_binding) => {
                     match &let_binding.pattern {
@@ -310,7 +287,6 @@ fn test_let_binding_in_function_body() {
                 _ => panic!("Expected let binding"),
             }
 
-            // Check return expression
             match &func.body.statements[2].kind {
                 StatementKind::Expression(expr) => match &expr.kind {
                     ExpressionKind::BinaryOp(op) => {
@@ -332,7 +308,6 @@ let age = 35
 let active: Boolean = true"#;
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Should have 3 let bindings (plus newlines)
     let let_bindings: Vec<_> = program
         .items
         .iter()
@@ -344,21 +319,18 @@ let active: Boolean = true"#;
 
     assert_eq!(let_bindings.len(), 3);
 
-    // Check first binding (explicit type)
     match &let_bindings[0].pattern {
         Pattern::Identifier(identifier) => assert_eq!(identifier.name, "name"),
         _ => panic!("Expected identifier pattern"),
     }
     assert!(let_bindings[0].type_annotation.is_some());
 
-    // Check second binding (inferred type)
     match &let_bindings[1].pattern {
         Pattern::Identifier(identifier) => assert_eq!(identifier.name, "age"),
         _ => panic!("Expected identifier pattern"),
     }
     assert!(let_bindings[1].type_annotation.is_none());
 
-    // Check third binding (explicit type)
     match &let_bindings[2].pattern {
         Pattern::Identifier(identifier) => assert_eq!(identifier.name, "active"),
         _ => panic!("Expected identifier pattern"),

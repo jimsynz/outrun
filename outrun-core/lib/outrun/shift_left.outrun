@@ -1,0 +1,25 @@
+@Doc(content: """
+Left shift trait for the << operator.
+
+The ShiftLeft trait defines the behaviour for the << operator.
+When you write `a << b`, it becomes `ShiftLeft.shift_left(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically integers)
+- The result must be the same concrete type as the operands
+- Shifts bits of the left operand left by the number of positions specified by right operand
+- Behaviour with negative shift amounts is implementation-defined
+
+## Examples
+
+```outrun
+42 << 2                       # ShiftLeft.shift_left(lhs: 42, rhs: 2): Integer64
+0xFF << 4                     # ShiftLeft.shift_left(lhs: 0xFF, rhs: 4): Integer64
+value << shift_count          # ShiftLeft.shift_left(lhs: value, rhs: shift_count): Integer64
+```
+""")
+trait ShiftLeft {
+    @Doc(content: "Shift bits left by the specified number of positions")
+    def shift_left(lhs: Self, rhs: Self): Self
+}

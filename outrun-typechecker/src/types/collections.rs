@@ -137,37 +137,3 @@ impl std::fmt::Display for CollectionError {
 }
 
 impl std::error::Error for CollectionError {}
-
-/// Collection type inference utilities
-pub struct CollectionInference;
-
-impl CollectionInference {
-    /// Infer the most specific collection type from element types
-    pub fn infer_list_type(element_types: &[TypeId]) -> Option<CollectionType> {
-        if element_types.is_empty() {
-            return None;
-        }
-
-        // For now, just use the first element type as the list element type
-        // TODO: Implement proper type unification for mixed element types
-        Some(CollectionType::List {
-            element_type: element_types[0],
-        })
-    }
-
-    /// Create a tuple type from element types
-    pub fn create_tuple_type(element_types: Vec<TypeId>) -> Option<CollectionType> {
-        if element_types.is_empty() {
-            return None;
-        }
-        Some(CollectionType::Tuple { element_types })
-    }
-
-    /// Create a map type from key and value types
-    pub fn create_map_type(key_type: TypeId, value_type: TypeId) -> CollectionType {
-        CollectionType::Map {
-            key_type,
-            value_type,
-        }
-    }
-}

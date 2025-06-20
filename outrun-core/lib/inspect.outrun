@@ -1,0 +1,58 @@
+@Doc(content: """
+Inspect trait for types that can be converted to a detailed string representation for debugging.
+
+The Inspect trait is used to format values for debugging and development purposes.
+It provides a detailed, unambiguous representation that is useful for inspecting
+the internal structure and state of values.
+
+## Differences from Display
+
+- **Display**: User-friendly representation for end users
+- **Inspect**: Detailed representation for developers and debugging
+
+## Examples
+
+```outrun
+def debug_value(value: Float64): String 
+where Float64: Inspect {
+    Inspect.inspect(value: value)
+}
+
+def debug_list(items: List<String>): String 
+where String: Inspect {
+    # Show detailed representation of each item
+    let detailed_items: List<String> = List.map(
+        list: items,
+        fn: fn(item: String): String { Inspect.inspect(value: item) }
+    )
+    String.join(strings: detailed_items, separator: ", ")
+}
+```
+
+## Standard Implementations
+
+- `Outrun.Core.Integer64` - Decimal representation with type info
+- `Outrun.Core.Float64` - Full precision decimal representation
+- `Outrun.Core.String` - Quoted string with escape sequences
+- `Outrun.Core.Boolean` - "true" or "false"
+- `Outrun.Core.Atom` - Atom literal with quotes if needed
+""")
+trait Inspect {
+    @Doc(content: """
+    Convert this value to its detailed inspection string representation.
+    
+    Returns a string representation suitable for debugging and development.
+    This should be detailed, unambiguous, and show the internal structure
+    of the value when relevant.
+    
+    ## Examples
+    
+    ```outrun
+    Inspect.inspect(value: 42)         # "42"
+    Inspect.inspect(value: 3.14159)    # "3.14159"
+    Inspect.inspect(value: "hello")    # "\"hello\""
+    Inspect.inspect(value: :atom)      # ":atom"
+    ```
+    """)
+    def inspect(value: Self): String
+}

@@ -1,0 +1,44 @@
+@Doc(content: """
+Comparison trait for ordering operators.
+
+The Comparison trait defines the behaviour for ordering comparison operators.
+When you write `a > b`, it becomes `Comparison.greater?(lhs: a, rhs: b)`.
+When you write `a >= b`, it becomes `Comparison.greater_equal?(lhs: a, rhs: b)`.
+When you write `a < b`, it becomes `Comparison.less?(lhs: a, rhs: b)`.
+When you write `a <= b`, it becomes `Comparison.less_equal?(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type
+- The result is always Boolean
+- Must satisfy ordering laws: antisymmetric, transitive, total
+- Should be consistent with equality when implemented alongside Equality trait
+- All functions are predicates and can be used in guard clauses
+
+## Examples
+
+```outrun
+42 > 13                       # Comparison.greater?(lhs: 42, rhs: 13): Boolean
+3.14 <= 2.86                  # Comparison.less_equal?(lhs: 3.14, rhs: 2.86): Boolean
+"apple" < "banana"            # Comparison.less?(lhs: "apple", rhs: "banana"): Boolean
+
+# Used in guards
+def process(x: Integer): String
+when Comparison.greater?(lhs: x, rhs: 0) {
+    "positive"
+}
+```
+""")
+trait Comparison {
+    @Doc(content: "Test if left value is greater than right value")
+    def greater?(lhs: Self, rhs: Self): Boolean
+
+    @Doc(content: "Test if left value is greater than or equal to right value")
+    def greater_equal?(lhs: Self, rhs: Self): Boolean
+
+    @Doc(content: "Test if left value is less than right value")
+    def less?(lhs: Self, rhs: Self): Boolean
+
+    @Doc(content: "Test if left value is less than or equal to right value")
+    def less_equal?(lhs: Self, rhs: Self): Boolean
+}

@@ -1,4 +1,3 @@
-// Tests for map literal parsing with spread operators
 use crate::{ast::*, parse_program};
 
 #[test]
@@ -13,7 +12,6 @@ fn test_map_literal_basic() {
                 ExpressionKind::Map(map_lit) => {
                     assert_eq!(map_lit.entries.len(), 2);
 
-                    // Check first entry (shorthand)
                     match &map_lit.entries[0] {
                         MapEntry::Shorthand { name, value } => {
                             assert_eq!(name.name, "name");
@@ -25,7 +23,6 @@ fn test_map_literal_basic() {
                         _ => panic!("Expected shorthand entry"),
                     }
 
-                    // Check second entry (shorthand)
                     match &map_lit.entries[1] {
                         MapEntry::Shorthand { name, value } => {
                             assert_eq!(name.name, "age");
@@ -56,7 +53,6 @@ fn test_map_literal_explicit() {
                 ExpressionKind::Map(map_lit) => {
                     assert_eq!(map_lit.entries.len(), 2);
 
-                    // Check first entry (explicit)
                     match &map_lit.entries[0] {
                         MapEntry::Assignment { key, value } => {
                             match &key.kind {
@@ -71,7 +67,6 @@ fn test_map_literal_explicit() {
                         _ => panic!("Expected assignment entry"),
                     }
 
-                    // Check second entry (explicit)
                     match &map_lit.entries[1] {
                         MapEntry::Assignment { key, value } => {
                             match &key.kind {
@@ -105,7 +100,6 @@ fn test_map_literal_with_spread() {
                 ExpressionKind::Map(map_lit) => {
                     assert_eq!(map_lit.entries.len(), 2);
 
-                    // Check shorthand entry
                     match &map_lit.entries[0] {
                         MapEntry::Shorthand { name, value } => {
                             assert_eq!(name.name, "name");
@@ -117,7 +111,6 @@ fn test_map_literal_with_spread() {
                         _ => panic!("Expected shorthand entry"),
                     }
 
-                    // Check spread entry
                     match &map_lit.entries[1] {
                         MapEntry::Spread(name) => {
                             assert_eq!(name.name, "defaults");
@@ -139,39 +132,34 @@ fn test_map_literal_mixed() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::Map(map_lit) => {
-                    assert_eq!(map_lit.entries.len(), 3);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::Map(map_lit) => {
+                assert_eq!(map_lit.entries.len(), 3);
 
-                    // Check explicit entry
-                    match &map_lit.entries[0] {
-                        MapEntry::Assignment { key, value: _ } => match &key.kind {
-                            ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
-                            _ => panic!("Expected integer key"),
-                        },
-                        _ => panic!("Expected assignment entry"),
-                    }
-
-                    // Check shorthand entry
-                    match &map_lit.entries[1] {
-                        MapEntry::Shorthand { name, .. } => {
-                            assert_eq!(name.name, "name");
-                        }
-                        _ => panic!("Expected shorthand entry"),
-                    }
-
-                    // Check spread entry
-                    match &map_lit.entries[2] {
-                        MapEntry::Spread(name) => {
-                            assert_eq!(name.name, "spread_map");
-                        }
-                        _ => panic!("Expected spread entry"),
-                    }
+                match &map_lit.entries[0] {
+                    MapEntry::Assignment { key, value: _ } => match &key.kind {
+                        ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
+                        _ => panic!("Expected integer key"),
+                    },
+                    _ => panic!("Expected assignment entry"),
                 }
-                _ => panic!("Expected map literal"),
+
+                match &map_lit.entries[1] {
+                    MapEntry::Shorthand { name, .. } => {
+                        assert_eq!(name.name, "name");
+                    }
+                    _ => panic!("Expected shorthand entry"),
+                }
+
+                match &map_lit.entries[2] {
+                    MapEntry::Spread(name) => {
+                        assert_eq!(name.name, "spread_map");
+                    }
+                    _ => panic!("Expected spread entry"),
+                }
             }
-        }
+            _ => panic!("Expected map literal"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -182,6 +170,5 @@ fn test_map_literal_display() {
     let result = parse_program(input).unwrap();
 
     let reconstructed = format!("{}", result);
-    // The display format omits spaces around the braces
     assert!(reconstructed.contains("{name: \"John\", age: 30, ..defaults}"));
 }

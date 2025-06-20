@@ -1,9 +1,5 @@
-// Collection literal parsing tests
-// Tests for lists, maps, and tuples
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract collections from expressions
 fn extract_list_from_expression(expr: &Expression) -> &ListLiteral {
     match &expr.kind {
         ExpressionKind::List(list) => list,
@@ -24,8 +20,6 @@ fn extract_tuple_from_expression(expr: &Expression) -> &TupleLiteral {
         _ => panic!("Expected tuple in expression, got: {:?}", expr.kind),
     }
 }
-
-// === LIST TESTS ===
 
 #[test]
 fn test_parse_empty_list() {
@@ -53,7 +47,6 @@ fn test_parse_simple_list() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 3);
 
-            // Check each element
             for (i, expected) in [1, 2, 3].iter().enumerate() {
                 match &list.elements[i] {
                     ListElement::Expression(expr) => match &expr.kind {
@@ -81,7 +74,6 @@ fn test_parse_mixed_type_list() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 4);
 
-            // Check integer
             match &list.elements[0] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::Integer(int) => assert_eq!(int.value, 42),
@@ -90,7 +82,6 @@ fn test_parse_mixed_type_list() {
                 ListElement::Spread(_) => panic!("Expected expression, not spread"),
             }
 
-            // Check string
             match &list.elements[1] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::String(string) => {
@@ -105,7 +96,6 @@ fn test_parse_mixed_type_list() {
                 ListElement::Spread(_) => panic!("Expected expression, not spread"),
             }
 
-            // Check boolean
             match &list.elements[2] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::Boolean(boolean) => assert!(boolean.value),
@@ -114,7 +104,6 @@ fn test_parse_mixed_type_list() {
                 ListElement::Spread(_) => panic!("Expected expression, not spread"),
             }
 
-            // Check atom
             match &list.elements[3] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::Atom(atom) => assert_eq!(atom.name, "atom"),
@@ -138,7 +127,6 @@ fn test_parse_nested_list() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 3);
 
-            // Check first nested list [1, 2]
             match &list.elements[0] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::List(nested) => {
@@ -149,7 +137,6 @@ fn test_parse_nested_list() {
                 ListElement::Spread(_) => panic!("Expected expression, not spread"),
             }
 
-            // Check empty nested list []
             match &list.elements[2] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::List(nested) => {
@@ -179,8 +166,6 @@ fn test_parse_list_with_trailing_comma() {
     }
 }
 
-// === MAP TESTS ===
-
 #[test]
 fn test_parse_empty_map() {
     let input = "{}";
@@ -207,7 +192,6 @@ fn test_parse_map_shorthand_syntax() {
             let map = extract_map_from_expression(expr);
             assert_eq!(map.entries.len(), 2);
 
-            // Check first entry (name: "James")
             match &map.entries[0] {
                 MapEntry::Shorthand { name, value } => {
                     assert_eq!(name.name, "name");
@@ -222,7 +206,6 @@ fn test_parse_map_shorthand_syntax() {
                 _ => panic!("Expected shorthand entry"),
             }
 
-            // Check second entry (age: 35)
             match &map.entries[1] {
                 MapEntry::Shorthand { name, value } => {
                     assert_eq!(name.name, "age");
@@ -249,7 +232,6 @@ fn test_parse_map_explicit_syntax() {
             let map = extract_map_from_expression(expr);
             assert_eq!(map.entries.len(), 2);
 
-            // Check first entry (1 => :one)
             match &map.entries[0] {
                 MapEntry::Assignment { key, value } => {
                     match &key.kind {
@@ -283,8 +265,6 @@ fn test_parse_map_with_trailing_comma() {
         _ => panic!("Expected expression"),
     }
 }
-
-// === TUPLE TESTS ===
 
 #[test]
 fn test_parse_empty_tuple() {
@@ -332,7 +312,6 @@ fn test_parse_multi_element_tuple() {
             let tuple = extract_tuple_from_expression(expr);
             assert_eq!(tuple.elements.len(), 3);
 
-            // Check string
             match &tuple.elements[0].kind {
                 ExpressionKind::String(string) => match &string.parts[0] {
                     StringPart::Text { content, .. } => assert_eq!(content, "name"),
@@ -341,13 +320,11 @@ fn test_parse_multi_element_tuple() {
                 _ => panic!("Expected string"),
             }
 
-            // Check integer
             match &tuple.elements[1].kind {
                 ExpressionKind::Integer(int) => assert_eq!(int.value, 35),
                 _ => panic!("Expected integer"),
             }
 
-            // Check boolean
             match &tuple.elements[2].kind {
                 ExpressionKind::Boolean(boolean) => assert!(boolean.value),
                 _ => panic!("Expected boolean"),
@@ -368,7 +345,6 @@ fn test_parse_nested_tuple() {
             let tuple = extract_tuple_from_expression(expr);
             assert_eq!(tuple.elements.len(), 2);
 
-            // Check first nested tuple
             match &tuple.elements[0].kind {
                 ExpressionKind::Tuple(nested) => {
                     assert_eq!(nested.elements.len(), 2);
@@ -395,8 +371,6 @@ fn test_parse_tuple_with_trailing_comma() {
     }
 }
 
-// === DISPLAY TESTS ===
-
 #[test]
 fn test_list_display_preserves_format() {
     let input = "[1, 2, 3]";
@@ -415,8 +389,6 @@ fn test_map_shorthand_display_preserves_format() {
     assert_eq!(formatted, input);
 }
 
-// === SPREAD OPERATOR TESTS ===
-
 #[test]
 fn test_list_with_spread_operator_basic() {
     let input = "[first, ..rest]";
@@ -428,7 +400,6 @@ fn test_list_with_spread_operator_basic() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 2);
 
-            // Check first element is an identifier
             match &list.elements[0] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::Identifier(id) => assert_eq!(id.name, "first"),
@@ -437,7 +408,6 @@ fn test_list_with_spread_operator_basic() {
                 ListElement::Spread(_) => panic!("Expected expression, not spread"),
             }
 
-            // Check second element is a spread
             match &list.elements[1] {
                 ListElement::Spread(id) => assert_eq!(id.name, "rest"),
                 ListElement::Expression(_) => panic!("Expected spread, not expression"),
@@ -458,7 +428,6 @@ fn test_list_with_spread_operator_mixed() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 5);
 
-            // Check integer elements
             for (i, expected) in [1, 2].iter().enumerate() {
                 match &list.elements[i] {
                     ListElement::Expression(expr) => match &expr.kind {
@@ -469,13 +438,11 @@ fn test_list_with_spread_operator_mixed() {
                 }
             }
 
-            // Check spread element
             match &list.elements[2] {
                 ListElement::Spread(id) => assert_eq!(id.name, "middle"),
                 ListElement::Expression(_) => panic!("Expected spread, not expression"),
             }
 
-            // Check remaining integer elements
             for (i, expected) in [3, 4].iter().enumerate() {
                 match &list.elements[i + 3] {
                     ListElement::Expression(expr) => match &expr.kind {
@@ -501,7 +468,6 @@ fn test_list_with_multiple_spreads() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 5);
 
-            // Check spread elements
             let expected_spreads = ["start", "middle", "end"];
             let spread_indices = [0, 2, 4];
 
@@ -512,7 +478,6 @@ fn test_list_with_multiple_spreads() {
                 }
             }
 
-            // Check literal elements
             match &list.elements[1] {
                 ListElement::Expression(expr) => match &expr.kind {
                     ExpressionKind::Integer(int) => assert_eq!(int.value, 42),
@@ -579,7 +544,6 @@ fn test_nested_list_with_spread() {
             let list = extract_list_from_expression(expr);
             assert_eq!(list.elements.len(), 2);
 
-            // Check both elements are lists
             for element in &list.elements {
                 match element {
                     ListElement::Expression(expr) => match &expr.kind {
@@ -621,8 +585,6 @@ fn test_single_element_tuple_display() {
     assert_eq!(formatted, input);
 }
 
-// === COMPLEX NESTED COLLECTIONS ===
-
 #[test]
 fn test_parse_complex_nested_collections() {
     let input = "{users: [(1, true), (2, false)], groups: [], config: {debug: true}}";
@@ -634,8 +596,6 @@ fn test_parse_complex_nested_collections() {
             let map = extract_map_from_expression(expr);
             assert_eq!(map.entries.len(), 3);
 
-            // Check that we have the right number of entries
-            // (detailed validation would be very complex for this nested structure)
             assert!(map.entries.iter().any(|entry| {
                 match entry {
                     MapEntry::Shorthand { name, .. } => name.name == "users",
@@ -666,7 +626,6 @@ fn test_comprehensive_mix_with_collections() {
     let input = "true [1, 2] {x: 42} (\"a\", \"b\") false";
     let result = parse_program(input).unwrap();
 
-    // Should parse: boolean, list, map, tuple, boolean
     assert_eq!(result.items.len(), 5);
 
     match &result.items[0].kind {

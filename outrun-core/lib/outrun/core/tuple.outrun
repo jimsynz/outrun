@@ -1,0 +1,21 @@
+@Doc(content: """
+Generic tuple concrete type.
+
+This is the default concrete implementation of tuples in Outrun.
+Tuples are statically-typed product types with fixed arity.
+Each element can be a different type.
+
+## Examples
+
+```outrun
+(42, "hello", true)               # 3-tuple with different types
+("name", 25)                      # 2-tuple (pair)
+()                                # Empty tuple (unit type)
+(single,)                         # 1-tuple (rare but valid)
+```
+
+## Type Parameters
+
+- Variable number of type parameters for each element position
+""")
+struct Outrun.Core.Tuple

@@ -83,7 +83,7 @@ impl OutrunParser {
                 Rule::keyword_struct => {
                     struct_keyword_found = true;
                 }
-                Rule::type_identifier if struct_keyword_found => {
+                Rule::module_path if struct_keyword_found => {
                     name_pair = Some(inner_pair);
                     break;
                 }
@@ -92,7 +92,7 @@ impl OutrunParser {
         }
 
         // Parse struct name
-        let name = Self::parse_type_identifier(name_pair.unwrap())?;
+        let name = Self::parse_module_path(name_pair.unwrap())?;
 
         let mut generic_params = None;
         let mut fields = Vec::new();
@@ -102,6 +102,30 @@ impl OutrunParser {
             match remaining_pair.as_rule() {
                 Rule::generic_params => {
                     generic_params = Some(Self::parse_generic_params(remaining_pair)?);
+                }
+                Rule::struct_body => {
+                    // Parse the struct body which can contain parentheses and/or braces
+                    for body_part in remaining_pair.into_inner() {
+                        match body_part.as_rule() {
+                            Rule::struct_parentheses => {
+                                // Parse struct fields from parentheses
+                                for paren_part in body_part.into_inner() {
+                                    if paren_part.as_rule() == Rule::struct_fields {
+                                        fields = Self::parse_struct_fields(paren_part)?;
+                                    }
+                                }
+                            }
+                            Rule::struct_braces => {
+                                // Parse struct methods from braces
+                                for brace_part in body_part.into_inner() {
+                                    if brace_part.as_rule() == Rule::struct_methods {
+                                        methods = Self::parse_struct_methods(brace_part)?;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 Rule::struct_fields => {
                     fields = Self::parse_struct_fields(remaining_pair)?;
@@ -206,7 +230,7 @@ impl OutrunParser {
                 Rule::keyword_trait => {
                     trait_keyword_found = true;
                 }
-                Rule::type_identifier if trait_keyword_found => {
+                Rule::module_path if trait_keyword_found => {
                     name_pair = Some(inner_pair);
                     break;
                 }
@@ -215,7 +239,7 @@ impl OutrunParser {
         }
 
         // Parse trait name
-        let name = Self::parse_type_identifier(name_pair.unwrap())?;
+        let name = Self::parse_module_path(name_pair.unwrap())?;
 
         let mut generic_params = None;
         let mut constraints = None;

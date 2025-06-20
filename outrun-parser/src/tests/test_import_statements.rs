@@ -1,6 +1,5 @@
 use crate::{parse_program, ImportClause, ImportDefinition, ItemKind};
 
-/// Helper function to extract import definition from parse result
 fn extract_import(input: &str) -> ImportDefinition {
     let result = parse_program(input).expect("Failed to parse");
     assert_eq!(result.items.len(), 1, "Expected exactly one item");
@@ -144,7 +143,6 @@ fn test_import_with_multiple_clauses() {
     assert_eq!(import.path[0].name, "Utilities");
     assert_eq!(import.clauses.len(), 2);
 
-    // First clause should be "only"
     match &import.clauses[0] {
         ImportClause::Only { functions, .. } => {
             assert_eq!(functions.len(), 1);
@@ -154,7 +152,6 @@ fn test_import_with_multiple_clauses() {
         other => panic!("Expected Only clause, got {:?}", other),
     }
 
-    // Second clause should be "except"
     match &import.clauses[1] {
         ImportClause::Except { functions, .. } => {
             assert_eq!(functions.len(), 1);

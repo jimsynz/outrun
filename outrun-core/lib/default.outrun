@@ -1,0 +1,63 @@
+@Doc(content: """
+Default trait for types that have a meaningful default or empty value.
+
+The Default trait provides a standard way to create a "default" or "empty" value
+for a type. This is useful for initialization, fallback values, and various
+programming patterns where a neutral starting value is needed.
+
+## Examples
+
+```outrun
+def initialize_flag(): Boolean 
+where Boolean: Default {
+    Default.default()  # Returns false for Boolean
+}
+
+def create_optional_value(should_create: Boolean): Option<String>
+where String: Default {
+    if should_create {
+        Option.some(value: "hello")
+    } else {
+        Option.some(value: Default.default())  # Empty string
+    }
+}
+
+def safe_divide(a: Integer64, b: Integer64): Float64
+where Float64: Default {
+    if Integer64.not_equal(a: b, b: 0) {
+        Float64.divide(a: Float64.from_integer(a), b: Float64.from_integer(b))
+    } else {
+        Default.default()  # Returns 0.0 for Float64
+    }
+}
+```
+
+## Standard Implementations
+
+- `Outrun.Core.Boolean` - `false`
+- `Outrun.Core.Integer64` - `0`
+- `Outrun.Core.Float64` - `0.0`
+- `Outrun.Core.String` - `""` (empty string)
+- `Outrun.Core.List<T>` - `[]` (empty list)
+- `Outrun.Core.Map<K, V>` - `{}` (empty map)
+""")
+trait Default {
+    @Doc(content: """
+    Create the default value for this type.
+    
+    Returns the "default" or "empty" value for the implementing type.
+    This should be a neutral value that makes sense as a starting point
+    or fallback for the type.
+    
+    ## Examples
+    
+    ```outrun
+    Default.default()  # false (for Boolean)
+    Default.default()  # 0 (for Integer64)
+    Default.default()  # 0.0 (for Float64)
+    Default.default()  # "" (for String)
+    Default.default()  # [] (for List<T>)
+    ```
+    """)
+    def default(): Self
+}

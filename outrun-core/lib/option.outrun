@@ -1,0 +1,55 @@
+@Doc(content: """
+Option trait for optional values.
+
+The Option trait represents values that may or may not be present. This is Outrun's
+approach to handling nullable values safely, avoiding null pointer exceptions
+by making the absence of a value explicit in the type system.
+
+## Concrete Implementations
+
+- `Outrun.Option.Some<T>` - Contains a value of type T
+- `Outrun.Option.None` - Represents the absence of a value
+
+## Constructor Functions
+
+```outrun
+Option.some(value: T): Outrun.Option.Some<T>
+Option.none(): Outrun.Option.None
+```
+
+## Examples
+
+```outrun
+let user_name: Option<String> = Option.some(value: "James")
+let missing_age: Option<Integer> = Option.none()
+
+case user_name {
+    some_value: Outrun.Option.Some<String> -> "Hello #{some_value.value}!"
+    none_value: Outrun.Option.None -> "Hello anonymous!"
+}
+```
+
+## Type Parameters
+
+- `T` - The type of the optional value
+""")
+trait Option<T> {
+    @Doc(content: "Create a Some variant containing the given value")
+    defs some(value: T): Outrun.Option.Some<T> {
+        Outrun.Option.Some { value: value }
+    }
+
+    @Doc(content: "Create a None variant representing no value")
+    defs none(): Outrun.Option.None {
+        Outrun.Option.None { }
+    }
+
+    @Doc(content: "Check if this Option contains a value")
+    def some?(value: Self): Boolean
+
+    @Doc(content: "Check if this Option is empty")
+    def none?(value: Self): Boolean
+
+    @Doc(content: "Unwrap the Option value, panicking if None")
+    def unwrap(value: Self): T
+}

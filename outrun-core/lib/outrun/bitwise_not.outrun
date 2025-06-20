@@ -1,0 +1,24 @@
+@Doc(content: """
+Bitwise NOT trait for the ~ operator.
+
+The BitwiseNot trait defines the behaviour for the ~ (bitwise complement) operator.
+When you write `~a`, it becomes `BitwiseNot.not(value: a)`.
+
+## Requirements
+
+- The operand type must be the same as the result type (typically integers)
+- Performs bit-by-bit NOT operation (flips all bits)
+- Must satisfy bitwise laws: double complement (~(~a) == a), De Morgan's laws
+
+## Examples
+
+```outrun
+~42                           # BitwiseNot.not(value: 42): Integer64
+~0xFF                         # BitwiseNot.not(value: 0xFF): Integer64
+~flags                        # BitwiseNot.not(value: flags): Integer64
+```
+""")
+trait BitwiseNot {
+    @Doc(content: "Perform bitwise NOT on a value")
+    def not(value: Self): Self
+}

@@ -181,7 +181,7 @@ op_unary_minus = { "-" }
 // Function call with named parameters
 function_call = !{ function_call_prefix ~ argument_list? ~ ")" }
 function_call_prefix = ${ function_path ~ "(" }
-function_path = !{ (type_identifier ~ ".")? ~ identifier }
+function_path = !{ (module_path ~ ".")? ~ identifier }
 
 // Function arguments (named parameters and spread arguments)
 argument_list = { argument ~ ("," ~ argument)* ~ ","? }
@@ -296,20 +296,23 @@ let_binding = { keyword_let ~ pattern ~ (":" ~ type_annotation)? ~ "=" ~ express
 // === TYPE SYSTEM ===
 
 // Struct definition: struct Name<T>(field1: Type1, field2: Type2) { methods }
-struct_definition = { attribute* ~ keyword_struct ~ type_identifier ~ generic_params? ~ "(" ~ struct_fields? ~ ")" ~ "{" ~ struct_methods? ~ "}" }
+struct_definition = { attribute* ~ keyword_struct ~ module_path ~ generic_params? ~ struct_body? }
+struct_body = { struct_parentheses ~ struct_braces | struct_parentheses | struct_braces }
+struct_parentheses = { "(" ~ struct_fields? ~ ")" }
+struct_braces = { "{" ~ struct_methods? ~ "}" }
 struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
 struct_field = { identifier ~ ":" ~ type_annotation }
 struct_methods = { struct_method_item+ }
 struct_method_item = !{ function_definition }
 
 // Trait definition: trait Name<T> [when constraints] { function signatures }
-trait_definition = { attribute* ~ keyword_trait ~ type_identifier ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
+trait_definition = { attribute* ~ keyword_trait ~ module_path ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
 trait_functions = { trait_item+ }
 trait_item = !{ trait_function }
 trait_function = { static_function_definition | function_definition | function_signature }
 
-static_function_definition = { keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
-function_signature = { function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
+static_function_definition = { attribute* ~ keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
+function_signature = { attribute* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
 // Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }
 impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_methods? ~ "}" }

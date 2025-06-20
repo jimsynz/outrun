@@ -1,8 +1,5 @@
-// Tests for float literals (standard and scientific notation)
-
 use crate::*;
 
-// Helper function to extract float from expression
 fn extract_float_from_expression(expr: &Expression) -> &FloatLiteral {
     match &expr.kind {
         ExpressionKind::Float(float) => float,
@@ -149,7 +146,6 @@ fn test_parse_mixed_float_formats() {
 
     assert_eq!(result.items.len(), 4);
 
-    // Expected values and formats
     let expected = [
         (3.15, FloatFormat::Standard),
         (
@@ -191,13 +187,11 @@ fn test_parse_mixed_float_formats() {
 
 #[test]
 fn test_float_vs_integer_precedence() {
-    // Test that floats are parsed correctly when mixed with integers
     let input = "42 3.15 123 1.5e2";
     let result = parse_program(input).unwrap();
 
     assert_eq!(result.items.len(), 4);
 
-    // Should be: integer, float, integer, float
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Integer(int) => {
@@ -242,7 +236,6 @@ fn test_comprehensive_mix_with_floats() {
 
     assert_eq!(result.items.len(), 8);
 
-    // Extract just the floats to verify their formats and values
     let floats: Vec<_> = result
         .items
         .iter()
@@ -257,11 +250,9 @@ fn test_comprehensive_mix_with_floats() {
 
     assert_eq!(floats.len(), 2);
 
-    // First float: 3.15 (standard)
     assert_eq!(floats[0].value, 3.15);
     assert_eq!(floats[0].format, FloatFormat::Standard);
 
-    // Second float: 1.23e-4 (scientific)
     assert_eq!(floats[1].value, 1.23e-4);
     assert_eq!(
         floats[1].format,

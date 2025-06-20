@@ -1,0 +1,26 @@
+@Doc(content: """
+Right shift trait for the >> operator.
+
+The ShiftRight trait defines the behaviour for the >> operator.
+When you write `a >> b`, it becomes `ShiftRight.shift_right(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically integers)
+- The result must be the same concrete type as the operands
+- Shifts bits of the left operand right by the number of positions specified by right operand
+- May perform arithmetic shift (sign-extending) or logical shift depending on type
+- Behaviour with negative shift amounts is implementation-defined
+
+## Examples
+
+```outrun
+42 >> 2                       # ShiftRight.shift_right(lhs: 42, rhs: 2): Integer64
+0xFF >> 4                     # ShiftRight.shift_right(lhs: 0xFF, rhs: 4): Integer64
+value >> shift_count          # ShiftRight.shift_right(lhs: value, rhs: shift_count): Integer64
+```
+""")
+trait ShiftRight {
+    @Doc(content: "Shift bits right by the specified number of positions")
+    def shift_right(lhs: Self, rhs: Self): Self
+}

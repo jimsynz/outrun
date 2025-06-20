@@ -1,17 +1,13 @@
-// Test file to understand identifier vs type_identifier precedence in expressions
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
 #[test]
 fn test_capitalized_identifiers_in_expressions() {
-    // Test parsing "String" as an expression
     let result = OutrunParser::parse_expression("String");
 
     assert!(result.is_ok(), "Should parse 'String' as expression");
     let expr = result.unwrap();
 
-    // Should be parsed as TypeIdentifier since capitalized identifiers are type names
     match expr.kind {
         ExpressionKind::TypeIdentifier(tid) => {
             assert_eq!(tid.name, "String");
@@ -28,13 +24,11 @@ fn test_capitalized_identifiers_in_expressions() {
 
 #[test]
 fn test_type_identifier_in_struct_literal_context() {
-    // Test parsing struct literal where TypeIdentifier is expected
     let result = OutrunParser::parse_expression("String { value: \"hello\" }");
 
     assert!(result.is_ok(), "Should parse struct literal");
     let expr = result.unwrap();
 
-    // Should be parsed as struct literal
     match expr.kind {
         ExpressionKind::Struct(struct_lit) => {
             assert_eq!(struct_lit.type_path.len(), 1);
@@ -52,7 +46,6 @@ fn test_type_identifier_in_struct_literal_context() {
 
 #[test]
 fn test_qualified_identifier_precedence() {
-    // Test parsing "String.length" - should be qualified identifier
     let result = OutrunParser::parse_expression("String.length");
 
     assert!(result.is_ok(), "Should parse qualified identifier");
@@ -75,7 +68,6 @@ fn test_qualified_identifier_precedence() {
 
 #[test]
 fn test_lowercase_identifier() {
-    // Test parsing "string" (lowercase) - should be identifier
     let result = OutrunParser::parse_expression("string");
 
     assert!(result.is_ok(), "Should parse 'string' as expression");
@@ -94,9 +86,6 @@ fn test_lowercase_identifier() {
 
 #[test]
 fn test_contexts_where_type_identifier_appears() {
-    // TypeIdentifier expressions only appear in specific contexts:
-
-    // 1. Struct literals
     let struct_result = OutrunParser::parse_expression("String { value: \"hello\" }");
     assert!(struct_result.is_ok());
     match struct_result.unwrap().kind {
@@ -107,7 +96,6 @@ fn test_contexts_where_type_identifier_appears() {
         _ => panic!("Expected struct literal"),
     }
 
-    // 2. Qualified identifiers (module part)
     let qualified_result = OutrunParser::parse_expression("String.upcase");
     assert!(qualified_result.is_ok());
     match qualified_result.unwrap().kind {
@@ -118,7 +106,6 @@ fn test_contexts_where_type_identifier_appears() {
         _ => panic!("Expected qualified identifier"),
     }
 
-    // 3. Standalone "String" in expressions is now parsed as TypeIdentifier (correct behavior)
     let standalone_result = OutrunParser::parse_expression("String");
     assert!(standalone_result.is_ok());
     match standalone_result.unwrap().kind {

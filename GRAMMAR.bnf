@@ -68,7 +68,7 @@ attribute_args ::= expression ("," expression)*
 
 ```bnf
 # Struct Definition
-struct_definition ::= attribute* "struct" TYPE_IDENTIFIER generic_params? "(" struct_fields ")" trait_constraints? "{" struct_impl_block "}"
+struct_definition ::= attribute* "struct" MODULE_PATH generic_params? ("(" struct_fields ")")? ("{" struct_impl_block "}")?
 
 struct_fields ::= (IDENTIFIER ":" type_annotation ("," IDENTIFIER ":" type_annotation)*)?
 
@@ -80,7 +80,7 @@ trait_definition ::= attribute* "trait" TYPE_IDENTIFIER generic_params? trait_co
 trait_body ::= trait_function*
 trait_function ::= function_signature | function_definition | static_function_definition
 
-static_function_definition ::= "defs" IDENTIFIER function_signature function_body
+static_function_definition ::= attribute* "defs" IDENTIFIER "(" parameter_list ")" return_type? function_body
 
 # Implementation Block
 impl_block ::= "impl" generic_params? trait_spec "for" type_spec trait_constraints? "{" impl_body "}"
@@ -109,7 +109,7 @@ function_definition ::= attribute* function_visibility? "def" IDENTIFIER "(" par
 
 function_visibility ::= "defp"
 
-function_signature ::= "def" IDENTIFIER "(" parameter_list ")" return_type?
+function_signature ::= attribute* "def" IDENTIFIER "(" parameter_list ")" return_type?
 
 parameter_list ::= (parameter ("," parameter)*)?
 parameter ::= IDENTIFIER ":" type_annotation

@@ -349,7 +349,7 @@ fn format_function_path(path: &FunctionPath) -> String {
 }
 
 fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: usize) -> String {
-    let name = &struct_def.name.name;
+    let name = struct_def.name_as_string();
     let methods_count = struct_def.methods.len();
 
     if methods_count == 0 {
@@ -365,7 +365,7 @@ fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: u
 }
 
 fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usize) -> String {
-    let name = &trait_def.name.name;
+    let name = trait_def.name_as_string();
     let functions_count = trait_def.functions.len();
 
     if functions_count == 0 {

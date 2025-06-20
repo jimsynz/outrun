@@ -1,0 +1,52 @@
+@Doc(content: """
+Display trait for types that can be converted to a user-friendly string representation.
+
+The Display trait is used to format values for user-facing output. It provides a
+single method for converting a value to a string that is appropriate for display
+to end users.
+
+## Examples
+
+```outrun
+def show_value(value: Outrun.Core.Float64): String 
+where Outrun.Core.Float64: Display {
+    Display.to_string(value: value)
+}
+
+def print_numbers(numbers: List<Outrun.Core.Integer64>): String
+where Outrun.Core.Integer64: Display {
+    # Convert each number to string for display
+    let string_numbers: List<String> = List.map(
+        list: numbers,
+        fn: fn(num: Outrun.Core.Integer64): String { Display.to_string(value: num) }
+    )
+    String.join(strings: string_numbers, separator: ", ")
+}
+```
+
+## Standard Implementations
+
+- `Outrun.Core.Integer64` - Decimal representation of integers
+- `Outrun.Core.Float64` - Decimal representation of floating-point numbers
+- `Outrun.Core.String` - Returns the string unchanged
+- `Outrun.Core.Boolean` - "true" or "false"
+- `Outrun.Core.Atom` - Atom literal representation
+""")
+trait Display {
+    @Doc(content: """
+    Convert this value to its user-friendly string representation.
+    
+    Returns a string representation suitable for displaying to end users.
+    This should be human-readable and appropriate for user interfaces.
+    
+    ## Examples
+    
+    ```outrun
+    Display.to_string(value: 42)      # "42"
+    Display.to_string(value: 3.14)    # "3.14"
+    Display.to_string(value: true)    # "true"
+    Display.to_string(value: :hello)  # ":hello"
+    ```
+    """)
+    def to_string(value: Self): String
+}

@@ -1,0 +1,24 @@
+@Doc(content: """
+Binary division trait for the / operator.
+
+The BinaryDivision trait defines the behaviour for the / operator.
+When you write `a / b`, it becomes `BinaryDivision.divide(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type
+- The result must be the same concrete type as the operands
+- No implicit conversions are performed
+- Division by zero behaviour is type-dependent
+
+## Examples
+
+```outrun
+42 / 13                       # BinaryDivision.divide(lhs: 42, rhs: 13): Integer64
+3.14 / 2.0                    # BinaryDivision.divide(lhs: 3.14, rhs: 2.0): Float64
+```
+""")
+trait BinaryDivision {
+    @Doc(content: "Divide the left value by the right value")
+    def divide(lhs: Self, rhs: Self): Option<Self>
+}

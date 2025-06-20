@@ -1,6 +1,3 @@
-// Test basic type system parsing without complex features
-// Tests for struct, trait, and impl syntax without field access
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -13,12 +10,11 @@ fn test_simple_struct_definition() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "User");
+            assert_eq!(struct_def.name[0].name, "User");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 2);
             assert_eq!(struct_def.methods.len(), 0);
 
-            // Check fields
             assert_eq!(struct_def.fields[0].name.name, "name");
             assert_eq!(struct_def.fields[1].name.name, "email");
         }
@@ -35,15 +31,13 @@ fn test_struct_with_single_generic() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Container");
+            assert_eq!(struct_def.name[0].name, "Container");
 
-            // Check generics
             assert!(struct_def.generic_params.is_some());
             let generics = struct_def.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 1);
             assert_eq!(generics.params[0].name.name, "T");
 
-            // Check field
             assert_eq!(struct_def.fields.len(), 1);
             assert_eq!(struct_def.fields[0].name.name, "value");
         }
@@ -60,7 +54,7 @@ fn test_empty_struct() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Empty");
+            assert_eq!(struct_def.name[0].name, "Empty");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 0);
             assert_eq!(struct_def.methods.len(), 0);
@@ -80,17 +74,15 @@ fn test_simple_trait_definition() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Drawable");
+            assert_eq!(trait_def.name_as_string(), "Drawable");
             assert!(trait_def.generic_params.is_none());
             assert!(trait_def.constraints.is_none());
             assert_eq!(trait_def.functions.len(), 1);
 
-            // Check function signature
             match &trait_def.functions[0] {
                 TraitFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "draw");
                     assert_eq!(sig.parameters.len(), 1);
-                    assert!(sig.return_type.is_some());
                 }
                 _ => panic!("Expected function signature"),
             }
@@ -110,9 +102,8 @@ fn test_trait_with_generics() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Serializable");
+            assert_eq!(trait_def.name_as_string(), "Serializable");
 
-            // Check generics
             assert!(trait_def.generic_params.is_some());
             let generics = trait_def.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 1);
@@ -131,7 +122,7 @@ fn test_empty_trait() {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Marker");
+            assert_eq!(trait_def.name_as_string(), "Marker");
             assert!(trait_def.generic_params.is_none());
             assert!(trait_def.constraints.is_none());
             assert_eq!(trait_def.functions.len(), 0);
@@ -157,15 +148,12 @@ fn test_simple_impl_block() {
             assert!(impl_block.constraints.is_none());
             assert_eq!(impl_block.methods.len(), 1);
 
-            // Check trait spec
             assert_eq!(impl_block.trait_spec.path.len(), 1);
             assert_eq!(impl_block.trait_spec.path[0].name, "Drawable");
 
-            // Check type spec
             assert_eq!(impl_block.type_spec.path.len(), 1);
             assert_eq!(impl_block.type_spec.path[0].name, "User");
 
-            // Check method
             assert_eq!(impl_block.methods[0].name.name, "draw");
         }
         _ => panic!("Expected impl block"),

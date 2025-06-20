@@ -1,0 +1,36 @@
+@Doc(content: """
+None variant of the Option type.
+
+Represents the absence of a value in an Option. Contains no data.
+This is one of the two concrete implementations of the Option trait.
+
+## Examples
+
+```outrun
+Option.none()                     # Creates None representing no value
+```
+
+## Usage
+
+This type is typically created using the `Option.none/0` constructor function
+rather than being constructed directly. It represents the "empty" or "missing"
+case in optional value scenarios.
+""")
+struct Outrun.Option.None() {}
+
+# Implementation of Option trait for None variant - works for any T
+impl<T> Option<T> for Outrun.Option.None {
+    def some?(value: Self): Boolean {
+        false  # None never contains a value
+    }
+    
+    def none?(value: Self): Boolean {
+        true  # None is always empty
+    }
+    
+    def unwrap(value: Self): T {
+        # This would panic at runtime - unwrapping None is an error
+        # For now, we'll use a placeholder since we don't have panic intrinsics yet
+        Outrun.Intrinsic.panic_unwrap_none()
+    }
+}

@@ -13,11 +13,9 @@ fn test_anonymous_function_single_param() {
             assert_eq!(anon_fn.clauses.len(), 1);
 
             let clause = &anon_fn.clauses[0];
-            // Check parameters - should be single parameter
             match &clause.parameters {
                 crate::ast::AnonymousParameters::Single { parameter, .. } => {
                     assert_eq!(parameter.name.name, "x");
-                    // Type annotation should be Integer
                     match &parameter.type_annotation {
                         crate::ast::TypeAnnotation::Simple { path, .. } => {
                             assert_eq!(path.len(), 1);
@@ -29,14 +27,11 @@ fn test_anonymous_function_single_param() {
                 _ => panic!("Expected single parameter"),
             }
 
-            // Should have no guard
             assert!(clause.guard.is_none());
 
-            // Body should be an expression (x + 1)
             match &clause.body {
                 crate::ast::AnonymousBody::Expression(expr) => {
                     if let ExpressionKind::BinaryOp(_) = &expr.kind {
-                        // Detailed validation would require deeper inspection
                     } else {
                         panic!("Expected binary operation in anonymous function body");
                     }
@@ -63,15 +58,11 @@ fn test_anonymous_function_no_params() {
             assert_eq!(anon_fn.clauses.len(), 1);
 
             let clause = &anon_fn.clauses[0];
-            // Check parameters - should be no parameters
             match &clause.parameters {
-                crate::ast::AnonymousParameters::None { .. } => {
-                    // Expected no parameters
-                }
+                crate::ast::AnonymousParameters::None { .. } => {}
                 _ => panic!("Expected no parameters"),
             }
 
-            // Body should be integer literal 42
             match &clause.body {
                 crate::ast::AnonymousBody::Expression(expr) => {
                     if let ExpressionKind::Integer(int_lit) = &expr.kind {
@@ -102,7 +93,6 @@ fn test_anonymous_function_multiple_params() {
             assert_eq!(anon_fn.clauses.len(), 1);
 
             let clause = &anon_fn.clauses[0];
-            // Check parameters - should be multiple parameters
             match &clause.parameters {
                 crate::ast::AnonymousParameters::Multiple { parameters, .. } => {
                     assert_eq!(parameters.len(), 2);
@@ -146,12 +136,9 @@ fn test_anonymous_function_with_guard() {
 
             let clause = &anon_fn.clauses[0];
 
-            // Should have a guard
             assert!(clause.guard.is_some());
             if let Some(guard_expr) = &clause.guard {
-                // Guard should be a function call to Integer.positive?(x)
                 if let ExpressionKind::FunctionCall(_) = &guard_expr.kind {
-                    // Expected function call
                 } else {
                     panic!("Expected function call in guard");
                 }
@@ -180,10 +167,8 @@ fn test_anonymous_function_block_body() {
 
             let clause = &anon_fn.clauses[0];
 
-            // Body should be a block
             match &clause.body {
                 crate::ast::AnonymousBody::Block(block) => {
-                    // Block should have statements
                     assert!(!block.statements.is_empty());
                 }
                 _ => panic!("Expected block body"),
@@ -211,13 +196,10 @@ fn test_anonymous_function_multiple_clauses() {
         if let ExpressionKind::AnonymousFunction(anon_fn) = &expr.kind {
             assert_eq!(anon_fn.clauses.len(), 3);
 
-            // First clause should have a guard
             assert!(anon_fn.clauses[0].guard.is_some());
 
-            // Second clause should have a guard
             assert!(anon_fn.clauses[1].guard.is_some());
 
-            // Third clause should have no guard (fallback)
             assert!(anon_fn.clauses[2].guard.is_none());
         } else {
             panic!("Expected anonymous function expression");
@@ -240,11 +222,9 @@ fn test_anonymous_function_complex_expression() {
 
             let clause = &anon_fn.clauses[0];
 
-            // Body should be a complex expression (comparison)
             match &clause.body {
                 crate::ast::AnonymousBody::Expression(expr) => {
                     if let ExpressionKind::BinaryOp(_) = &expr.kind {
-                        // Should be a comparison operation
                     } else {
                         panic!("Expected binary operation");
                     }
@@ -266,7 +246,6 @@ fn test_anonymous_function_source_reconstruction() {
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
 
-    // Should preserve the basic structure
     assert!(reconstructed.contains("fn { x: Integer -> x + 1 }"));
 }
 
@@ -283,9 +262,7 @@ fn test_anonymous_function_in_variable_binding() {
             _ => panic!("Expected identifier pattern"),
         }
 
-        // Expression should be anonymous function
         if let ExpressionKind::AnonymousFunction(_) = &let_binding.expression.kind {
-            // Expected anonymous function
         } else {
             panic!("Expected anonymous function in let binding");
         }
@@ -305,12 +282,10 @@ fn test_anonymous_function_nested_in_collection() {
         if let ExpressionKind::List(list) = &expr.kind {
             assert_eq!(list.elements.len(), 2);
 
-            // Both elements should be anonymous functions
             for element in &list.elements {
                 match element {
                     ListElement::Expression(expr) => {
                         if let ExpressionKind::AnonymousFunction(_) = &expr.kind {
-                            // Expected anonymous function
                         } else {
                             panic!("Expected anonymous function in list");
                         }

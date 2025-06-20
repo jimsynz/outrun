@@ -36,7 +36,6 @@ fn test_diagnostic_collector_max_errors() {
     let mut collector = DiagnosticCollector::with_settings("test".to_string(), 2, false);
     let span = Span::new(0, 1);
 
-    // Add 3 errors, should only keep first 2
     for i in 0..3 {
         collector.add_diagnostic(DiagnosticError::syntax_error(format!("Error {}", i), span));
     }
@@ -49,7 +48,6 @@ fn test_diagnostic_collector_fatal_stops() {
     let mut collector = DiagnosticCollector::with_settings("test".to_string(), 10, false);
     let span = Span::new(0, 1);
 
-    // Test with batch operations - fatal errors should stop processing in batch mode
     let diagnostics = vec![
         DiagnosticError::syntax_error("Error 1".to_string(), span),
         DiagnosticError::fatal_error("Fatal error".to_string(), span),
@@ -58,7 +56,6 @@ fn test_diagnostic_collector_fatal_stops() {
 
     collector.add_diagnostics(diagnostics);
 
-    // Should stop after fatal error when continue_on_fatal is false
     assert_eq!(collector.total_count(), 2);
     assert!(collector.has_fatal_errors());
 }

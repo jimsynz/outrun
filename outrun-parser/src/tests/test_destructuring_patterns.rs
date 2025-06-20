@@ -1,9 +1,5 @@
-// Tests for destructuring patterns in let bindings
-
 use crate::ast::{ExpressionKind, ItemKind, Literal, Pattern};
 use crate::parse_program;
-
-// === TUPLE DESTRUCTURING ===
 
 #[test]
 fn test_tuple_destructuring_basic() {
@@ -90,8 +86,6 @@ fn test_tuple_destructuring_with_type() {
     }
 }
 
-// === STRUCT DESTRUCTURING ===
-
 #[test]
 fn test_struct_destructuring_basic() {
     let input = "let User { name, email } = user";
@@ -161,8 +155,6 @@ fn test_struct_destructuring_with_type() {
         _ => panic!("Expected let binding expression"),
     }
 }
-
-// === LIST DESTRUCTURING ===
 
 #[test]
 fn test_list_destructuring_basic() {
@@ -269,8 +261,6 @@ fn test_list_destructuring_with_type() {
     }
 }
 
-// === SIMPLE IDENTIFIER PATTERNS (backward compatibility) ===
-
 #[test]
 fn test_simple_identifier_pattern() {
     let input = "let x = 42";
@@ -307,8 +297,6 @@ fn test_simple_identifier_pattern_with_type() {
         _ => panic!("Expected let binding expression"),
     }
 }
-
-// === DISPLAY FORMATTING ===
 
 #[test]
 fn test_tuple_pattern_display() {
@@ -355,8 +343,6 @@ fn test_pattern_with_type_display() {
     assert_eq!(formatted, input);
 }
 
-// === COMPLEX EXPRESSIONS IN DESTRUCTURING ===
-
 #[test]
 fn test_destructuring_with_complex_expression() {
     let input = "let (x, y) = get_coordinates(position)";
@@ -379,19 +365,14 @@ fn test_destructuring_with_complex_expression() {
                 }
                 _ => panic!("Expected tuple pattern"),
             }
-            // Verify the expression is properly parsed (function call)
             match &let_binding.expression.kind {
-                ExpressionKind::FunctionCall(_) => {
-                    // Good, it parsed as a function call
-                }
+                ExpressionKind::FunctionCall(_) => {}
                 _ => panic!("Expected function call expression"),
             }
         }
         _ => panic!("Expected let binding expression"),
     }
 }
-
-// === RECURSIVE DESTRUCTURING PATTERNS ===
 
 #[test]
 fn test_literal_pattern_integer() {
@@ -420,42 +401,37 @@ fn test_tuple_with_nested_list() {
     assert_eq!(result.items.len(), 1);
 
     match &result.items[0].kind {
-        ItemKind::LetBinding(let_binding) => {
-            match &let_binding.pattern {
-                Pattern::Tuple(tuple_pattern) => {
-                    assert_eq!(tuple_pattern.elements.len(), 3);
+        ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
+            Pattern::Tuple(tuple_pattern) => {
+                assert_eq!(tuple_pattern.elements.len(), 3);
 
-                    // First element: identifier x
-                    match &tuple_pattern.elements[0] {
-                        Pattern::Identifier(id) => assert_eq!(id.name, "x"),
-                        _ => panic!("Expected identifier pattern"),
-                    }
-
-                    // Second element: nested list [a, b]
-                    match &tuple_pattern.elements[1] {
-                        Pattern::List(list_pattern) => {
-                            assert_eq!(list_pattern.elements.len(), 2);
-                            match &list_pattern.elements[0] {
-                                Pattern::Identifier(id) => assert_eq!(id.name, "a"),
-                                _ => panic!("Expected identifier pattern"),
-                            }
-                            match &list_pattern.elements[1] {
-                                Pattern::Identifier(id) => assert_eq!(id.name, "b"),
-                                _ => panic!("Expected identifier pattern"),
-                            }
-                        }
-                        _ => panic!("Expected list pattern"),
-                    }
-
-                    // Third element: identifier y
-                    match &tuple_pattern.elements[2] {
-                        Pattern::Identifier(id) => assert_eq!(id.name, "y"),
-                        _ => panic!("Expected identifier pattern"),
-                    }
+                match &tuple_pattern.elements[0] {
+                    Pattern::Identifier(id) => assert_eq!(id.name, "x"),
+                    _ => panic!("Expected identifier pattern"),
                 }
-                _ => panic!("Expected tuple pattern"),
+
+                match &tuple_pattern.elements[1] {
+                    Pattern::List(list_pattern) => {
+                        assert_eq!(list_pattern.elements.len(), 2);
+                        match &list_pattern.elements[0] {
+                            Pattern::Identifier(id) => assert_eq!(id.name, "a"),
+                            _ => panic!("Expected identifier pattern"),
+                        }
+                        match &list_pattern.elements[1] {
+                            Pattern::Identifier(id) => assert_eq!(id.name, "b"),
+                            _ => panic!("Expected identifier pattern"),
+                        }
+                    }
+                    _ => panic!("Expected list pattern"),
+                }
+
+                match &tuple_pattern.elements[2] {
+                    Pattern::Identifier(id) => assert_eq!(id.name, "y"),
+                    _ => panic!("Expected identifier pattern"),
+                }
             }
-        }
+            _ => panic!("Expected tuple pattern"),
+        },
         _ => panic!("Expected let binding expression"),
     }
 }
@@ -467,38 +443,33 @@ fn test_list_with_mixed_patterns() {
     assert_eq!(result.items.len(), 1);
 
     match &result.items[0].kind {
-        ItemKind::LetBinding(let_binding) => {
-            match &let_binding.pattern {
-                Pattern::List(list_pattern) => {
-                    assert_eq!(list_pattern.elements.len(), 3);
+        ItemKind::LetBinding(let_binding) => match &let_binding.pattern {
+            Pattern::List(list_pattern) => {
+                assert_eq!(list_pattern.elements.len(), 3);
 
-                    // First element: literal 1
-                    match &list_pattern.elements[0] {
-                        Pattern::Literal(literal_pattern) => match &literal_pattern.literal {
-                            Literal::Integer(int_literal) => assert_eq!(int_literal.value, 1),
-                            _ => panic!("Expected integer literal"),
-                        },
-                        _ => panic!("Expected literal pattern"),
-                    }
-
-                    // Second element: identifier name
-                    match &list_pattern.elements[1] {
-                        Pattern::Identifier(id) => assert_eq!(id.name, "name"),
-                        _ => panic!("Expected identifier pattern"),
-                    }
-
-                    // Third element: atom :status
-                    match &list_pattern.elements[2] {
-                        Pattern::Literal(literal_pattern) => match &literal_pattern.literal {
-                            Literal::Atom(atom_literal) => assert_eq!(atom_literal.name, "status"),
-                            _ => panic!("Expected atom literal"),
-                        },
-                        _ => panic!("Expected literal pattern"),
-                    }
+                match &list_pattern.elements[0] {
+                    Pattern::Literal(literal_pattern) => match &literal_pattern.literal {
+                        Literal::Integer(int_literal) => assert_eq!(int_literal.value, 1),
+                        _ => panic!("Expected integer literal"),
+                    },
+                    _ => panic!("Expected literal pattern"),
                 }
-                _ => panic!("Expected list pattern"),
+
+                match &list_pattern.elements[1] {
+                    Pattern::Identifier(id) => assert_eq!(id.name, "name"),
+                    _ => panic!("Expected identifier pattern"),
+                }
+
+                match &list_pattern.elements[2] {
+                    Pattern::Literal(literal_pattern) => match &literal_pattern.literal {
+                        Literal::Atom(atom_literal) => assert_eq!(atom_literal.name, "status"),
+                        _ => panic!("Expected atom literal"),
+                    },
+                    _ => panic!("Expected literal pattern"),
+                }
             }
-        }
+            _ => panic!("Expected list pattern"),
+        },
         _ => panic!("Expected let binding expression"),
     }
 }

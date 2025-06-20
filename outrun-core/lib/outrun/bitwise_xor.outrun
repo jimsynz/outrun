@@ -1,0 +1,25 @@
+@Doc(content: """
+Bitwise XOR trait for the ^ operator.
+
+The BitwiseXor trait defines the behaviour for the ^ operator.
+When you write `a ^ b`, it becomes `BitwiseXor.xor(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically integers)
+- The result must be the same concrete type as the operands
+- Performs bit-by-bit XOR (exclusive OR) operation
+- Must satisfy bitwise laws: associative, commutative, self-inverse (a ^ a == 0)
+
+## Examples
+
+```outrun
+42 ^ 13                       # BitwiseXor.xor(lhs: 42, rhs: 13): Integer64
+0xFF ^ 0x0F                   # BitwiseXor.xor(lhs: 0xFF, rhs: 0x0F): Integer64
+data ^ key                    # BitwiseXor.xor(lhs: data, rhs: key): Integer64
+```
+""")
+trait BitwiseXor {
+    @Doc(content: "Perform bitwise XOR on two values")
+    def xor(lhs: Self, rhs: Self): Self
+}

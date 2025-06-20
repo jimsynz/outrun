@@ -1,9 +1,4 @@
-// Arithmetic operators parsing tests
-// Tests for +, -, *, /, %, ** with proper precedence and associativity
-
 use crate::{ast::*, parse_program};
-
-// === BASIC ARITHMETIC TESTS ===
 
 #[test]
 fn test_parse_addition() {
@@ -12,26 +7,22 @@ fn test_parse_addition() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    assert_eq!(op.operator, BinaryOperator::Add);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Add);
 
-                    // Check left operand
-                    match &op.left.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
-                        _ => panic!("Expected integer on left"),
-                    }
-
-                    // Check right operand
-                    match &op.right.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
-                        _ => panic!("Expected integer on right"),
-                    }
+                match &op.left.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
+                    _ => panic!("Expected integer on left"),
                 }
-                _ => panic!("Expected binary operation"),
+
+                match &op.right.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
+                    _ => panic!("Expected integer on right"),
+                }
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -121,8 +112,6 @@ fn test_parse_exponentiation() {
     }
 }
 
-// === UNARY OPERATOR TESTS ===
-
 #[test]
 fn test_parse_unary_minus() {
     let input = "-5";
@@ -130,20 +119,17 @@ fn test_parse_unary_minus() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::UnaryOp(op) => {
-                    assert_eq!(op.operator, UnaryOperator::Minus);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::UnaryOp(op) => {
+                assert_eq!(op.operator, UnaryOperator::Minus);
 
-                    // Check operand
-                    match &op.operand.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 5),
-                        _ => panic!("Expected integer operand"),
-                    }
+                match &op.operand.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 5),
+                    _ => panic!("Expected integer operand"),
                 }
-                _ => panic!("Expected unary operation"),
             }
-        }
+            _ => panic!("Expected unary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -165,8 +151,6 @@ fn test_parse_unary_plus() {
     }
 }
 
-// === PRECEDENCE TESTS ===
-
 #[test]
 fn test_multiplication_before_addition() {
     let input = "2 + 3 * 4";
@@ -174,39 +158,34 @@ fn test_multiplication_before_addition() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: 2 + (3 * 4)
-                    assert_eq!(op.operator, BinaryOperator::Add);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Add);
 
-                    // Left should be 2
-                    match &op.left.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
-                        _ => panic!("Expected integer on left"),
-                    }
-
-                    // Right should be (3 * 4)
-                    match &op.right.kind {
-                        ExpressionKind::BinaryOp(multiply_op) => {
-                            assert_eq!(multiply_op.operator, BinaryOperator::Multiply);
-
-                            match &multiply_op.left.kind {
-                                ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
-                                _ => panic!("Expected integer in multiplication left"),
-                            }
-
-                            match &multiply_op.right.kind {
-                                ExpressionKind::Integer(int) => assert_eq!(int.value, 4),
-                                _ => panic!("Expected integer in multiplication right"),
-                            }
-                        }
-                        _ => panic!("Expected multiplication on right side"),
-                    }
+                match &op.left.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
+                    _ => panic!("Expected integer on left"),
                 }
-                _ => panic!("Expected binary operation"),
+
+                match &op.right.kind {
+                    ExpressionKind::BinaryOp(multiply_op) => {
+                        assert_eq!(multiply_op.operator, BinaryOperator::Multiply);
+
+                        match &multiply_op.left.kind {
+                            ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
+                            _ => panic!("Expected integer in multiplication left"),
+                        }
+
+                        match &multiply_op.right.kind {
+                            ExpressionKind::Integer(int) => assert_eq!(int.value, 4),
+                            _ => panic!("Expected integer in multiplication right"),
+                        }
+                    }
+                    _ => panic!("Expected multiplication on right side"),
+                }
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -218,23 +197,19 @@ fn test_division_before_subtraction() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: 10 - (8 / 2)
-                    assert_eq!(op.operator, BinaryOperator::Subtract);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Subtract);
 
-                    // Right should be (8 / 2)
-                    match &op.right.kind {
-                        ExpressionKind::BinaryOp(divide_op) => {
-                            assert_eq!(divide_op.operator, BinaryOperator::Divide);
-                        }
-                        _ => panic!("Expected division on right side"),
+                match &op.right.kind {
+                    ExpressionKind::BinaryOp(divide_op) => {
+                        assert_eq!(divide_op.operator, BinaryOperator::Divide);
                     }
+                    _ => panic!("Expected division on right side"),
                 }
-                _ => panic!("Expected binary operation"),
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -246,28 +221,22 @@ fn test_exponentiation_before_multiplication() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: 2 * (3 ** 2)
-                    assert_eq!(op.operator, BinaryOperator::Multiply);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Multiply);
 
-                    // Right should be (3 ** 2)
-                    match &op.right.kind {
-                        ExpressionKind::BinaryOp(exponent_op) => {
-                            assert_eq!(exponent_op.operator, BinaryOperator::Exponent);
-                        }
-                        _ => panic!("Expected exponentiation on right side"),
+                match &op.right.kind {
+                    ExpressionKind::BinaryOp(exponent_op) => {
+                        assert_eq!(exponent_op.operator, BinaryOperator::Exponent);
                     }
+                    _ => panic!("Expected exponentiation on right side"),
                 }
-                _ => panic!("Expected binary operation"),
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
-
-// === ASSOCIATIVITY TESTS ===
 
 #[test]
 fn test_left_associativity_addition() {
@@ -276,29 +245,24 @@ fn test_left_associativity_addition() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: (1 + 2) + 3
-                    assert_eq!(op.operator, BinaryOperator::Add);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Add);
 
-                    // Left should be (1 + 2)
-                    match &op.left.kind {
-                        ExpressionKind::BinaryOp(left_op) => {
-                            assert_eq!(left_op.operator, BinaryOperator::Add);
-                        }
-                        _ => panic!("Expected addition on left side"),
+                match &op.left.kind {
+                    ExpressionKind::BinaryOp(left_op) => {
+                        assert_eq!(left_op.operator, BinaryOperator::Add);
                     }
-
-                    // Right should be 3
-                    match &op.right.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
-                        _ => panic!("Expected integer on right"),
-                    }
+                    _ => panic!("Expected addition on left side"),
                 }
-                _ => panic!("Expected binary operation"),
+
+                match &op.right.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
+                    _ => panic!("Expected integer on right"),
+                }
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -310,34 +274,27 @@ fn test_right_associativity_exponentiation() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: 2 ** (3 ** 2)
-                    assert_eq!(op.operator, BinaryOperator::Exponent);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Exponent);
 
-                    // Left should be 2
-                    match &op.left.kind {
-                        ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
-                        _ => panic!("Expected integer on left"),
-                    }
-
-                    // Right should be (3 ** 2)
-                    match &op.right.kind {
-                        ExpressionKind::BinaryOp(right_op) => {
-                            assert_eq!(right_op.operator, BinaryOperator::Exponent);
-                        }
-                        _ => panic!("Expected exponentiation on right side"),
-                    }
+                match &op.left.kind {
+                    ExpressionKind::Integer(int) => assert_eq!(int.value, 2),
+                    _ => panic!("Expected integer on left"),
                 }
-                _ => panic!("Expected binary operation"),
+
+                match &op.right.kind {
+                    ExpressionKind::BinaryOp(right_op) => {
+                        assert_eq!(right_op.operator, BinaryOperator::Exponent);
+                    }
+                    _ => panic!("Expected exponentiation on right side"),
+                }
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
-
-// === PARENTHESES TESTS ===
 
 #[test]
 fn test_parentheses_override_precedence() {
@@ -346,31 +303,25 @@ fn test_parentheses_override_precedence() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should be: (2 + 3) * 4
-                    assert_eq!(op.operator, BinaryOperator::Multiply);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Multiply);
 
-                    // Left should be parenthesized (2 + 3)
-                    match &op.left.kind {
-                        ExpressionKind::Parenthesized(paren_expr) => match &paren_expr.kind {
-                            ExpressionKind::BinaryOp(add_op) => {
-                                assert_eq!(add_op.operator, BinaryOperator::Add);
-                            }
-                            _ => panic!("Expected addition inside parentheses"),
-                        },
-                        _ => panic!("Expected parenthesized expression on left"),
-                    }
+                match &op.left.kind {
+                    ExpressionKind::Parenthesized(paren_expr) => match &paren_expr.kind {
+                        ExpressionKind::BinaryOp(add_op) => {
+                            assert_eq!(add_op.operator, BinaryOperator::Add);
+                        }
+                        _ => panic!("Expected addition inside parentheses"),
+                    },
+                    _ => panic!("Expected parenthesized expression on left"),
                 }
-                _ => panic!("Expected binary operation"),
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
-
-// === COMPLEX EXPRESSION TESTS ===
 
 #[test]
 fn test_complex_arithmetic_expression() {
@@ -379,15 +330,12 @@ fn test_complex_arithmetic_expression() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::BinaryOp(op) => {
-                    // Should parse with correct precedence
-                    assert_eq!(op.operator, BinaryOperator::Subtract);
-                }
-                _ => panic!("Expected binary operation"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                assert_eq!(op.operator, BinaryOperator::Subtract);
             }
-        }
+            _ => panic!("Expected binary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -399,27 +347,22 @@ fn test_chained_unary_operators() {
 
     assert_eq!(result.items.len(), 1);
     match &result.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::UnaryOp(op) => {
-                    assert_eq!(op.operator, UnaryOperator::Minus);
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::UnaryOp(op) => {
+                assert_eq!(op.operator, UnaryOperator::Minus);
 
-                    // Operand should be another unary minus
-                    match &op.operand.kind {
-                        ExpressionKind::UnaryOp(inner_op) => {
-                            assert_eq!(inner_op.operator, UnaryOperator::Minus);
-                        }
-                        _ => panic!("Expected nested unary operation"),
+                match &op.operand.kind {
+                    ExpressionKind::UnaryOp(inner_op) => {
+                        assert_eq!(inner_op.operator, UnaryOperator::Minus);
                     }
+                    _ => panic!("Expected nested unary operation"),
                 }
-                _ => panic!("Expected unary operation"),
             }
-        }
+            _ => panic!("Expected unary operation"),
+        },
         _ => panic!("Expected expression"),
     }
 }
-
-// === DISPLAY TESTS ===
 
 #[test]
 fn test_arithmetic_display_preserves_format() {

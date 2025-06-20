@@ -1,0 +1,27 @@
+@Doc(content: """
+Atom trait for types that can behave like atoms.
+
+This trait is a marker trait that indicates a type can act as an atom.
+Atoms are immutable, interned identifiers used for efficient comparisons
+and as keys in data structures.
+
+The trait itself contains no functions - atom behavior comes from
+implementing Equality, Display, and Inspect traits, which are required.
+
+## Examples
+
+```outrun
+# The core atom type implements this
+:my_atom
+
+# Custom types could also implement Atom behavior
+struct CustomAtom(name: String) {}
+impl Atom for CustomAtom {}
+impl Equality for CustomAtom { ... }
+impl Display for CustomAtom { ... }
+impl Inspect for CustomAtom { ... }
+```
+""")
+trait Atom when Self: Equality && Self: Display && Self: Inspect {
+    # Empty trait - atoms get their behavior from the constrained traits
+}

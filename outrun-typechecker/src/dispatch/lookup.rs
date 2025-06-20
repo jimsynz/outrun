@@ -33,9 +33,6 @@ impl<'a> DispatchTableBuilder<'a> {
         // Build trait implementation dispatch
         self.build_trait_dispatch()?;
 
-        // Build operator dispatch tables
-        self.build_operator_dispatch()?;
-
         // Build static function dispatch
         self.build_static_dispatch()?;
 
@@ -58,57 +55,6 @@ impl<'a> DispatchTableBuilder<'a> {
 
             // Note: The module_id will be used by the interpreter to look up
             // the actual function implementations for this (trait, type) pair
-        }
-
-        Ok(())
-    }
-
-    /// Build operator dispatch tables for binary and unary operators
-    fn build_operator_dispatch(&mut self) -> TypeResult<()> {
-        // Build dispatch tables for operators like +, -, *, etc.
-        // These are syntactic sugar for trait method calls
-        // e.g., a + b becomes BinaryAddition.add(lhs: a, rhs: b)
-
-        // For now, we register the standard operator trait mappings
-        // Note: When the parser adds Hash + Eq to operators, we can build full dispatch tables
-
-        // Map of operator traits to their function names
-        let operator_traits = vec![
-            ("BinaryAddition", "add"),
-            ("BinarySubtraction", "subtract"),
-            ("BinaryMultiplication", "multiply"),
-            ("BinaryDivision", "divide"),
-            ("BinaryModulo", "modulo"),
-            ("BinaryExponentiation", "power"),
-            ("BinaryEquality", "equals"),
-            ("BinaryInequality", "not_equals"),
-            ("BinaryLessThan", "less_than"),
-            ("BinaryLessThanOrEqual", "less_than_or_equal"),
-            ("BinaryGreaterThan", "greater_than"),
-            ("BinaryGreaterThanOrEqual", "greater_than_or_equal"),
-            ("BinaryLogicalAnd", "logical_and"),
-            ("BinaryLogicalOr", "logical_or"),
-            ("BinaryBitwiseAnd", "bitwise_and"),
-            ("BinaryBitwiseOr", "bitwise_or"),
-            ("BinaryBitwiseXor", "bitwise_xor"),
-            ("BinaryShiftLeft", "shift_left"),
-            ("BinaryShiftRight", "shift_right"),
-            ("UnaryNegation", "negate"),
-            ("UnaryLogicalNot", "logical_not"),
-            ("UnaryBitwiseNot", "bitwise_not"),
-            ("UnaryPlus", "plus"),
-        ];
-
-        // For each operator trait, if it exists and has implementations,
-        // we would register them in the dispatch table
-        // TODO: Complete implementation when binary operators support Hash + Eq
-
-        for (trait_name, _function_name) in operator_traits {
-            // Check if the trait exists
-            if let Some(_trait_id) = self.interner.get_trait(trait_name) {
-                // TODO: Build operator dispatch when BinaryOperator/UnaryOperator support Hash + Eq
-                // For now, this establishes the structure for future operator dispatch
-            }
         }
 
         Ok(())

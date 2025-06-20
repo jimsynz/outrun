@@ -1,9 +1,5 @@
-// Bitwise operator parsing tests
-// Tests for &, |, ^, ~, <<, >> operators
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract expression from program
 fn extract_expression_from_program(program: &Program) -> &Expression {
     match &program.items[0].kind {
         ItemKind::Expression(expr) => expr,
@@ -11,7 +7,6 @@ fn extract_expression_from_program(program: &Program) -> &Expression {
     }
 }
 
-// Helper function to assert binary operation
 fn assert_binary_operation(expr: &Expression, expected_op: BinaryOperator) {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
@@ -21,7 +16,6 @@ fn assert_binary_operation(expr: &Expression, expected_op: BinaryOperator) {
     }
 }
 
-// Helper function to assert unary operation
 fn assert_unary_operation(expr: &Expression, expected_op: UnaryOperator) {
     match &expr.kind {
         ExpressionKind::UnaryOp(op) => {
@@ -93,7 +87,6 @@ fn test_parse_bitwise_not() {
 
 #[test]
 fn test_bitwise_precedence_or_before_xor() {
-    // 1 | 2 ^ 3 should parse as 1 | (2 ^ 3)
     let input = "1 | 2 ^ 3";
     let result = parse_program(input).unwrap();
 
@@ -101,7 +94,6 @@ fn test_bitwise_precedence_or_before_xor() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::BitwiseOr);
-            // Right side should be XOR
             match &op.right.kind {
                 ExpressionKind::BinaryOp(right_op) => {
                     assert_eq!(right_op.operator, BinaryOperator::BitwiseXor);
@@ -115,7 +107,6 @@ fn test_bitwise_precedence_or_before_xor() {
 
 #[test]
 fn test_bitwise_precedence_xor_before_and() {
-    // 1 ^ 2 & 3 should parse as 1 ^ (2 & 3)
     let input = "1 ^ 2 & 3";
     let result = parse_program(input).unwrap();
 
@@ -123,7 +114,6 @@ fn test_bitwise_precedence_xor_before_and() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::BitwiseXor);
-            // Right side should be AND
             match &op.right.kind {
                 ExpressionKind::BinaryOp(right_op) => {
                     assert_eq!(right_op.operator, BinaryOperator::BitwiseAnd);
@@ -137,7 +127,6 @@ fn test_bitwise_precedence_xor_before_and() {
 
 #[test]
 fn test_bitwise_precedence_and_before_comparison() {
-    // 1 & 2 == 3 should parse as (1 & 2) == 3
     let input = "1 & 2 == 3";
     let result = parse_program(input).unwrap();
 
@@ -145,7 +134,6 @@ fn test_bitwise_precedence_and_before_comparison() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::Equal);
-            // Left side should be AND
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::BitwiseAnd);
@@ -159,7 +147,6 @@ fn test_bitwise_precedence_and_before_comparison() {
 
 #[test]
 fn test_shift_precedence_before_addition() {
-    // 1 << 2 + 3 should parse as 1 << (2 + 3)
     let input = "1 << 2 + 3";
     let result = parse_program(input).unwrap();
 
@@ -167,7 +154,6 @@ fn test_shift_precedence_before_addition() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::ShiftLeft);
-            // Right side should be addition
             match &op.right.kind {
                 ExpressionKind::BinaryOp(right_op) => {
                     assert_eq!(right_op.operator, BinaryOperator::Add);
@@ -181,7 +167,6 @@ fn test_shift_precedence_before_addition() {
 
 #[test]
 fn test_bitwise_not_high_precedence() {
-    // ~1 + 2 should parse as (~1) + 2
     let input = "~1 + 2";
     let result = parse_program(input).unwrap();
 
@@ -189,7 +174,6 @@ fn test_bitwise_not_high_precedence() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::Add);
-            // Left side should be bitwise NOT
             match &op.left.kind {
                 ExpressionKind::UnaryOp(left_op) => {
                     assert_eq!(left_op.operator, UnaryOperator::BitwiseNot);
@@ -203,7 +187,6 @@ fn test_bitwise_not_high_precedence() {
 
 #[test]
 fn test_left_associativity_bitwise_or() {
-    // 1 | 2 | 3 should parse as (1 | 2) | 3
     let input = "1 | 2 | 3";
     let result = parse_program(input).unwrap();
 
@@ -211,7 +194,6 @@ fn test_left_associativity_bitwise_or() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::BitwiseOr);
-            // Left side should also be OR
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::BitwiseOr);
@@ -225,7 +207,6 @@ fn test_left_associativity_bitwise_or() {
 
 #[test]
 fn test_left_associativity_shift() {
-    // 16 >> 2 >> 1 should parse as (16 >> 2) >> 1
     let input = "16 >> 2 >> 1";
     let result = parse_program(input).unwrap();
 
@@ -233,7 +214,6 @@ fn test_left_associativity_shift() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::ShiftRight);
-            // Left side should also be shift right
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::ShiftRight);
@@ -247,18 +227,15 @@ fn test_left_associativity_shift() {
 
 #[test]
 fn test_complex_bitwise_expression() {
-    // Test complex expression: ~(1 | 2) & (3 ^ 4) << 1
     let input = "~(1 | 2) & (3 ^ 4) << 1";
     let result = parse_program(input).unwrap();
 
     let expr = extract_expression_from_program(&result);
 
-    // Should parse as: (~(1 | 2)) & ((3 ^ 4) << 1)
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::BitwiseAnd);
 
-            // Left side should be bitwise NOT
             match &op.left.kind {
                 ExpressionKind::UnaryOp(not_op) => {
                     assert_eq!(not_op.operator, UnaryOperator::BitwiseNot);
@@ -266,12 +243,10 @@ fn test_complex_bitwise_expression() {
                 _ => panic!("Expected bitwise NOT"),
             }
 
-            // Right side should be shift operation
             match &op.right.kind {
                 ExpressionKind::BinaryOp(shift_op) => {
                     assert_eq!(shift_op.operator, BinaryOperator::ShiftLeft);
 
-                    // Left side of shift should be parenthesized XOR
                     match &shift_op.left.kind {
                         ExpressionKind::Parenthesized(paren_expr) => match &paren_expr.kind {
                             ExpressionKind::BinaryOp(xor_op) => {
@@ -291,7 +266,6 @@ fn test_complex_bitwise_expression() {
 
 #[test]
 fn test_chained_bitwise_not() {
-    // ~~5 should parse as ~(~5)
     let input = "~~5";
     let result = parse_program(input).unwrap();
 
@@ -299,7 +273,6 @@ fn test_chained_bitwise_not() {
     match &expr.kind {
         ExpressionKind::UnaryOp(op) => {
             assert_eq!(op.operator, UnaryOperator::BitwiseNot);
-            // Operand should also be bitwise NOT
             match &op.operand.kind {
                 ExpressionKind::UnaryOp(inner_op) => {
                     assert_eq!(inner_op.operator, UnaryOperator::BitwiseNot);
@@ -324,7 +297,6 @@ fn test_bitwise_display_preserves_format() {
 
 #[test]
 fn test_parentheses_override_bitwise_precedence() {
-    // (1 | 2) & 3 should parse differently than 1 | 2 & 3
     let input = "(1 | 2) & 3";
     let result = parse_program(input).unwrap();
 
@@ -332,7 +304,6 @@ fn test_parentheses_override_bitwise_precedence() {
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::BitwiseAnd);
-            // Left side should be parenthesized
             match &op.left.kind {
                 ExpressionKind::Parenthesized(paren_expr) => match &paren_expr.kind {
                     ExpressionKind::BinaryOp(or_op) => {

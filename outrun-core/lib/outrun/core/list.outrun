@@ -1,0 +1,74 @@
+@Doc(content: """
+Generic list concrete type.
+
+This is the default concrete implementation of lists in Outrun.
+Lists are homogeneous linked lists (not vectors) designed for functional programming.
+All elements must be of the same type T.
+
+## Examples
+
+```outrun
+[1, 2, 3]                         # List of integers
+["hello", "world"]                # List of strings
+[head, ..tail]                   # List construction with head|tail syntax
+[]                                # Empty list
+```
+
+## Type Parameters
+
+- `T` - The type of elements stored in the list
+""")
+struct Outrun.Core.List<T>() {}
+
+# Inspect trait implementation  
+impl<T> Inspect for Outrun.Core.List<T> when T: Inspect {
+    def inspect(value: Self): String {
+        Outrun.Intrinsic.list_inspect(value: value)
+    }
+}
+
+# Equality trait implementation - recursive equality check
+impl<T> Equality for Outrun.Core.List<T> when T: Equality {
+    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        let lhs_head = List.head(value: lhs)
+        let rhs_head = List.head(value: rhs)
+        
+        case (lhs_head, rhs_head) {
+            when Option.none?(value: lhs_head) && Option.none?(value: rhs_head) -> true
+            when Option.some?(value: lhs_head) && Option.some?(value: rhs_head) -> 
+                Equality.equal?(lhs: Option.unwrap(value: lhs_head), rhs: Option.unwrap(value: rhs_head)) && 
+                Equality.equal?(lhs: List.tail(value: lhs), rhs: List.tail(value: rhs))
+            when _ -> false
+        }
+    }
+    
+    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        !Equality.equal?(lhs: lhs, rhs: rhs)
+    }
+}
+
+# List trait implementation
+impl<T> List<T> for Outrun.Core.List<T> {
+    def head(value: Self): Option<T> {
+        Outrun.Intrinsic.list_head(value: value)
+    }
+    
+    def tail(value: Self): Self {
+        Outrun.Intrinsic.list_tail(value: value)
+    }
+    
+    def prepend(list: Self, elem: T): Self {
+        Outrun.Intrinsic.list_prepend(list: list, elem: elem)
+    }
+    
+    def length(value: Self): Integer {
+        Outrun.Intrinsic.list_length(value: value)
+    }
+}
+
+# Default trait implementation
+impl<T> Default for Outrun.Core.List<T> {
+    def default(): Self {
+        Outrun.Intrinsic.list_empty()
+    }
+}

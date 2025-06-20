@@ -1,0 +1,25 @@
+@Doc(content: """
+Bitwise OR trait for the | operator.
+
+The BitwiseOr trait defines the behaviour for the | operator.
+When you write `a | b`, it becomes `BitwiseOr.or(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically integers)
+- The result must be the same concrete type as the operands
+- Performs bit-by-bit OR operation
+- Must satisfy bitwise laws: associative, commutative, idempotent
+
+## Examples
+
+```outrun
+42 | 13                       # BitwiseOr.or(lhs: 42, rhs: 13): Integer64
+0xFF | 0x0F                   # BitwiseOr.or(lhs: 0xFF, rhs: 0x0F): Integer64
+flags | FLAG_ENABLED          # BitwiseOr.or(lhs: flags, rhs: FLAG_ENABLED): Integer64
+```
+""")
+trait BitwiseOr {
+    @Doc(content: "Perform bitwise OR on two values")
+    def or(lhs: Self, rhs: Self): Self
+}

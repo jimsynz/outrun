@@ -1,6 +1,3 @@
-// Test implementation blocks parsing
-// Comprehensive tests for impl block syntax
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -21,15 +18,12 @@ fn test_basic_impl_block() {
             assert!(impl_block.constraints.is_none());
             assert_eq!(impl_block.methods.len(), 1);
 
-            // Check trait spec
             assert_eq!(impl_block.trait_spec.path.len(), 1);
             assert_eq!(impl_block.trait_spec.path[0].name, "Drawable");
 
-            // Check type spec
             assert_eq!(impl_block.type_spec.path.len(), 1);
             assert_eq!(impl_block.type_spec.path[0].name, "User");
 
-            // Check method
             assert_eq!(impl_block.methods[0].name.name, "draw");
         }
         _ => panic!("Expected impl block"),
@@ -49,17 +43,14 @@ fn test_impl_with_generics() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            // Check generics
             assert!(impl_block.generic_params.is_some());
             let generics = impl_block.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 1);
             assert_eq!(generics.params[0].name.name, "T");
 
-            // Check trait spec with generic args
             assert_eq!(impl_block.trait_spec.path[0].name, "Serializable");
             assert!(impl_block.trait_spec.generic_args.is_some());
 
-            // Check type spec with generic args
             assert_eq!(impl_block.type_spec.path[0].name, "Container");
             assert!(impl_block.type_spec.generic_args.is_some());
         }
@@ -80,7 +71,6 @@ fn test_impl_with_constraints() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            // Check constraints
             assert!(impl_block.constraints.is_some());
             match impl_block.constraints.as_ref().unwrap() {
                 ConstraintExpression::Constraint {
@@ -112,13 +102,11 @@ fn test_impl_with_complex_constraints() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            // Check multiple generics
             let generics = impl_block.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 2);
             assert_eq!(generics.params[0].name.name, "T");
             assert_eq!(generics.params[1].name.name, "U");
 
-            // Check AND constraint
             match impl_block.constraints.as_ref().unwrap() {
                 ConstraintExpression::And { left, right, .. } => {
                     match left.as_ref() {
@@ -164,12 +152,10 @@ fn test_impl_with_qualified_types() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            // Check qualified trait spec
             assert_eq!(impl_block.trait_spec.path.len(), 2);
             assert_eq!(impl_block.trait_spec.path[0].name, "Http");
             assert_eq!(impl_block.trait_spec.path[1].name, "Client");
 
-            // Check qualified type spec
             assert_eq!(impl_block.type_spec.path.len(), 2);
             assert_eq!(impl_block.type_spec.path[0].name, "Http");
             assert_eq!(impl_block.type_spec.path[1].name, "TcpClient");

@@ -1,6 +1,3 @@
-// Test if/else expressions parsing with Pest
-// Comprehensive tests for if/else control flow
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -11,46 +8,41 @@ fn test_if_with_else_basic() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(if_expr) => {
-                    // Check condition
-                    match &if_expr.condition.kind {
-                        ExpressionKind::Identifier(id) => {
-                            assert_eq!(id.name, "condition");
-                        }
-                        _ => panic!("Expected identifier condition"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(if_expr) => {
+                match &if_expr.condition.kind {
+                    ExpressionKind::Identifier(id) => {
+                        assert_eq!(id.name, "condition");
                     }
-
-                    // Check then block
-                    assert_eq!(if_expr.then_block.statements.len(), 1);
-                    match &if_expr.then_block.statements[0].kind {
-                        StatementKind::Expression(expr) => match &expr.kind {
-                            ExpressionKind::String(string_lit) => {
-                                assert_eq!(string_lit.format, StringFormat::Basic);
-                            }
-                            _ => panic!("Expected string literal"),
-                        },
-                        _ => panic!("Expected expression statement"),
-                    }
-
-                    // Check else block
-                    assert!(if_expr.else_block.is_some());
-                    let else_block = if_expr.else_block.as_ref().unwrap();
-                    assert_eq!(else_block.statements.len(), 1);
-                    match &else_block.statements[0].kind {
-                        StatementKind::Expression(expr) => match &expr.kind {
-                            ExpressionKind::String(string_lit) => {
-                                assert_eq!(string_lit.format, StringFormat::Basic);
-                            }
-                            _ => panic!("Expected string literal"),
-                        },
-                        _ => panic!("Expected expression statement"),
-                    }
+                    _ => panic!("Expected identifier condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                assert_eq!(if_expr.then_block.statements.len(), 1);
+                match &if_expr.then_block.statements[0].kind {
+                    StatementKind::Expression(expr) => match &expr.kind {
+                        ExpressionKind::String(string_lit) => {
+                            assert_eq!(string_lit.format, StringFormat::Basic);
+                        }
+                        _ => panic!("Expected string literal"),
+                    },
+                    _ => panic!("Expected expression statement"),
+                }
+
+                assert!(if_expr.else_block.is_some());
+                let else_block = if_expr.else_block.as_ref().unwrap();
+                assert_eq!(else_block.statements.len(), 1);
+                match &else_block.statements[0].kind {
+                    StatementKind::Expression(expr) => match &expr.kind {
+                        ExpressionKind::String(string_lit) => {
+                            assert_eq!(string_lit.format, StringFormat::Basic);
+                        }
+                        _ => panic!("Expected string literal"),
+                    },
+                    _ => panic!("Expected expression statement"),
+                }
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -62,26 +54,21 @@ fn test_if_without_else() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(if_expr) => {
-                    // Check condition
-                    match &if_expr.condition.kind {
-                        ExpressionKind::Identifier(id) => {
-                            assert_eq!(id.name, "condition");
-                        }
-                        _ => panic!("Expected identifier condition"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(if_expr) => {
+                match &if_expr.condition.kind {
+                    ExpressionKind::Identifier(id) => {
+                        assert_eq!(id.name, "condition");
                     }
-
-                    // Check then block
-                    assert_eq!(if_expr.then_block.statements.len(), 1);
-
-                    // Check no else block
-                    assert!(if_expr.else_block.is_none());
+                    _ => panic!("Expected identifier condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                assert_eq!(if_expr.then_block.statements.len(), 1);
+
+                assert!(if_expr.else_block.is_none());
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -93,42 +80,38 @@ fn test_if_with_integer_comparison() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(if_expr) => {
-                    // Check condition is a comparison
-                    match &if_expr.condition.kind {
-                        ExpressionKind::BinaryOp(op) => {
-                            assert_eq!(op.operator, BinaryOperator::Greater);
-                        }
-                        _ => panic!("Expected binary operation condition"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(if_expr) => {
+                match &if_expr.condition.kind {
+                    ExpressionKind::BinaryOp(op) => {
+                        assert_eq!(op.operator, BinaryOperator::Greater);
                     }
-
-                    // Check both blocks have integer literals
-                    match &if_expr.then_block.statements[0].kind {
-                        StatementKind::Expression(expr) => match &expr.kind {
-                            ExpressionKind::Integer(int_lit) => {
-                                assert_eq!(int_lit.value, 1);
-                            }
-                            _ => panic!("Expected integer literal"),
-                        },
-                        _ => panic!("Expected expression statement"),
-                    }
-
-                    let else_block = if_expr.else_block.as_ref().unwrap();
-                    match &else_block.statements[0].kind {
-                        StatementKind::Expression(expr) => match &expr.kind {
-                            ExpressionKind::Integer(int_lit) => {
-                                assert_eq!(int_lit.value, 0);
-                            }
-                            _ => panic!("Expected integer literal"),
-                        },
-                        _ => panic!("Expected expression statement"),
-                    }
+                    _ => panic!("Expected binary operation condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                match &if_expr.then_block.statements[0].kind {
+                    StatementKind::Expression(expr) => match &expr.kind {
+                        ExpressionKind::Integer(int_lit) => {
+                            assert_eq!(int_lit.value, 1);
+                        }
+                        _ => panic!("Expected integer literal"),
+                    },
+                    _ => panic!("Expected expression statement"),
+                }
+
+                let else_block = if_expr.else_block.as_ref().unwrap();
+                match &else_block.statements[0].kind {
+                    StatementKind::Expression(expr) => match &expr.kind {
+                        ExpressionKind::Integer(int_lit) => {
+                            assert_eq!(int_lit.value, 0);
+                        }
+                        _ => panic!("Expected integer literal"),
+                    },
+                    _ => panic!("Expected expression statement"),
+                }
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -140,45 +123,36 @@ fn test_nested_if_expressions() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(outer_if) => {
-                    // Check outer condition
-                    match &outer_if.condition.kind {
-                        ExpressionKind::BinaryOp(op) => {
-                            assert_eq!(op.operator, BinaryOperator::Greater);
-                        }
-                        _ => panic!("Expected binary operation condition"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(outer_if) => {
+                match &outer_if.condition.kind {
+                    ExpressionKind::BinaryOp(op) => {
+                        assert_eq!(op.operator, BinaryOperator::Greater);
                     }
-
-                    // Check then block contains nested if
-                    match &outer_if.then_block.statements[0].kind {
-                        StatementKind::Expression(expr) => {
-                            match &expr.kind {
-                                ExpressionKind::IfExpression(inner_if) => {
-                                    // Check inner condition
-                                    match &inner_if.condition.kind {
-                                        ExpressionKind::BinaryOp(op) => {
-                                            assert_eq!(op.operator, BinaryOperator::Greater);
-                                        }
-                                        _ => panic!("Expected binary operation condition"),
-                                    }
-
-                                    // Check inner if has else block
-                                    assert!(inner_if.else_block.is_some());
-                                }
-                                _ => panic!("Expected nested if expression"),
-                            }
-                        }
-                        _ => panic!("Expected expression statement"),
-                    }
-
-                    // Check outer else block
-                    assert!(outer_if.else_block.is_some());
+                    _ => panic!("Expected binary operation condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                match &outer_if.then_block.statements[0].kind {
+                    StatementKind::Expression(expr) => match &expr.kind {
+                        ExpressionKind::IfExpression(inner_if) => {
+                            match &inner_if.condition.kind {
+                                ExpressionKind::BinaryOp(op) => {
+                                    assert_eq!(op.operator, BinaryOperator::Greater);
+                                }
+                                _ => panic!("Expected binary operation condition"),
+                            }
+
+                            assert!(inner_if.else_block.is_some());
+                        }
+                        _ => panic!("Expected nested if expression"),
+                    },
+                    _ => panic!("Expected expression statement"),
+                }
+
+                assert!(outer_if.else_block.is_some());
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -190,28 +164,24 @@ fn test_if_with_function_call_condition() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(if_expr) => {
-                    // Check condition is a function call
-                    match &if_expr.condition.kind {
-                        ExpressionKind::FunctionCall(call) => match &call.path {
-                            FunctionPath::Qualified { module, name } => {
-                                assert_eq!(module.name, "Integer");
-                                assert_eq!(name.name, "positive?");
-                            }
-                            _ => panic!("Expected qualified function call"),
-                        },
-                        _ => panic!("Expected function call condition"),
-                    }
-
-                    // Check both blocks exist and have string content
-                    assert_eq!(if_expr.then_block.statements.len(), 1);
-                    assert!(if_expr.else_block.is_some());
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(if_expr) => {
+                match &if_expr.condition.kind {
+                    ExpressionKind::FunctionCall(call) => match &call.path {
+                        FunctionPath::Qualified { module, name } => {
+                            assert_eq!(module.name, "Integer");
+                            assert_eq!(name.name, "positive?");
+                        }
+                        _ => panic!("Expected qualified function call"),
+                    },
+                    _ => panic!("Expected function call condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                assert_eq!(if_expr.then_block.statements.len(), 1);
+                assert!(if_expr.else_block.is_some());
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -233,7 +203,6 @@ fn test_if_in_function_body() {
             assert_eq!(func.name.name, "check");
             assert_eq!(func.body.statements.len(), 1);
 
-            // Check function body contains if expression
             match &func.body.statements[0].kind {
                 StatementKind::Expression(expr) => match &expr.kind {
                     ExpressionKind::IfExpression(if_expr) => {
@@ -255,22 +224,19 @@ fn test_if_with_logical_and_condition() {
 
     assert_eq!(program.items.len(), 1);
     match &program.items[0].kind {
-        ItemKind::Expression(expr) => {
-            match &expr.kind {
-                ExpressionKind::IfExpression(if_expr) => {
-                    // Check condition is logical AND
-                    match &if_expr.condition.kind {
-                        ExpressionKind::BinaryOp(op) => {
-                            assert_eq!(op.operator, BinaryOperator::LogicalAnd);
-                        }
-                        _ => panic!("Expected logical AND condition"),
+        ItemKind::Expression(expr) => match &expr.kind {
+            ExpressionKind::IfExpression(if_expr) => {
+                match &if_expr.condition.kind {
+                    ExpressionKind::BinaryOp(op) => {
+                        assert_eq!(op.operator, BinaryOperator::LogicalAnd);
                     }
-
-                    assert!(if_expr.else_block.is_some());
+                    _ => panic!("Expected logical AND condition"),
                 }
-                _ => panic!("Expected if expression"),
+
+                assert!(if_expr.else_block.is_some());
             }
-        }
+            _ => panic!("Expected if expression"),
+        },
         _ => panic!("Expected expression"),
     }
 }
@@ -282,7 +248,6 @@ if b { 2 }
 if c { 3 } else { 4 }"#;
     let program = OutrunParser::parse_program(input).unwrap();
 
-    // Should have 3 if expressions (plus newlines)
     let if_expressions: Vec<_> = program
         .items
         .iter()
@@ -297,7 +262,6 @@ if c { 3 } else { 4 }"#;
 
     assert_eq!(if_expressions.len(), 3);
 
-    // Check first two have no else, third has else
     assert!(if_expressions[0].else_block.is_none());
     assert!(if_expressions[1].else_block.is_none());
     assert!(if_expressions[2].else_block.is_some());
@@ -320,7 +284,6 @@ fn test_if_expression_display_formatting() {
     for (input, expected_pattern) in inputs_and_expected.iter() {
         let program = OutrunParser::parse_program(input).unwrap();
         let formatted = format!("{}", program);
-        // Just check that the basic if/else structure is preserved
         assert!(formatted.contains("if"));
         if expected_pattern.contains("else") {
             assert!(formatted.contains("else"));

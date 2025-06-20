@@ -1,0 +1,11 @@
+[package]
+name = "debug_offsets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+outrun-typechecker = { path = "outrun-typechecker" }
+
+[[bin]]
+name = "debug_offsets"
+path = "debug_offsets.rs"

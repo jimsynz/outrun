@@ -1,0 +1,176 @@
+@Doc(content: """
+64-bit floating point concrete type.
+
+This is the default concrete implementation of the Float trait in Outrun.
+Float literals without explicit type annotations default to this type.
+
+## Examples
+
+```outrun
+3.14                  # Defaults to Outrun.Core.Float64
+-2.5                  # Negative float
+1.23e-4               # Scientific notation
+0.0                   # Zero
+```
+""")
+struct Outrun.Core.Float64() {}
+
+# Binary arithmetic operations
+impl BinaryAddition for Outrun.Core.Float64 {
+    def add(lhs: Self, rhs: Self): Self {
+        Outrun.Intrinsic.f64_add(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl BinarySubtraction for Outrun.Core.Float64 {
+    def subtract(lhs: Self, rhs: Self): Self {
+        Outrun.Intrinsic.f64_sub(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl BinaryMultiplication for Outrun.Core.Float64 {
+    def multiply(lhs: Self, rhs: Self): Self {
+        Outrun.Intrinsic.f64_mul(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl BinaryDivision for Outrun.Core.Float64 {
+    def divide(lhs: Self, rhs: Self): Option<Self> {
+        Outrun.Intrinsic.f64_div(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl BinaryModulo for Outrun.Core.Float64 {
+    def modulo(lhs: Self, rhs: Self): Option<Self> {
+        Outrun.Intrinsic.f64_mod(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl BinaryExponentiation for Outrun.Core.Float64 {
+    def exponentiate(lhs: Self, rhs: Self): Self {
+        Outrun.Intrinsic.f64_pow(lhs: lhs, rhs: rhs)
+    }
+}
+
+# Unary operations
+impl UnaryPlus for Outrun.Core.Float64 {
+    def plus(value: Self): Self {
+        Outrun.Intrinsic.f64_pos(value: value)
+    }
+}
+
+impl UnaryMinus for Outrun.Core.Float64 {
+    def minus(value: Self): Self {
+        Outrun.Intrinsic.f64_neg(value: value)
+    }
+}
+
+# Comparison operations
+impl Equality for Outrun.Core.Float64 {
+    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.f64_eq(lhs: lhs, rhs: rhs)
+    }
+    
+    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        !Outrun.Intrinsic.f64_eq(lhs: lhs, rhs: rhs)
+    }
+}
+
+impl Comparison for Outrun.Core.Float64 {
+    def greater?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.f64_gt(lhs: lhs, rhs: rhs)
+    }
+    
+    def greater_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.f64_ge(lhs: lhs, rhs: rhs)
+    }
+    
+    def less?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.f64_lt(lhs: lhs, rhs: rhs)
+    }
+    
+    def less_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        Outrun.Intrinsic.f64_le(lhs: lhs, rhs: rhs)
+    }
+}
+
+# Display trait implementation
+impl Display for Outrun.Core.Float64 {
+    def to_string(value: Self): Outrun.Core.String {
+        Outrun.Intrinsic.f64_to_string(value: value)
+    }
+}
+
+# Inspect trait implementation
+impl Inspect for Outrun.Core.Float64 {
+    def inspect(value: Self): Outrun.Core.String {
+        Outrun.Intrinsic.f64_to_string(value: value)
+    }
+}
+
+# Float trait implementation
+impl Float for Outrun.Core.Float64 {
+
+    def abs(value: Self): Self {
+        Outrun.Intrinsic.f64_abs(value: value)
+    }
+
+    def zero?(value: Self): Boolean {
+        Equality.equal?(lhs: value, rhs: 0.0)
+    }
+
+    def positive?(value: Self): Boolean {
+        Comparison.greater?(lhs: value, rhs: 0.0)
+    }
+
+    def negative?(value: Self): Boolean {
+        Comparison.less?(lhs: value, rhs: 0.0)
+    }
+
+    def finite?(value: Self): Boolean {
+        Outrun.Intrinsic.f64_is_finite(value: value)
+    }
+
+    def infinite?(value: Self): Boolean {
+        Outrun.Intrinsic.f64_is_infinite(value: value)
+    }
+
+    def nan?(value: Self): Boolean {
+        Outrun.Intrinsic.f64_is_nan(value: value)
+    }
+
+    def ceil(value: Self, precision: Option<Integer>): Self {
+        if Option.none?(value: precision) {
+            Outrun.Intrinsic.f64_ceil(value: value)
+        } else {
+            Outrun.Intrinsic.f64_ceil_precision(value: value, precision: Option.unwrap(value: precision))
+        }
+    }
+
+    def floor(value: Self, precision: Option<Integer>): Self {
+        if Option.none?(value: precision) {
+            Outrun.Intrinsic.f64_floor(value: value)
+        } else {
+            Outrun.Intrinsic.f64_floor_precision(value: value, precision: Option.unwrap(value: precision))
+        }
+    }
+
+    def round(value: Self, precision: Option<Integer>): Self {
+        if Option.none?(value: precision) {
+            Outrun.Intrinsic.f64_round(value: value)
+        } else {
+            Outrun.Intrinsic.f64_round_precision(value: value, precision: Option.unwrap(value: precision))
+        }
+    }
+
+    def trunc(value: Self): Self {
+        Outrun.Intrinsic.f64_trunc(value: value)
+    }
+}
+
+# Default trait implementation
+impl Default for Outrun.Core.Float64 {
+    def default(): Self {
+        0.0
+    }
+}

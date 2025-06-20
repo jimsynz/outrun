@@ -1,5 +1,3 @@
-// Basic parsing tests for keywords and booleans
-
 use crate::*;
 
 #[test]
@@ -23,7 +21,6 @@ fn test_parse_multiple_keywords() {
 
     assert_eq!(result.items.len(), 4);
 
-    // Check each keyword
     let expected = [
         KeywordKind::Struct,
         KeywordKind::Trait,
@@ -82,7 +79,6 @@ fn test_parse_mixed_keywords_and_booleans() {
 
     assert_eq!(result.items.len(), 4);
 
-    // Check first item: keyword "def"
     match &result.items[0].kind {
         ItemKind::Keyword(keyword) => {
             assert_eq!(keyword.kind, KeywordKind::Def);
@@ -90,7 +86,6 @@ fn test_parse_mixed_keywords_and_booleans() {
         _ => panic!("Expected keyword at position 0"),
     }
 
-    // Check second item: boolean "true"
     match &result.items[1].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Boolean(boolean) => {
@@ -101,7 +96,6 @@ fn test_parse_mixed_keywords_and_booleans() {
         _ => panic!("Expected expression at position 1"),
     }
 
-    // Check third item: keyword "struct"
     match &result.items[2].kind {
         ItemKind::Keyword(keyword) => {
             assert_eq!(keyword.kind, KeywordKind::Struct);
@@ -109,7 +103,6 @@ fn test_parse_mixed_keywords_and_booleans() {
         _ => panic!("Expected keyword at position 2"),
     }
 
-    // Check fourth item: boolean "false"
     match &result.items[3].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Boolean(boolean) => {
@@ -123,11 +116,9 @@ fn test_parse_mixed_keywords_and_booleans() {
 
 #[test]
 fn test_parse_comment_with_code() {
-    // Test comment alongside actual code (realistic usage)
     let input = "# This is a comment\nlet x = 42";
     let result = parse_program(input).unwrap();
 
-    // Should have one let binding
     assert_eq!(result.items.len(), 1);
 
     if let ItemKind::LetBinding(let_binding) = &result.items[0].kind {
@@ -139,9 +130,6 @@ fn test_parse_comment_with_code() {
     } else {
         panic!("Expected let binding");
     }
-
-    // Comments are handled automatically by Pest's COMMENT rule for display
-    // The test passes if parsing succeeds without errors
 }
 
 #[test]
@@ -151,7 +139,6 @@ fn test_parse_block_comment() {
 
     assert_eq!(result.items.len(), 0); // no items (comment now in debug_info)
 
-    // Comment should be in debug_info
     assert_eq!(result.debug_info.comments.len(), 1);
     assert_eq!(result.debug_info.comments[0].kind, CommentKind::Block);
     assert!(result.debug_info.comments[0]
@@ -172,7 +159,6 @@ fn test_whitespace_handling() {
     let input = "  struct   true  ";
     let result = parse_program(input).unwrap();
 
-    // Should parse 2 items (whitespace should be ignored)
     assert_eq!(result.items.len(), 2);
 
     match &result.items[0].kind {
@@ -269,7 +255,6 @@ fn test_parse_mixed_identifiers_and_integers() {
 
     assert_eq!(result.items.len(), 4);
 
-    // Check identifier
     match &result.items[0].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Identifier(identifier) => {
@@ -280,7 +265,6 @@ fn test_parse_mixed_identifiers_and_integers() {
         _ => panic!("Expected expression at position 0"),
     }
 
-    // Check integer
     match &result.items[1].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Integer(integer) => {
@@ -291,7 +275,6 @@ fn test_parse_mixed_identifiers_and_integers() {
         _ => panic!("Expected expression at position 1"),
     }
 
-    // Check type identifier
     match &result.items[2].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::TypeIdentifier(type_identifier) => {
@@ -302,7 +285,6 @@ fn test_parse_mixed_identifiers_and_integers() {
         _ => panic!("Expected expression at position 2"),
     }
 
-    // Check another integer
     match &result.items[3].kind {
         ItemKind::Expression(expr) => match &expr.kind {
             ExpressionKind::Integer(integer) => {
@@ -337,15 +319,13 @@ fn test_identifier_with_underscores() {
 
 #[test]
 fn test_comprehensive_mix() {
-    let input = "struct User true my_func 42 false MyTrait 123";
+    let input = "struct User {} true my_func 42 false MyTrait 123";
     let result = parse_program(input).unwrap();
 
-    assert_eq!(result.items.len(), 8);
+    assert_eq!(result.items.len(), 7);
 
-    // Verify the sequence: keyword, type_id, boolean, identifier, integer, boolean, type_id, integer
     let expected = [
-        ("struct", "keyword"),
-        ("User", "type_identifier"),
+        ("User", "struct_definition"),
         ("true", "boolean"),
         ("my_func", "identifier"),
         ("42", "integer"),
@@ -356,6 +336,9 @@ fn test_comprehensive_mix() {
 
     for (i, (expected_value, expected_type)) in expected.iter().enumerate() {
         match (&result.items[i].kind, *expected_type) {
+            (ItemKind::StructDefinition(struct_def), "struct_definition") => {
+                assert_eq!(struct_def.name[0].name, *expected_value);
+            }
             (ItemKind::Keyword(kw), "keyword") => {
                 assert_eq!(format!("{}", kw), *expected_value);
             }

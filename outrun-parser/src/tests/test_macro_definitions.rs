@@ -19,7 +19,6 @@ macro debug() {
         panic!("Expected macro definition");
     }
 
-    // Check if we can find the macro definition in wrapped expressions
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
@@ -49,7 +48,6 @@ macro log(message) {
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "message");
 
-            // Check the body contains statements
             assert!(!macro_def.body.statements.is_empty());
             found_macro = true;
             break;
@@ -80,7 +78,6 @@ macro assert_equal(left, right, message) {
             assert_eq!(macro_def.parameters[1].name, "right");
             assert_eq!(macro_def.parameters[2].name, "message");
 
-            // Check that the body has statements
             assert_eq!(macro_def.body.statements.len(), 2); // let + if
             found_macro = true;
             break;
@@ -109,7 +106,6 @@ macro capture(var) {
             assert_eq!(macro_def.parameters.len(), 1);
             assert_eq!(macro_def.parameters[0].name, "var");
 
-            // Check the let binding contains a macro injection
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::LetBinding(let_binding) = &macro_def.body.statements[0].kind {
                 match &let_binding.pattern {
@@ -154,12 +150,9 @@ macro unless(condition, do_block) {
             assert_eq!(macro_def.parameters[0].name, "condition");
             assert_eq!(macro_def.parameters[1].name, "do_block");
 
-            // Check the if expression structure
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
                 if let ExpressionKind::IfExpression(_) = &expr.kind {
-                    // Detailed validation would require deeper inspection
-                    // For now, just verify we parsed an if expression
                 } else {
                     panic!("Expected if expression in macro body");
                 }
@@ -217,7 +210,6 @@ macro use_var(value) {
     let mut found_macro = false;
     for item in &result.items {
         if let ItemKind::MacroDefinition(macro_def) = &item.kind {
-            // Check that the body contains a macro injection as an expression
             assert_eq!(macro_def.body.statements.len(), 1);
             if let StatementKind::Expression(expr) = &macro_def.body.statements[0].kind {
                 if let ExpressionKind::MacroInjection(injection) = &expr.kind {
@@ -244,7 +236,6 @@ fn test_macro_source_reconstruction() {
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
 
-    // Should contain the basic structure
     assert!(reconstructed.contains("macro debug(msg)"));
     assert!(reconstructed.contains("IO.puts(message: ^msg)"));
 }

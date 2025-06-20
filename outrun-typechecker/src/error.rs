@@ -239,6 +239,18 @@ pub enum TypeError {
         found: usize,
     },
 
+    #[error("Field {field_name} not found on type {struct_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::undefined_field),
+        help("Check the field name and ensure it exists on type {struct_name}")
+    )]
+    UndefinedField {
+        #[label("undefined field")]
+        span: SourceSpan,
+        struct_name: String,
+        field_name: String,
+    },
+
     #[error("Circular trait dependency")]
     #[diagnostic(
         code(outrun::typechecker::circular_dependency),
@@ -315,6 +327,39 @@ pub enum TypeError {
         #[label("unimplemented feature")]
         span: SourceSpan,
         feature: String,
+    },
+
+    #[error("Cannot infer type for empty list")]
+    #[diagnostic(
+        code(outrun::types::cannot_infer_list_type),
+        help("Add a type annotation to specify the list element type, e.g., `let empty: List<String> = []`")
+    )]
+    CannotInferListType {
+        #[label("empty list needs type annotation")]
+        span: SourceSpan,
+    },
+
+    #[error("Cannot infer generic type parameter {type_param}")]
+    #[diagnostic(
+        code(outrun::types::cannot_infer_generic_type),
+        help("Add a type annotation to specify the generic type, e.g., `let result: Some<String> = Some {{ value: get_value() }}`")
+    )]
+    CannotInferGenericType {
+        #[label("cannot infer type parameter {type_param}")]
+        span: SourceSpan,
+        type_param: String,
+    },
+
+    #[error("List elements have incompatible types")]
+    #[diagnostic(
+        code(outrun::types::mixed_list_elements),
+        help("Either make all elements the same type, or add a type annotation like `let mixed: List<SomeTraitType> = [...]` if the elements implement a common trait")
+    )]
+    MixedListElements {
+        #[label("this element has type {found_type}")]
+        span: SourceSpan,
+        expected_type: String,
+        found_type: String,
     },
 
     #[error("Internal type checker error: {message}")]
@@ -490,6 +535,67 @@ pub enum TypeError {
         span: SourceSpan,
         trait_name: String,
         missing_types: Vec<String>,
+    },
+
+    #[error("Unknown parameter {parameter_name} for function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::unknown_parameter),
+        help("Function {function_name} does not have a parameter named {parameter_name}")
+    )]
+    UnknownParameter {
+        #[label("unknown parameter")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+    },
+
+    #[error("Duplicate argument for parameter {parameter_name} in function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::duplicate_argument),
+        help("Each parameter can only be provided once in a function call to {function_name}")
+    )]
+    DuplicateArgument {
+        #[label("duplicate argument")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+    },
+
+    #[error("Argument type mismatch for parameter {parameter_name} in function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::argument_type_mismatch),
+        help("Function {function_name} expects parameter {parameter_name} to be of type {expected_type}, but found {found_type}")
+    )]
+    ArgumentTypeMismatch {
+        #[label("argument type mismatch")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+        expected_type: String,
+        found_type: String,
+    },
+
+    #[error("Missing argument for parameter {parameter_name} in function {function_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::missing_argument),
+        help("Function {function_name} requires an argument for parameter {parameter_name}")
+    )]
+    MissingArgument {
+        #[label("missing argument")]
+        span: SourceSpan,
+        function_name: String,
+        parameter_name: String,
+    },
+
+    #[error("Unsupported feature: {feature}")]
+    #[diagnostic(
+        code(outrun::typechecker::unsupported_feature),
+        help("This feature is not yet supported in the type checker")
+    )]
+    UnsupportedFeature {
+        #[label("unsupported feature")]
+        span: SourceSpan,
+        feature: String,
     },
 }
 
@@ -764,6 +870,17 @@ impl Diagnostic for TypeErrorWithSource {
     }
 }
 
+impl TypeErrorWithSource {
+    /// Create a new TypeErrorWithSource with explicit source context
+    pub fn new(error: TypeError, source: String, filename: String) -> Self {
+        Self {
+            inner: error,
+            source,
+            filename,
+        }
+    }
+}
+
 impl TypeErrorReport {
     /// Create a new type error report with source context
     pub fn new(errors: Vec<TypeError>, source: String, filename: String) -> Self {
@@ -778,6 +895,22 @@ impl TypeErrorReport {
 
         Self {
             errors: errors_with_source,
+            source,
+            filename,
+        }
+    }
+
+    /// Create a new type error report from errors that already have source context
+    pub fn from_errors_with_source(errors: Vec<TypeErrorWithSource>) -> Self {
+        // Use the first error's source and filename as fallback for the report itself
+        let (source, filename) = if let Some(first_error) = errors.first() {
+            (first_error.source.clone(), first_error.filename.clone())
+        } else {
+            (String::new(), "<unknown>".to_string())
+        };
+
+        Self {
+            errors,
             source,
             filename,
         }
@@ -1013,5 +1146,63 @@ impl std::fmt::Display for ErrorSummary {
         }
 
         Ok(())
+    }
+}
+
+// Convert unification errors to type errors
+impl From<crate::unification::UnificationError> for TypeError {
+    fn from(err: crate::unification::UnificationError) -> Self {
+        use crate::unification::UnificationError;
+
+        match err {
+            UnificationError::IncompatibleTypes { type1, type2 } => {
+                // Create a placeholder span - this should be improved to track spans through unification
+                let span = miette::SourceSpan::new(0.into(), 0);
+                TypeError::TypeMismatch {
+                    span,
+                    expected: format!("{:?}", type1), // TODO: Use proper string representation
+                    found: format!("{:?}", type2),    // TODO: Use proper string representation
+                }
+            }
+            UnificationError::ArityMismatch {
+                expected,
+                found,
+                base_type,
+            } => {
+                let span = miette::SourceSpan::new(0.into(), 0);
+                TypeError::InternalError {
+                    span,
+                    message: format!(
+                        "Arity mismatch for type {:?}: expected {}, found {}",
+                        base_type, expected, found
+                    ),
+                }
+            }
+            UnificationError::ParameterNameMismatch { expected, found } => {
+                let span = miette::SourceSpan::new(0.into(), 0);
+                TypeError::InternalError {
+                    span,
+                    message: format!(
+                        "Parameter name mismatch: expected {:?}, found {:?}",
+                        expected, found
+                    ),
+                }
+            }
+            UnificationError::TraitNotImplemented { trait_id, type_id } => {
+                let span = miette::SourceSpan::new(0.into(), 0);
+                TypeError::TraitNotImplemented {
+                    span,
+                    trait_name: format!("{:?}", trait_id), // TODO: Use proper name lookup
+                    type_name: format!("{:?}", type_id),   // TODO: Use proper name lookup
+                }
+            }
+            UnificationError::UnboundTypeVariable { name } => {
+                let span = miette::SourceSpan::new(0.into(), 0);
+                TypeError::InternalError {
+                    span,
+                    message: format!("Unbound type variable: {}", name),
+                }
+            }
+        }
     }
 }

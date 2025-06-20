@@ -21,7 +21,7 @@ trait Result<T, E> {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Result");
+            assert_eq!(trait_def.name_as_string(), "Result");
             assert_eq!(trait_def.functions.len(), 1);
 
             match &trait_def.functions[0] {
@@ -29,11 +29,7 @@ trait Result<T, E> {
                     assert_eq!(static_def.name.name, "ok");
                     assert_eq!(static_def.parameters.len(), 1);
                     assert_eq!(static_def.parameters[0].name.name, "value");
-                    assert!(static_def.return_type.is_some());
-                    // Body should be parsed
                     assert!(!static_def.body.statements.is_empty());
-                    // Just verify that the body parsed successfully
-                    // The exact structure depends on how field access is parsed
                 }
                 _ => panic!(
                     "Expected StaticDefinition, got {:?}",
@@ -60,14 +56,13 @@ trait Option<T> {
 
     match &program.items[0].kind {
         ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name.name, "Option");
+            assert_eq!(trait_def.name_as_string(), "Option");
             assert_eq!(trait_def.functions.len(), 1);
 
             match &trait_def.functions[0] {
                 TraitFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "none");
                     assert_eq!(static_def.parameters.len(), 0);
-                    assert!(static_def.return_type.is_some());
                 }
                 _ => panic!("Expected StaticDefinition"),
             }
@@ -124,7 +119,6 @@ trait Result<T, E> {
         ItemKind::TraitDefinition(trait_def) => {
             assert_eq!(trait_def.functions.len(), 3);
 
-            // First function should be static
             match &trait_def.functions[0] {
                 TraitFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "ok");
@@ -132,7 +126,6 @@ trait Result<T, E> {
                 _ => panic!("Expected first function to be static"),
             }
 
-            // Second function should be signature
             match &trait_def.functions[1] {
                 TraitFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "is_ok?");
@@ -140,7 +133,6 @@ trait Result<T, E> {
                 _ => panic!("Expected second function to be signature"),
             }
 
-            // Third function should be static
             match &trait_def.functions[2] {
                 TraitFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "error");
@@ -165,34 +157,9 @@ trait Test {
     let program = parse_program(input).unwrap();
     let output = format!("{}", program);
 
-    // Should contain the defs keyword and preserve formatting
     assert!(output.contains("defs create"));
     assert!(output.contains("value: Integer"));
     assert!(output.contains("Test {"));
-}
-
-#[test]
-fn test_static_function_without_return_type() {
-    let input = r#"
-trait Logger {
-    defs create() {
-        Logger.new()
-    }
-}
-"#;
-
-    let program = parse_program(input).unwrap();
-
-    match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => match &trait_def.functions[0] {
-            TraitFunction::StaticDefinition(static_def) => {
-                assert_eq!(static_def.name.name, "create");
-                assert!(static_def.return_type.is_none());
-            }
-            _ => panic!("Expected StaticDefinition"),
-        },
-        _ => panic!("Expected trait definition"),
-    }
 }
 
 #[test]
@@ -213,18 +180,15 @@ trait Calculator {
     let program = parse_program(input).unwrap();
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            match &trait_def.functions[0] {
-                TraitFunction::StaticDefinition(static_def) => {
-                    assert_eq!(static_def.name.name, "compute");
-                    assert_eq!(static_def.parameters.len(), 2);
+        ItemKind::TraitDefinition(trait_def) => match &trait_def.functions[0] {
+            TraitFunction::StaticDefinition(static_def) => {
+                assert_eq!(static_def.name.name, "compute");
+                assert_eq!(static_def.parameters.len(), 2);
 
-                    // Should have parsed a complex block with let binding and if expression
-                    assert_eq!(static_def.body.statements.len(), 2);
-                }
-                _ => panic!("Expected StaticDefinition"),
+                assert_eq!(static_def.body.statements.len(), 2);
             }
-        }
+            _ => panic!("Expected StaticDefinition"),
+        },
         _ => panic!("Expected trait definition"),
     }
 }
@@ -240,8 +204,43 @@ fn test_static_function_source_reconstruction() {
     let program = parse_program(input).unwrap();
     let reconstructed = format!("{}", program);
 
-    // Should be able to reconstruct source with defs keyword
     assert!(reconstructed.contains("defs ok"));
     assert!(reconstructed.contains("value: T"));
     assert!(reconstructed.contains("Result<T, E>"));
+}
+
+#[test]
+fn test_static_function_with_attributes() {
+    let input = r#"
+trait Option<T> {
+    @Doc(content: "Create a Some variant")
+    defs some(value: T): Option<T> {
+        Option.Some { value: value }
+    }
+}
+"#;
+
+    let program = parse_program(input).unwrap();
+    assert_eq!(program.items.len(), 1);
+
+    match &program.items[0].kind {
+        ItemKind::TraitDefinition(trait_def) => {
+            assert_eq!(trait_def.name_as_string(), "Option");
+            assert_eq!(trait_def.functions.len(), 1);
+
+            match &trait_def.functions[0] {
+                TraitFunction::StaticDefinition(static_def) => {
+                    assert_eq!(static_def.name.name, "some");
+                    assert_eq!(static_def.attributes.len(), 1);
+
+                    let attr = &static_def.attributes[0];
+                    assert_eq!(attr.name.name, "Doc");
+                    assert!(attr.args.is_some());
+                    assert_eq!(attr.args.as_ref().unwrap().arguments.len(), 1);
+                }
+                _ => panic!("Expected StaticDefinition"),
+            }
+        }
+        _ => panic!("Expected trait definition"),
+    }
 }

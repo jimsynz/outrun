@@ -1,6 +1,3 @@
-// Test struct definitions parsing
-// Comprehensive tests for struct definition syntax
-
 use crate::ast::*;
 use crate::parser::OutrunParser;
 
@@ -17,16 +14,15 @@ fn test_basic_struct_definition() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "User");
+            assert_eq!(struct_def.name.len(), 1);
+            assert_eq!(struct_def.name[0].name, "User");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 2);
             assert_eq!(struct_def.methods.len(), 1);
 
-            // Check fields
             assert_eq!(struct_def.fields[0].name.name, "name");
             assert_eq!(struct_def.fields[1].name.name, "email");
 
-            // Check method
             assert_eq!(struct_def.methods[0].name.name, "greet");
         }
         _ => panic!("Expected struct definition"),
@@ -46,15 +42,13 @@ fn test_struct_with_generics() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Container");
+            assert_eq!(struct_def.name[0].name, "Container");
 
-            // Check generics
             assert!(struct_def.generic_params.is_some());
             let generics = struct_def.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 1);
             assert_eq!(generics.params[0].name.name, "T");
 
-            // Check field with generic type
             assert_eq!(struct_def.fields.len(), 1);
             assert_eq!(struct_def.fields[0].name.name, "value");
         }
@@ -71,15 +65,13 @@ fn test_struct_with_multiple_generics() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Pair");
+            assert_eq!(struct_def.name[0].name, "Pair");
 
-            // Check multiple generics
             let generics = struct_def.generic_params.as_ref().unwrap();
             assert_eq!(generics.params.len(), 2);
             assert_eq!(generics.params[0].name.name, "T");
             assert_eq!(generics.params[1].name.name, "U");
 
-            // Check fields
             assert_eq!(struct_def.fields.len(), 2);
             assert_eq!(struct_def.fields[0].name.name, "first");
             assert_eq!(struct_def.fields[1].name.name, "second");
@@ -97,7 +89,7 @@ fn test_empty_struct() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Empty");
+            assert_eq!(struct_def.name[0].name, "Empty");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 0);
             assert_eq!(struct_def.methods.len(), 0);
@@ -119,11 +111,10 @@ fn test_struct_with_complex_types() {
 
     match &program.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            assert_eq!(struct_def.name.name, "Repository");
+            assert_eq!(struct_def.name[0].name, "Repository");
             assert_eq!(struct_def.fields.len(), 2);
             assert_eq!(struct_def.methods.len(), 1);
 
-            // Check field names
             assert_eq!(struct_def.fields[0].name.name, "users");
             assert_eq!(struct_def.fields[1].name.name, "config");
         }

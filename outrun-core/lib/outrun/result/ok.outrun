@@ -1,0 +1,23 @@
+@Doc(content: """
+Ok variant of the Result type.
+
+Represents a successful computation with a result value of type T.
+This is one of the two concrete implementations of the Result trait.
+
+## Examples
+
+```outrun
+Result.ok(value: 42)              # Creates Ok containing 42
+Result.ok(value: "success")       # Creates Ok containing "success"
+```
+
+## Type Parameters
+
+- `T` - The type of the success value
+
+## Usage
+
+This type is typically created using the `Result.ok/1` constructor function
+rather than being constructed directly.
+""")
+struct Outrun.Result.Ok<T>(value: T)

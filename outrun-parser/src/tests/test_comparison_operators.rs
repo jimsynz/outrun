@@ -1,17 +1,11 @@
-// Comparison operators parsing tests
-// Tests for ==, !=, <, <=, >, >= with proper precedence
-
 use crate::{ast::*, parse_program};
 
-// Helper function to extract expressions
 fn extract_expression_from_item(item: &Item) -> &Expression {
     match &item.kind {
         ItemKind::Expression(expr) => expr,
         _ => panic!("Expected expression, got: {:?}", item.kind),
     }
 }
-
-// === BASIC COMPARISON TESTS ===
 
 #[test]
 fn test_parse_equality() {
@@ -25,13 +19,11 @@ fn test_parse_equality() {
         ExpressionKind::BinaryOp(op) => {
             assert_eq!(op.operator, BinaryOperator::Equal);
 
-            // Check left operand
             match &op.left.kind {
                 ExpressionKind::Integer(int) => assert_eq!(int.value, 5),
                 _ => panic!("Expected integer on left"),
             }
 
-            // Check right operand
             match &op.right.kind {
                 ExpressionKind::Integer(int) => assert_eq!(int.value, 5),
                 _ => panic!("Expected integer on right"),
@@ -121,8 +113,6 @@ fn test_parse_greater_equal() {
     }
 }
 
-// === PRECEDENCE TESTS ===
-
 #[test]
 fn test_arithmetic_before_comparison() {
     let input = "2 + 3 > 4";
@@ -133,10 +123,8 @@ fn test_arithmetic_before_comparison() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: (2 + 3) > 4
             assert_eq!(op.operator, BinaryOperator::Greater);
 
-            // Left should be (2 + 3)
             match &op.left.kind {
                 ExpressionKind::BinaryOp(add_op) => {
                     assert_eq!(add_op.operator, BinaryOperator::Add);
@@ -154,7 +142,6 @@ fn test_arithmetic_before_comparison() {
                 _ => panic!("Expected addition on left side"),
             }
 
-            // Right should be 4
             match &op.right.kind {
                 ExpressionKind::Integer(int) => assert_eq!(int.value, 4),
                 _ => panic!("Expected integer on right"),
@@ -174,10 +161,8 @@ fn test_multiplication_before_comparison() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: (2 * 3) == 6
             assert_eq!(op.operator, BinaryOperator::Equal);
 
-            // Left should be (2 * 3)
             match &op.left.kind {
                 ExpressionKind::BinaryOp(mult_op) => {
                     assert_eq!(mult_op.operator, BinaryOperator::Multiply);
@@ -199,10 +184,8 @@ fn test_exponentiation_before_comparison() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: (2 ** 3) > 7
             assert_eq!(op.operator, BinaryOperator::Greater);
 
-            // Left should be (2 ** 3)
             match &op.left.kind {
                 ExpressionKind::BinaryOp(exp_op) => {
                     assert_eq!(exp_op.operator, BinaryOperator::Exponent);
@@ -214,8 +197,6 @@ fn test_exponentiation_before_comparison() {
     }
 }
 
-// === ASSOCIATIVITY TESTS ===
-
 #[test]
 fn test_left_associativity_comparison() {
     let input = "1 < 2 < 3";
@@ -226,10 +207,8 @@ fn test_left_associativity_comparison() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: (1 < 2) < 3
             assert_eq!(op.operator, BinaryOperator::Less);
 
-            // Left should be (1 < 2)
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::Less);
@@ -237,7 +216,6 @@ fn test_left_associativity_comparison() {
                 _ => panic!("Expected comparison on left side"),
             }
 
-            // Right should be 3
             match &op.right.kind {
                 ExpressionKind::Integer(int) => assert_eq!(int.value, 3),
                 _ => panic!("Expected integer on right"),
@@ -246,8 +224,6 @@ fn test_left_associativity_comparison() {
         _ => panic!("Expected binary operation"),
     }
 }
-
-// === MIXED COMPARISON TESTS ===
 
 #[test]
 fn test_mixed_comparison_operators() {
@@ -259,10 +235,8 @@ fn test_mixed_comparison_operators() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: (a == b) != c (left associative)
             assert_eq!(op.operator, BinaryOperator::NotEqual);
 
-            // Left should be (a == b)
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::Equal);
@@ -274,8 +248,6 @@ fn test_mixed_comparison_operators() {
     }
 }
 
-// === PARENTHESES TESTS ===
-
 #[test]
 fn test_parentheses_override_precedence() {
     let input = "2 < (3 + 4)";
@@ -286,10 +258,8 @@ fn test_parentheses_override_precedence() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should be: 2 < (3 + 4)
             assert_eq!(op.operator, BinaryOperator::Less);
 
-            // Right should be parenthesized (3 + 4)
             match &op.right.kind {
                 ExpressionKind::Parenthesized(paren_expr) => match &paren_expr.kind {
                     ExpressionKind::BinaryOp(add_op) => {
@@ -304,8 +274,6 @@ fn test_parentheses_override_precedence() {
     }
 }
 
-// === COMPLEX EXPRESSION TESTS ===
-
 #[test]
 fn test_complex_comparison_expression() {
     let input = "2 + 3 * 4 >= 5 - 1 ** 2";
@@ -316,10 +284,8 @@ fn test_complex_comparison_expression() {
 
     match &expr.kind {
         ExpressionKind::BinaryOp(op) => {
-            // Should parse with correct precedence
             assert_eq!(op.operator, BinaryOperator::GreaterEqual);
 
-            // Both sides should be complex arithmetic expressions
             match &op.left.kind {
                 ExpressionKind::BinaryOp(left_op) => {
                     assert_eq!(left_op.operator, BinaryOperator::Add);
@@ -337,8 +303,6 @@ fn test_complex_comparison_expression() {
         _ => panic!("Expected binary operation"),
     }
 }
-
-// === TYPE COMPATIBILITY TESTS ===
 
 #[test]
 fn test_compare_different_types() {
@@ -362,8 +326,6 @@ fn test_compare_different_types() {
         }
     }
 }
-
-// === DISPLAY TESTS ===
 
 #[test]
 fn test_comparison_display_preserves_format() {

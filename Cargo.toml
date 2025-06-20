@@ -1,9 +1,9 @@
 [workspace]
 
-members = [ "outrun",
+members = [
+  "outrun",
   "outrun-parser",
-  "outrun-typechecker"
+  "outrun-typechecker",
 ]
 
 resolver = "3"
-

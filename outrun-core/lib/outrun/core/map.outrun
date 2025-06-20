@@ -1,0 +1,70 @@
+@Doc(content: """
+Generic map concrete type.
+
+This is the default concrete implementation of maps in Outrun.
+Maps store key-value pairs with support for literal syntax and spread operations.
+
+## Examples
+
+```outrun
+{name: "James", age: 35}          # Map with atom keys
+{"key" => "value"}                # Map with string keys using arrow syntax
+{name: "James", ..defaults}       # Map with spread operator
+{}                                # Empty map
+```
+
+## Type Parameters
+
+- `K` - The type of keys stored in the map
+- `V` - The type of values stored in the map
+""")
+struct Outrun.Core.Map<K, V>() {}
+
+# Inspect trait implementation  
+impl<K, V> Inspect for Outrun.Core.Map<K, V> when K: Inspect && V: Inspect {
+    def inspect(value: Self): String {
+        Outrun.Intrinsic.map_inspect(map: value)
+    }
+}
+
+# Equality trait implementation - structural equality
+impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
+    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        # Maps are equal if they have the same size and all key-value pairs match
+        if Map.size(map: lhs) == Map.size(map: rhs) {
+            Outrun.Intrinsic.map_equal(lhs: lhs, rhs: rhs)
+        } else {
+            false
+        }
+    }
+    
+    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
+        !Equality.equal?(lhs: lhs, rhs: rhs)
+    }
+}
+
+# Map trait implementation
+impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
+    def get(map: Self, key: K): Option<V> {
+        Outrun.Intrinsic.map_get(map: map, key: key)
+    }
+    
+    def put(map: Self, key: K, value: V): Self {
+        Outrun.Intrinsic.map_put(map: map, key: key, value: value)
+    }
+    
+    def remove(map: Self, key: K): Self {
+        Outrun.Intrinsic.map_remove(map: map, key: key)
+    }
+    
+    def size(map: Self): Integer {
+        Outrun.Intrinsic.map_size(map: map)
+    }
+}
+
+# Default trait implementation
+impl<K, V> Default for Outrun.Core.Map<K, V> {
+    def default(): Self {
+        {}
+    }
+}

@@ -1,8 +1,5 @@
-// Tests for multi-format integer literals
-
 use crate::*;
 
-// Helper function to extract integer from expression
 fn extract_integer_from_expression(expr: &Expression) -> &IntegerLiteral {
     match &expr.kind {
         ExpressionKind::Integer(integer) => integer,
@@ -97,7 +94,6 @@ fn test_parse_mixed_integer_formats() {
 
     assert_eq!(result.items.len(), 5);
 
-    // Expected values and formats
     let expected = [
         (42, IntegerFormat::Decimal),
         (10, IntegerFormat::Binary),
@@ -157,15 +153,13 @@ fn test_integer_format_display_preservation() {
 
 #[test]
 fn test_comprehensive_with_all_formats() {
-    let input = "struct MyType 42 true 0b1010 false 0o755 identifier 0xFF";
+    let input = "struct MyType {} 42 true 0b1010 false 0o755 identifier 0xFF";
     let result = parse_program(input).unwrap();
 
-    assert_eq!(result.items.len(), 9);
+    assert_eq!(result.items.len(), 8);
 
-    // Verify the mixed sequence includes all integer formats
     let _expected = [
-        ("struct", "keyword"),
-        ("MyType", "type_identifier"),
+        ("MyType", "struct_definition"),
         ("42", "decimal_integer"),
         ("true", "boolean"),
         ("0b1010", "binary_integer"),
@@ -175,7 +169,6 @@ fn test_comprehensive_with_all_formats() {
         ("0xFF", "hex_integer"),
     ];
 
-    // Extract just the integers to verify their formats
     let integers: Vec<_> = result
         .items
         .iter()
@@ -194,7 +187,6 @@ fn test_comprehensive_with_all_formats() {
     assert_eq!(integers[2].format, IntegerFormat::Octal);
     assert_eq!(integers[3].format, IntegerFormat::Hexadecimal);
 
-    // Verify values
     assert_eq!(integers[0].value, 42);
     assert_eq!(integers[1].value, 10); // 0b1010
     assert_eq!(integers[2].value, 493); // 0o755

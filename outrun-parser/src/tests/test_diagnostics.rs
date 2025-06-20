@@ -1,15 +1,11 @@
-// Tests for the diagnostics module
-
 use crate::{ast::Span, DiagnosticCollector, DiagnosticError, Severity};
 
 #[test]
 fn test_severity_levels() {
-    // Test severity ordering
     assert!(Severity::Info < Severity::Warning);
     assert!(Severity::Warning < Severity::Error);
     assert!(Severity::Error < Severity::Fatal);
 
-    // Test display
     assert_eq!(Severity::Info.to_string(), "info");
     assert_eq!(Severity::Warning.to_string(), "warning");
     assert_eq!(Severity::Error.to_string(), "error");
@@ -20,21 +16,17 @@ fn test_severity_levels() {
 fn test_diagnostic_error_creation() {
     let span = Span::new(10, 20);
 
-    // Test syntax error
     let error = DiagnosticError::syntax_error("Invalid syntax".to_string(), span);
     assert_eq!(error.severity(), Severity::Error);
     assert_eq!(error.span().offset(), 10);
     assert_eq!(error.span().len(), 10);
 
-    // Test type error
     let error = DiagnosticError::type_error("Type mismatch".to_string(), span);
     assert_eq!(error.severity(), Severity::Error);
 
-    // Test unused variable warning
     let error = DiagnosticError::unused_variable("unused_var".to_string(), span);
     assert_eq!(error.severity(), Severity::Warning);
 
-    // Test fatal error
     let error = DiagnosticError::fatal_error("Fatal parsing error".to_string(), span);
     assert_eq!(error.severity(), Severity::Fatal);
 }
@@ -79,7 +71,6 @@ fn test_diagnostic_collector_multiple_severities() {
     let mut collector = DiagnosticCollector::new("test source".to_string());
     let span = Span::new(0, 5);
 
-    // Add different severity levels
     collector.add_diagnostic(DiagnosticError::syntax_error("Error 1".to_string(), span));
     collector.add_diagnostic(DiagnosticError::unused_variable("var1".to_string(), span));
     collector.add_diagnostic(DiagnosticError::performance_warning(
@@ -120,7 +111,6 @@ fn test_diagnostic_collector_max_errors() {
     let mut collector = DiagnosticCollector::with_settings("test".to_string(), 3, false);
     let span = Span::new(0, 1);
 
-    // Add 5 errors, should only keep first 3
     for i in 0..5 {
         collector.add_diagnostic(DiagnosticError::syntax_error(format!("Error {}", i), span));
     }
@@ -134,7 +124,6 @@ fn test_diagnostic_collector_fatal_stops_parsing() {
     let mut collector = DiagnosticCollector::with_settings("test".to_string(), 10, false);
     let span = Span::new(0, 1);
 
-    // When using add_diagnostics (batch), fatal errors should stop processing
     let diagnostics = vec![
         DiagnosticError::syntax_error("Error 1".to_string(), span),
         DiagnosticError::fatal_error("Fatal error".to_string(), span),
@@ -153,7 +142,6 @@ fn test_diagnostic_collector_continue_on_fatal() {
     let mut collector = DiagnosticCollector::with_settings("test".to_string(), 10, true);
     let span = Span::new(0, 1);
 
-    // When using add_diagnostics (batch) with continue_on_fatal=true, should process all
     let diagnostics = vec![
         DiagnosticError::syntax_error("Error 1".to_string(), span),
         DiagnosticError::fatal_error("Fatal error".to_string(), span),
@@ -162,7 +150,6 @@ fn test_diagnostic_collector_continue_on_fatal() {
 
     collector.add_diagnostics(diagnostics);
 
-    // Should continue collecting after fatal when continue_on_fatal is true
     assert_eq!(collector.total_count(), 3);
     assert!(collector.has_fatal_errors());
     assert_eq!(collector.error_count(), 3);
@@ -203,7 +190,6 @@ fn test_diagnostic_collector_clear() {
 fn test_diagnostic_collector_sort_by_location() {
     let mut collector = DiagnosticCollector::new("test source".to_string());
 
-    // Add diagnostics in reverse order of location
     collector.add_diagnostic(DiagnosticError::syntax_error(
         "Error 3".to_string(),
         Span::new(20, 25),
@@ -232,17 +218,14 @@ fn test_diagnostic_collector_settings() {
     collector.set_max_errors(5);
     collector.set_continue_on_fatal(true);
 
-    // Test that settings are applied by adding diagnostics
     let span = Span::new(0, 1);
 
-    // Add 6 errors (should be limited to 5)
     for i in 0..6 {
         collector.add_diagnostic(DiagnosticError::syntax_error(format!("Error {}", i), span));
     }
 
     assert_eq!(collector.total_count(), 5);
 
-    // Test continue on fatal
     collector.clear();
     collector.add_diagnostic(DiagnosticError::fatal_error("Fatal".to_string(), span));
     collector.add_diagnostic(DiagnosticError::syntax_error(
@@ -264,7 +247,6 @@ fn test_diagnostic_summary() {
     assert_eq!(empty_summary.info, 0);
     assert_eq!(empty_summary.to_string(), "No diagnostics");
 
-    // Test with actual diagnostics
     let mut collector = DiagnosticCollector::new("test".to_string());
     let span = Span::new(0, 5);
 
@@ -300,8 +282,6 @@ fn test_diagnostic_create_reports() {
     let reports = collector.create_reports();
     assert_eq!(reports.len(), 1);
 
-    // The report should be created successfully - testing the debug output is fragile
-    // as miette's internal formatting might change
     let report_string = format!("{}", reports[0]);
     assert!(report_string.contains("Syntax error"));
 }
@@ -310,7 +290,6 @@ fn test_diagnostic_create_reports() {
 fn test_all_diagnostic_error_types() {
     let span = Span::new(0, 5);
 
-    // Test all diagnostic error constructors
     let syntax_error = DiagnosticError::syntax_error("Syntax error".to_string(), span);
     assert_eq!(syntax_error.severity(), Severity::Error);
 
@@ -351,7 +330,6 @@ fn test_all_diagnostic_error_types() {
     let fatal = DiagnosticError::fatal_error("Fatal error".to_string(), span);
     assert_eq!(fatal.severity(), Severity::Fatal);
 
-    // Test that all errors have the correct span
     for error in [
         &syntax_error,
         &type_error,

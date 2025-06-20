@@ -18,6 +18,8 @@ outrun-parser = { path = "../outrun-parser" }
 
 # Utilities
 indexmap = "2.0"
+lazy_static = "1.4"
+petgraph = "0.6"
 
 [dev-dependencies]
 # Testing utilities

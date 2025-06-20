@@ -1,5 +1,3 @@
-// Tests for source reconstruction (lossless formatting preservation)
-
 use crate::*;
 
 #[test]
@@ -10,7 +8,6 @@ fn test_source_reconstruction_integers() {
         let result = parse_program(input).unwrap();
         let reconstructed = format!("{}", result);
 
-        // For hex, we expect lowercase output even if input was uppercase
         let expected = if input == &"0xFF" { "0xff" } else { *input };
 
         assert_eq!(
@@ -27,7 +24,6 @@ fn test_source_reconstruction_mixed() {
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
 
-    // Note: We don't preserve whitespace yet, so this is just token concatenation
     let expected = "structtrue420b1010MyTypefalse0o755my_var0xff";
 
     assert_eq!(reconstructed, expected);
@@ -35,7 +31,6 @@ fn test_source_reconstruction_mixed() {
 
 #[test]
 fn test_integer_value_vs_format_preservation() {
-    // Same value, different formats
     let inputs = ["255", "0b11111111", "0o377", "0xFF"];
     let expected_value = 255;
 
@@ -44,28 +39,24 @@ fn test_integer_value_vs_format_preservation() {
 
         assert_eq!(result.items.len(), 1);
         match &result.items[0].kind {
-            ItemKind::Expression(expr) => {
-                match &expr.kind {
-                    ExpressionKind::Integer(integer) => {
-                        // Value should be the same
-                        assert_eq!(
-                            integer.value, expected_value,
-                            "Value should be {} for input '{}'",
-                            expected_value, input
-                        );
+            ItemKind::Expression(expr) => match &expr.kind {
+                ExpressionKind::Integer(integer) => {
+                    assert_eq!(
+                        integer.value, expected_value,
+                        "Value should be {} for input '{}'",
+                        expected_value, input
+                    );
 
-                        // But display should preserve original format
-                        let display = format!("{}", integer);
-                        let expected_display = if input == &"0xFF" { "0xff" } else { *input };
-                        assert_eq!(
-                            display, expected_display,
-                            "Display format should be preserved for input '{}'",
-                            input
-                        );
-                    }
-                    _ => panic!("Expected integer in expression for input '{}'", input),
+                    let display = format!("{}", integer);
+                    let expected_display = if input == &"0xFF" { "0xff" } else { *input };
+                    assert_eq!(
+                        display, expected_display,
+                        "Display format should be preserved for input '{}'",
+                        input
+                    );
                 }
-            }
+                _ => panic!("Expected integer in expression for input '{}'", input),
+            },
             _ => panic!("Expected expression for input '{}'", input),
         }
     }

@@ -11,7 +11,7 @@ pub mod resolution;
 pub use resolution::{resolve_static_function, resolve_trait_function};
 
 use crate::types::traits::FunctionId;
-use crate::types::{TraitId, TypeId};
+use crate::types::TypeId;
 use outrun_parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 
@@ -22,8 +22,8 @@ pub struct OpaqueModuleId(pub u32);
 /// Main dispatch table for runtime trait method resolution
 #[derive(Debug, Clone)]
 pub struct DispatchTable {
-    // Core trait dispatch: (TraitId, TypeId) -> OpaqueModuleId
-    trait_dispatch: HashMap<(TraitId, TypeId), OpaqueModuleId>,
+    // Core trait dispatch: (TypeId, TypeId) -> OpaqueModuleId
+    trait_dispatch: HashMap<(TypeId, TypeId), OpaqueModuleId>,
 
     // Static function lookup: TypeId -> function mappings
     static_functions: HashMap<TypeId, HashMap<String, FunctionId>>,
@@ -49,14 +49,14 @@ impl DispatchTable {
     }
 
     /// Register a trait implementation for dispatch
-    pub fn register_trait_impl(&mut self, trait_id: TraitId, type_id: TypeId) -> OpaqueModuleId {
+    pub fn register_trait_impl(&mut self, trait_id: TypeId, type_id: TypeId) -> OpaqueModuleId {
         let module_id = self.next_opaque_module_id();
         self.trait_dispatch.insert((trait_id, type_id), module_id);
         module_id
     }
 
     /// Look up trait implementation
-    pub fn lookup_trait_impl(&self, trait_id: TraitId, type_id: TypeId) -> Option<OpaqueModuleId> {
+    pub fn lookup_trait_impl(&self, trait_id: TypeId, type_id: TypeId) -> Option<OpaqueModuleId> {
         self.trait_dispatch.get(&(trait_id, type_id)).copied()
     }
 

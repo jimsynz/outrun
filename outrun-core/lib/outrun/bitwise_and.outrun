@@ -1,0 +1,25 @@
+@Doc(content: """
+Bitwise AND trait for the & operator.
+
+The BitwiseAnd trait defines the behaviour for the & operator.
+When you write `a & b`, it becomes `BitwiseAnd.and(lhs: a, rhs: b)`.
+
+## Requirements
+
+- Both operands must be the same concrete type (typically integers)
+- The result must be the same concrete type as the operands
+- Performs bit-by-bit AND operation
+- Must satisfy bitwise laws: associative, commutative, idempotent
+
+## Examples
+
+```outrun
+42 & 13                       # BitwiseAnd.and(lhs: 42, rhs: 13): Integer64
+0xFF & 0x0F                   # BitwiseAnd.and(lhs: 0xFF, rhs: 0x0F): Integer64
+flags & MASK                  # BitwiseAnd.and(lhs: flags, rhs: MASK): Integer64
+```
+""")
+trait BitwiseAnd {
+    @Doc(content: "Perform bitwise AND on two values")
+    def and(lhs: Self, rhs: Self): Self
+}
