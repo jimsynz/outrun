@@ -82,6 +82,9 @@ mod test_type_system_typed_ast;
 // Generics and type annotations typed AST tests (Week 7 functionality)
 mod test_generics_and_type_annotations;
 
+// Debug info and comment attachment tests (Week 9 functionality)
+mod test_debug_info_comments;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

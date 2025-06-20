@@ -88,6 +88,7 @@ pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub structured_type: Option<StructuredType>, // None = type not yet resolved
     pub span: Span,
+    pub debug_info: Option<TypedDebugInfo>, // Optional debug information
 }
 
 /// Typed expression kinds with core language support
@@ -201,6 +202,7 @@ pub struct TypedAsClause {
 pub struct TypedItem {
     pub kind: TypedItemKind,
     pub span: Span,
+    pub debug_info: Option<TypedDebugInfo>, // Optional debug information
 }
 
 /// Function definition with complete type information
@@ -413,6 +415,137 @@ pub struct TypedMacroDefinition {
     pub span: Span,
 }
 
+/// Debug information for source preservation and IDE support
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedDebugInfo {
+    /// Comments attached to this node or its vicinity
+    pub comments: Vec<AttachedComment>,
+    /// Original source file this node came from
+    pub source_file: Option<String>,
+    /// Original span in the source code
+    pub original_span: Span,
+    /// Type annotations with resolution information
+    pub type_annotations: Vec<TypeAnnotationInfo>,
+    /// Inferred types for sub-expressions (position -> type mapping)
+    /// Using (start, end) tuple instead of Span since Span doesn't implement Hash/Eq
+    pub inferred_types: std::collections::HashMap<(usize, usize), StructuredType>,
+    /// Original format information for literals (for formatters and IDEs)
+    pub literal_format: Option<LiteralFormatInfo>,
+}
+
+impl Default for TypedDebugInfo {
+    fn default() -> Self {
+        Self {
+            comments: Vec::new(),
+            source_file: None,
+            original_span: Span::new(0, 0),
+            type_annotations: Vec::new(),
+            inferred_types: std::collections::HashMap::new(),
+            literal_format: None,
+        }
+    }
+}
+
+/// Comment with spatial relationship to a typed node
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttachedComment {
+    /// The comment content and metadata
+    pub comment: outrun_parser::Comment,
+    /// Relationship of this comment to the node
+    pub attachment: CommentAttachment,
+}
+
+/// Spatial relationship between a comment and a typed node
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommentAttachment {
+    /// Comment appears immediately before the node (documentation comment)
+    Preceding,
+    /// Comment appears immediately after the node (trailing comment)
+    Trailing,
+    /// Comment appears within the node's span but not directly adjacent
+    Internal,
+    /// Comment is within the same scope but no clear relationship
+    Scope,
+}
+
+/// Information about type annotations and their resolution
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeAnnotationInfo {
+    /// Source span of the original annotation
+    pub span: Span,
+    /// Type as declared by the user
+    pub declared_type: StructuredType,
+    /// Type as inferred/resolved by the type checker
+    pub inferred_type: StructuredType,
+    /// Source of this annotation (explicit vs inferred)
+    pub annotation_source: AnnotationSource,
+}
+
+/// Source of a type annotation
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnnotationSource {
+    /// Explicitly written by the user
+    Explicit,
+    /// Inferred by the type checker
+    Inferred,
+    /// Default from function signature
+    DefaultFromSignature,
+    /// Propagated from context (e.g., return type from function signature)
+    Propagated,
+}
+
+/// Original format information for literals (IDE support)
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralFormatInfo {
+    /// Original text representation of the literal
+    pub original_text: String,
+    /// Format-specific information
+    pub format_details: LiteralFormatDetails,
+}
+
+/// Format details for different literal types
+#[derive(Debug, Clone, PartialEq)]
+pub enum LiteralFormatDetails {
+    /// Integer format information
+    Integer {
+        format: outrun_parser::IntegerFormat,
+        raw_digits: String,
+    },
+    /// Float format information
+    Float {
+        format: outrun_parser::FloatFormat,
+        raw_number: String,
+    },
+    /// String format information
+    String {
+        format: outrun_parser::StringFormat,
+        delimiter_style: String, // e.g., "\"", "\"\"\"", etc.
+        was_interpolated: bool,  // True if this was originally string interpolation
+        interpolation_parts: Option<Vec<InterpolationPart>>, // Original interpolation structure
+    },
+    /// Other literal types
+    Other,
+}
+
+/// Information about a part of string interpolation (for reconstruction)
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolationPart {
+    /// Text portion of the interpolated string
+    Text {
+        content: String,
+        original_span: Span,
+    },
+    /// Expression portion that was interpolated
+    Expression {
+        /// The original expression before desugaring
+        original_expression_text: String,
+        /// Span of the expression in the original source
+        original_span: Span,
+        /// The desugared function call that replaced this
+        desugared_span: Span,
+    },
+}
+
 /// Typed item kinds supporting full language constructs
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {
@@ -440,6 +573,8 @@ pub struct TypedProgram {
     pub compilation_order: Vec<String>,
     /// Summary of compilation (for debugging)
     pub compilation_summary: String,
+    /// Program-level debug information
+    pub debug_info: TypedDebugInfo,
 }
 
 /// Main type checker that uses the new multi-program visitor architecture
@@ -488,6 +623,14 @@ impl TypeChecker {
             function_registry: compilation_result.function_registry,
             compilation_order: compilation_result.compilation_order,
             compilation_summary,
+            debug_info: TypedDebugInfo {
+                comments: Vec::new(), // Will be populated by comment attachment algorithm
+                source_file: original_program.debug_info.source_file.clone(),
+                original_span: original_program.span,
+                type_annotations: Vec::new(),
+                inferred_types: std::collections::HashMap::new(),
+                literal_format: None,
+            },
         }
     }
 
@@ -558,6 +701,7 @@ impl TypeChecker {
         Some(TypedItem {
             kind,
             span: item.span,
+            debug_info: None, // Will be populated by TypedASTBuilder
         })
     }
 
@@ -601,6 +745,7 @@ impl TypeChecker {
                     ),
                     structured_type: None,
                     span: expr.span,
+                    debug_info: None, // Will be populated by TypedASTBuilder
                 });
             }
 
@@ -611,6 +756,7 @@ impl TypeChecker {
                     ),
                     structured_type: None,
                     span: expr.span,
+                    debug_info: None, // Will be populated by TypedASTBuilder
                 });
             }
 
@@ -622,6 +768,7 @@ impl TypeChecker {
             kind,
             structured_type: None, // Type will be resolved during proper type checking
             span: expr.span,
+            debug_info: None, // Will be populated by TypedASTBuilder
         })
     }
 }

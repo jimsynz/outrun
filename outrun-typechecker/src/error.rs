@@ -373,6 +373,17 @@ pub enum TypeError {
         message: String,
     },
 
+    #[error("Empty block")]
+    #[diagnostic(
+        code(outrun::typechecker::empty_block),
+        help("Every expression must have a value. Add a statement or expression to this block.")
+    )]
+    EmptyBlock {
+        #[label("empty block")]
+        span: SourceSpan,
+        message: String,
+    },
+
     #[error("Undefined trait {trait_name}")]
     #[diagnostic(
         code(outrun::typechecker::undefined_trait),

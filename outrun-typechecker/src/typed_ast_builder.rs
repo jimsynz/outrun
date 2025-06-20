@@ -5,13 +5,15 @@
 //! resolved type information for all nodes.
 
 use crate::checker::{
-    DispatchMethod, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
-    TypedBlock, TypedCaseVariant, TypedConstDefinition, TypedExpression, TypedExpressionKind,
-    TypedFunctionDefinition, TypedFunctionPath, TypedFunctionTypeParam, TypedGenericContext,
-    TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind, TypedLetBinding,
-    TypedMacroDefinition, TypedMapEntry, TypedParameter, TypedProgram, TypedStatement,
-    TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
-    TypedTraitFunction, TypedTypeAnnotation, TypedTypeAnnotationKind, TypedWhenClause,
+    AttachedComment, CommentAttachment, DispatchMethod, InterpolationPart, LiteralFormatDetails,
+    LiteralFormatInfo, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
+    TypedBlock, TypedCaseVariant, TypedConstDefinition, TypedDebugInfo, TypedExpression,
+    TypedExpressionKind, TypedFunctionDefinition, TypedFunctionPath, TypedFunctionTypeParam,
+    TypedGenericContext, TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind,
+    TypedLetBinding, TypedMacroDefinition, TypedMapEntry, TypedParameter, TypedProgram,
+    TypedStatement, TypedStructDefinition, TypedStructField, TypedStructFieldDefinition,
+    TypedTraitDefinition, TypedTraitFunction, TypedTypeAnnotation, TypedTypeAnnotationKind,
+    TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -30,6 +32,96 @@ use outrun_parser::{
 };
 use std::collections::HashMap;
 
+/// Comment attachment system for spatial analysis
+#[derive(Debug)]
+pub struct CommentAttacher {
+    /// All comments from the program, sorted by position
+    comments: Vec<outrun_parser::Comment>,
+    /// Index of the next comment to process
+    comment_index: usize,
+}
+
+impl CommentAttacher {
+    /// Create a new comment attacher with sorted comments
+    pub fn new(mut comments: Vec<outrun_parser::Comment>) -> Self {
+        // Sort comments by their start position for efficient processing
+        comments.sort_by_key(|c| c.span.start);
+        Self {
+            comments,
+            comment_index: 0,
+        }
+    }
+
+    /// Attach comments to a typed node based on spatial relationships
+    pub fn attach_comments_to_node(&mut self, node_span: Span) -> Vec<AttachedComment> {
+        let mut attached = Vec::new();
+
+        // Look for comments that should be attached to this node
+        while self.comment_index < self.comments.len() {
+            let comment = &self.comments[self.comment_index];
+
+            // Determine attachment relationship
+            let attachment = if comment.span.end <= node_span.start {
+                // Comment comes before this node
+                if self.is_immediately_preceding(comment.span, node_span) {
+                    Some(CommentAttachment::Preceding)
+                } else {
+                    // Check if this comment is close enough to attach
+                    if node_span.start - comment.span.end <= 50 {
+                        // Within 50 characters - attach as scope comment
+                        Some(CommentAttachment::Scope)
+                    } else {
+                        // Too far away - skip this comment
+                        self.comment_index += 1;
+                        continue;
+                    }
+                }
+            } else if comment.span.start >= node_span.start && comment.span.end <= node_span.end {
+                // Comment is within this node
+                Some(CommentAttachment::Internal)
+            } else if comment.span.start >= node_span.end {
+                // Comment comes after this node
+                if self.is_immediately_following(node_span, comment.span) {
+                    Some(CommentAttachment::Trailing)
+                } else {
+                    // Comment is too far after this node - don't process it now
+                    break;
+                }
+            } else {
+                // Comment overlaps in some weird way - skip it
+                self.comment_index += 1;
+                continue;
+            };
+
+            if let Some(attachment_type) = attachment {
+                attached.push(AttachedComment {
+                    comment: comment.clone(),
+                    attachment: attachment_type,
+                });
+                self.comment_index += 1;
+            } else {
+                break;
+            }
+        }
+
+        attached
+    }
+
+    /// Check if a comment immediately precedes a node (with only whitespace between)
+    fn is_immediately_preceding(&self, comment_span: Span, node_span: Span) -> bool {
+        // A comment is immediately preceding if there's only whitespace/newlines between
+        // For now, use a simple heuristic: less than 10 characters gap
+        node_span.start - comment_span.end <= 10
+    }
+
+    /// Check if a comment immediately follows a node (with only whitespace between)
+    fn is_immediately_following(&self, node_span: Span, comment_span: Span) -> bool {
+        // A comment is immediately following if it's on the same line or next line
+        // For now, use a simple heuristic: less than 10 characters gap
+        comment_span.start - node_span.end <= 10
+    }
+}
+
 /// Visitor for building comprehensive typed AST (Phase 6)
 #[derive(Debug)]
 pub struct TypedASTBuilder {
@@ -46,6 +138,8 @@ pub struct TypedASTBuilder {
     typed_programs: HashMap<String, TypedProgram>,
     /// Current generic context for type resolution
     generic_context: Option<TypedGenericContext>,
+    /// Comment attachment state
+    comment_attacher: CommentAttacher,
 }
 
 impl TypedASTBuilder {
@@ -58,6 +152,7 @@ impl TypedASTBuilder {
             expression_types: HashMap::new(),
             typed_programs: HashMap::new(),
             generic_context: None,
+            comment_attacher: CommentAttacher::new(Vec::new()), // Will be initialized per program
         }
     }
 
@@ -94,6 +189,9 @@ impl TypedASTBuilder {
         program: &Program,
         filename: &str,
     ) -> Result<TypedProgram, crate::error::TypeError> {
+        // Initialize comment attacher with this program's comments
+        self.comment_attacher = CommentAttacher::new(program.debug_info.comments.clone());
+
         // Convert all items to typed items
         let mut typed_items = Vec::new();
         for item in &program.items {
@@ -115,6 +213,14 @@ impl TypedASTBuilder {
             function_registry: self.function_registry.clone(),
             compilation_order: vec![filename.to_string()], // This program only
             compilation_summary: summary,
+            debug_info: TypedDebugInfo {
+                comments: Vec::new(), // Comments are now attached to individual nodes
+                source_file: program.debug_info.source_file.clone(),
+                original_span: program.span,
+                type_annotations: Vec::new(),
+                inferred_types: HashMap::new(),
+                literal_format: None,
+            },
         })
     }
 
@@ -180,16 +286,264 @@ impl TypedASTBuilder {
             _ => return None, // Skip other items for now
         };
 
+        // Attach comments to this item
+        let attached_comments = self.comment_attacher.attach_comments_to_node(item.span);
+
         Some(TypedItem {
             kind,
             span: item.span,
+            debug_info: Some(TypedDebugInfo {
+                comments: attached_comments,
+                source_file: None, // Individual items don't track source file
+                original_span: item.span,
+                type_annotations: Vec::new(), // Will be populated if item has type annotations
+                inferred_types: HashMap::new(),
+                literal_format: None,
+            }),
         })
+    }
+
+    /// Helper method to create TypedExpression with debug info and optional literal format
+    fn create_typed_expression_with_literal_format(
+        &mut self,
+        kind: TypedExpressionKind,
+        structured_type: Option<StructuredType>,
+        span: Span,
+        literal_format: Option<LiteralFormatInfo>,
+    ) -> TypedExpression {
+        // Attach comments to this expression
+        let attached_comments = self.comment_attacher.attach_comments_to_node(span);
+
+        // Create inferred types map for IDE support
+        let mut inferred_types = HashMap::new();
+        if let Some(ref stype) = structured_type {
+            // Record the inferred type for this span
+            inferred_types.insert((span.start, span.end), stype.clone());
+        }
+
+        TypedExpression {
+            kind,
+            structured_type,
+            span,
+            debug_info: Some(TypedDebugInfo {
+                comments: attached_comments,
+                source_file: None, // Individual expressions don't track source file
+                original_span: span,
+                type_annotations: Vec::new(),
+                inferred_types,
+                literal_format,
+            }),
+        }
+    }
+
+    /// Helper method to create TypedExpression with debug info
+    fn create_typed_expression(
+        &mut self,
+        kind: TypedExpressionKind,
+        structured_type: Option<StructuredType>,
+        span: Span,
+    ) -> TypedExpression {
+        self.create_typed_expression_with_literal_format(kind, structured_type, span, None)
+    }
+
+    /// Extract literal format information from parser AST
+    fn extract_literal_format_info(&self, expr: &Expression) -> Option<LiteralFormatInfo> {
+        match &expr.kind {
+            ExpressionKind::Integer(lit) => Some(LiteralFormatInfo {
+                original_text: format!("{}", lit.value), // TODO: Get actual original text
+                format_details: LiteralFormatDetails::Integer {
+                    format: lit.format.clone(),
+                    raw_digits: format!("{}", lit.value), // TODO: Extract raw digits
+                },
+            }),
+            ExpressionKind::Float(lit) => Some(LiteralFormatInfo {
+                original_text: format!("{}", lit.value), // TODO: Get actual original text
+                format_details: LiteralFormatDetails::Float {
+                    format: lit.format.clone(),
+                    raw_number: format!("{}", lit.value), // TODO: Extract raw number
+                },
+            }),
+            ExpressionKind::String(lit) => {
+                let has_interpolation = lit
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, outrun_parser::StringPart::Interpolation { .. }));
+
+                // Reconstruct the original string text and extract interpolation parts
+                let (original_text, interpolation_parts) = if has_interpolation {
+                    self.reconstruct_interpolated_string(lit)
+                } else {
+                    self.reconstruct_simple_string(lit)
+                };
+
+                Some(LiteralFormatInfo {
+                    original_text,
+                    format_details: LiteralFormatDetails::String {
+                        format: lit.format.clone(),
+                        delimiter_style: match lit.format {
+                            outrun_parser::StringFormat::Basic => "\"".to_string(),
+                            outrun_parser::StringFormat::Multiline => "\"\"\"".to_string(),
+                        },
+                        was_interpolated: has_interpolation,
+                        interpolation_parts,
+                    },
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Reconstruct a simple (non-interpolated) string
+    pub(crate) fn reconstruct_simple_string(
+        &self,
+        lit: &outrun_parser::StringLiteral,
+    ) -> (String, Option<Vec<InterpolationPart>>) {
+        // For simple strings, just reconstruct the basic form
+        let delimiter = match lit.format {
+            outrun_parser::StringFormat::Basic => "\"",
+            outrun_parser::StringFormat::Multiline => "\"\"\"",
+        };
+
+        // Concatenate all text parts (should only be text for simple strings)
+        let mut content = String::new();
+        for part in &lit.parts {
+            if let outrun_parser::StringPart::Text { content: text, .. } = part {
+                content.push_str(text);
+            }
+        }
+
+        let original_text = format!("{}{}{}", delimiter, content, delimiter);
+        (original_text, None)
+    }
+
+    /// Reconstruct an interpolated string and extract interpolation parts
+    pub(crate) fn reconstruct_interpolated_string(
+        &self,
+        lit: &outrun_parser::StringLiteral,
+    ) -> (String, Option<Vec<InterpolationPart>>) {
+        let delimiter = match lit.format {
+            outrun_parser::StringFormat::Basic => "\"",
+            outrun_parser::StringFormat::Multiline => "\"\"\"",
+        };
+
+        let mut original_text = String::new();
+        original_text.push_str(delimiter);
+
+        let mut interpolation_parts = Vec::new();
+        let mut current_pos = lit.span.start + delimiter.len(); // Start after opening delimiter
+
+        for part in &lit.parts {
+            match part {
+                outrun_parser::StringPart::Text { content, .. } => {
+                    // Add text content to original
+                    original_text.push_str(content);
+
+                    // Record text part for reconstruction
+                    let part_span = Span::new(current_pos, current_pos + content.len());
+                    interpolation_parts.push(InterpolationPart::Text {
+                        content: content.clone(),
+                        original_span: part_span,
+                    });
+
+                    current_pos += content.len();
+                }
+                outrun_parser::StringPart::Interpolation { expression, span } => {
+                    // Add interpolation syntax to original
+                    let interpolation_text =
+                        format!("#{{{}}}", self.expression_to_text(expression));
+                    original_text.push_str(&interpolation_text);
+
+                    // Record expression part for reconstruction
+                    interpolation_parts.push(InterpolationPart::Expression {
+                        original_expression_text: self.expression_to_text(expression),
+                        original_span: *span,
+                        desugared_span: *span, // TODO: Track the actual desugared span from the desugaring phase
+                    });
+
+                    current_pos += interpolation_text.len();
+                }
+            }
+        }
+
+        original_text.push_str(delimiter);
+        (original_text, Some(interpolation_parts))
+    }
+
+    /// Convert an expression back to source text (best effort)
+    pub(crate) fn expression_to_text(&self, expr: &outrun_parser::Expression) -> String {
+        // For now, a simple implementation - in production this would be more sophisticated
+        match &expr.kind {
+            outrun_parser::ExpressionKind::Identifier(id) => id.name.clone(),
+            outrun_parser::ExpressionKind::Integer(lit) => lit.value.to_string(),
+            outrun_parser::ExpressionKind::Float(lit) => lit.value.to_string(),
+            outrun_parser::ExpressionKind::String(lit) => {
+                // Simple string reconstruction for nested interpolation
+                format!(
+                    "\"{}\"",
+                    lit.parts
+                        .iter()
+                        .filter_map(|p| match p {
+                            outrun_parser::StringPart::Text { content, .. } =>
+                                Some(content.as_str()),
+                            _ => None,
+                        })
+                        .collect::<String>()
+                )
+            }
+            outrun_parser::ExpressionKind::Boolean(lit) => lit.value.to_string(),
+            outrun_parser::ExpressionKind::Atom(lit) => format!(":{}", lit.name),
+            outrun_parser::ExpressionKind::FieldAccess(field_access) => {
+                format!(
+                    "{}.{}",
+                    self.expression_to_text(&field_access.object),
+                    field_access.field.name
+                )
+            }
+            outrun_parser::ExpressionKind::FunctionCall(call) => {
+                // Simple function call reconstruction
+                let path_text = match &call.path {
+                    outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
+                    outrun_parser::FunctionPath::Qualified { module, name } => {
+                        format!("{}.{}", module.name, name.name)
+                    }
+                    outrun_parser::FunctionPath::Expression { expression } => {
+                        format!("({})", self.expression_to_text(expression))
+                    }
+                };
+
+                // Basic argument reconstruction
+                let args_text = call
+                    .arguments
+                    .iter()
+                    .map(|arg| match arg {
+                        outrun_parser::Argument::Named {
+                            name, expression, ..
+                        } => {
+                            format!("{}: {}", name.name, self.expression_to_text(expression))
+                        }
+                        outrun_parser::Argument::Spread { expression, .. } => {
+                            format!("..{}", self.expression_to_text(expression))
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                format!("{}({})", path_text, args_text)
+            }
+            _ => {
+                // For complex expressions, fall back to a placeholder
+                format!("<expr:{:?}>", std::mem::discriminant(&expr.kind))
+            }
+        }
     }
 
     /// Convert a parser Expression to TypedExpression with resolved types
     fn convert_expression(&mut self, expr: &Expression) -> Option<TypedExpression> {
         // Try to get resolved type for this expression
         let structured_type = self.get_expression_type(expr);
+
+        // Extract literal format information if this is a literal
+        let literal_format = self.extract_literal_format_info(expr);
 
         let kind = match &expr.kind {
             // Basic literals
@@ -326,11 +680,12 @@ impl TypedASTBuilder {
             )),
         };
 
-        Some(TypedExpression {
+        Some(self.create_typed_expression_with_literal_format(
             kind,
             structured_type,
-            span: expr.span,
-        })
+            expr.span,
+            literal_format,
+        ))
     }
 
     /// Convert a function call with proper dispatch resolution
@@ -455,24 +810,24 @@ impl TypedASTBuilder {
                         typed_elements.push(typed_expr);
                     } else {
                         // Failed to convert element - create placeholder
-                        typed_elements.push(TypedExpression {
-                            kind: TypedExpressionKind::Placeholder(
+                        typed_elements.push(self.create_typed_expression(
+                            TypedExpressionKind::Placeholder(
                                 "Failed to convert list element".to_string(),
                             ),
-                            structured_type: None,
-                            span: expr.span,
-                        });
+                            None,
+                            expr.span,
+                        ));
                     }
                 }
                 ListElement::Spread(_identifier) => {
                     // TODO: Handle spread elements in lists
-                    typed_elements.push(TypedExpression {
-                        kind: TypedExpressionKind::Placeholder(
+                    typed_elements.push(self.create_typed_expression(
+                        TypedExpressionKind::Placeholder(
                             "Spread elements not yet implemented".to_string(),
                         ),
-                        structured_type: None,
-                        span: list.span,
-                    });
+                        None,
+                        list.span,
+                    ));
                 }
             }
         }
@@ -557,13 +912,11 @@ impl TypedASTBuilder {
                 typed_elements.push(typed_element);
             } else {
                 // Failed to convert element - create placeholder
-                typed_elements.push(TypedExpression {
-                    kind: TypedExpressionKind::Placeholder(
-                        "Failed to convert tuple element".to_string(),
-                    ),
-                    structured_type: None,
-                    span: element.span,
-                });
+                typed_elements.push(self.create_typed_expression(
+                    TypedExpressionKind::Placeholder("Failed to convert tuple element".to_string()),
+                    None,
+                    element.span,
+                ));
             }
         }
 
@@ -854,12 +1207,14 @@ impl TypedASTBuilder {
     /// Convert block to expression (for now, simple approach)
     fn convert_block(&mut self, block: &Block) -> Option<TypedExpression> {
         if block.statements.is_empty() {
-            // Empty block - return placeholder
-            return Some(TypedExpression {
-                kind: TypedExpressionKind::Placeholder("Empty block".to_string()),
-                structured_type: None,
-                span: block.span,
+            // Empty block - this should be a compile error in a functional language
+            // since it has no value and cannot be typed
+            self.errors.push(crate::error::TypeError::EmptyBlock {
+                span: crate::error::span_to_source_span(block.span),
+                message: "Empty blocks are not allowed - every expression must have a value"
+                    .to_string(),
             });
+            return None;
         }
 
         // For now, just convert the last statement as an expression
@@ -867,11 +1222,11 @@ impl TypedASTBuilder {
         if let Some(last_statement) = block.statements.last() {
             match &last_statement.kind {
                 outrun_parser::StatementKind::Expression(expr) => self.convert_expression(expr),
-                _ => Some(TypedExpression {
-                    kind: TypedExpressionKind::Placeholder("Non-expression statement".to_string()),
-                    structured_type: None,
-                    span: last_statement.span,
-                }),
+                _ => Some(self.create_typed_expression(
+                    TypedExpressionKind::Placeholder("Non-expression statement".to_string()),
+                    None,
+                    last_statement.span,
+                )),
             }
         } else {
             None
