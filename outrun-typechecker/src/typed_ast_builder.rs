@@ -9,6 +9,7 @@ use crate::checker::{
     TypedItem, TypedItemKind, TypedMapEntry, TypedProgram, TypedStructField,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
+use crate::patterns::{PatternChecker, TypedPattern};
 #[allow(unused_imports)]
 use crate::types::TypeId;
 use crate::unification::{StructuredType, UnificationContext};
@@ -522,6 +523,37 @@ impl TypedASTBuilder {
             fields: typed_fields,
             struct_type,
         })
+    }
+
+    /// Convert a parser pattern to a typed pattern with type validation
+    pub fn convert_pattern(
+        &mut self,
+        pattern: &outrun_parser::Pattern,
+        target_type: &Option<StructuredType>,
+    ) -> Option<TypedPattern> {
+        let mut pattern_checker = PatternChecker::new(&mut self.context);
+
+        match pattern_checker.check_pattern(pattern, target_type) {
+            Ok(typed_pattern) => Some(typed_pattern),
+            Err(error) => {
+                // Store pattern conversion error
+                self.errors.push(error);
+                None
+            }
+        }
+    }
+
+    /// Get bound variables from a pattern for scope registration
+    pub fn get_pattern_bound_variables(
+        &mut self,
+        pattern: &outrun_parser::Pattern,
+        target_type: &Option<StructuredType>,
+    ) -> Vec<crate::patterns::BoundVariable> {
+        if let Some(typed_pattern) = self.convert_pattern(pattern, target_type) {
+            typed_pattern.bound_variables
+        } else {
+            Vec::new() // Return empty if pattern conversion failed
+        }
     }
 }
 
