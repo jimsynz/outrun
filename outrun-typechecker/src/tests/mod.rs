@@ -61,6 +61,9 @@ mod test_exponentiate_generic_types;
 // mod test_pattern_typechecking;
 mod test_pattern_variable_scoping;
 
+// SAT-based guard exhaustiveness tests
+mod test_sat_guard_exhaustiveness;
+
 // TypedProgram conversion tests
 mod test_typed_program_conversion;
 

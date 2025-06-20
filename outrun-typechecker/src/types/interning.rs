@@ -8,7 +8,7 @@ use string_interner::{DefaultBackend, DefaultSymbol, StringInterner, Symbol};
 
 /// Interned type identifier for fast equality checks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeId(DefaultSymbol);
+pub struct TypeId(pub(crate) DefaultSymbol);
 
 /// Interned atom identifier for fast equality checks  
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -86,5 +86,23 @@ impl fmt::Display for TypeId {
 impl fmt::Display for AtomId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "AtomId({})", self.0.to_usize())
+    }
+}
+
+impl TypeId {
+    /// Create a TypeId from a usize for testing purposes
+    /// This should only be used in test code
+    #[cfg(test)]
+    pub fn from_usize(id: usize) -> Self {
+        TypeId(DefaultSymbol::try_from_usize(id).unwrap())
+    }
+}
+
+impl AtomId {
+    /// Create an AtomId from a usize for testing purposes
+    /// This should only be used in test code
+    #[cfg(test)]
+    pub fn from_usize(id: usize) -> Self {
+        AtomId(DefaultSymbol::try_from_usize(id).unwrap())
     }
 }
