@@ -354,6 +354,48 @@ pub struct TypedConstraint {
     pub span: outrun_parser::Span,
 }
 
+/// Generic context for type resolution and substitution
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedGenericContext {
+    pub generic_params: Vec<TypedGenericParam>, // Available generic parameters
+    pub constraints: Vec<TypedConstraint>,      // Constraints for all parameters
+    pub substitutions: std::collections::HashMap<String, StructuredType>, // Type substitutions
+    pub self_type: Option<StructuredType>,      // Self type for impl blocks
+}
+
+/// Comprehensive type annotation with resolved type information
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedTypeAnnotation {
+    pub annotation_kind: TypedTypeAnnotationKind,
+    pub resolved_type: Option<StructuredType>, // Resolved structured type
+    pub span: outrun_parser::Span,
+}
+
+/// Type annotation variants with full language support
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedTypeAnnotationKind {
+    /// Simple type with optional generic arguments: Module.Type<Args>
+    Simple {
+        path: Vec<String>,
+        generic_args: Vec<TypedTypeAnnotation>,
+    },
+    /// Tuple type: (Type1, Type2, ...)
+    Tuple(Vec<TypedTypeAnnotation>),
+    /// Function type: (param1: Type1, param2: Type2) -> ReturnType
+    Function {
+        params: Vec<TypedFunctionTypeParam>,
+        return_type: Box<TypedTypeAnnotation>,
+    },
+}
+
+/// Function type parameter with name and type
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedFunctionTypeParam {
+    pub name: String,
+    pub param_type: TypedTypeAnnotation,
+    pub span: outrun_parser::Span,
+}
+
 /// Typed item kinds supporting full language constructs
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {

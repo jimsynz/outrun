@@ -79,6 +79,9 @@ mod test_function_definitions_typed_ast;
 // Type system item typed AST tests (Week 6 functionality)
 mod test_type_system_typed_ast;
 
+// Generics and type annotations typed AST tests (Week 7 functionality)
+mod test_generics_and_type_annotations;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

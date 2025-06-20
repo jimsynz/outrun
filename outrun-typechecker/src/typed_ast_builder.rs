@@ -7,10 +7,11 @@
 use crate::checker::{
     DispatchMethod, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
     TypedBlock, TypedCaseVariant, TypedConstDefinition, TypedExpression, TypedExpressionKind,
-    TypedFunctionDefinition, TypedFunctionPath, TypedGenericParam, TypedImplBlock, TypedItem,
-    TypedItemKind, TypedLetBinding, TypedMapEntry, TypedParameter, TypedProgram, TypedStatement,
-    TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
-    TypedTraitFunction, TypedWhenClause,
+    TypedFunctionDefinition, TypedFunctionPath, TypedFunctionTypeParam, TypedGenericContext,
+    TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind, TypedLetBinding, TypedMapEntry,
+    TypedParameter, TypedProgram, TypedStatement, TypedStructDefinition, TypedStructField,
+    TypedStructFieldDefinition, TypedTraitDefinition, TypedTraitFunction, TypedTypeAnnotation,
+    TypedTypeAnnotationKind, TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -43,6 +44,8 @@ pub struct TypedASTBuilder {
     expression_types: HashMap<Span, StructuredType>,
     /// Built typed programs (filename -> typed program)
     typed_programs: HashMap<String, TypedProgram>,
+    /// Current generic context for type resolution
+    generic_context: Option<TypedGenericContext>,
 }
 
 impl TypedASTBuilder {
@@ -54,6 +57,7 @@ impl TypedASTBuilder {
             errors: Vec::new(),
             expression_types: HashMap::new(),
             typed_programs: HashMap::new(),
+            generic_context: None,
         }
     }
 
@@ -1087,7 +1091,7 @@ impl TypedASTBuilder {
         })
     }
 
-    /// Convert struct definition with field validation
+    /// Convert struct definition with field validation and generic context
     fn convert_struct_definition(
         &mut self,
         struct_def: &StructDefinition,
@@ -1095,32 +1099,60 @@ impl TypedASTBuilder {
         // Convert name path to string representation
         let name: Vec<String> = struct_def.name.iter().map(|t| t.name.clone()).collect();
 
-        // Convert generic parameters
+        // Convert generic parameters with enhanced constraint support
         let generic_params = if let Some(params) = &struct_def.generic_params {
             self.convert_generic_params(params)
         } else {
             Vec::new()
         };
 
-        // Convert struct fields
+        // Create struct type for Self resolution
+        let struct_type = if generic_params.is_empty() {
+            Some(StructuredType::Simple(
+                self.context.type_interner.intern_type(&name.join(".")),
+            ))
+        } else {
+            // Generic struct - create generic type with parameter placeholders
+            let param_types: Vec<StructuredType> = generic_params
+                .iter()
+                .map(|param| {
+                    StructuredType::Simple(self.context.type_interner.intern_type(&param.name))
+                })
+                .collect();
+            Some(StructuredType::Generic {
+                base: self.context.type_interner.intern_type(&name.join(".")),
+                args: param_types,
+            })
+        };
+
+        // Push generic context for field and method resolution
+        let generic_context = self.create_generic_context(&generic_params, struct_type.clone());
+        self.push_generic_context(generic_context);
+
+        // Convert struct fields with generic context
         let mut typed_fields = Vec::new();
         for field in &struct_def.fields {
-            if let Some(typed_field) = self.convert_struct_field(field) {
+            if let Some(typed_field) = self.convert_struct_field_with_generics(field) {
                 typed_fields.push(typed_field);
             } else {
+                self.pop_generic_context(); // Clean up on failure
                 return None; // Failed to convert field
             }
         }
 
-        // Convert methods
+        // Convert methods with generic context
         let mut typed_methods = Vec::new();
         for method in &struct_def.methods {
             if let Some(typed_method) = self.convert_function_definition(method) {
                 typed_methods.push(typed_method);
             } else {
+                self.pop_generic_context(); // Clean up on failure
                 return None; // Failed to convert method
             }
         }
+
+        // Pop generic context
+        self.pop_generic_context();
 
         // Generate struct ID from name path
         let struct_id = name.join(".");
@@ -1135,9 +1167,20 @@ impl TypedASTBuilder {
         })
     }
 
-    /// Convert struct field with type validation
-    fn convert_struct_field(&mut self, field: &StructField) -> Option<TypedStructFieldDefinition> {
-        let field_type = self.convert_type_annotation(&field.type_annotation);
+    /// Convert struct field with comprehensive generic support
+    fn convert_struct_field_with_generics(
+        &mut self,
+        field: &StructField,
+    ) -> Option<TypedStructFieldDefinition> {
+        // Use comprehensive type annotation conversion for better generic support
+        let field_type = if let Some(typed_annotation) =
+            self.convert_type_annotation_comprehensive(&field.type_annotation)
+        {
+            typed_annotation.resolved_type
+        } else {
+            // Fallback to simple conversion
+            self.convert_type_annotation(&field.type_annotation)
+        };
 
         Some(TypedStructFieldDefinition {
             name: field.name.name.clone(),
@@ -1224,7 +1267,8 @@ impl TypedASTBuilder {
             }
             TraitFunction::Definition(def) => {
                 // Convert function definition
-                self.convert_function_definition(def).map(TypedTraitFunction::Definition)
+                self.convert_function_definition(def)
+                    .map(TypedTraitFunction::Definition)
             }
             TraitFunction::StaticDefinition(static_def) => {
                 // Convert static function definition
@@ -1252,7 +1296,7 @@ impl TypedASTBuilder {
         }
     }
 
-    /// Convert impl block with trait validation
+    /// Convert impl block with trait validation and Self type resolution
     fn convert_impl_block(&mut self, impl_block: &ImplBlock) -> Option<TypedImplBlock> {
         // Convert generic parameters
         let generic_params = if let Some(params) = &impl_block.generic_params {
@@ -1267,25 +1311,73 @@ impl TypedASTBuilder {
         // Convert type path
         let type_path = self.convert_type_spec(&impl_block.type_spec);
 
-        // TODO: Resolve trait and implementation types
-        let trait_type = None; // Placeholder
-        let impl_type = None; // Placeholder
+        // Resolve implementation type for Self resolution
+        let impl_type = if type_path.is_empty() {
+            None
+        } else if let Some(generic_args) = &impl_block.type_spec.generic_args {
+            // Generic implementation type
+            let mut resolved_args = Vec::new();
+            for arg in &generic_args.args {
+                if let Some(typed_annotation) = self.convert_type_annotation_comprehensive(arg) {
+                    if let Some(resolved_type) = typed_annotation.resolved_type {
+                        resolved_args.push(resolved_type);
+                    }
+                }
+            }
+
+            if resolved_args.is_empty() {
+                // Simple type
+                Some(StructuredType::Simple(
+                    self.context.type_interner.intern_type(&type_path.join(".")),
+                ))
+            } else {
+                // Generic type with arguments
+                Some(StructuredType::Generic {
+                    base: self.context.type_interner.intern_type(&type_path.join(".")),
+                    args: resolved_args,
+                })
+            }
+        } else {
+            // Simple implementation type
+            Some(StructuredType::Simple(
+                self.context.type_interner.intern_type(&type_path.join(".")),
+            ))
+        };
+
+        // Resolve trait type
+        let trait_type = if trait_path.is_empty() {
+            None
+        } else {
+            Some(StructuredType::Simple(
+                self.context
+                    .type_interner
+                    .intern_type(&trait_path.join(".")),
+            ))
+        };
+
+        // Create generic context for method resolution with Self type
+        let generic_context = self.create_generic_context(&generic_params, impl_type.clone());
+        self.push_generic_context(generic_context);
 
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
-        // Convert methods
+        // Convert methods with Self type resolution
         let mut typed_methods = Vec::new();
         for method in &impl_block.methods {
             if let Some(typed_method) = self.convert_function_definition(method) {
                 typed_methods.push(typed_method);
             } else {
+                self.pop_generic_context(); // Clean up on failure
                 return None; // Failed to convert method
             }
         }
 
-        // TODO: Verify trait implementation
-        let impl_verified = false; // Placeholder for now
+        // Pop generic context
+        self.pop_generic_context();
+
+        // Validate generic constraints
+        let impl_verified = self.validate_generic_constraints();
 
         Some(TypedImplBlock {
             generic_params,
@@ -1351,6 +1443,250 @@ impl TypedASTBuilder {
     /// Convert type spec to string path
     fn convert_type_spec(&self, type_spec: &TypeSpec) -> Vec<String> {
         type_spec.path.iter().map(|t| t.name.clone()).collect()
+    }
+
+    /// Comprehensive type annotation conversion with generic resolution
+    fn convert_type_annotation_comprehensive(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> Option<TypedTypeAnnotation> {
+        use outrun_parser::TypeAnnotation;
+
+        let annotation_kind = match type_annotation {
+            TypeAnnotation::Simple {
+                path,
+                generic_args,
+                span: _,
+            } => {
+                // Convert path to string representation
+                let path_strings: Vec<String> = path.iter().map(|t| t.name.clone()).collect();
+
+                // Convert generic arguments with recursive resolution
+                let typed_generic_args = if let Some(args) = generic_args {
+                    let mut typed_args = Vec::new();
+                    for arg in &args.args {
+                        if let Some(typed_arg) = self.convert_type_annotation_comprehensive(arg) {
+                            typed_args.push(typed_arg);
+                        } else {
+                            return None; // Failed to convert generic argument
+                        }
+                    }
+                    typed_args
+                } else {
+                    Vec::new()
+                };
+
+                TypedTypeAnnotationKind::Simple {
+                    path: path_strings,
+                    generic_args: typed_generic_args,
+                }
+            }
+            TypeAnnotation::Tuple { types, span: _ } => {
+                // Convert all tuple element types
+                let mut typed_elements = Vec::new();
+                for element_type in types {
+                    if let Some(typed_element) =
+                        self.convert_type_annotation_comprehensive(element_type)
+                    {
+                        typed_elements.push(typed_element);
+                    } else {
+                        return None; // Failed to convert tuple element
+                    }
+                }
+
+                TypedTypeAnnotationKind::Tuple(typed_elements)
+            }
+            TypeAnnotation::Function {
+                params,
+                return_type,
+                span: _,
+            } => {
+                // Convert function parameters
+                let mut typed_params = Vec::new();
+                for param in params {
+                    if let Some(typed_param) = self.convert_function_type_param(param) {
+                        typed_params.push(typed_param);
+                    } else {
+                        return None; // Failed to convert parameter
+                    }
+                }
+
+                // Convert return type
+                if let Some(typed_return_type) =
+                    self.convert_type_annotation_comprehensive(return_type)
+                {
+                    TypedTypeAnnotationKind::Function {
+                        params: typed_params,
+                        return_type: Box::new(typed_return_type),
+                    }
+                } else {
+                    return None; // Failed to convert return type
+                }
+            }
+        };
+
+        // Resolve the structured type with generic context
+        let resolved_type = self.resolve_type_annotation_with_context(&annotation_kind);
+
+        Some(TypedTypeAnnotation {
+            annotation_kind,
+            resolved_type,
+            span: self.get_type_annotation_span(type_annotation),
+        })
+    }
+
+    /// Convert function type parameter with comprehensive type resolution
+    fn convert_function_type_param(
+        &mut self,
+        param: &outrun_parser::FunctionTypeParam,
+    ) -> Option<TypedFunctionTypeParam> {
+        self.convert_type_annotation_comprehensive(&param.type_annotation).map(|typed_type| TypedFunctionTypeParam {
+            name: param.name.name.clone(),
+            param_type: typed_type,
+            span: param.span,
+        })
+    }
+
+    /// Resolve type annotation with current generic context
+    fn resolve_type_annotation_with_context(
+        &mut self,
+        annotation_kind: &TypedTypeAnnotationKind,
+    ) -> Option<StructuredType> {
+        match annotation_kind {
+            TypedTypeAnnotationKind::Simple { path, generic_args } => {
+                // Handle Self type resolution in impl blocks
+                if path.len() == 1 && path[0] == "Self" {
+                    if let Some(context) = &self.generic_context {
+                        return context.self_type.clone();
+                    }
+                }
+
+                // Check for generic parameter substitution
+                if path.len() == 1 {
+                    if let Some(context) = &self.generic_context {
+                        if let Some(substituted_type) = context.substitutions.get(&path[0]) {
+                            return Some(substituted_type.clone());
+                        }
+                    }
+                }
+
+                // Resolve generic arguments recursively
+                if !generic_args.is_empty() {
+                    let mut resolved_args = Vec::new();
+                    for arg in generic_args {
+                        if let Some(resolved_arg) = arg.resolved_type.as_ref() {
+                            resolved_args.push(resolved_arg.clone());
+                        } else {
+                            return None; // Failed to resolve generic argument
+                        }
+                    }
+
+                    // Create generic type with resolved arguments
+                    Some(StructuredType::Generic {
+                        base: self.context.type_interner.intern_type(&path.join(".")),
+                        args: resolved_args,
+                    })
+                } else {
+                    // Simple type without generics
+                    Some(StructuredType::Simple(
+                        self.context.type_interner.intern_type(&path.join(".")),
+                    ))
+                }
+            }
+            TypedTypeAnnotationKind::Tuple(elements) => {
+                // Resolve all tuple element types
+                let mut resolved_elements = Vec::new();
+                for element in elements {
+                    if let Some(resolved_element) = element.resolved_type.as_ref() {
+                        resolved_elements.push(resolved_element.clone());
+                    } else {
+                        return None; // Failed to resolve tuple element
+                    }
+                }
+
+                Some(StructuredType::Tuple(resolved_elements))
+            }
+            TypedTypeAnnotationKind::Function {
+                params,
+                return_type,
+            } => {
+                // Resolve parameter types
+                let mut resolved_params = Vec::new();
+                for param in params {
+                    if let Some(resolved_param_type) = param.param_type.resolved_type.as_ref() {
+                        resolved_params.push(crate::unification::FunctionParam {
+                            name: self.context.type_interner.intern_atom(&param.name),
+                            param_type: resolved_param_type.clone(),
+                        });
+                    } else {
+                        return None; // Failed to resolve parameter type
+                    }
+                }
+
+                // Resolve return type
+                return_type.resolved_type.as_ref().map(|resolved_return_type| StructuredType::Function {
+                        params: resolved_params,
+                        return_type: Box::new(resolved_return_type.clone()),
+                    })
+            }
+        }
+    }
+
+    /// Create generic context for a scope with given parameters
+    fn create_generic_context(
+        &mut self,
+        generic_params: &[TypedGenericParam],
+        self_type: Option<StructuredType>,
+    ) -> TypedGenericContext {
+        // Collect all constraints from parameters
+        let mut all_constraints = Vec::new();
+        for param in generic_params {
+            all_constraints.extend(param.constraints.clone());
+        }
+
+        TypedGenericContext {
+            generic_params: generic_params.to_vec(),
+            constraints: all_constraints,
+            substitutions: HashMap::new(),
+            self_type,
+        }
+    }
+
+    /// Push generic context for nested scopes
+    fn push_generic_context(&mut self, context: TypedGenericContext) {
+        self.generic_context = Some(context);
+    }
+
+    /// Pop generic context when leaving scope
+    fn pop_generic_context(&mut self) {
+        self.generic_context = None;
+    }
+
+    /// Validate generic constraints in current context
+    fn validate_generic_constraints(&self) -> bool {
+        if let Some(context) = &self.generic_context {
+            for constraint in &context.constraints {
+                // TODO: Implement actual constraint validation
+                // For now, assume all constraints are valid
+                let _param_name = &constraint.param_name;
+                let _trait_path = &constraint.trait_path;
+                // Would check if substituted type implements required trait
+            }
+        }
+        true // Placeholder - always valid for now
+    }
+
+    /// Get span from type annotation
+    fn get_type_annotation_span(
+        &self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> outrun_parser::Span {
+        use outrun_parser::TypeAnnotation;
+        match type_annotation {
+            TypeAnnotation::Simple { span, .. } => *span,
+            TypeAnnotation::Tuple { span, .. } => *span,
+            TypeAnnotation::Function { span, .. } => *span,
+        }
     }
 }
 
