@@ -76,6 +76,9 @@ mod test_control_flow_typed_ast;
 // Function definition typed AST tests (Week 5 functionality)
 mod test_function_definitions_typed_ast;
 
+// Type system item typed AST tests (Week 6 functionality)
+mod test_type_system_typed_ast;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

@@ -260,13 +260,111 @@ pub struct TypedAnonymousClause {
     pub span: outrun_parser::Span,
 }
 
-/// Simplified typed item kinds
+/// Typed struct definition with field validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedStructDefinition {
+    pub name: Vec<String>,                       // Module path for the struct
+    pub generic_params: Vec<TypedGenericParam>,  // Generic parameters with resolved constraints
+    pub fields: Vec<TypedStructFieldDefinition>, // Validated field definitions
+    pub methods: Vec<TypedFunctionDefinition>,   // Methods defined within the struct
+    pub struct_id: String,                       // Reference to type registry
+    pub span: outrun_parser::Span,
+}
+
+/// Typed struct field definition with validated type
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedStructFieldDefinition {
+    pub name: String,
+    pub field_type: Option<StructuredType>, // Resolved field type
+    pub span: outrun_parser::Span,
+}
+
+/// Typed trait definition with signature validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedTraitDefinition {
+    pub name: Vec<String>,                      // Module path for the trait
+    pub generic_params: Vec<TypedGenericParam>, // Generic parameters with constraints
+    pub constraints: Vec<TypedConstraint>,      // Validated trait constraints
+    pub functions: Vec<TypedTraitFunction>,     // Validated trait functions
+    pub trait_id: String,                       // Reference to trait registry
+    pub span: outrun_parser::Span,
+}
+
+/// Typed trait function variants
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedTraitFunction {
+    /// Function signature without implementation
+    Signature {
+        name: String,
+        parameters: Vec<TypedParameter>,
+        return_type: Option<StructuredType>,
+        guard: Option<Box<TypedExpression>>,
+        span: outrun_parser::Span,
+    },
+    /// Function with default implementation
+    Definition(TypedFunctionDefinition),
+    /// Static function definition
+    StaticDefinition {
+        name: String,
+        parameters: Vec<TypedParameter>,
+        return_type: Option<StructuredType>,
+        body: TypedBlock,
+        span: outrun_parser::Span,
+    },
+}
+
+/// Typed impl block with trait validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedImplBlock {
+    pub generic_params: Vec<TypedGenericParam>, // Generic parameters
+    pub trait_path: Vec<String>,                // Trait being implemented
+    pub type_path: Vec<String>,                 // Type implementing the trait
+    pub trait_type: Option<StructuredType>,     // Resolved trait type
+    pub impl_type: Option<StructuredType>,      // Resolved implementation type
+    pub constraints: Vec<TypedConstraint>,      // Validated constraints
+    pub methods: Vec<TypedFunctionDefinition>,  // Implementation methods
+    pub impl_verified: bool,                    // Whether trait implementation is valid
+    pub span: outrun_parser::Span,
+}
+
+/// Typed const definition with value validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedConstDefinition {
+    pub name: String,
+    pub const_type: Option<StructuredType>, // Resolved constant type
+    pub expression: Box<TypedExpression>,   // Validated constant expression
+    pub const_id: String,                   // Reference to constant registry
+    pub span: outrun_parser::Span,
+}
+
+/// Generic parameter with type constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedGenericParam {
+    pub name: String,
+    pub constraints: Vec<TypedConstraint>, // Trait constraints for this parameter
+    pub span: outrun_parser::Span,
+}
+
+/// Type constraint (e.g., T: Orderable)
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedConstraint {
+    pub param_name: String,                 // Generic parameter being constrained
+    pub trait_path: Vec<String>,            // Trait that must be implemented
+    pub trait_type: Option<StructuredType>, // Resolved trait type
+    pub span: outrun_parser::Span,
+}
+
+/// Typed item kinds supporting full language constructs
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {
     Expression(Box<TypedExpression>),
     FunctionDefinition(TypedFunctionDefinition),
-    LetBinding(TypedLetBinding),
-    Placeholder(String), // For unsupported items
+    StructDefinition(TypedStructDefinition),
+    TraitDefinition(TypedTraitDefinition),
+    ImplBlock(TypedImplBlock),
+    ConstDefinition(TypedConstDefinition),
+    LetBinding(Box<TypedLetBinding>),
+    Placeholder(String), // For debugging - will be removed
 }
 
 /// Simplified typed program with essential compilation artifacts

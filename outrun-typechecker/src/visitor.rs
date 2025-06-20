@@ -337,8 +337,12 @@ pub fn walk_typed_item<V: TypedVisitor<T>, T>(visitor: &mut V, item: &TypedItem)
     match &item.kind {
         TypedItemKind::Expression(expr) => visitor.visit_typed_expression(expr),
         TypedItemKind::FunctionDefinition(_func_def) => Ok(()), // TODO: Add function definition visiting
-        TypedItemKind::LetBinding(_let_binding) => Ok(()),      // TODO: Add let binding visiting
-        TypedItemKind::Placeholder(_) => Ok(()),                // No-op for placeholders
+        TypedItemKind::StructDefinition(_struct_def) => Ok(()), // TODO: Add struct definition visiting
+        TypedItemKind::TraitDefinition(_trait_def) => Ok(()), // TODO: Add trait definition visiting
+        TypedItemKind::ImplBlock(_impl_block) => Ok(()),      // TODO: Add impl block visiting
+        TypedItemKind::ConstDefinition(_const_def) => Ok(()), // TODO: Add const definition visiting
+        TypedItemKind::LetBinding(_let_binding) => Ok(()),    // TODO: Add let binding visiting
+        TypedItemKind::Placeholder(_) => Ok(()),              // No-op for placeholders
     }
 }
 

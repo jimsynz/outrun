@@ -6,9 +6,11 @@
 
 use crate::checker::{
     DispatchMethod, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
-    TypedBlock, TypedCaseVariant, TypedExpression, TypedExpressionKind, TypedFunctionDefinition,
-    TypedFunctionPath, TypedItem, TypedItemKind, TypedLetBinding, TypedMapEntry, TypedParameter,
-    TypedProgram, TypedStatement, TypedStructField, TypedWhenClause,
+    TypedBlock, TypedCaseVariant, TypedConstDefinition, TypedExpression, TypedExpressionKind,
+    TypedFunctionDefinition, TypedFunctionPath, TypedGenericParam, TypedImplBlock, TypedItem,
+    TypedItemKind, TypedLetBinding, TypedMapEntry, TypedParameter, TypedProgram, TypedStatement,
+    TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
+    TypedTraitFunction, TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -18,10 +20,12 @@ use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{
     AnonymousClause, AnonymousFunction, Argument, Block, CaseExpression, CaseResult,
-    CaseWhenClause, ConcreteCaseExpression, Expression, ExpressionKind, FunctionCall,
-    FunctionDefinition, FunctionPath, IfExpression, Item, ItemKind, LetBinding, ListElement,
-    ListLiteral, MapEntry, MapLiteral, Parameter, Program, Span, Statement, StatementKind,
-    StructLiteral, StructLiteralField, TraitCaseClause, TraitCaseExpression, TupleLiteral,
+    CaseWhenClause, ConcreteCaseExpression, ConstDefinition, Expression, ExpressionKind,
+    FunctionCall, FunctionDefinition, FunctionPath, GenericParam, GenericParams, IfExpression,
+    ImplBlock, Item, ItemKind, LetBinding, ListElement, ListLiteral, MapEntry, MapLiteral,
+    Parameter, Program, Span, Statement, StatementKind, StructDefinition, StructField,
+    StructLiteral, StructLiteralField, TraitCaseClause, TraitCaseExpression, TraitDefinition,
+    TraitFunction, TupleLiteral, TypeSpec,
 };
 use std::collections::HashMap;
 
@@ -127,13 +131,41 @@ impl TypedASTBuilder {
                     TypedItemKind::Placeholder("Failed to convert function definition".to_string())
                 }
             }
-            ItemKind::StructDefinition(_) => {
-                TypedItemKind::Placeholder("Struct definition - TODO".to_string())
+            ItemKind::StructDefinition(struct_def) => {
+                if let Some(typed_struct) = self.convert_struct_definition(struct_def) {
+                    TypedItemKind::StructDefinition(typed_struct)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert struct definition".to_string())
+                }
             }
-            ItemKind::TraitDefinition(_) => {
-                TypedItemKind::Placeholder("Trait definition - TODO".to_string())
+            ItemKind::TraitDefinition(trait_def) => {
+                if let Some(typed_trait) = self.convert_trait_definition(trait_def) {
+                    TypedItemKind::TraitDefinition(typed_trait)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert trait definition".to_string())
+                }
             }
-            ItemKind::ImplBlock(_) => TypedItemKind::Placeholder("Impl block - TODO".to_string()),
+            ItemKind::ImplBlock(impl_block) => {
+                if let Some(typed_impl) = self.convert_impl_block(impl_block) {
+                    TypedItemKind::ImplBlock(typed_impl)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert impl block".to_string())
+                }
+            }
+            ItemKind::ConstDefinition(const_def) => {
+                if let Some(typed_const) = self.convert_const_definition(const_def) {
+                    TypedItemKind::ConstDefinition(typed_const)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert const definition".to_string())
+                }
+            }
+            ItemKind::LetBinding(let_binding) => {
+                if let Some(typed_let) = self.convert_let_binding(let_binding) {
+                    TypedItemKind::LetBinding(Box::new(typed_let))
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert let binding".to_string())
+                }
+            }
             _ => return None, // Skip other items for now
         };
 
@@ -1053,6 +1085,272 @@ impl TypedASTBuilder {
             clause_type,
             span: clause.span,
         })
+    }
+
+    /// Convert struct definition with field validation
+    fn convert_struct_definition(
+        &mut self,
+        struct_def: &StructDefinition,
+    ) -> Option<TypedStructDefinition> {
+        // Convert name path to string representation
+        let name: Vec<String> = struct_def.name.iter().map(|t| t.name.clone()).collect();
+
+        // Convert generic parameters
+        let generic_params = if let Some(params) = &struct_def.generic_params {
+            self.convert_generic_params(params)
+        } else {
+            Vec::new()
+        };
+
+        // Convert struct fields
+        let mut typed_fields = Vec::new();
+        for field in &struct_def.fields {
+            if let Some(typed_field) = self.convert_struct_field(field) {
+                typed_fields.push(typed_field);
+            } else {
+                return None; // Failed to convert field
+            }
+        }
+
+        // Convert methods
+        let mut typed_methods = Vec::new();
+        for method in &struct_def.methods {
+            if let Some(typed_method) = self.convert_function_definition(method) {
+                typed_methods.push(typed_method);
+            } else {
+                return None; // Failed to convert method
+            }
+        }
+
+        // Generate struct ID from name path
+        let struct_id = name.join(".");
+
+        Some(TypedStructDefinition {
+            name,
+            generic_params,
+            fields: typed_fields,
+            methods: typed_methods,
+            struct_id,
+            span: struct_def.span,
+        })
+    }
+
+    /// Convert struct field with type validation
+    fn convert_struct_field(&mut self, field: &StructField) -> Option<TypedStructFieldDefinition> {
+        let field_type = self.convert_type_annotation(&field.type_annotation);
+
+        Some(TypedStructFieldDefinition {
+            name: field.name.name.clone(),
+            field_type,
+            span: field.span,
+        })
+    }
+
+    /// Convert trait definition with function signature validation
+    fn convert_trait_definition(
+        &mut self,
+        trait_def: &TraitDefinition,
+    ) -> Option<TypedTraitDefinition> {
+        // Convert name path to string representation
+        let name: Vec<String> = trait_def.name.iter().map(|t| t.name.clone()).collect();
+
+        // Convert generic parameters
+        let generic_params = if let Some(params) = &trait_def.generic_params {
+            self.convert_generic_params(params)
+        } else {
+            Vec::new()
+        };
+
+        // Convert constraints (TODO: implement constraint parsing)
+        let constraints = Vec::new(); // Placeholder for now
+
+        // Convert trait functions
+        let mut typed_functions = Vec::new();
+        for func in &trait_def.functions {
+            if let Some(typed_func) = self.convert_trait_function(func) {
+                typed_functions.push(typed_func);
+            } else {
+                return None; // Failed to convert function
+            }
+        }
+
+        // Generate trait ID from name path
+        let trait_id = name.join(".");
+
+        Some(TypedTraitDefinition {
+            name,
+            generic_params,
+            constraints,
+            functions: typed_functions,
+            trait_id,
+            span: trait_def.span,
+        })
+    }
+
+    /// Convert trait function (signature, definition, or static)
+    fn convert_trait_function(&mut self, func: &TraitFunction) -> Option<TypedTraitFunction> {
+        match func {
+            TraitFunction::Signature(sig) => {
+                // Convert function signature
+                let mut typed_parameters = Vec::new();
+                for param in &sig.parameters {
+                    if let Some(typed_param) = self.convert_parameter(param) {
+                        typed_parameters.push(typed_param);
+                    } else {
+                        return None;
+                    }
+                }
+
+                let return_type = self.convert_type_annotation(&sig.return_type);
+
+                // Convert optional guard
+                let guard = if let Some(guard_clause) = &sig.guard {
+                    if let Some(typed_guard) = self.convert_expression(&guard_clause.condition) {
+                        Some(Box::new(typed_guard))
+                    } else {
+                        return None;
+                    }
+                } else {
+                    None
+                };
+
+                Some(TypedTraitFunction::Signature {
+                    name: sig.name.name.clone(),
+                    parameters: typed_parameters,
+                    return_type,
+                    guard,
+                    span: sig.span,
+                })
+            }
+            TraitFunction::Definition(def) => {
+                // Convert function definition
+                self.convert_function_definition(def).map(TypedTraitFunction::Definition)
+            }
+            TraitFunction::StaticDefinition(static_def) => {
+                // Convert static function definition
+                let mut typed_parameters = Vec::new();
+                for param in &static_def.parameters {
+                    if let Some(typed_param) = self.convert_parameter(param) {
+                        typed_parameters.push(typed_param);
+                    } else {
+                        return None;
+                    }
+                }
+
+                let return_type = self.convert_type_annotation(&static_def.return_type);
+
+                let body = self.convert_block_to_typed_block(&static_def.body)?;
+
+                Some(TypedTraitFunction::StaticDefinition {
+                    name: static_def.name.name.clone(),
+                    parameters: typed_parameters,
+                    return_type,
+                    body,
+                    span: static_def.span,
+                })
+            }
+        }
+    }
+
+    /// Convert impl block with trait validation
+    fn convert_impl_block(&mut self, impl_block: &ImplBlock) -> Option<TypedImplBlock> {
+        // Convert generic parameters
+        let generic_params = if let Some(params) = &impl_block.generic_params {
+            self.convert_generic_params(params)
+        } else {
+            Vec::new()
+        };
+
+        // Convert trait path
+        let trait_path = self.convert_type_spec(&impl_block.trait_spec);
+
+        // Convert type path
+        let type_path = self.convert_type_spec(&impl_block.type_spec);
+
+        // TODO: Resolve trait and implementation types
+        let trait_type = None; // Placeholder
+        let impl_type = None; // Placeholder
+
+        // Convert constraints (TODO: implement constraint parsing)
+        let constraints = Vec::new(); // Placeholder for now
+
+        // Convert methods
+        let mut typed_methods = Vec::new();
+        for method in &impl_block.methods {
+            if let Some(typed_method) = self.convert_function_definition(method) {
+                typed_methods.push(typed_method);
+            } else {
+                return None; // Failed to convert method
+            }
+        }
+
+        // TODO: Verify trait implementation
+        let impl_verified = false; // Placeholder for now
+
+        Some(TypedImplBlock {
+            generic_params,
+            trait_path,
+            type_path,
+            trait_type,
+            impl_type,
+            constraints,
+            methods: typed_methods,
+            impl_verified,
+            span: impl_block.span,
+        })
+    }
+
+    /// Convert const definition with expression validation
+    fn convert_const_definition(
+        &mut self,
+        const_def: &ConstDefinition,
+    ) -> Option<TypedConstDefinition> {
+        // Convert the constant expression
+        let expression = if let Some(typed_expr) = self.convert_expression(&const_def.expression) {
+            Box::new(typed_expr)
+        } else {
+            return None;
+        };
+
+        // Convert type annotation
+        let const_type = self.convert_type_annotation(&const_def.type_annotation);
+
+        // Generate const ID
+        let const_id = const_def.name.name.clone();
+
+        Some(TypedConstDefinition {
+            name: const_def.name.name.clone(),
+            const_type,
+            expression,
+            const_id,
+            span: const_def.span,
+        })
+    }
+
+    /// Convert generic parameters with constraint validation
+    fn convert_generic_params(&mut self, params: &GenericParams) -> Vec<TypedGenericParam> {
+        let mut typed_params = Vec::new();
+        for param in &params.params {
+            typed_params.push(self.convert_generic_param(param));
+        }
+        typed_params
+    }
+
+    /// Convert single generic parameter
+    fn convert_generic_param(&mut self, param: &GenericParam) -> TypedGenericParam {
+        // TODO: Convert constraints when constraint parsing is implemented
+        let constraints = Vec::new(); // Placeholder for now
+
+        TypedGenericParam {
+            name: param.name.name.clone(),
+            constraints,
+            span: param.span,
+        }
+    }
+
+    /// Convert type spec to string path
+    fn convert_type_spec(&self, type_spec: &TypeSpec) -> Vec<String> {
+        type_spec.path.iter().map(|t| t.name.clone()).collect()
     }
 }
 
