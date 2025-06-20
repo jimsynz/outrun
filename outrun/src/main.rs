@@ -29,20 +29,16 @@ enum Commands {
         /// Outrun source files to parse (use '-' to read from stdin)
         #[arg(required = true, value_name = "FILE")]
         files: Vec<PathBuf>,
-
-        /// Show detailed span information in output
-        #[arg(short, long)]
-        spans: bool,
     },
     /// Type check Outrun source files and display parsing and type checking results
     Typecheck {
         /// Outrun source files to type check (use '-' to read from stdin)
-        #[arg(required = true, value_name = "FILE")]
+        #[arg(value_name = "FILE")]
         files: Vec<PathBuf>,
 
-        /// Show detailed span information in output
-        #[arg(short, long)]
-        spans: bool,
+        /// Type check only the core library (ignore files)
+        #[arg(long)]
+        core_lib: bool,
     },
 }
 
@@ -53,11 +49,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Parse { files, spans }) => {
-            handle_parse_command(files, spans);
+        Some(Commands::Parse { files }) => {
+            handle_parse_command(files);
         }
-        Some(Commands::Typecheck { files, spans }) => {
-            handle_typecheck_command(files, spans);
+        Some(Commands::Typecheck { files, core_lib }) => {
+            handle_typecheck_command(files, core_lib);
         }
         None => {
             // No subcommand provided, show help
@@ -129,7 +125,7 @@ fn load_precompiled_syntax_set() -> syntect::parsing::SyntaxSet {
     syntect::parsing::SyntaxSet::load_defaults_newlines()
 }
 
-fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
+fn handle_parse_command(files: Vec<PathBuf>) {
     let mut success = true;
     let multiple_files = files.len() > 1;
 
@@ -140,7 +136,7 @@ fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
             file_path.display().to_string()
         };
 
-        match parse_single_file(&file_path, spans) {
+        match parse_single_file(&file_path) {
             Ok(()) => {
                 if multiple_files {
                     println!("✅ {}", display_name);
@@ -159,7 +155,7 @@ fn handle_parse_command(files: Vec<PathBuf>, spans: bool) {
     }
 }
 
-fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
+fn parse_single_file(file_path: &PathBuf) -> Result<()> {
     let (source, source_name) = if file_path.to_str() == Some("-") {
         // Read from stdin
         let mut buffer = String::new();
@@ -210,7 +206,7 @@ fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
 
     // If we have a successfully parsed AST, print it
     if let Some(ast) = maybe_ast {
-        print_ast(&ast, spans);
+        print_ast(&ast);
         Ok(())
     } else {
         // This case should not happen since we checked has_errors above
@@ -218,21 +214,84 @@ fn parse_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
     }
 }
 
-fn print_ast(ast: &outrun_parser::Program, spans: bool) {
-    if spans {
-        // Show full AST with span information for debugging
-        println!("{:#?}", ast);
-    } else {
-        // Clean debug output without spans for readability
-        println!("{}", format_ast_clean(ast));
-    }
+fn print_ast(ast: &outrun_parser::Program) {
+    // Clean debug output without spans for readability
+    println!("{}", format_ast_clean(ast));
 }
 
 fn format_ast_clean(ast: &outrun_parser::Program) -> String {
     sexpr::format_program_as_sexpr(ast)
 }
 
-fn handle_typecheck_command(files: Vec<PathBuf>, spans: bool) {
+fn typecheck_core_library() -> Result<()> {
+    println!("🔬 TYPE CHECKING CORE LIBRARY:");
+    println!("{}", "=".repeat(60));
+
+    // Load and compile just the core library
+    let collection = outrun_typechecker::core_library::load_core_library_collection();
+    let mut compiler = outrun_typechecker::multi_program_compiler::MultiProgramCompiler::new();
+
+    match compiler.compile(&collection) {
+        Ok(result) => {
+            println!("✅ Core library type checking successful!");
+
+            // Debug print the typed AST
+            if !result.typed_programs.is_empty() {
+                println!("\n📋 CORE LIBRARY TYPED AST DEBUG:");
+                println!("{}", "-".repeat(40));
+                for (filename, typed_program) in &result.typed_programs {
+                    println!("\n🗂️ File: {}", filename);
+                    println!("{:#?}", typed_program);
+                }
+            }
+
+            println!("\n📊 COMPILATION SUMMARY:");
+            println!("{}", "-".repeat(40));
+            println!("• Traits: {}", result.traits.len());
+            println!("• Structs: {}", result.structs.len());
+            println!("• Implementations: {}", result.implementations.len());
+            println!("• Functions: {}", result.function_registry.len());
+            println!("• Typed Programs: {}", result.typed_programs.len());
+
+            Ok(())
+        }
+        Err(errors) => {
+            println!("❌ Core library type checking failed!");
+            println!("{}", "-".repeat(40));
+
+            for error in &errors {
+                eprintln!("{:?}", error);
+                eprintln!();
+            }
+
+            Err(miette::miette!(
+                "Core library type checking failed with {} errors",
+                errors.len()
+            ))
+        }
+    }
+}
+
+fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
+    if core_lib {
+        // Type check only the core library
+        match typecheck_core_library() {
+            Ok(()) => {
+                println!("✅ Core library type checking completed successfully");
+            }
+            Err(e) => {
+                eprintln!("{:?}", e);
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
+    if files.is_empty() {
+        eprintln!("Error: Must provide files to type check or use --core-lib");
+        process::exit(1);
+    }
+
     let mut success = true;
     let multiple_files = files.len() > 1;
 
@@ -243,7 +302,7 @@ fn handle_typecheck_command(files: Vec<PathBuf>, spans: bool) {
             file_path.display().to_string()
         };
 
-        match typecheck_single_file(&file_path, spans) {
+        match typecheck_single_file(&file_path) {
             Ok(()) => {
                 if multiple_files {
                     println!("✅ {}", display_name);
@@ -262,7 +321,7 @@ fn handle_typecheck_command(files: Vec<PathBuf>, spans: bool) {
     }
 }
 
-fn typecheck_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
+fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
     let (source, source_name) = if file_path.to_str() == Some("-") {
         // Read from stdin
         let mut buffer = String::new();
@@ -322,7 +381,7 @@ fn typecheck_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
         // Print AST
         println!("\n📄 PARSED AST:");
         println!("{}", "-".repeat(40));
-        print_ast(&ast, spans);
+        print_ast(&ast);
 
         // Now try to type check it
         println!("\n🔬 TYPE CHECKING RESULTS:");
@@ -331,13 +390,9 @@ fn typecheck_single_file(file_path: &PathBuf, spans: bool) -> Result<()> {
         match typecheck_program_with_source(ast, &source, &source_name) {
             Ok(typed_program) => {
                 println!("✅ Type checking successful!");
-                println!("\n📋 TYPED PROGRAM:");
+                println!("\n📋 TYPED AST DEBUG:");
                 println!("{}", "-".repeat(40));
-                if spans {
-                    println!("{:#?}", typed_program);
-                } else {
-                    println!("{:?}", typed_program);
-                }
+                println!("{:#?}", typed_program);
             }
             Err(error_report) => {
                 let summary = error_report.error_summary();

@@ -1540,11 +1540,12 @@ impl TypedASTBuilder {
         &mut self,
         param: &outrun_parser::FunctionTypeParam,
     ) -> Option<TypedFunctionTypeParam> {
-        self.convert_type_annotation_comprehensive(&param.type_annotation).map(|typed_type| TypedFunctionTypeParam {
-            name: param.name.name.clone(),
-            param_type: typed_type,
-            span: param.span,
-        })
+        self.convert_type_annotation_comprehensive(&param.type_annotation)
+            .map(|typed_type| TypedFunctionTypeParam {
+                name: param.name.name.clone(),
+                param_type: typed_type,
+                span: param.span,
+            })
     }
 
     /// Resolve type annotation with current generic context
@@ -1624,7 +1625,10 @@ impl TypedASTBuilder {
                 }
 
                 // Resolve return type
-                return_type.resolved_type.as_ref().map(|resolved_return_type| StructuredType::Function {
+                return_type
+                    .resolved_type
+                    .as_ref()
+                    .map(|resolved_return_type| StructuredType::Function {
                         params: resolved_params,
                         return_type: Box::new(resolved_return_type.clone()),
                     })

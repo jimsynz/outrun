@@ -452,7 +452,7 @@ pub struct TypedProgram {
 
 ## Progress Tracking
 
-**Current Status**: Phase 4, Week 7 - ✅ Complete | Ready for Phase 4, Week 8
+**Current Status**: Phase 4, Week 7 - ✅ Complete | Binary CLI improvements ✅ Complete | Ready for Phase 4, Week 8
 
 **Completed Work**:
 - ✅ Defined core typed AST structures (`TypedFunctionPath`, `TypedArgument`, `DispatchMethod`)
@@ -472,6 +472,7 @@ pub struct TypedProgram {
 - ✅ **Created comprehensive test coverage for Week 1 and Week 2 (20 tests total)**
 - ✅ Fixed clippy warnings and ensured all tests pass (104 tests)
 - ✅ Created comprehensive plan document with new architecture
+- ✅ **CLI Improvements**: Removed `--spans` option from Parse command, added `--core-lib` option to Typecheck command, enabled typed AST debug printing on successful type checking
 
 **Current Architecture**: 6-Phase Compilation System
 1. Phase 1-4: Extract traits, structs, impls, functions
