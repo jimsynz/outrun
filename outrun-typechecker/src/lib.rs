@@ -280,6 +280,7 @@ pub mod error;
 // pub mod exhaustiveness;
 pub mod intrinsics;
 pub mod multi_program_compiler;
+pub mod typed_ast_builder;
 pub mod types;
 pub mod unification;
 pub mod visitor;

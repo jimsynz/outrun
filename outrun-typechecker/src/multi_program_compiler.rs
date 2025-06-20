@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 // Import the desugarer for transforming operators to function calls
 use crate::desugaring::DesugaringVisitor;
+use crate::typed_ast_builder::TypedASTBuilder;
 
 /// A collection of Outrun programs to be compiled together
 #[derive(Debug, Clone)]
@@ -49,6 +50,8 @@ pub struct CompilationResult {
     pub implementations: Vec<ImplBlock>,
     /// Hierarchical function registry with trait, impl, and module functions
     pub function_registry: FunctionRegistry,
+    /// Typed AST for all programs (filename -> typed program)
+    pub typed_programs: HashMap<String, crate::checker::TypedProgram>,
 }
 
 /// Multi-program compiler that handles dependency resolution and phase-based compilation
@@ -329,6 +332,9 @@ impl MultiProgramCompiler {
             return Err(self.errors.clone());
         }
 
+        // Step 7: Phase 6 - Build comprehensive typed AST
+        let typed_programs = self.build_typed_ast(collection, &compilation_order, &functions)?;
+
         Ok(CompilationResult {
             compilation_order,
             type_context: self.unification_context.clone(),
@@ -336,6 +342,7 @@ impl MultiProgramCompiler {
             structs,
             implementations,
             function_registry: functions,
+            typed_programs,
         })
     }
 
@@ -658,6 +665,29 @@ impl MultiProgramCompiler {
             Ok(())
         } else {
             Err(self.errors.clone())
+        }
+    }
+
+    /// Phase 6: Build comprehensive typed AST using type checking results
+    fn build_typed_ast(
+        &mut self,
+        collection: &ProgramCollection,
+        compilation_order: &[String],
+        function_registry: &FunctionRegistry,
+    ) -> Result<HashMap<String, crate::checker::TypedProgram>, Vec<TypeError>> {
+        let mut builder =
+            TypedASTBuilder::new(self.unification_context.clone(), function_registry.clone());
+
+        match builder.build_typed_ast(collection, compilation_order) {
+            Ok(typed_programs) => {
+                // Accumulate any errors from the builder
+                self.errors.extend(builder.errors);
+                Ok(typed_programs)
+            }
+            Err(errors) => {
+                self.errors.extend(errors.clone());
+                Err(errors)
+            }
         }
     }
 

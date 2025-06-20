@@ -53,6 +53,7 @@ impl DesugaringVisitor {
                     .collect(),
                 span: impl_block.span,
             }),
+            ItemKind::Expression(expr) => ItemKind::Expression(Self::desugar_expression(expr)),
             // Other item kinds don't contain expressions that need desugaring
             other => other,
         }

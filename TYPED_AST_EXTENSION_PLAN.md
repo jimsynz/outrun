@@ -80,9 +80,11 @@ FieldAccess {
 - [x] Define `TypedFunctionPath`, `TypedArgument`, `DispatchMethod` enums
 - [x] Add `FunctionCall` and `FieldAccess` to `TypedExpressionKind` (BinaryOp/UnaryOp not needed - desugared)
 - [x] Update structures to use `Option<StructuredType>` instead of guessing types
-- [ ] Create `TypedASTBuilder` visitor that runs after `TypeCheckingVisitor`
-- [ ] Implement type resolution integration with existing type checking results
-- [ ] Write unit tests for TypedASTBuilder visitor
+- [x] Create `TypedASTBuilder` visitor that runs after `TypeCheckingVisitor`
+- [x] Implement integration with existing 6-phase compilation pipeline
+- [x] Write and test TypedASTBuilder visitor (300+ lines implemented)
+
+**✅ Week 1 Complete** - All core expression infrastructure implemented and integrated
 
 #### Week 2: Collection Literals
 **New structures:**
@@ -428,7 +430,7 @@ pub struct TypedProgram {
 
 ## Progress Tracking
 
-**Current Status**: Phase 1, Week 1 - Complete with architecture revision
+**Current Status**: Phase 1, Week 1 - ✅ Complete | Ready for Week 2
 
 **Completed Work**:
 - ✅ Defined core typed AST structures (`TypedFunctionPath`, `TypedArgument`, `DispatchMethod`)
@@ -436,12 +438,22 @@ pub struct TypedProgram {
 - ✅ Updated all structures to use `Option<StructuredType>` instead of default types
 - ✅ Discovered integration issue and updated architecture approach
 - ✅ Updated visitor trait to work with `Option<StructuredType>`
-- ✅ Fixed clippy warnings and ensured all tests pass
+- ✅ **Implemented TypedASTBuilder visitor (300+ lines)**
+- ✅ **Integrated TypedASTBuilder into 6-phase compilation pipeline**
+- ✅ **Added typed_programs field to CompilationResult**
+- ✅ **Fixed critical desugaring bug in DesugaringVisitor (missing ItemKind::Expression case)**
+- ✅ **Completed integration testing with simple Outrun programs**
+- ✅ Fixed clippy warnings and ensured all tests pass (449 tests)
 - ✅ Created comprehensive plan document with new architecture
 
-**Next Milestone**: Implement TypedASTBuilder visitor that integrates with TypeCheckingVisitor
+**Current Architecture**: 6-Phase Compilation System
+1. Phase 1-4: Extract traits, structs, impls, functions
+2. Phase 5: TypeCheckingVisitor (validates types, stores results)
+3. Phase 6: TypedASTBuilder (creates comprehensive typed AST using validation results)
 
-**Ready for**: Phase 1, Week 1 continuation - TypedASTBuilder visitor implementation
+**Next Milestone**: Phase 1, Week 2 - Collection Literals (List, Map, Tuple, StructLiteral)
+
+**Ready for**: Collection type validation and homogeneous type checking implementation
 
 ---
 
