@@ -336,7 +336,9 @@ pub fn walk_pattern<V: Visitor<T>, T>(visitor: &mut V, pattern: &Pattern) -> Vis
 pub fn walk_typed_item<V: TypedVisitor<T>, T>(visitor: &mut V, item: &TypedItem) -> VisitorResult {
     match &item.kind {
         TypedItemKind::Expression(expr) => visitor.visit_typed_expression(expr),
-        TypedItemKind::Placeholder(_) => Ok(()), // No-op for placeholders
+        TypedItemKind::FunctionDefinition(_func_def) => Ok(()), // TODO: Add function definition visiting
+        TypedItemKind::LetBinding(_let_binding) => Ok(()),      // TODO: Add let binding visiting
+        TypedItemKind::Placeholder(_) => Ok(()),                // No-op for placeholders
     }
 }
 

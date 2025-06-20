@@ -5,9 +5,10 @@
 //! resolved type information for all nodes.
 
 use crate::checker::{
-    DispatchMethod, TypedArgument, TypedAsClause, TypedCaseVariant, TypedExpression,
-    TypedExpressionKind, TypedFunctionPath, TypedItem, TypedItemKind, TypedMapEntry,
-    TypedProgram, TypedStructField, TypedWhenClause,
+    DispatchMethod, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
+    TypedBlock, TypedCaseVariant, TypedExpression, TypedExpressionKind, TypedFunctionDefinition,
+    TypedFunctionPath, TypedItem, TypedItemKind, TypedLetBinding, TypedMapEntry, TypedParameter,
+    TypedProgram, TypedStatement, TypedStructField, TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -16,10 +17,11 @@ use crate::types::TypeId;
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{
-    Argument, Block, CaseExpression, CaseResult, CaseWhenClause, ConcreteCaseExpression,
-    Expression, ExpressionKind, FunctionCall, FunctionPath, IfExpression, Item, ItemKind,
-    ListElement, ListLiteral, MapEntry, MapLiteral, Program, Span, StructLiteral,
-    StructLiteralField, TraitCaseClause, TraitCaseExpression, TupleLiteral,
+    AnonymousClause, AnonymousFunction, Argument, Block, CaseExpression, CaseResult,
+    CaseWhenClause, ConcreteCaseExpression, Expression, ExpressionKind, FunctionCall,
+    FunctionDefinition, FunctionPath, IfExpression, Item, ItemKind, LetBinding, ListElement,
+    ListLiteral, MapEntry, MapLiteral, Parameter, Program, Span, Statement, StatementKind,
+    StructLiteral, StructLiteralField, TraitCaseClause, TraitCaseExpression, TupleLiteral,
 };
 use std::collections::HashMap;
 
@@ -118,8 +120,12 @@ impl TypedASTBuilder {
                     TypedItemKind::Placeholder("Failed to convert expression".to_string())
                 }
             }
-            ItemKind::FunctionDefinition(_) => {
-                TypedItemKind::Placeholder("Function definition - TODO".to_string())
+            ItemKind::FunctionDefinition(func_def) => {
+                if let Some(typed_func) = self.convert_function_definition(func_def) {
+                    TypedItemKind::FunctionDefinition(typed_func)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert function definition".to_string())
+                }
             }
             ItemKind::StructDefinition(_) => {
                 TypedItemKind::Placeholder("Struct definition - TODO".to_string())
@@ -230,7 +236,20 @@ impl TypedASTBuilder {
                 if let Some(typed_case) = self.convert_case_expression(case_expr) {
                     typed_case
                 } else {
-                    TypedExpressionKind::Placeholder("Failed to convert case expression".to_string())
+                    TypedExpressionKind::Placeholder(
+                        "Failed to convert case expression".to_string(),
+                    )
+                }
+            }
+
+            // Function expressions
+            ExpressionKind::AnonymousFunction(anon_func) => {
+                if let Some(typed_anon) = self.convert_anonymous_function(anon_func) {
+                    TypedExpressionKind::AnonymousFunction(typed_anon)
+                } else {
+                    TypedExpressionKind::Placeholder(
+                        "Failed to convert anonymous function".to_string(),
+                    )
                 }
             }
 
@@ -614,14 +633,15 @@ impl TypedASTBuilder {
     }
 
     /// Convert case expression (concrete or trait variant)
-    fn convert_case_expression(&mut self, case_expr: &CaseExpression) -> Option<TypedExpressionKind> {
+    fn convert_case_expression(
+        &mut self,
+        case_expr: &CaseExpression,
+    ) -> Option<TypedExpressionKind> {
         let variant = match case_expr {
             CaseExpression::Concrete(concrete_case) => {
                 self.convert_concrete_case_expression(concrete_case)?
             }
-            CaseExpression::Trait(trait_case) => {
-                self.convert_trait_case_expression(trait_case)?
-            }
+            CaseExpression::Trait(trait_case) => self.convert_trait_case_expression(trait_case)?,
         };
 
         // TODO: Unify all branch types to determine result type
@@ -639,11 +659,12 @@ impl TypedASTBuilder {
         concrete_case: &ConcreteCaseExpression,
     ) -> Option<TypedCaseVariant> {
         // Convert the expression being matched
-        let expression = if let Some(typed_expr) = self.convert_expression(&concrete_case.expression) {
-            Box::new(typed_expr)
-        } else {
-            return None;
-        };
+        let expression =
+            if let Some(typed_expr) = self.convert_expression(&concrete_case.expression) {
+                Box::new(typed_expr)
+            } else {
+                return None;
+            };
 
         // Convert all when clauses
         let mut when_clauses = Vec::new();
@@ -789,6 +810,249 @@ impl TypedASTBuilder {
         } else {
             None
         }
+    }
+
+    /// Convert function definition with parameter and body validation
+    fn convert_function_definition(
+        &mut self,
+        func_def: &FunctionDefinition,
+    ) -> Option<TypedFunctionDefinition> {
+        // Convert parameters
+        let mut typed_parameters = Vec::new();
+        for param in &func_def.parameters {
+            if let Some(typed_param) = self.convert_parameter(param) {
+                typed_parameters.push(typed_param);
+            } else {
+                return None; // Failed to convert parameter
+            }
+        }
+
+        // Convert return type
+        let return_type = self.convert_type_annotation(&func_def.return_type);
+
+        // Convert optional guard
+        let guard = if let Some(guard_clause) = &func_def.guard {
+            if let Some(typed_guard) = self.convert_expression(&guard_clause.condition) {
+                Some(Box::new(typed_guard))
+            } else {
+                return None; // Failed to convert guard
+            }
+        } else {
+            None
+        };
+
+        // Convert body
+        let body = self.convert_block_to_typed_block(&func_def.body)?;
+
+        // Generate function ID
+        let function_id = func_def.name.name.clone();
+
+        Some(TypedFunctionDefinition {
+            name: func_def.name.name.clone(),
+            parameters: typed_parameters,
+            return_type,
+            guard,
+            body,
+            function_id,
+            span: func_def.span,
+        })
+    }
+
+    /// Convert function parameter with type validation
+    fn convert_parameter(&mut self, param: &Parameter) -> Option<TypedParameter> {
+        let param_type = self.convert_type_annotation(&param.type_annotation);
+
+        Some(TypedParameter {
+            name: param.name.name.clone(),
+            param_type,
+            span: param.span,
+        })
+    }
+
+    /// Convert type annotation to structured type
+    fn convert_type_annotation(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> Option<StructuredType> {
+        // For now, just create a simple placeholder
+        // TODO: Implement proper type annotation resolution
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple { path, .. } => {
+                if let Some(first_type) = path.first() {
+                    let type_id = self.context.type_interner.intern_type(&first_type.name);
+                    Some(StructuredType::simple(type_id))
+                } else {
+                    None
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { .. } => {
+                // TODO: Implement tuple type annotation conversion
+                None
+            }
+            outrun_parser::TypeAnnotation::Function { .. } => {
+                // TODO: Implement function type annotation conversion
+                None
+            }
+        }
+    }
+
+    /// Convert parser block to typed block with statement handling
+    fn convert_block_to_typed_block(&mut self, block: &Block) -> Option<TypedBlock> {
+        let mut typed_statements = Vec::new();
+        let mut result_type = None;
+
+        // Convert all statements
+        for statement in &block.statements {
+            if let Some(typed_statement) = self.convert_statement(statement) {
+                // Track the type of the last statement as the result type
+                result_type = match &typed_statement {
+                    TypedStatement::Expression(expr) => expr.structured_type.clone(),
+                    TypedStatement::LetBinding(_) => None, // Let bindings don't have result types
+                };
+                typed_statements.push(typed_statement);
+            } else {
+                return None; // Failed to convert statement
+            }
+        }
+
+        Some(TypedBlock {
+            statements: typed_statements,
+            result_type,
+            span: block.span,
+        })
+    }
+
+    /// Convert statement (expression or let binding)
+    fn convert_statement(&mut self, statement: &Statement) -> Option<TypedStatement> {
+        match &statement.kind {
+            StatementKind::Expression(expr) => self
+                .convert_expression(expr)
+                .map(|typed_expr| TypedStatement::Expression(Box::new(typed_expr))),
+            StatementKind::LetBinding(let_binding) => self
+                .convert_let_binding(let_binding)
+                .map(|typed_let| TypedStatement::LetBinding(Box::new(typed_let))),
+        }
+    }
+
+    /// Convert let binding with pattern and expression validation
+    fn convert_let_binding(&mut self, let_binding: &LetBinding) -> Option<TypedLetBinding> {
+        // Convert expression first
+        let expression = if let Some(typed_expr) = self.convert_expression(&let_binding.expression)
+        {
+            Box::new(typed_expr)
+        } else {
+            return None;
+        };
+
+        // Convert pattern with the expression's type as target
+        let target_type = &expression.structured_type;
+        let pattern = self.convert_pattern(&let_binding.pattern, target_type)?;
+
+        // Binding type is the same as expression type
+        let binding_type = expression.structured_type.clone();
+
+        Some(TypedLetBinding {
+            pattern,
+            expression,
+            binding_type,
+            span: let_binding.span,
+        })
+    }
+
+    /// Convert anonymous function with multiple clauses
+    fn convert_anonymous_function(
+        &mut self,
+        anon_func: &AnonymousFunction,
+    ) -> Option<TypedAnonymousFunction> {
+        let mut typed_clauses = Vec::new();
+
+        // Convert all clauses
+        for clause in &anon_func.clauses {
+            if let Some(typed_clause) = self.convert_anonymous_clause(clause) {
+                typed_clauses.push(typed_clause);
+            } else {
+                return None; // Failed to convert clause
+            }
+        }
+
+        // TODO: Unify all clause types to determine overall function type
+        let function_type = None; // Placeholder for now
+
+        Some(TypedAnonymousFunction {
+            clauses: typed_clauses,
+            function_type,
+            span: anon_func.span,
+        })
+    }
+
+    /// Convert single anonymous function clause
+    fn convert_anonymous_clause(
+        &mut self,
+        clause: &AnonymousClause,
+    ) -> Option<TypedAnonymousClause> {
+        // Convert parameters (anonymous function parameters are simpler)
+        let mut typed_parameters = Vec::new();
+        match &clause.parameters {
+            outrun_parser::AnonymousParameters::None { .. } => {
+                // No parameters
+            }
+            outrun_parser::AnonymousParameters::Single { parameter, .. } => {
+                typed_parameters.push(TypedParameter {
+                    name: parameter.name.name.clone(),
+                    param_type: self.convert_type_annotation(&parameter.type_annotation),
+                    span: parameter.span,
+                });
+            }
+            outrun_parser::AnonymousParameters::Multiple { parameters, .. } => {
+                for param in parameters {
+                    typed_parameters.push(TypedParameter {
+                        name: param.name.name.clone(),
+                        param_type: self.convert_type_annotation(&param.type_annotation),
+                        span: param.span,
+                    });
+                }
+            }
+        }
+
+        // Convert optional guard
+        let guard = if let Some(guard_expr) = &clause.guard {
+            if let Some(typed_guard) = self.convert_expression(guard_expr) {
+                Some(Box::new(typed_guard))
+            } else {
+                return None;
+            }
+        } else {
+            None
+        };
+
+        // Convert body
+        let body = match &clause.body {
+            outrun_parser::AnonymousBody::Expression(expr) => {
+                if let Some(typed_expr) = self.convert_expression(expr) {
+                    Box::new(typed_expr)
+                } else {
+                    return None;
+                }
+            }
+            outrun_parser::AnonymousBody::Block(block) => {
+                if let Some(typed_expr) = self.convert_block(block) {
+                    Box::new(typed_expr)
+                } else {
+                    return None;
+                }
+            }
+        };
+
+        // Clause type is the same as body type
+        let clause_type = body.structured_type.clone();
+
+        Some(TypedAnonymousClause {
+            parameters: typed_parameters,
+            guard,
+            body,
+            clause_type,
+            span: clause.span,
+        })
     }
 }
 

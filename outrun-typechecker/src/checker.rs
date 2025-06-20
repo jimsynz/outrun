@@ -147,6 +147,9 @@ pub enum TypedExpressionKind {
         result_type: Option<StructuredType>, // Unified type of all branches
     },
 
+    // Function expressions
+    AnonymousFunction(TypedAnonymousFunction),
+
     // Placeholder for unsupported expressions (temporary)
     Placeholder(String),
 }
@@ -193,10 +196,76 @@ pub struct TypedItem {
     pub span: Span,
 }
 
+/// Function definition with complete type information
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedFunctionDefinition {
+    pub name: String,
+    pub parameters: Vec<TypedParameter>,
+    pub return_type: Option<StructuredType>,
+    pub guard: Option<Box<TypedExpression>>, // Guard must return Boolean
+    pub body: TypedBlock,
+    pub function_id: String, // Reference to function registry
+    pub span: outrun_parser::Span,
+}
+
+/// Function parameter with resolved type information
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedParameter {
+    pub name: String,
+    pub param_type: Option<StructuredType>,
+    pub span: outrun_parser::Span,
+}
+
+/// Block of statements with result type
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedBlock {
+    pub statements: Vec<TypedStatement>,
+    pub result_type: Option<StructuredType>, // Type of the last expression/statement
+    pub span: outrun_parser::Span,
+}
+
+/// Statements within blocks
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedStatement {
+    /// Expression statement
+    Expression(Box<TypedExpression>),
+    /// Let binding statement
+    LetBinding(Box<TypedLetBinding>),
+}
+
+/// Let binding with pattern and type information
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedLetBinding {
+    pub pattern: crate::patterns::TypedPattern,
+    pub expression: Box<TypedExpression>,
+    pub binding_type: Option<StructuredType>, // Type of the bound expression
+    pub span: outrun_parser::Span,
+}
+
+/// Anonymous function with multiple clauses
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAnonymousFunction {
+    pub clauses: Vec<TypedAnonymousClause>,
+    pub function_type: Option<StructuredType>, // Overall function type
+    pub span: outrun_parser::Span,
+}
+
+/// Single clause of an anonymous function
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAnonymousClause {
+    pub parameters: Vec<TypedParameter>, // Anonymous parameters (may be patterns)
+    pub guard: Option<Box<TypedExpression>>, // Optional guard expression
+    pub body: Box<TypedExpression>,      // Body expression
+    pub clause_type: Option<StructuredType>, // Type of this specific clause
+    pub span: outrun_parser::Span,
+}
+
 /// Simplified typed item kinds
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {
     Expression(Box<TypedExpression>),
+    FunctionDefinition(TypedFunctionDefinition),
+    LetBinding(TypedLetBinding),
     Placeholder(String), // For unsupported items
 }
 

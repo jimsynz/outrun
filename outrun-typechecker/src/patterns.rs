@@ -407,11 +407,13 @@ impl<'a> PatternChecker<'a> {
         }
 
         // Handle rest pattern
-        let rest = list_pattern.rest.as_ref().map(|rest_identifier| BoundVariable::new(
+        let rest = list_pattern.rest.as_ref().map(|rest_identifier| {
+            BoundVariable::new(
                 rest_identifier.name.clone(),
                 None, // TODO: Infer rest type from list element type
                 rest_identifier.span,
-            ));
+            )
+        });
 
         Ok((typed_elements, rest))
     }
