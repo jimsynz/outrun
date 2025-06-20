@@ -3,27 +3,76 @@
 use crate::error::TypeError;
 use crate::multi_program_compiler::{CompilationResult, FunctionRegistry, MultiProgramCompiler};
 use crate::types::TypeId;
-use crate::unification::UnificationContext;
+use crate::unification::{StructuredType, UnificationContext};
 use outrun_parser::{Program, Span};
 
-/// Simplified typed expression for the new architecture
+/// Function path variants for typed function calls
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedExpression {
-    pub kind: TypedExpressionKind,
-    pub type_id: TypeId,
+pub enum TypedFunctionPath {
+    Simple { name: String },
+    Qualified { module: String, name: String },
+    Expression { expression: Box<TypedExpression> },
+}
+
+/// Typed function argument with resolved types
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedArgument {
+    pub name: String,
+    pub expression: TypedExpression,
+    pub argument_type: Option<StructuredType>, // None = type not yet resolved
     pub span: Span,
 }
 
-/// Simplified typed expression kinds
+/// Dispatch method for function calls
+#[derive(Debug, Clone, PartialEq)]
+pub enum DispatchMethod {
+    /// Static function call - resolved at compile time
+    Static {
+        function_id: String, // Reference to function registry
+    },
+    /// Trait method call - dispatched at runtime
+    Trait {
+        trait_name: String,
+        method_name: String,
+        impl_type: TypeId,
+    },
+}
+
+/// Typed expression with structured type information
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedExpression {
+    pub kind: TypedExpressionKind,
+    pub structured_type: Option<StructuredType>, // None = type not yet resolved
+    pub span: Span,
+}
+
+/// Typed expression kinds with core language support
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpressionKind {
+    // Basic literals
     Integer(i64),
     Float(f64),
     String(String),
     Boolean(bool),
     Atom(String),
     Identifier(String),
-    Placeholder(String), // For unsupported expressions
+
+    // Function calls (includes desugared binary/unary operations)
+    FunctionCall {
+        function_path: TypedFunctionPath,
+        arguments: Vec<TypedArgument>,
+        dispatch_method: DispatchMethod,
+    },
+
+    // Field access
+    FieldAccess {
+        object: Box<TypedExpression>,
+        field: String,
+        field_type: Option<StructuredType>, // None = type not yet resolved
+    },
+
+    // Placeholder for unsupported expressions (temporary)
+    Placeholder(String),
 }
 
 /// Simplified typed item
@@ -36,7 +85,7 @@ pub struct TypedItem {
 /// Simplified typed item kinds
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {
-    Expression(TypedExpression),
+    Expression(Box<TypedExpression>),
     Placeholder(String), // For unsupported items
 }
 
@@ -148,7 +197,7 @@ impl TypeChecker {
         let kind = match &item.kind {
             ItemKind::Expression(expr) => {
                 if let Some(typed_expr) = Self::convert_expression_simple(expr, type_context) {
-                    TypedItemKind::Expression(typed_expr)
+                    TypedItemKind::Expression(Box::new(typed_expr))
                 } else {
                     TypedItemKind::Placeholder("Unsupported expression".to_string())
                 }
@@ -174,15 +223,18 @@ impl TypeChecker {
         })
     }
 
-    /// Convert expression to typed expression (simplified for minimal implementation)
+    /// Convert expression to typed expression (minimal implementation)
+    ///
+    /// Note: This is a placeholder implementation. Complex expressions should be handled
+    /// by a TypedASTBuilder visitor that runs after TypeCheckingVisitor to use
+    /// properly resolved type information.
     fn convert_expression_simple(
         expr: &outrun_parser::Expression,
-        type_context: &UnificationContext,
+        _type_context: &UnificationContext,
     ) -> Option<TypedExpression> {
         use outrun_parser::ExpressionKind;
 
-        // For now, just skip expressions without valid TypeIds - this is a minimal implementation
-        let type_id = type_context.type_interner.get_type("Any")?;
+        // Only handle basic literals here - complex expressions need proper type checking
 
         let kind = match &expr.kind {
             ExpressionKind::Integer(lit) => TypedExpressionKind::Integer(lit.value),
@@ -202,13 +254,35 @@ impl TypeChecker {
             ExpressionKind::Boolean(lit) => TypedExpressionKind::Boolean(lit.value),
             ExpressionKind::Atom(lit) => TypedExpressionKind::Atom(lit.name.clone()),
             ExpressionKind::Identifier(id) => TypedExpressionKind::Identifier(id.name.clone()),
-            // For now, return None for complex expressions - we'll implement these incrementally
+
+            // Complex expressions will be handled by TypedASTBuilder visitor
+            ExpressionKind::FunctionCall(_) => {
+                return Some(TypedExpression {
+                    kind: TypedExpressionKind::Placeholder(
+                        "Function call - handled by TypedASTBuilder".to_string(),
+                    ),
+                    structured_type: None,
+                    span: expr.span,
+                });
+            }
+
+            ExpressionKind::FieldAccess(_) => {
+                return Some(TypedExpression {
+                    kind: TypedExpressionKind::Placeholder(
+                        "Field access - handled by TypedASTBuilder".to_string(),
+                    ),
+                    structured_type: None,
+                    span: expr.span,
+                });
+            }
+
+            // For now, return None for other complex expressions - we'll implement these incrementally
             _ => return None,
         };
 
         Some(TypedExpression {
             kind,
-            type_id,
+            structured_type: None, // Type will be resolved during proper type checking
             span: expr.span,
         })
     }

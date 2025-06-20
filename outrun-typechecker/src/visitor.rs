@@ -129,7 +129,7 @@ pub trait TypedVisitor<T>: Sized {
     fn visit_typed_literal(
         &mut self,
         _kind: &TypedExpressionKind,
-        _type_id: crate::types::TypeId,
+        _structured_type: &Option<crate::unification::StructuredType>,
         _span: &Span,
     ) -> VisitorResult {
         // Default: no traversal needed for leaf nodes
@@ -346,7 +346,7 @@ pub fn walk_typed_expression<V: TypedVisitor<T>, T>(
     expr: &TypedExpression,
 ) -> VisitorResult {
     // With our simplified typed expressions, just visit as literal
-    visitor.visit_typed_literal(&expr.kind, expr.type_id, &expr.span)
+    visitor.visit_typed_literal(&expr.kind, &expr.structured_type, &expr.span)
 }
 
 /// Helper function to convert ItemKind to ExpressionKind for literal handling
