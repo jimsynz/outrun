@@ -5,8 +5,9 @@
 //! resolved type information for all nodes.
 
 use crate::checker::{
-    DispatchMethod, TypedArgument, TypedExpression, TypedExpressionKind, TypedFunctionPath,
-    TypedItem, TypedItemKind, TypedMapEntry, TypedProgram, TypedStructField,
+    DispatchMethod, TypedArgument, TypedAsClause, TypedCaseVariant, TypedExpression,
+    TypedExpressionKind, TypedFunctionPath, TypedItem, TypedItemKind, TypedMapEntry,
+    TypedProgram, TypedStructField, TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -15,9 +16,10 @@ use crate::types::TypeId;
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{
-    Argument, Expression, ExpressionKind, FunctionCall, FunctionPath, Item, ItemKind, ListElement,
-    ListLiteral, MapEntry, MapLiteral, Program, Span, StructLiteral, StructLiteralField,
-    TupleLiteral,
+    Argument, Block, CaseExpression, CaseResult, CaseWhenClause, ConcreteCaseExpression,
+    Expression, ExpressionKind, FunctionCall, FunctionPath, IfExpression, Item, ItemKind,
+    ListElement, ListLiteral, MapEntry, MapLiteral, Program, Span, StructLiteral,
+    StructLiteralField, TraitCaseClause, TraitCaseExpression, TupleLiteral,
 };
 use std::collections::HashMap;
 
@@ -215,7 +217,24 @@ impl TypedASTBuilder {
                 }
             }
 
-            // TODO: Add more expression types (if/case expressions, patterns, etc.)
+            // Control flow expressions
+            ExpressionKind::IfExpression(if_expr) => {
+                if let Some(typed_if) = self.convert_if_expression(if_expr) {
+                    typed_if
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert if expression".to_string())
+                }
+            }
+
+            ExpressionKind::CaseExpression(case_expr) => {
+                if let Some(typed_case) = self.convert_case_expression(case_expr) {
+                    typed_case
+                } else {
+                    TypedExpressionKind::Placeholder("Failed to convert case expression".to_string())
+                }
+            }
+
+            // TODO: Add more expression types (patterns, etc.)
             _ => TypedExpressionKind::Placeholder(format!(
                 "Expression type not yet implemented: {:?}",
                 std::mem::discriminant(&expr.kind)
@@ -553,6 +572,222 @@ impl TypedASTBuilder {
             typed_pattern.bound_variables
         } else {
             Vec::new() // Return empty if pattern conversion failed
+        }
+    }
+
+    /// Convert if expression with branch type compatibility checking
+    fn convert_if_expression(&mut self, if_expr: &IfExpression) -> Option<TypedExpressionKind> {
+        // Convert condition - must be boolean
+        let condition = if let Some(typed_condition) = self.convert_expression(&if_expr.condition) {
+            Box::new(typed_condition)
+        } else {
+            return None;
+        };
+
+        // Convert then branch
+        let then_branch = if let Some(typed_then) = self.convert_block(&if_expr.then_block) {
+            Box::new(typed_then)
+        } else {
+            return None;
+        };
+
+        // Convert optional else branch
+        let else_branch = if let Some(else_block) = &if_expr.else_block {
+            if let Some(typed_else) = self.convert_block(else_block) {
+                Some(Box::new(typed_else))
+            } else {
+                return None;
+            }
+        } else {
+            None
+        };
+
+        // TODO: Unify branch types to determine result type
+        let result_type = None; // Placeholder for now
+
+        Some(TypedExpressionKind::IfExpression {
+            condition,
+            then_branch,
+            else_branch,
+            result_type,
+        })
+    }
+
+    /// Convert case expression (concrete or trait variant)
+    fn convert_case_expression(&mut self, case_expr: &CaseExpression) -> Option<TypedExpressionKind> {
+        let variant = match case_expr {
+            CaseExpression::Concrete(concrete_case) => {
+                self.convert_concrete_case_expression(concrete_case)?
+            }
+            CaseExpression::Trait(trait_case) => {
+                self.convert_trait_case_expression(trait_case)?
+            }
+        };
+
+        // TODO: Unify all branch types to determine result type
+        let result_type = None; // Placeholder for now
+
+        Some(TypedExpressionKind::CaseExpression {
+            variant,
+            result_type,
+        })
+    }
+
+    /// Convert concrete case expression with pattern matching
+    fn convert_concrete_case_expression(
+        &mut self,
+        concrete_case: &ConcreteCaseExpression,
+    ) -> Option<TypedCaseVariant> {
+        // Convert the expression being matched
+        let expression = if let Some(typed_expr) = self.convert_expression(&concrete_case.expression) {
+            Box::new(typed_expr)
+        } else {
+            return None;
+        };
+
+        // Convert all when clauses
+        let mut when_clauses = Vec::new();
+        for when_clause in &concrete_case.when_clauses {
+            if let Some(typed_when) = self.convert_when_clause(when_clause) {
+                when_clauses.push(typed_when);
+            } else {
+                return None; // Failed to convert a when clause
+            }
+        }
+
+        Some(TypedCaseVariant::Concrete {
+            expression,
+            when_clauses,
+        })
+    }
+
+    /// Convert trait case expression with type checking
+    fn convert_trait_case_expression(
+        &mut self,
+        trait_case: &TraitCaseExpression,
+    ) -> Option<TypedCaseVariant> {
+        // Convert the expression being matched
+        let expression = if let Some(typed_expr) = self.convert_expression(&trait_case.expression) {
+            Box::new(typed_expr)
+        } else {
+            return None;
+        };
+
+        // Convert trait name
+        let trait_name = trait_case.trait_name.name.clone();
+
+        // Convert all as clauses
+        let mut as_clauses = Vec::new();
+        for type_clause in &trait_case.type_clauses {
+            if let Some(typed_as) = self.convert_trait_case_clause(type_clause) {
+                as_clauses.push(typed_as);
+            } else {
+                return None; // Failed to convert a type clause
+            }
+        }
+
+        Some(TypedCaseVariant::Trait {
+            expression,
+            trait_name,
+            as_clauses,
+        })
+    }
+
+    /// Convert when clause for concrete case expressions
+    fn convert_when_clause(&mut self, when_clause: &CaseWhenClause) -> Option<TypedWhenClause> {
+        // Convert guard expression
+        let guard = if let Some(typed_guard) = self.convert_expression(&when_clause.guard) {
+            Box::new(typed_guard)
+        } else {
+            return None;
+        };
+
+        // Convert result
+        let result = if let Some(typed_result) = self.convert_case_result(&when_clause.result) {
+            Box::new(typed_result)
+        } else {
+            return None;
+        };
+
+        // TODO: Extract bound variables from guard patterns
+        let bound_variables = Vec::new(); // Placeholder for now
+
+        Some(TypedWhenClause {
+            guard,
+            result,
+            bound_variables,
+            span: when_clause.span,
+        })
+    }
+
+    /// Convert trait case clause for trait case expressions
+    fn convert_trait_case_clause(
+        &mut self,
+        type_clause: &TraitCaseClause,
+    ) -> Option<TypedAsClause> {
+        // Convert type path
+        let type_path = vec![type_clause.type_name.name.clone()];
+
+        // Convert optional pattern
+        let pattern = if let Some(_struct_pattern) = &type_clause.pattern {
+            // TODO: Convert struct pattern to TypedPattern
+            // For now, we don't have struct pattern support in the pattern system
+            None
+        } else {
+            None
+        };
+
+        // Convert result
+        let result = if let Some(typed_result) = self.convert_case_result(&type_clause.result) {
+            Box::new(typed_result)
+        } else {
+            return None;
+        };
+
+        // TODO: Verify trait implementation
+        let impl_verified = false; // Placeholder for now
+
+        Some(TypedAsClause {
+            type_path,
+            pattern,
+            result,
+            impl_verified,
+            span: type_clause.span,
+        })
+    }
+
+    /// Convert case result (block or expression)
+    fn convert_case_result(&mut self, case_result: &CaseResult) -> Option<TypedExpression> {
+        match case_result {
+            CaseResult::Block(block) => self.convert_block(block),
+            CaseResult::Expression(expr) => self.convert_expression(expr),
+        }
+    }
+
+    /// Convert block to expression (for now, simple approach)
+    fn convert_block(&mut self, block: &Block) -> Option<TypedExpression> {
+        if block.statements.is_empty() {
+            // Empty block - return placeholder
+            return Some(TypedExpression {
+                kind: TypedExpressionKind::Placeholder("Empty block".to_string()),
+                structured_type: None,
+                span: block.span,
+            });
+        }
+
+        // For now, just convert the last statement as an expression
+        // TODO: Handle multiple statements properly
+        if let Some(last_statement) = block.statements.last() {
+            match &last_statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => self.convert_expression(expr),
+                _ => Some(TypedExpression {
+                    kind: TypedExpressionKind::Placeholder("Non-expression statement".to_string()),
+                    structured_type: None,
+                    span: last_statement.span,
+                }),
+            }
+        } else {
+            None
         }
     }
 }

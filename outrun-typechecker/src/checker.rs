@@ -135,8 +135,55 @@ pub enum TypedExpressionKind {
         struct_type: Option<StructuredType>,
     },
 
+    // Control flow expressions
+    IfExpression {
+        condition: Box<TypedExpression>,
+        then_branch: Box<TypedExpression>,
+        else_branch: Option<Box<TypedExpression>>,
+        result_type: Option<StructuredType>, // Unified type of all branches
+    },
+    CaseExpression {
+        variant: TypedCaseVariant,
+        result_type: Option<StructuredType>, // Unified type of all branches
+    },
+
     // Placeholder for unsupported expressions (temporary)
     Placeholder(String),
+}
+
+/// Case expression variants for typed AST
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedCaseVariant {
+    /// Concrete case: pattern-based matching with exhaustiveness checking
+    Concrete {
+        expression: Box<TypedExpression>,
+        when_clauses: Vec<TypedWhenClause>,
+    },
+    /// Trait case: trait implementation dispatch
+    Trait {
+        expression: Box<TypedExpression>,
+        trait_name: String,
+        as_clauses: Vec<TypedAsClause>,
+    },
+}
+
+/// When clause for concrete case expressions with pattern matching
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedWhenClause {
+    pub guard: Box<TypedExpression>,
+    pub result: Box<TypedExpression>,
+    pub bound_variables: Vec<crate::patterns::BoundVariable>, // Variables from guard patterns
+    pub span: Span,
+}
+
+/// As clause for trait case expressions with type checking
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAsClause {
+    pub type_path: Vec<String>, // Type implementing the trait
+    pub pattern: Option<crate::patterns::TypedPattern>, // Optional destructuring pattern
+    pub result: Box<TypedExpression>,
+    pub impl_verified: bool, // Whether trait implementation was verified
+    pub span: Span,
 }
 
 /// Simplified typed item

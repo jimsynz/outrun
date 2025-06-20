@@ -70,6 +70,9 @@ mod test_basic_typed_ast;
 // Collection typed AST tests (Week 2 functionality)
 mod test_collection_typed_ast;
 
+// Control flow typed AST tests (Week 4 functionality)
+mod test_control_flow_typed_ast;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;
