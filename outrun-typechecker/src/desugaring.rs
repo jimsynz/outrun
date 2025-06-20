@@ -7,8 +7,9 @@ use outrun_parser::{
     Argument, ArgumentFormat, BinaryOperation, BinaryOperator, Block, CaseExpression, CaseResult,
     CaseWhenClause, ConcreteCaseExpression, Expression, ExpressionKind, FunctionCall,
     FunctionDefinition, FunctionPath, Identifier, IfExpression, ImplBlock, Item, ItemKind, Program,
-    Statement, StatementKind, StaticFunctionDefinition, TraitCaseClause, TraitCaseExpression,
-    TraitDefinition, TraitFunction, TypeIdentifier, UnaryOperation, UnaryOperator,
+    Span, Statement, StatementKind, StaticFunctionDefinition, StringLiteral, StringPart,
+    TraitCaseClause, TraitCaseExpression, TraitDefinition, TraitFunction, TypeIdentifier,
+    UnaryOperation, UnaryOperator,
 };
 
 /// Transformer that desugars operator expressions into trait function calls
@@ -233,6 +234,22 @@ impl DesugaringVisitor {
                 }),
                 span: expr.span,
             },
+            ExpressionKind::String(string_lit) => {
+                // Check if this string has interpolations that need desugaring
+                if string_lit
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, outrun_parser::StringPart::Interpolation { .. }))
+                {
+                    Self::desugar_string_interpolation(string_lit, expr.span)
+                } else {
+                    // Simple string without interpolation - pass through unchanged
+                    Expression {
+                        kind: ExpressionKind::String(string_lit),
+                        span: expr.span,
+                    }
+                }
+            }
             // For simplicity, handle only the most common expression types
             // Lists, tuples, maps, etc. can be added later as needed
             _ => expr, // Pass through other expressions unchanged for now
@@ -373,5 +390,118 @@ impl DesugaringVisitor {
             }),
             span: op.span,
         }
+    }
+
+    /// Transform string interpolation into Display.to_string() and String.concat() calls
+    ///
+    /// Example: "Hello #{name}!" becomes String.concat(lhs: "Hello ", rhs: String.concat(lhs: Display.to_string(value: name), rhs: "!"))
+    fn desugar_string_interpolation(string_lit: StringLiteral, span: Span) -> Expression {
+        // Convert all parts to expressions that result in strings
+        let mut string_expressions = Vec::new();
+
+        for part in &string_lit.parts {
+            match part {
+                StringPart::Text {
+                    content,
+                    raw_content,
+                } => {
+                    // Create a simple string literal expression for text parts
+                    string_expressions.push(Expression {
+                        kind: ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text {
+                                content: content.clone(),
+                                raw_content: raw_content.clone(),
+                            }],
+                            format: string_lit.format.clone(),
+                            span,
+                        }),
+                        span,
+                    });
+                }
+                StringPart::Interpolation {
+                    expression,
+                    span: part_span,
+                } => {
+                    // Convert interpolated expression to Display.to_string(value: expression)
+                    let display_call = Expression {
+                        kind: ExpressionKind::FunctionCall(FunctionCall {
+                            path: FunctionPath::Qualified {
+                                module: TypeIdentifier {
+                                    name: "Display".to_string(),
+                                    span: expression.span,
+                                },
+                                name: Identifier {
+                                    name: "to_string".to_string(),
+                                    span: expression.span,
+                                },
+                            },
+                            arguments: vec![Argument::Named {
+                                name: Identifier {
+                                    name: "value".to_string(),
+                                    span: expression.span,
+                                },
+                                expression: Self::desugar_expression(*expression.clone()),
+                                format: ArgumentFormat::Explicit,
+                                span: expression.span,
+                            }],
+                            span: *part_span,
+                        }),
+                        span: *part_span,
+                    };
+                    string_expressions.push(display_call);
+                }
+            }
+        }
+
+        // If we only have one expression, return it directly
+        if string_expressions.len() == 1 {
+            return string_expressions.into_iter().next().unwrap();
+        }
+
+        // Otherwise, chain them together with String.concat() calls
+        // Start with the first expression and concat each subsequent one
+        let mut expressions_iter = string_expressions.into_iter();
+        let mut result = expressions_iter.next().unwrap();
+
+        for expr in expressions_iter {
+            result = Expression {
+                kind: ExpressionKind::FunctionCall(FunctionCall {
+                    path: FunctionPath::Qualified {
+                        module: TypeIdentifier {
+                            name: "String".to_string(),
+                            span,
+                        },
+                        name: Identifier {
+                            name: "concat".to_string(),
+                            span,
+                        },
+                    },
+                    arguments: vec![
+                        Argument::Named {
+                            name: Identifier {
+                                name: "lhs".to_string(),
+                                span,
+                            },
+                            expression: result,
+                            format: ArgumentFormat::Explicit,
+                            span,
+                        },
+                        Argument::Named {
+                            name: Identifier {
+                                name: "rhs".to_string(),
+                                span,
+                            },
+                            expression: expr,
+                            format: ArgumentFormat::Explicit,
+                            span,
+                        },
+                    ],
+                    span,
+                }),
+                span,
+            };
+        }
+
+        result
     }
 }

@@ -342,6 +342,7 @@ pub fn walk_typed_item<V: TypedVisitor<T>, T>(visitor: &mut V, item: &TypedItem)
         TypedItemKind::ImplBlock(_impl_block) => Ok(()),      // TODO: Add impl block visiting
         TypedItemKind::ConstDefinition(_const_def) => Ok(()), // TODO: Add const definition visiting
         TypedItemKind::LetBinding(_let_binding) => Ok(()),    // TODO: Add let binding visiting
+        TypedItemKind::MacroDefinition(_macro_def) => Ok(()), // TODO: Add macro definition visiting
         TypedItemKind::Placeholder(_) => Ok(()),              // No-op for placeholders
     }
 }

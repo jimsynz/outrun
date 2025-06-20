@@ -8,10 +8,10 @@ use crate::checker::{
     DispatchMethod, TypedAnonymousClause, TypedAnonymousFunction, TypedArgument, TypedAsClause,
     TypedBlock, TypedCaseVariant, TypedConstDefinition, TypedExpression, TypedExpressionKind,
     TypedFunctionDefinition, TypedFunctionPath, TypedFunctionTypeParam, TypedGenericContext,
-    TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind, TypedLetBinding, TypedMapEntry,
-    TypedParameter, TypedProgram, TypedStatement, TypedStructDefinition, TypedStructField,
-    TypedStructFieldDefinition, TypedTraitDefinition, TypedTraitFunction, TypedTypeAnnotation,
-    TypedTypeAnnotationKind, TypedWhenClause,
+    TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind, TypedLetBinding,
+    TypedMacroDefinition, TypedMapEntry, TypedParameter, TypedProgram, TypedStatement,
+    TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
+    TypedTraitFunction, TypedTypeAnnotation, TypedTypeAnnotationKind, TypedWhenClause,
 };
 use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
 use crate::patterns::{PatternChecker, TypedPattern};
@@ -170,6 +170,13 @@ impl TypedASTBuilder {
                     TypedItemKind::Placeholder("Failed to convert let binding".to_string())
                 }
             }
+            ItemKind::MacroDefinition(macro_def) => {
+                if let Some(typed_macro) = self.convert_macro_definition(macro_def) {
+                    TypedItemKind::MacroDefinition(typed_macro)
+                } else {
+                    TypedItemKind::Placeholder("Failed to convert macro definition".to_string())
+                }
+            }
             _ => return None, // Skip other items for now
         };
 
@@ -189,16 +196,28 @@ impl TypedASTBuilder {
             ExpressionKind::Integer(lit) => TypedExpressionKind::Integer(lit.value),
             ExpressionKind::Float(lit) => TypedExpressionKind::Float(lit.value),
             ExpressionKind::String(lit) => {
-                // Handle string interpolation
-                let content = lit
+                // Simple string (interpolation should be desugared in earlier phase)
+                if lit
                     .parts
                     .iter()
-                    .map(|part| match part {
-                        outrun_parser::StringPart::Text { content, .. } => content.clone(),
-                        outrun_parser::StringPart::Interpolation { .. } => "{}".to_string(), // TODO: Handle interpolation
-                    })
-                    .collect::<String>();
-                TypedExpressionKind::String(content)
+                    .any(|part| matches!(part, outrun_parser::StringPart::Interpolation { .. }))
+                {
+                    // This is an error - interpolation should have been desugared
+                    TypedExpressionKind::Placeholder(
+                        "String interpolation not desugared - this is a compiler bug".to_string(),
+                    )
+                } else {
+                    // Simple string - concatenate all text parts
+                    let content = lit
+                        .parts
+                        .iter()
+                        .map(|part| match part {
+                            outrun_parser::StringPart::Text { content, .. } => content.clone(),
+                            outrun_parser::StringPart::Interpolation { .. } => unreachable!(),
+                        })
+                        .collect::<String>();
+                    TypedExpressionKind::String(content)
+                }
             }
             ExpressionKind::Boolean(lit) => TypedExpressionKind::Boolean(lit.value),
             ExpressionKind::Atom(lit) => TypedExpressionKind::Atom(lit.name.clone()),
@@ -274,6 +293,17 @@ impl TypedASTBuilder {
                 } else {
                     TypedExpressionKind::Placeholder(
                         "Failed to convert case expression".to_string(),
+                    )
+                }
+            }
+
+            // Macro injection
+            ExpressionKind::MacroInjection(injection) => {
+                if let Some(typed_injection) = self.convert_macro_injection(injection) {
+                    typed_injection
+                } else {
+                    TypedExpressionKind::Placeholder(
+                        "Failed to convert macro injection".to_string(),
                     )
                 }
             }
@@ -1088,6 +1118,51 @@ impl TypedASTBuilder {
             body,
             clause_type,
             span: clause.span,
+        })
+    }
+
+    /// Convert macro injection with parameter validation
+    fn convert_macro_injection(
+        &mut self,
+        injection: &outrun_parser::MacroInjection,
+    ) -> Option<TypedExpressionKind> {
+        // For now, macro injection is not resolved - we just track the parameter
+        // In a full implementation, we would look up the macro definition and
+        // validate that the parameter exists, but that requires macro context
+        Some(TypedExpressionKind::MacroInjection {
+            parameter: injection.parameter.name.clone(),
+            injected_expression: None, // Not resolved yet - would need macro expansion context
+            original_span: injection.span,
+        })
+    }
+
+    /// Convert macro definition with body validation
+    fn convert_macro_definition(
+        &mut self,
+        macro_def: &outrun_parser::MacroDefinition,
+    ) -> Option<TypedMacroDefinition> {
+        // Convert parameter names
+        let parameters: Vec<String> = macro_def
+            .parameters
+            .iter()
+            .map(|param| param.name.clone())
+            .collect();
+
+        // Convert body block
+        let body = self.convert_block_to_typed_block(&macro_def.body)?;
+
+        // TODO: In a full implementation, we would:
+        // 1. Validate that all macro parameters are used in the body
+        // 2. Check for hygiene violations
+        // 3. Ensure macro injections are valid
+        // For now, we just convert the structure
+
+        Some(TypedMacroDefinition {
+            name: macro_def.name.name.clone(),
+            parameters,
+            body,
+            hygiene_scope: None, // Not implemented yet
+            span: macro_def.span,
         })
     }
 

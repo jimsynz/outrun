@@ -150,6 +150,13 @@ pub enum TypedExpressionKind {
     // Function expressions
     AnonymousFunction(TypedAnonymousFunction),
 
+    // Macro and advanced syntax
+    MacroInjection {
+        parameter: String,
+        injected_expression: Option<Box<TypedExpression>>, // Resolved macro content
+        original_span: Span,                               // Original injection location
+    },
+
     // Placeholder for unsupported expressions (temporary)
     Placeholder(String),
 }
@@ -396,6 +403,16 @@ pub struct TypedFunctionTypeParam {
     pub span: outrun_parser::Span,
 }
 
+/// Typed macro definition with parameter validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedMacroDefinition {
+    pub name: String,
+    pub parameters: Vec<String>, // Parameter names
+    pub body: TypedBlock,
+    pub hygiene_scope: Option<String>, // Hygiene scope identifier (future)
+    pub span: Span,
+}
+
 /// Typed item kinds supporting full language constructs
 #[derive(Debug, Clone)]
 pub enum TypedItemKind {
@@ -406,6 +423,7 @@ pub enum TypedItemKind {
     ImplBlock(TypedImplBlock),
     ConstDefinition(TypedConstDefinition),
     LetBinding(Box<TypedLetBinding>),
+    MacroDefinition(TypedMacroDefinition),
     Placeholder(String), // For debugging - will be removed
 }
 
