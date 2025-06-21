@@ -531,7 +531,7 @@ impl MultiProgramCompiler {
                         && !self.is_builtin_type(&trait_name)
                     {
                         self.errors.push(TypeError::UndefinedTrait {
-                            span: miette::SourceSpan::new(0.into(), 0), // TODO: Get proper span
+                            span: crate::error::span_to_source_span(impl_def.trait_spec.span),
                             trait_name,
                         });
                     }
