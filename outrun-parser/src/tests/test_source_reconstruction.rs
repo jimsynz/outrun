@@ -8,7 +8,7 @@ fn test_source_reconstruction_integers() {
         let result = parse_program(input).unwrap();
         let reconstructed = format!("{}", result);
 
-        let expected = if input == &"0xFF" { "0xff" } else { *input };
+        let expected = *input; // Now preserves exact original format
 
         assert_eq!(
             reconstructed, expected,
@@ -24,7 +24,7 @@ fn test_source_reconstruction_mixed() {
     let result = parse_program(input).unwrap();
     let reconstructed = format!("{}", result);
 
-    let expected = "structtrue420b1010MyTypefalse0o755my_var0xff";
+    let expected = "structtrue420b1010MyTypefalse0o755my_var0xFF"; // Preserves original case
 
     assert_eq!(reconstructed, expected);
 }
@@ -48,7 +48,7 @@ fn test_integer_value_vs_format_preservation() {
                     );
 
                     let display = format!("{}", integer);
-                    let expected_display = if input == &"0xFF" { "0xff" } else { *input };
+                    let expected_display = *input; // Now preserves exact original format
                     assert_eq!(
                         display, expected_display,
                         "Display format should be preserved for input '{}'",

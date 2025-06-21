@@ -727,6 +727,7 @@ mod tests {
                     literal: Literal::Integer(outrun_parser::IntegerLiteral {
                         value: 42,
                         format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
                         span: Span::new(0, 0),
                     }),
                     literal_type: None,
@@ -937,6 +938,7 @@ mod tests {
                     literal: Literal::Integer(outrun_parser::IntegerLiteral {
                         value: 42,
                         format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
                         span: Span::new(0, 0),
                     }),
                     literal_type: None,
@@ -1063,6 +1065,7 @@ mod tests {
                     literal: Literal::Integer(outrun_parser::IntegerLiteral {
                         value: 42,
                         format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
                         span: Span::new(0, 0),
                     }),
                     literal_type: None,
@@ -1113,6 +1116,7 @@ mod tests {
                     literal: Literal::Integer(outrun_parser::IntegerLiteral {
                         value: 42,
                         format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
                         span: Span::new(0, 0),
                     }),
                     literal_type: None,
@@ -1129,6 +1133,7 @@ mod tests {
                     literal: Literal::Integer(outrun_parser::IntegerLiteral {
                         value: 43,
                         format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "43".to_string(),
                         span: Span::new(0, 0),
                     }),
                     literal_type: None,

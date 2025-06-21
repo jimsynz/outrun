@@ -20,6 +20,7 @@ fn create_test_integer_expression(value: i64) -> Expression {
         kind: ExpressionKind::Integer(IntegerLiteral {
             value,
             format: IntegerFormat::Decimal,
+            raw_text: value.to_string(),
             span: create_test_span(),
         }),
         span: create_test_span(),

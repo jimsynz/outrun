@@ -279,6 +279,7 @@ fn test_expression_to_text_reconstruction() {
         kind: ExpressionKind::Integer(IntegerLiteral {
             value: 42,
             format: IntegerFormat::Decimal,
+            raw_text: "42".to_string(),
             span: Span::new(0, 2),
         }),
         span: Span::new(0, 2),

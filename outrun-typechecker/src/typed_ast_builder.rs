@@ -455,17 +455,17 @@ impl TypedASTBuilder {
     fn extract_literal_format_info(&self, expr: &Expression) -> Option<LiteralFormatInfo> {
         match &expr.kind {
             ExpressionKind::Integer(lit) => Some(LiteralFormatInfo {
-                original_text: format!("{}", lit.value), // TODO: Get actual original text
+                original_text: lit.raw_text.clone(),
                 format_details: LiteralFormatDetails::Integer {
                     format: lit.format.clone(),
-                    raw_digits: format!("{}", lit.value), // TODO: Extract raw digits
+                    raw_digits: lit.raw_text.clone(),
                 },
             }),
             ExpressionKind::Float(lit) => Some(LiteralFormatInfo {
-                original_text: format!("{}", lit.value), // TODO: Get actual original text
+                original_text: lit.raw_text.clone(),
                 format_details: LiteralFormatDetails::Float {
                     format: lit.format.clone(),
-                    raw_number: format!("{}", lit.value), // TODO: Extract raw number
+                    raw_number: lit.raw_text.clone(),
                 },
             }),
             ExpressionKind::String(lit) => {

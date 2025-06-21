@@ -95,6 +95,9 @@ mod test_case_expression_verification;
 // Case expression branch type unification tests
 mod test_case_branch_unification;
 
+// Raw text preservation tests
+mod test_raw_text_preservation;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

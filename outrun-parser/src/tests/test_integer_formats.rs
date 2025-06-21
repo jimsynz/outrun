@@ -128,8 +128,8 @@ fn test_integer_format_display_preservation() {
         ("42", "42"),         // Decimal stays decimal
         ("0b1010", "0b1010"), // Binary preserves format
         ("0o755", "0o755"),   // Octal preserves format
-        ("0xFF", "0xff"),     // Hex preserves format (but lowercase)
-        ("0xABC", "0xabc"),   // Hex uppercase becomes lowercase
+        ("0xFF", "0xFF"),     // Hex preserves exact case
+        ("0xABC", "0xABC"),   // Hex uppercase preserved
     ];
 
     for (input, expected_display) in &test_cases {

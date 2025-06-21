@@ -481,6 +481,7 @@ mod tests {
             kind: ExpressionKind::Integer(IntegerLiteral {
                 value: 1,
                 format: IntegerFormat::Decimal,
+                raw_text: "1".to_string(),
                 span: create_test_span(),
             }),
             span: create_test_span(),

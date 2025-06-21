@@ -141,6 +141,7 @@ pub struct BooleanLiteral {
 pub struct IntegerLiteral {
     pub value: i64, // Parse the actual numeric value
     pub format: IntegerFormat,
+    pub raw_text: String, // Original source text (e.g., "0xFF", "0b101010")
     pub span: Span,
 }
 
@@ -157,6 +158,7 @@ pub enum IntegerFormat {
 pub struct FloatLiteral {
     pub value: f64, // Parse the actual numeric value
     pub format: FloatFormat,
+    pub raw_text: String, // Original source text (e.g., "3.14", "1.23e-4")
     pub span: Span,
 }
 
@@ -800,30 +802,15 @@ impl std::fmt::Display for BooleanLiteral {
 
 impl std::fmt::Display for IntegerLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Preserve the original format when displaying
-        match self.format {
-            IntegerFormat::Decimal => write!(f, "{}", self.value),
-            IntegerFormat::Binary => write!(f, "0b{:b}", self.value),
-            IntegerFormat::Octal => write!(f, "0o{:o}", self.value),
-            IntegerFormat::Hexadecimal => write!(f, "0x{:x}", self.value),
-        }
+        // Use original source text for perfect format preservation
+        write!(f, "{}", self.raw_text)
     }
 }
 
 impl std::fmt::Display for FloatLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // For now, just display the value - we'll improve format preservation later
-        match &self.format {
-            FloatFormat::Standard => write!(f, "{}", self.value),
-            FloatFormat::Scientific { exponent_case } => {
-                let output = format!("{:e}", self.value);
-                if matches!(exponent_case, ExponentCase::Uppercase) {
-                    write!(f, "{}", output.replace('e', "E"))
-                } else {
-                    write!(f, "{}", output)
-                }
-            }
-        }
+        // Use original source text for perfect format preservation
+        write!(f, "{}", self.raw_text)
     }
 }
 
