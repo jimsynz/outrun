@@ -4,11 +4,6 @@
 //! trait method resolution in the interpreter.
 
 pub mod lookup;
-pub mod resolution;
-
-// Re-export core types
-// Re-export from lookup module
-pub use resolution::{resolve_static_function, resolve_trait_function};
 
 use crate::types::traits::FunctionId;
 use crate::types::TypeId;
