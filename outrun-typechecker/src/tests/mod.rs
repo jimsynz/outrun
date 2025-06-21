@@ -92,6 +92,9 @@ mod test_error_recovery_production;
 // Case expression verification tests
 mod test_case_expression_verification;
 
+// Case expression branch type unification tests
+mod test_case_branch_unification;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;
