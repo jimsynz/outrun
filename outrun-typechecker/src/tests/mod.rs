@@ -59,6 +59,7 @@ mod test_exponentiate_generic_types;
 // Pattern typechecking tests
 // TODO: Fix test_pattern_typechecking after fixing helper function
 // mod test_pattern_typechecking;
+mod test_pattern_field_validation;
 mod test_pattern_variable_scoping;
 
 // TypedProgram conversion tests

@@ -129,6 +129,8 @@ pub struct TypedASTBuilder {
     pub context: UnificationContext,
     /// Function registry for dispatch resolution
     pub function_registry: FunctionRegistry,
+    /// Struct definitions for pattern validation (struct name TypeId -> definition)
+    pub struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
     /// Collection of errors encountered during AST building
     pub errors: Vec<crate::error::TypeError>,
     /// Cache of resolved expression types (span -> type)
@@ -149,10 +151,15 @@ pub struct TypedASTBuilder {
 
 impl TypedASTBuilder {
     /// Create a new TypedASTBuilder with type checking results
-    pub fn new(context: UnificationContext, function_registry: FunctionRegistry) -> Self {
+    pub fn new(
+        context: UnificationContext,
+        function_registry: FunctionRegistry,
+        struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
+    ) -> Self {
         Self {
             context,
             function_registry,
+            struct_registry,
             errors: Vec::new(),
             expression_types: HashMap::new(),
             typed_programs: HashMap::new(),
@@ -1222,7 +1229,7 @@ impl TypedASTBuilder {
         pattern: &outrun_parser::Pattern,
         target_type: &Option<StructuredType>,
     ) -> Option<TypedPattern> {
-        let mut pattern_checker = PatternChecker::new(&mut self.context);
+        let mut pattern_checker = PatternChecker::new(&mut self.context, &self.struct_registry);
 
         match pattern_checker.check_pattern(pattern, target_type) {
             Ok(typed_pattern) => Some(typed_pattern),

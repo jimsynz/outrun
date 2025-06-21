@@ -412,7 +412,8 @@ impl MultiProgramCompiler {
         }
 
         // Step 7: Phase 6 - Build comprehensive typed AST
-        let typed_programs = self.build_typed_ast(collection, &compilation_order, &functions)?;
+        let typed_programs =
+            self.build_typed_ast(collection, &compilation_order, &functions, &structs)?;
 
         Ok(CompilationResult {
             compilation_order,
@@ -755,9 +756,13 @@ impl MultiProgramCompiler {
         collection: &ProgramCollection,
         compilation_order: &[String],
         function_registry: &FunctionRegistry,
+        structs: &HashMap<TypeId, StructDefinition>,
     ) -> Result<HashMap<String, crate::checker::TypedProgram>, Vec<TypeError>> {
-        let mut builder =
-            TypedASTBuilder::new(self.unification_context.clone(), function_registry.clone());
+        let mut builder = TypedASTBuilder::new(
+            self.unification_context.clone(),
+            function_registry.clone(),
+            structs.clone(),
+        );
 
         match builder.build_typed_ast(collection, compilation_order) {
             Ok(typed_programs) => {
@@ -1221,238 +1226,26 @@ impl TypeCheckingVisitor {
         pattern: &outrun_parser::Pattern,
         expected_type: &crate::unification::StructuredType,
     ) -> Result<Vec<(String, crate::unification::StructuredType)>, TypeError> {
-        match pattern {
-            outrun_parser::Pattern::Identifier(id) => {
-                // Identifier patterns bind a variable to the full type
-                Ok(vec![(id.name.clone(), expected_type.clone())])
-            }
-            outrun_parser::Pattern::Literal(literal_pattern) => {
-                // Check if the literal type matches the expected type
-                let literal_type = self.check_literal_pattern_type(literal_pattern)?;
-                if crate::unification::unify_structured_types(
-                    &literal_type,
-                    expected_type,
-                    &self.context,
-                )
-                .unwrap_or(false)
-                {
-                    Ok(vec![]) // Literals don't bind variables
-                } else {
-                    Err(TypeError::type_mismatch(
-                        expected_type.to_string_representation(&self.context.type_interner),
-                        literal_type.to_string_representation(&self.context.type_interner),
-                        crate::error::span_to_source_span(literal_pattern.span),
-                    ))
-                }
-            }
-            outrun_parser::Pattern::Tuple(tuple_pattern) => {
-                // Check if expected type is a tuple
-                match expected_type {
-                    crate::unification::StructuredType::Tuple(element_types) => {
-                        if tuple_pattern.elements.len() != element_types.len() {
-                            return Err(TypeError::type_mismatch(
-                                format!("Tuple with {} elements", element_types.len()),
-                                format!(
-                                    "Tuple pattern with {} elements",
-                                    tuple_pattern.elements.len()
-                                ),
-                                crate::error::span_to_source_span(tuple_pattern.span),
-                            ));
-                        }
+        // Use the new PatternChecker instead of the old implementation
+        let mut pattern_checker =
+            crate::patterns::PatternChecker::new(&mut self.context, &self.structs);
+        let typed_pattern = pattern_checker.check_pattern(pattern, &Some(expected_type.clone()))?;
 
-                        let mut bound_variables = Vec::new();
-                        for (pattern_element, element_type) in
-                            tuple_pattern.elements.iter().zip(element_types.iter())
-                        {
-                            let element_vars =
-                                self.check_pattern_type(pattern_element, element_type)?;
-                            bound_variables.extend(element_vars);
-                        }
-                        Ok(bound_variables)
-                    }
-                    _ => Err(TypeError::type_mismatch(
-                        "Tuple type".to_string(),
-                        expected_type.to_string_representation(&self.context.type_interner),
-                        crate::error::span_to_source_span(tuple_pattern.span),
-                    )),
-                }
-            }
-            outrun_parser::Pattern::Struct(struct_pattern) => {
-                // Check if expected type is a struct that matches the pattern
-                self.check_struct_pattern_type(struct_pattern, expected_type)
-            }
-            outrun_parser::Pattern::List(list_pattern) => {
-                // Check if expected type is a list that matches the pattern
-                self.check_list_pattern_type(list_pattern, expected_type)
-            }
-        }
+        // Extract bound variables from the typed pattern and convert to the format expected by MultiProgramCompiler
+        let bound_variables =
+            crate::patterns::PatternChecker::collect_bound_variables(&typed_pattern);
+        let result: Vec<(String, crate::unification::StructuredType)> = bound_variables
+            .into_iter()
+            .map(|var| {
+                // Use the variable's type if available, otherwise fall back to the expected type
+                let var_type = var.variable_type.unwrap_or_else(|| expected_type.clone());
+                (var.name, var_type)
+            })
+            .collect();
+
+        Ok(result)
     }
 
-    /// Check literal pattern type
-    fn check_literal_pattern_type(
-        &mut self,
-        literal_pattern: &outrun_parser::LiteralPattern,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        match &literal_pattern.literal {
-            outrun_parser::Literal::Boolean(_) => {
-                let type_id = self
-                    .context
-                    .type_interner
-                    .intern_type("Outrun.Core.Boolean");
-                Ok(crate::unification::StructuredType::Simple(type_id))
-            }
-            outrun_parser::Literal::Integer(_) => {
-                let type_id = self
-                    .context
-                    .type_interner
-                    .intern_type("Outrun.Core.Integer64");
-                Ok(crate::unification::StructuredType::Simple(type_id))
-            }
-            outrun_parser::Literal::Float(_) => {
-                let type_id = self
-                    .context
-                    .type_interner
-                    .intern_type("Outrun.Core.Float64");
-                Ok(crate::unification::StructuredType::Simple(type_id))
-            }
-            outrun_parser::Literal::String(_) => {
-                let type_id = self.context.type_interner.intern_type("Outrun.Core.String");
-                Ok(crate::unification::StructuredType::Simple(type_id))
-            }
-            outrun_parser::Literal::Atom(_) => {
-                let type_id = self.context.type_interner.intern_type("Outrun.Core.Atom");
-                Ok(crate::unification::StructuredType::Simple(type_id))
-            }
-        }
-    }
-
-    /// Check struct pattern type and extract bound variables
-    fn check_struct_pattern_type(
-        &mut self,
-        struct_pattern: &outrun_parser::StructPattern,
-        expected_type: &crate::unification::StructuredType,
-    ) -> Result<Vec<(String, crate::unification::StructuredType)>, TypeError> {
-        // Resolve the struct type from the pattern's type path
-        let struct_type_name = struct_pattern
-            .type_path
-            .iter()
-            .map(|id| id.name.as_str())
-            .collect::<Vec<&str>>()
-            .join(".");
-
-        let struct_type_id = self.context.type_interner.intern_type(&struct_type_name);
-        let pattern_type = crate::unification::StructuredType::Simple(struct_type_id);
-
-        // Check if pattern type matches expected type
-        if !crate::unification::unify_structured_types(&pattern_type, expected_type, &self.context)
-            .unwrap_or(false)
-        {
-            return Err(TypeError::type_mismatch(
-                expected_type.to_string_representation(&self.context.type_interner),
-                pattern_type.to_string_representation(&self.context.type_interner),
-                crate::error::span_to_source_span(struct_pattern.span),
-            ));
-        }
-
-        // Extract variables from struct fields
-        let mut bound_variables = Vec::new();
-
-        // Get struct definition to validate fields
-        if let Some(struct_def) = self.structs.get(&struct_type_id).cloned() {
-            for field_pattern in &struct_pattern.fields {
-                // Find the field in the struct definition
-                if let Some(field_def) = struct_def
-                    .fields
-                    .iter()
-                    .find(|f| f.name.name == field_pattern.name.name)
-                {
-                    // Resolve field type
-                    // For now, use a simple type mapping - this should be improved
-                    let field_type_name = match &field_def.type_annotation {
-                        outrun_parser::TypeAnnotation::Simple { path, .. } => path
-                            .iter()
-                            .map(|id| id.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join("."),
-                        _ => "Any".to_string(), // Fallback for complex types
-                    };
-                    let field_type_id = self.context.type_interner.intern_type(&field_type_name);
-                    let field_type = crate::unification::StructuredType::Simple(field_type_id);
-
-                    match &field_pattern.pattern {
-                        Some(nested_pattern) => {
-                            // Field has a nested pattern: field: pattern
-                            let nested_vars =
-                                self.check_pattern_type(nested_pattern, &field_type)?;
-                            bound_variables.extend(nested_vars);
-                        }
-                        None => {
-                            // Shorthand syntax: field is bound as variable
-                            bound_variables.push((field_pattern.name.name.clone(), field_type));
-                        }
-                    }
-                } else {
-                    return Err(TypeError::InternalError {
-                        span: crate::error::span_to_source_span(field_pattern.span),
-                        message: format!(
-                            "Field '{}' not found in struct '{}'",
-                            field_pattern.name.name, struct_type_name
-                        ),
-                    });
-                }
-            }
-        } else {
-            return Err(TypeError::InternalError {
-                span: crate::error::span_to_source_span(struct_pattern.span),
-                message: format!("Struct type '{}' not found in registry", struct_type_name),
-            });
-        }
-
-        Ok(bound_variables)
-    }
-
-    /// Check list pattern type and extract bound variables
-    fn check_list_pattern_type(
-        &mut self,
-        list_pattern: &outrun_parser::ListPattern,
-        expected_type: &crate::unification::StructuredType,
-    ) -> Result<Vec<(String, crate::unification::StructuredType)>, TypeError> {
-        // Check if expected type is a List<T>
-        match expected_type {
-            crate::unification::StructuredType::Generic { base, args } => {
-                let list_type_id = self.context.type_interner.intern_type("List");
-                if base != &list_type_id || args.len() != 1 {
-                    return Err(TypeError::type_mismatch(
-                        "List<T>".to_string(),
-                        expected_type.to_string_representation(&self.context.type_interner),
-                        crate::error::span_to_source_span(list_pattern.span),
-                    ));
-                }
-
-                let element_type = &args[0];
-                let mut bound_variables = Vec::new();
-
-                // Check each element pattern
-                for element_pattern in &list_pattern.elements {
-                    let element_vars = self.check_pattern_type(element_pattern, element_type)?;
-                    bound_variables.extend(element_vars);
-                }
-
-                // Handle rest pattern if present
-                if let Some(rest_id) = &list_pattern.rest {
-                    // Rest pattern binds to the same list type
-                    bound_variables.push((rest_id.name.clone(), expected_type.clone()));
-                }
-
-                Ok(bound_variables)
-            }
-            _ => Err(TypeError::type_mismatch(
-                "List<T>".to_string(),
-                expected_type.to_string_representation(&self.context.type_interner),
-                crate::error::span_to_source_span(list_pattern.span),
-            )),
-        }
-    }
 
     /// Push a new type parameter scope onto the stack
     fn push_type_parameter_scope(&mut self) {
@@ -2168,39 +1961,86 @@ impl TypeCheckingVisitor {
         struct_def: &outrun_parser::StructDefinition,
     ) -> Result<(), TypeError> {
         for field in &literal.fields {
-            if let outrun_parser::StructLiteralField::Assignment { name, value } = field {
-                let field_value_type = self.check_expression_type(value)?;
+            match field {
+                outrun_parser::StructLiteralField::Assignment { name, value } => {
+                    // Explicit assignment: { name: value }
+                    let field_value_type = self.check_expression_type(value)?;
 
-                // Find field definition
-                if let Some(field_def) = struct_def.fields.iter().find(|f| f.name.name == name.name)
-                {
-                    let expected_field_type =
-                        self.resolve_type_annotation(&field_def.type_annotation)?;
+                    // Find field definition
+                    if let Some(field_def) =
+                        struct_def.fields.iter().find(|f| f.name.name == name.name)
+                    {
+                        let expected_field_type =
+                            self.resolve_type_annotation(&field_def.type_annotation)?;
 
-                    if !crate::unification::unify_structured_types(
-                        &expected_field_type,
-                        &field_value_type,
-                        &self.context,
-                    )? {
-                        return Err(TypeError::type_mismatch(
-                            expected_field_type
-                                .to_string_representation(&self.context.type_interner),
-                            field_value_type.to_string_representation(&self.context.type_interner),
-                            crate::error::span_to_source_span(value.span),
-                        ));
+                        if !crate::unification::unify_structured_types(
+                            &expected_field_type,
+                            &field_value_type,
+                            &self.context,
+                        )? {
+                            return Err(TypeError::type_mismatch(
+                                expected_field_type
+                                    .to_string_representation(&self.context.type_interner),
+                                field_value_type
+                                    .to_string_representation(&self.context.type_interner),
+                                crate::error::span_to_source_span(value.span),
+                            ));
+                        }
+                    } else {
+                        return Err(TypeError::UndefinedField {
+                            span: crate::error::span_to_source_span(name.span),
+                            struct_name: struct_def.name_as_string(),
+                            field_name: name.name.clone(),
+                        });
                     }
-                } else {
-                    return Err(TypeError::UndefinedField {
-                        span: crate::error::span_to_source_span(name.span),
-                        struct_name: struct_def.name_as_string(),
-                        field_name: name.name.clone(),
+                }
+                outrun_parser::StructLiteralField::Shorthand(name) => {
+                    // Shorthand: { name } - field name is same as variable name
+                    // Check that the field exists in the struct definition
+                    if let Some(field_def) =
+                        struct_def.fields.iter().find(|f| f.name.name == name.name)
+                    {
+                        let expected_field_type =
+                            self.resolve_type_annotation(&field_def.type_annotation)?;
+
+                        // Look up the variable in the current scope
+                        if let Some(variable_type) = self.lookup_variable(&name.name) {
+                            // Check that the variable type matches the field type
+                            if !crate::unification::unify_structured_types(
+                                &expected_field_type,
+                                variable_type,
+                                &self.context,
+                            )? {
+                                return Err(TypeError::type_mismatch(
+                                    expected_field_type
+                                        .to_string_representation(&self.context.type_interner),
+                                    variable_type
+                                        .to_string_representation(&self.context.type_interner),
+                                    crate::error::span_to_source_span(name.span),
+                                ));
+                            }
+                        } else {
+                            return Err(TypeError::UndefinedVariable {
+                                span: crate::error::span_to_source_span(name.span),
+                                name: name.name.clone(),
+                            });
+                        }
+                    } else {
+                        return Err(TypeError::UndefinedField {
+                            span: crate::error::span_to_source_span(name.span),
+                            struct_name: struct_def.name_as_string(),
+                            field_name: name.name.clone(),
+                        });
+                    }
+                }
+                outrun_parser::StructLiteralField::Spread(_spread_identifier) => {
+                    // Spread syntax: { ..other_struct }
+                    // TODO: Implement spread field validation
+                    return Err(TypeError::InternalError {
+                        span: crate::error::span_to_source_span(literal.span),
+                        message: "Struct spread fields not yet implemented".to_string(),
                     });
                 }
-            } else {
-                return Err(TypeError::InternalError {
-                    span: crate::error::span_to_source_span(literal.span),
-                    message: "Non-assignment struct fields not yet supported".to_string(),
-                });
             }
         }
 

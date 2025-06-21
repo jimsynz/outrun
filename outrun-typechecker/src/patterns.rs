@@ -5,11 +5,13 @@
 //! type checker and typed AST.
 
 use crate::error::TypeError;
+use crate::types::TypeId;
 use crate::unification::{unify_structured_types, StructuredType, UnificationContext};
 use outrun_parser::{
-    ListPattern, Literal, LiteralPattern, Pattern, Span, StructFieldPattern, StructPattern,
-    TuplePattern,
+    ListPattern, Literal, LiteralPattern, Pattern, Span, StructDefinition, StructFieldPattern,
+    StructPattern, TuplePattern, TypeAnnotation,
 };
+use std::collections::HashMap;
 
 /// A typed pattern with resolved type information and bound variables
 #[derive(Debug, Clone, PartialEq)]
@@ -231,12 +233,19 @@ impl BoundVariable {
 /// Pattern checker for converting parser patterns to typed patterns with validation
 pub struct PatternChecker<'a> {
     context: &'a mut UnificationContext,
+    struct_registry: &'a HashMap<TypeId, StructDefinition>,
 }
 
 impl<'a> PatternChecker<'a> {
-    /// Create a new pattern checker with the given type context
-    pub fn new(context: &'a mut UnificationContext) -> Self {
-        Self { context }
+    /// Create a new pattern checker with the given type context and struct registry
+    pub fn new(
+        context: &'a mut UnificationContext,
+        struct_registry: &'a HashMap<TypeId, StructDefinition>,
+    ) -> Self {
+        Self {
+            context,
+            struct_registry,
+        }
     }
 
     /// Check a pattern against a target type and return typed pattern with bound variables
@@ -352,12 +361,15 @@ impl<'a> PatternChecker<'a> {
             .map(|type_id| type_id.name.clone())
             .collect();
 
+        // Look up struct definition to get field types
+        let struct_name = type_path.join(".");
+        let struct_type_id = self.context.type_interner.get_type(&struct_name);
+        let struct_definition = struct_type_id.and_then(|id| self.struct_registry.get(&id));
+
         let mut typed_fields = Vec::new();
 
-        // TODO: Look up struct definition to get field types
-        // For now, check each field without type validation
         for field in &struct_pattern.fields {
-            let typed_field = self.check_struct_field_pattern(field)?;
+            let typed_field = self.check_struct_field_pattern(field, struct_definition)?;
             typed_fields.push(typed_field);
         }
 
@@ -368,15 +380,23 @@ impl<'a> PatternChecker<'a> {
     fn check_struct_field_pattern(
         &mut self,
         field_pattern: &StructFieldPattern,
+        struct_definition: Option<&StructDefinition>,
     ) -> Result<TypedStructFieldPattern, TypeError> {
+        // Look up field type from struct definition
+        let field_type = self.get_field_type_from_struct(
+            &field_pattern.name.name,
+            struct_definition,
+            field_pattern.span,
+        )?;
+
         match &field_pattern.pattern {
             Some(pattern) => {
                 // Explicit field: {name: pattern}
-                let typed_pattern = self.check_pattern(pattern, &None)?;
+                let typed_pattern = self.check_pattern(pattern, &field_type)?;
                 Ok(TypedStructFieldPattern::explicit(
                     field_pattern.name.name.clone(),
                     typed_pattern,
-                    None, // TODO: Get field type from struct definition
+                    field_type,
                     field_pattern.span,
                 ))
             }
@@ -384,9 +404,117 @@ impl<'a> PatternChecker<'a> {
                 // Shorthand field: {name}
                 Ok(TypedStructFieldPattern::shorthand(
                     field_pattern.name.name.clone(),
-                    None, // TODO: Get field type from struct definition
+                    field_type,
                     field_pattern.span,
                 ))
+            }
+        }
+    }
+
+    /// Get field type from struct definition, handling unknown structs and invalid fields
+    fn get_field_type_from_struct(
+        &mut self,
+        field_name: &str,
+        struct_definition: Option<&StructDefinition>,
+        field_span: Span,
+    ) -> Result<Option<StructuredType>, TypeError> {
+        match struct_definition {
+            Some(struct_def) => {
+                // Find the field in the struct definition
+                let field_def = struct_def
+                    .fields
+                    .iter()
+                    .find(|field| field.name.name == field_name);
+
+                match field_def {
+                    Some(field) => {
+                        // Convert field type annotation to StructuredType
+                        let field_type = self.resolve_type_annotation(&field.type_annotation)?;
+                        Ok(Some(field_type))
+                    }
+                    None => {
+                        // Field not found in struct definition
+                        Err(TypeError::UndefinedField {
+                            span: crate::error::span_to_source_span(field_span),
+                            field_name: field_name.to_string(),
+                            struct_name: struct_def.name_as_string(),
+                        })
+                    }
+                }
+            }
+            None => {
+                // No struct definition found - could be unknown struct or built-in type
+                // For now, return None to allow pattern checking to continue
+                // In a complete implementation, this might be an error for unknown structs
+                Ok(None)
+            }
+        }
+    }
+
+    /// Simple type annotation resolution for struct field types
+    /// This is a simplified version that handles basic cases without Self resolution
+    fn resolve_type_annotation(
+        &mut self,
+        type_annotation: &TypeAnnotation,
+    ) -> Result<StructuredType, TypeError> {
+        match type_annotation {
+            TypeAnnotation::Simple {
+                path,
+                generic_args,
+                span: _,
+            } => {
+                // Convert type path to string
+                let type_name = path
+                    .iter()
+                    .map(|id| id.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                // Intern the type name
+                let type_id = self.context.type_interner.intern_type(&type_name);
+
+                // Handle generic arguments if present
+                if let Some(args) = generic_args {
+                    let mut structured_args = Vec::new();
+                    for arg in &args.args {
+                        let arg_type = self.resolve_type_annotation(arg)?;
+                        structured_args.push(arg_type);
+                    }
+                    Ok(StructuredType::Generic {
+                        base: type_id,
+                        args: structured_args,
+                    })
+                } else {
+                    Ok(StructuredType::Simple(type_id))
+                }
+            }
+            TypeAnnotation::Tuple { types, span: _ } => {
+                let mut element_types = Vec::new();
+                for element in types {
+                    let element_type = self.resolve_type_annotation(element)?;
+                    element_types.push(element_type);
+                }
+                Ok(StructuredType::Tuple(element_types))
+            }
+            TypeAnnotation::Function {
+                params,
+                return_type,
+                span: _,
+            } => {
+                let mut param_types = Vec::new();
+                for param in params {
+                    let param_name = self.context.type_interner.intern_atom(&param.name.name);
+                    let param_type = self.resolve_type_annotation(&param.type_annotation)?;
+                    param_types.push(crate::unification::FunctionParam {
+                        name: param_name,
+                        param_type,
+                    });
+                }
+                let return_structured_type = self.resolve_type_annotation(return_type)?;
+                Ok(StructuredType::Function {
+                    params: param_types,
+                    return_type: Box::new(return_structured_type),
+                })
             }
         }
     }

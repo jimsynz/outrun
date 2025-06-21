@@ -228,7 +228,8 @@ fn test_typed_program_with_error_recovery() {
 fn test_typed_ast_builder_error_recovery_init() {
     let context = UnificationContext::default();
     let function_registry = FunctionRegistry::default();
-    let builder = TypedASTBuilder::new(context, function_registry);
+    let builder =
+        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
 
     // Verify builder initializes with empty error recovery info
     // Note: We can't directly access private fields, but we can test through public interfaces
@@ -284,7 +285,8 @@ fn test_error_recovery_integration_with_simple_program() {
 
     let context = UnificationContext::default();
     let function_registry = FunctionRegistry::default();
-    let mut builder = TypedASTBuilder::new(context, function_registry);
+    let mut builder =
+        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
 
     // This should succeed without any error recovery needed
     let result = builder.build_typed_program(&program, "test.outrun");
