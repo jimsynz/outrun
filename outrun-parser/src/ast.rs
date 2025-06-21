@@ -2,7 +2,7 @@
 // Abstract Syntax Tree nodes with source preservation
 
 /// Source position information for AST nodes
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

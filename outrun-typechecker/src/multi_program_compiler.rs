@@ -52,6 +52,8 @@ pub struct CompilationResult {
     pub function_registry: FunctionRegistry,
     /// Typed AST for all programs (filename -> typed program)
     pub typed_programs: HashMap<String, crate::checker::TypedProgram>,
+    /// Resolved expression types from type checking phase
+    pub expression_types: HashMap<outrun_parser::Span, crate::unification::StructuredType>,
 }
 
 /// Multi-program compiler that handles dependency resolution and phase-based compilation
@@ -301,6 +303,8 @@ pub struct TypeCheckingVisitor {
     variable_scopes: Vec<HashMap<String, crate::unification::StructuredType>>,
     /// Type parameter scope stack for tracking generic type parameters (Self, T, E, K, V, etc.)
     type_parameter_scopes: Vec<HashMap<String, crate::unification::StructuredType>>,
+    /// Storage for resolved expression types by their span
+    pub expression_types: HashMap<outrun_parser::Span, crate::unification::StructuredType>,
 }
 
 impl ProgramCollection {
@@ -398,7 +402,7 @@ impl MultiProgramCompiler {
         let functions = self.extract_functions(collection, &compilation_order)?;
 
         // Step 6: Phase 5 - Type check everything
-        self.type_check_all(
+        let expression_types = self.type_check_all(
             collection,
             &compilation_order,
             &traits,
@@ -412,8 +416,13 @@ impl MultiProgramCompiler {
         }
 
         // Step 7: Phase 6 - Build comprehensive typed AST
-        let typed_programs =
-            self.build_typed_ast(collection, &compilation_order, &functions, &structs)?;
+        let typed_programs = self.build_typed_ast(
+            collection,
+            &compilation_order,
+            &functions,
+            &structs,
+            &expression_types,
+        )?;
 
         Ok(CompilationResult {
             compilation_order,
@@ -423,6 +432,7 @@ impl MultiProgramCompiler {
             implementations,
             function_registry: functions,
             typed_programs,
+            expression_types,
         })
     }
 
@@ -711,7 +721,8 @@ impl MultiProgramCompiler {
         structs: &HashMap<TypeId, StructDefinition>,
         _implementations: &[ImplBlock],
         function_registry: &FunctionRegistry,
-    ) -> Result<(), Vec<TypeError>> {
+    ) -> Result<HashMap<outrun_parser::Span, crate::unification::StructuredType>, Vec<TypeError>>
+    {
         let mut visitor = TypeCheckingVisitor {
             context: self.unification_context.clone(),
             errors: Vec::new(),
@@ -720,6 +731,7 @@ impl MultiProgramCompiler {
             traits: traits.clone(),
             variable_scopes: vec![HashMap::new()], // Start with global scope
             type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+            expression_types: HashMap::new(),      // Storage for resolved expression types
         };
 
         // Type check all programs in dependency order
@@ -744,7 +756,7 @@ impl MultiProgramCompiler {
         self.unification_context = visitor.context;
 
         if self.errors.is_empty() {
-            Ok(())
+            Ok(visitor.expression_types)
         } else {
             Err(self.errors.clone())
         }
@@ -757,11 +769,13 @@ impl MultiProgramCompiler {
         compilation_order: &[String],
         function_registry: &FunctionRegistry,
         structs: &HashMap<TypeId, StructDefinition>,
+        expression_types: &HashMap<outrun_parser::Span, crate::unification::StructuredType>,
     ) -> Result<HashMap<String, crate::checker::TypedProgram>, Vec<TypeError>> {
         let mut builder = TypedASTBuilder::new(
             self.unification_context.clone(),
             function_registry.clone(),
             structs.clone(),
+            expression_types.clone(),
         );
 
         match builder.build_typed_ast(collection, compilation_order) {
@@ -958,7 +972,9 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
     fn visit_expression(&mut self, expr: &outrun_parser::Expression) -> VisitorResult {
         // Type check this expression using the unification system
         match self.check_expression_type(expr) {
-            Ok(_) => {
+            Ok(resolved_type) => {
+                // Store the resolved type for later use by TypedASTBuilder
+                self.expression_types.insert(expr.span, resolved_type);
                 // Continue traversing child expressions
                 crate::visitor::walk_expression::<Self, ()>(self, expr)
             }
@@ -990,7 +1006,12 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         let expr_type = match self
             .check_expression_type_with_hint(&let_binding.expression, type_hint.as_ref())
         {
-            Ok(t) => t,
+            Ok(t) => {
+                // Store the resolved type for later use by TypedASTBuilder
+                self.expression_types
+                    .insert(let_binding.expression.span, t.clone());
+                t
+            }
             Err(error) => {
                 self.errors.push(error);
                 // Continue processing

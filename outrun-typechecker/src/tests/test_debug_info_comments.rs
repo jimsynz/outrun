@@ -150,8 +150,12 @@ fn test_string_interpolation_format_preservation() {
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
     let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let builder = TypedASTBuilder::new(
+        context,
+        function_registry,
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+    );
 
     // Test simple string reconstruction
     let simple_string = StringLiteral {
@@ -180,8 +184,12 @@ fn test_interpolated_string_reconstruction() {
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
     let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let builder = TypedASTBuilder::new(
+        context,
+        function_registry,
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+    );
 
     // Create an interpolated string: "Hello #{name}!"
     let name_expr = Expression {
@@ -261,8 +269,12 @@ fn test_expression_to_text_reconstruction() {
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
     let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let builder = TypedASTBuilder::new(
+        context,
+        function_registry,
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+    );
 
     // Test identifier
     let identifier_expr = Expression {

@@ -134,7 +134,6 @@ pub struct TypedASTBuilder {
     /// Collection of errors encountered during AST building
     pub errors: Vec<crate::error::TypeError>,
     /// Cache of resolved expression types (span -> type)
-    #[allow(dead_code)]
     expression_types: HashMap<Span, StructuredType>,
     /// Built typed programs (filename -> typed program)
     typed_programs: HashMap<String, TypedProgram>,
@@ -155,13 +154,14 @@ impl TypedASTBuilder {
         context: UnificationContext,
         function_registry: FunctionRegistry,
         struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
+        expression_types: HashMap<Span, StructuredType>,
     ) -> Self {
         Self {
             context,
             function_registry,
             struct_registry,
             errors: Vec::new(),
-            expression_types: HashMap::new(),
+            expression_types,
             typed_programs: HashMap::new(),
             generic_context: None,
             comment_attacher: CommentAttacher::new(Vec::new()), // Will be initialized per program
@@ -1027,10 +1027,14 @@ impl TypedASTBuilder {
         }
     }
 
-    /// Get resolved type for an expression (placeholder for now)
+    /// Get resolved type for an expression using type checking results
     fn get_expression_type(&mut self, expr: &Expression) -> Option<StructuredType> {
-        // TODO: Use type checking results to get actual resolved types
-        // For now, implement basic type inference for literals and simple cases
+        // First check if we have a resolved type from the type checking phase
+        if let Some(resolved_type) = self.expression_types.get(&expr.span) {
+            return Some(resolved_type.clone());
+        }
+
+        // Fallback to basic type inference for literals and simple cases
         match &expr.kind {
             ExpressionKind::Integer(_) => {
                 let integer_type_id = self

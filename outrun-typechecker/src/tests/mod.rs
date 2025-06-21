@@ -101,6 +101,9 @@ mod test_raw_text_preservation;
 // Position-based type lookup tests for LSP integration
 mod test_position_based_type_lookup;
 
+// Type resolution integration tests
+mod test_type_resolution_integration;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;
