@@ -241,7 +241,7 @@ fn test_simple_function_call_typed_ast_conversion() {
                 TypedExpressionKind::FunctionCall {
                     function_path,
                     arguments,
-                    dispatch_method,
+                    dispatch_strategy,
                 } => {
                     // Check function path
                     match function_path {
@@ -268,15 +268,15 @@ fn test_simple_function_call_typed_ast_conversion() {
                         ),
                     }
 
-                    // Check dispatch method
-                    match dispatch_method {
+                    // Check dispatch strategy
+                    match dispatch_strategy {
                         DispatchMethod::Static { function_id } => {
                             assert_eq!(
                                 function_id, "print",
                                 "Static dispatch should reference print"
                             );
                         }
-                        _ => panic!("Expected static dispatch, got {:?}", dispatch_method),
+                        _ => panic!("Expected static dispatch, got {:?}", dispatch_strategy),
                     }
                 }
                 _ => panic!("Expected function call expression, got {:?}", expr.kind),

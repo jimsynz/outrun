@@ -89,15 +89,41 @@ pub struct ImplExtractionVisitor {
     pub implementations: Vec<ImplBlock>,
 }
 
+/// Function entry with dispatch metadata
+#[derive(Debug, Clone)]
+pub struct FunctionEntry {
+    /// The function definition
+    pub definition: FunctionDefinition,
+    /// Type of function for dispatch resolution
+    pub function_type: FunctionType,
+    /// Unique function ID for dispatch
+    pub function_id: String,
+}
+
+/// Type of function for dispatch resolution
+#[derive(Debug, Clone, PartialEq)]
+pub enum FunctionType {
+    /// Static trait function (defs keyword)
+    TraitStatic,
+    /// Trait function signature only (def without body)
+    TraitSignature,
+    /// Trait function with default implementation (def with body)
+    TraitDefault,
+    /// Static function on a type (not in trait)
+    TypeStatic,
+    /// Implementation function in impl block
+    ImplFunction,
+}
+
 /// TypeId-based function registry that organizes functions by their module context
 #[derive(Debug, Default, Clone)]
 pub struct FunctionRegistry {
-    /// Functions defined in traits: trait_type_id -> function_name -> definition
-    pub trait_functions: HashMap<TypeId, HashMap<String, FunctionDefinition>>,
-    /// Functions defined in impl blocks: (trait_type_id, impl_type_id) -> function_name -> definition  
-    pub impl_functions: HashMap<(TypeId, TypeId), HashMap<String, FunctionDefinition>>,
-    /// Functions defined in type modules: module_type_id -> function_name -> definition
-    pub module_functions: HashMap<TypeId, HashMap<String, FunctionDefinition>>,
+    /// Functions defined in traits: trait_type_id -> function_name -> entry
+    pub trait_functions: HashMap<TypeId, HashMap<String, FunctionEntry>>,
+    /// Functions defined in impl blocks: (trait_type_id, impl_type_id) -> function_name -> entry  
+    pub impl_functions: HashMap<(TypeId, TypeId), HashMap<String, FunctionEntry>>,
+    /// Functions defined in type modules: module_type_id -> function_name -> entry
+    pub module_functions: HashMap<TypeId, HashMap<String, FunctionEntry>>,
 }
 
 impl FunctionRegistry {
@@ -107,7 +133,7 @@ impl FunctionRegistry {
         &self,
         module_type_id: TypeId,
         function_name: &str,
-    ) -> Option<&FunctionDefinition> {
+    ) -> Option<&FunctionEntry> {
         // Try trait functions first
         if let Some(trait_funcs) = self.trait_functions.get(&module_type_id) {
             if let Some(func) = trait_funcs.get(function_name) {
@@ -131,7 +157,7 @@ impl FunctionRegistry {
         trait_type_id: TypeId,
         impl_type_id: TypeId,
         function_name: &str,
-    ) -> Option<&FunctionDefinition> {
+    ) -> Option<&FunctionEntry> {
         self.impl_functions
             .get(&(trait_type_id, impl_type_id))
             .and_then(|funcs| funcs.get(function_name))
@@ -154,7 +180,7 @@ impl FunctionRegistry {
 
     /// Look up a local function in the current module context
     /// This searches both trait functions and module functions for the given function name
-    pub fn lookup_local_function(&self, function_name: &str) -> Option<&FunctionDefinition> {
+    pub fn lookup_local_function(&self, function_name: &str) -> Option<&FunctionEntry> {
         // Search through all trait functions
         for trait_funcs in self.trait_functions.values() {
             if let Some(func) = trait_funcs.get(function_name) {
@@ -170,6 +196,59 @@ impl FunctionRegistry {
         }
 
         None
+    }
+
+    /// Check if an impl block has an override for a trait function
+    pub fn has_impl_override(
+        &self,
+        trait_type_id: TypeId,
+        impl_type_id: TypeId,
+        function_name: &str,
+    ) -> bool {
+        self.impl_functions
+            .get(&(trait_type_id, impl_type_id))
+            .map(|funcs| funcs.contains_key(function_name))
+            .unwrap_or(false)
+    }
+
+    /// Add a trait function entry
+    pub fn add_trait_function(
+        &mut self,
+        trait_type_id: TypeId,
+        function_name: String,
+        entry: FunctionEntry,
+    ) {
+        self.trait_functions
+            .entry(trait_type_id)
+            .or_default()
+            .insert(function_name, entry);
+    }
+
+    /// Add an impl function entry
+    pub fn add_impl_function(
+        &mut self,
+        trait_type_id: TypeId,
+        impl_type_id: TypeId,
+        function_name: String,
+        entry: FunctionEntry,
+    ) {
+        self.impl_functions
+            .entry((trait_type_id, impl_type_id))
+            .or_default()
+            .insert(function_name, entry);
+    }
+
+    /// Add a module function entry
+    pub fn add_module_function(
+        &mut self,
+        module_type_id: TypeId,
+        function_name: String,
+        entry: FunctionEntry,
+    ) {
+        self.module_functions
+            .entry(module_type_id)
+            .or_default()
+            .insert(function_name, entry);
     }
 }
 
@@ -605,17 +684,19 @@ impl MultiProgramCompiler {
         // Setup core concrete types and automatically implement Any trait
         crate::intrinsics::IntrinsicRegistry::setup_core_types(&mut self.unification_context);
 
-        let mut intrinsic_module_functions = HashMap::new();
         for (_func_atom_id, func_def) in intrinsic_functions {
             // Intrinsic functions have simple names like "atom_eq", use them directly
             let function_name = func_def.name.name.clone();
-            intrinsic_module_functions.insert(function_name, func_def);
+            let function_id = format!("intrinsic::{}", function_name);
+            let entry = FunctionEntry {
+                definition: func_def,
+                function_type: FunctionType::TypeStatic,
+                function_id,
+            };
+            visitor
+                .registry
+                .add_module_function(intrinsic_module_type_id, function_name, entry);
         }
-
-        visitor
-            .registry
-            .module_functions
-            .insert(intrinsic_module_type_id, intrinsic_module_functions);
 
         Ok(visitor.registry)
     }
@@ -763,11 +844,14 @@ impl<T> Visitor<T> for FunctionExtractionVisitor {
                     match trait_func {
                         outrun_parser::TraitFunction::Definition(func_def) => {
                             let func_name = func_def.name.name.clone();
+                            let function_id = format!("trait::{}::{}", trait_name, func_name);
+                            let entry = FunctionEntry {
+                                definition: func_def.clone(),
+                                function_type: FunctionType::TraitDefault,
+                                function_id,
+                            };
                             self.registry
-                                .trait_functions
-                                .entry(trait_type_id)
-                                .or_default()
-                                .insert(func_name, func_def.clone());
+                                .add_trait_function(trait_type_id, func_name, entry);
                         }
                         outrun_parser::TraitFunction::StaticDefinition(static_func) => {
                             // Convert StaticFunctionDefinition to FunctionDefinition
@@ -782,23 +866,47 @@ impl<T> Visitor<T> for FunctionExtractionVisitor {
                                 span: static_func.span,
                             };
                             let func_name = func_def.name.name.clone();
+                            let function_id = format!("trait::{}::{}", trait_name, func_name);
+                            let entry = FunctionEntry {
+                                definition: func_def,
+                                function_type: FunctionType::TraitStatic,
+                                function_id,
+                            };
                             self.registry
-                                .trait_functions
-                                .entry(trait_type_id)
-                                .or_default()
-                                .insert(func_name, func_def);
+                                .add_trait_function(trait_type_id, func_name, entry);
                         }
                         outrun_parser::TraitFunction::Signature(signature) => {
                             // Convert signature to function definition for type checking
                             let func_def = Self::trait_signature_to_function_def(signature);
                             let func_name = func_def.name.name.clone();
+                            let function_id = format!("trait::{}::{}", trait_name, func_name);
+                            let entry = FunctionEntry {
+                                definition: func_def,
+                                function_type: FunctionType::TraitSignature,
+                                function_id,
+                            };
                             self.registry
-                                .trait_functions
-                                .entry(trait_type_id)
-                                .or_default()
-                                .insert(func_name, func_def);
+                                .add_trait_function(trait_type_id, func_name, entry);
                         }
                     }
+                }
+                Ok(())
+            }
+            ItemKind::StructDefinition(struct_def) => {
+                // Extract functions defined within struct modules
+                let struct_name = struct_def.name_as_string();
+                let struct_type_id = self.context.type_interner.intern_type(&struct_name);
+
+                for function in &struct_def.methods {
+                    let function_name = function.name.name.clone();
+                    let function_id = format!("type::{}::{}", struct_name, function_name);
+                    let entry = FunctionEntry {
+                        definition: function.clone(),
+                        function_type: FunctionType::TypeStatic,
+                        function_id,
+                    };
+                    self.registry
+                        .add_module_function(struct_type_id, function_name, entry);
                 }
                 Ok(())
             }
@@ -824,11 +932,15 @@ impl<T> Visitor<T> for FunctionExtractionVisitor {
 
                 for func_def in &impl_block.methods {
                     let func_name = func_def.name.name.clone();
+                    let function_id =
+                        format!("impl::{}::{}::{}", impl_type_name, trait_name, func_name);
+                    let entry = FunctionEntry {
+                        definition: func_def.clone(),
+                        function_type: FunctionType::ImplFunction,
+                        function_id,
+                    };
                     self.registry
-                        .impl_functions
-                        .entry((trait_type_id, impl_type_id))
-                        .or_default()
-                        .insert(func_name, func_def.clone());
+                        .add_impl_function(trait_type_id, impl_type_id, func_name, entry);
                 }
                 Ok(())
             }
@@ -2522,17 +2634,17 @@ impl TypeCheckingVisitor {
 
                 if is_trait {
                     // For trait calls, first infer the implementing type from arguments
-                    let trait_func_def = self
+                    let trait_func_entry = self
                         .function_registry
                         .lookup_qualified_function(module_type_id, function_name)
                         .cloned();
 
-                    if let Some(trait_func) = trait_func_def {
+                    if let Some(trait_func) = trait_func_entry {
                         // Infer the concrete implementing type from the first Self parameter
                         let implementing_structured_type = self
                             .infer_implementing_type_from_arguments(
                                 module_type_id,
-                                &trait_func,
+                                &trait_func.definition,
                                 call,
                             )?;
 
@@ -2564,7 +2676,10 @@ impl TypeCheckingVisitor {
                             .cloned()
                         {
                             if cfg!(debug_assertions) {
-                                eprintln!("Found impl function: {}", impl_func_def.name.name);
+                                eprintln!(
+                                    "Found impl function: {}",
+                                    impl_func_def.definition.name.name
+                                );
                             }
                             // Use the full structured type for Self context (preserving generics)
                             let inferred_self_type = implementing_structured_type;
@@ -2577,11 +2692,11 @@ impl TypeCheckingVisitor {
                             }
                             self.validate_function_call_arguments_with_self(
                                 call,
-                                &impl_func_def,
+                                &impl_func_def.definition,
                                 &inferred_self_type,
                             )?;
                             self.resolve_type_annotation_with_self(
-                                &impl_func_def.return_type,
+                                &impl_func_def.definition.return_type,
                                 &inferred_self_type,
                             )
                         } else {
@@ -2591,16 +2706,16 @@ impl TypeCheckingVisitor {
                             }
                             let inferred_self_type = self.infer_trait_self_type_from_arguments(
                                 module_type_id,
-                                &trait_func,
+                                &trait_func.definition,
                                 call,
                             )?;
                             self.validate_function_call_arguments_with_self(
                                 call,
-                                &trait_func,
+                                &trait_func.definition,
                                 &inferred_self_type,
                             )?;
                             self.resolve_type_annotation_with_self(
-                                &trait_func.return_type,
+                                &trait_func.definition.return_type,
                                 &inferred_self_type,
                             )
                         }
@@ -2610,14 +2725,14 @@ impl TypeCheckingVisitor {
                             name: func_name,
                         })
                     }
-                } else if let Some(func_def) = self
+                } else if let Some(func_entry) = self
                     .function_registry
                     .lookup_qualified_function(module_type_id, function_name)
                     .cloned()
                 {
                     // Regular module function call
-                    self.validate_function_call_arguments(call, &func_def)?;
-                    self.resolve_type_annotation(&func_def.return_type)
+                    self.validate_function_call_arguments(call, &func_entry.definition)?;
+                    self.resolve_type_annotation(&func_entry.definition.return_type)
                 } else {
                     Err(TypeError::UndefinedFunction {
                         span: crate::error::span_to_source_span(call.span),
@@ -2629,15 +2744,15 @@ impl TypeCheckingVisitor {
                 // Simple call like "some_function" - search in function registry
                 let function_name = &name.name;
 
-                if let Some(func_def) = self
+                if let Some(func_entry) = self
                     .function_registry
                     .lookup_local_function(function_name)
                     .cloned()
                 {
                     // Validate arguments match parameters
-                    self.validate_function_call_arguments(call, &func_def)?;
+                    self.validate_function_call_arguments(call, &func_entry.definition)?;
                     // Return the declared return type
-                    self.resolve_type_annotation(&func_def.return_type)
+                    self.resolve_type_annotation(&func_entry.definition.return_type)
                 } else {
                     Err(TypeError::UndefinedFunction {
                         span: crate::error::span_to_source_span(call.span),

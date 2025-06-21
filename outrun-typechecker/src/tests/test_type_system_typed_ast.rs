@@ -53,8 +53,8 @@ fn test_simple_struct_definition_typed_ast() {
                 // Verify no generic parameters
                 assert_eq!(struct_def.generic_params.len(), 0);
 
-                // Verify no methods
-                assert_eq!(struct_def.methods.len(), 0);
+                // Verify no functions
+                assert_eq!(struct_def.functions.len(), 0);
 
                 // Verify struct ID is set
                 assert_eq!(struct_def.struct_id, "User");
@@ -78,7 +78,7 @@ fn test_simple_struct_definition_typed_ast() {
 }
 
 #[test]
-fn test_struct_with_methods_typed_ast() {
+fn test_struct_with_functions_typed_ast() {
     let source = r#"
         struct User(name: String, email: String) {
             def greet(self: Self): String {
@@ -100,16 +100,16 @@ fn test_struct_with_methods_typed_ast() {
                 // Verify fields
                 assert_eq!(struct_def.fields.len(), 2);
 
-                // Verify methods
-                assert_eq!(struct_def.methods.len(), 2);
-                assert_eq!(struct_def.methods[0].name, "greet");
-                assert_eq!(struct_def.methods[1].name, "get_email");
+                // Verify functions
+                assert_eq!(struct_def.functions.len(), 2);
+                assert_eq!(struct_def.functions[0].name, "greet");
+                assert_eq!(struct_def.functions[1].name, "get_email");
 
-                // Verify method parameters
-                assert_eq!(struct_def.methods[0].parameters.len(), 1);
-                assert_eq!(struct_def.methods[0].parameters[0].name, "self");
+                // Verify function parameters
+                assert_eq!(struct_def.functions[0].parameters.len(), 1);
+                assert_eq!(struct_def.functions[0].parameters[0].name, "self");
 
-                println!("✓ Struct with methods successfully converted to typed AST");
+                println!("✓ Struct with functions successfully converted to typed AST");
             }
             TypedItemKind::Placeholder(_) => {
                 println!(
@@ -296,10 +296,10 @@ fn test_impl_block_typed_ast() {
                 // Verify no generic parameters
                 assert_eq!(impl_block.generic_params.len(), 0);
 
-                // Verify methods
-                assert_eq!(impl_block.methods.len(), 1);
-                assert_eq!(impl_block.methods[0].name, "draw");
-                assert_eq!(impl_block.methods[0].parameters.len(), 1);
+                // Verify functions
+                assert_eq!(impl_block.functions.len(), 1);
+                assert_eq!(impl_block.functions[0].name, "draw");
+                assert_eq!(impl_block.functions[0].parameters.len(), 1);
 
                 println!("✓ Impl block successfully converted to typed AST");
             }
@@ -338,9 +338,9 @@ fn test_generic_impl_block_typed_ast() {
                 assert_eq!(impl_block.generic_params.len(), 1);
                 assert_eq!(impl_block.generic_params[0].name, "T");
 
-                // Verify methods
-                assert_eq!(impl_block.methods.len(), 1);
-                assert_eq!(impl_block.methods[0].name, "serialize");
+                // Verify functions
+                assert_eq!(impl_block.functions.len(), 1);
+                assert_eq!(impl_block.functions[0].name, "serialize");
 
                 println!("✓ Generic impl block successfully converted to typed AST");
             }

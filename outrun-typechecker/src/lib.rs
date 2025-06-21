@@ -277,7 +277,6 @@ pub mod desugaring;
 pub mod dispatch;
 pub mod error;
 // TODO: Re-enable after updating for new UnificationContext
-// pub mod exhaustiveness;
 pub mod intrinsics;
 pub mod multi_program_compiler;
 pub mod patterns;
@@ -293,13 +292,11 @@ use desugaring::DesugaringVisitor;
 mod tests;
 
 // Re-export core types and functions for easy access
-pub use checker::{TypeChecker, TypeContext, TypedExpression, TypedItem, TypedProgram};
+pub use checker::{TypeChecker, TypedExpression, TypedItem, TypedProgram};
 pub use dispatch::DispatchTable;
 pub use error::{
     ErrorGroup, ErrorSummary, TypeError, TypeErrorReport, TypeErrorWithSource, TypeResult,
 };
-// TODO: Re-enable with exhaustiveness module
-// pub use exhaustiveness::{ExhaustivenessAnalyzer, ExhaustivenessResult, MissingPattern};
 pub use multi_program_compiler::{CompilationResult, MultiProgramCompiler, ProgramCollection};
 pub use types::{AtomId, ConcreteType, TypeId, TypeInterner};
 pub use unification::{StructuredType, UnificationContext, UnificationError, UnificationResult};

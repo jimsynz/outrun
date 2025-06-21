@@ -853,51 +853,170 @@ impl TypedASTBuilder {
             }
         }
 
-        // Resolve dispatch method
-        let dispatch_method = self.resolve_dispatch_method(&function_path, &typed_arguments);
+        // Resolve dispatch strategy
+        let dispatch_strategy = self.resolve_dispatch_strategy(&function_path, &typed_arguments);
 
         Some(TypedExpressionKind::FunctionCall {
             function_path,
             arguments: typed_arguments,
-            dispatch_method,
+            dispatch_strategy,
         })
     }
 
-    /// Resolve dispatch method for a function call
-    fn resolve_dispatch_method(
+    /// Resolve dispatch strategy for a function call using FunctionRegistry
+    fn resolve_dispatch_strategy(
         &self,
         function_path: &TypedFunctionPath,
-        _arguments: &[TypedArgument],
+        arguments: &[TypedArgument],
     ) -> DispatchMethod {
         match function_path {
             TypedFunctionPath::Simple { name } => {
-                // TODO: Look up in function registry
-                DispatchMethod::Static {
-                    function_id: name.clone(),
+                // Simple function calls - look up in function registry
+                if let Some(func_entry) = self.function_registry.lookup_local_function(name) {
+                    DispatchMethod::Static {
+                        function_id: func_entry.function_id.clone(),
+                    }
+                } else {
+                    // Fallback for unknown functions
+                    DispatchMethod::Static {
+                        function_id: name.clone(),
+                    }
                 }
             }
             TypedFunctionPath::Qualified { module, name } => {
-                // Check if this is a trait method call
+                // Qualified function calls - Module.function()
                 if let Some(module_type_id) = self.context.type_interner.get_type(module) {
-                    // Try to determine if this is trait vs static dispatch
-                    // TODO: Use type checking results to determine proper dispatch
-                    DispatchMethod::Trait {
-                        trait_name: module.clone(),
-                        method_name: name.clone(),
-                        impl_type: module_type_id, // Placeholder
+                    if let Some(func_entry) = self
+                        .function_registry
+                        .lookup_qualified_function(module_type_id, name)
+                    {
+                        match func_entry.function_type {
+                            // Rule 1: defs (static trait function) -> dispatch to trait
+                            crate::multi_program_compiler::FunctionType::TraitStatic => {
+                                DispatchMethod::Static {
+                                    function_id: func_entry.function_id.clone(),
+                                }
+                            }
+
+                            // Rule 2: def without body -> dispatch to impl
+                            crate::multi_program_compiler::FunctionType::TraitSignature => {
+                                if let Some(impl_type) =
+                                    self.get_implementing_type_from_arguments(arguments)
+                                {
+                                    DispatchMethod::Trait {
+                                        trait_name: module.clone(),
+                                        function_name: name.clone(),
+                                        impl_type,
+                                    }
+                                } else {
+                                    // Fallback - this should be caught by type checker
+                                    DispatchMethod::Static {
+                                        function_id: func_entry.function_id.clone(),
+                                    }
+                                }
+                            }
+
+                            // Rule 3: def with body -> check for impl override
+                            crate::multi_program_compiler::FunctionType::TraitDefault => {
+                                if let Some(impl_type) =
+                                    self.get_implementing_type_from_arguments(arguments)
+                                {
+                                    // Check if impl has override
+                                    let trait_type_id = module_type_id;
+                                    if self.function_registry.has_impl_override(
+                                        trait_type_id,
+                                        impl_type,
+                                        name,
+                                    ) {
+                                        // Use impl override
+                                        DispatchMethod::Trait {
+                                            trait_name: module.clone(),
+                                            function_name: name.clone(),
+                                            impl_type,
+                                        }
+                                    } else {
+                                        // Use trait default
+                                        DispatchMethod::Static {
+                                            function_id: func_entry.function_id.clone(),
+                                        }
+                                    }
+                                } else {
+                                    // No Self type found - use trait default
+                                    DispatchMethod::Static {
+                                        function_id: func_entry.function_id.clone(),
+                                    }
+                                }
+                            }
+
+                            // Static function on a type
+                            crate::multi_program_compiler::FunctionType::TypeStatic => {
+                                DispatchMethod::Static {
+                                    function_id: func_entry.function_id.clone(),
+                                }
+                            }
+
+                            // Implementation function
+                            crate::multi_program_compiler::FunctionType::ImplFunction => {
+                                if let Some(impl_type) =
+                                    self.get_implementing_type_from_arguments(arguments)
+                                {
+                                    DispatchMethod::Trait {
+                                        trait_name: module.clone(),
+                                        function_name: name.clone(),
+                                        impl_type,
+                                    }
+                                } else {
+                                    // Fallback
+                                    DispatchMethod::Static {
+                                        function_id: func_entry.function_id.clone(),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Function not found in registry - fallback
+                        DispatchMethod::Static {
+                            function_id: format!("{}.{}", module, name),
+                        }
                     }
                 } else {
+                    // Module type not found - fallback
                     DispatchMethod::Static {
                         function_id: format!("{}.{}", module, name),
                     }
                 }
             }
             TypedFunctionPath::Expression { .. } => {
-                // Dynamic function calls
+                // Dynamic function expressions
                 DispatchMethod::Static {
-                    function_id: "dynamic".to_string(),
+                    function_id: "dynamic_function_expression".to_string(),
                 }
             }
+        }
+    }
+
+    /// Get implementing type from arguments for trait dispatch
+    fn get_implementing_type_from_arguments(
+        &self,
+        arguments: &[TypedArgument],
+    ) -> Option<crate::types::TypeId> {
+        // Find the first argument and use its type as the implementing type
+        // This works for trait functions where the first parameter is typically `self: Self`
+        arguments
+            .first()
+            .and_then(|arg| arg.argument_type.as_ref())
+            .and_then(|structured_type| self.extract_base_type_id(structured_type))
+    }
+
+    /// Extract the base TypeId from a StructuredType
+    fn extract_base_type_id(
+        &self,
+        structured_type: &crate::unification::StructuredType,
+    ) -> Option<crate::types::TypeId> {
+        match structured_type {
+            crate::unification::StructuredType::Simple(type_id) => Some(*type_id),
+            crate::unification::StructuredType::Generic { base, .. } => Some(*base),
+            _ => None, // For now, only handle simple and generic types
         }
     }
 
@@ -1685,14 +1804,14 @@ impl TypedASTBuilder {
             }
         }
 
-        // Convert methods with generic context
-        let mut typed_methods = Vec::new();
-        for method in &struct_def.methods {
-            if let Some(typed_method) = self.convert_function_definition(method) {
-                typed_methods.push(typed_method);
+        // Convert functions with generic context
+        let mut typed_functions = Vec::new();
+        for function in &struct_def.methods {
+            if let Some(typed_function) = self.convert_function_definition(function) {
+                typed_functions.push(typed_function);
             } else {
                 self.pop_generic_context(); // Clean up on failure
-                return None; // Failed to convert method
+                return None; // Failed to convert function
             }
         }
 
@@ -1706,7 +1825,7 @@ impl TypedASTBuilder {
             name,
             generic_params,
             fields: typed_fields,
-            methods: typed_methods,
+            functions: typed_functions,
             struct_id,
             span: struct_def.span,
         })
@@ -1907,14 +2026,14 @@ impl TypedASTBuilder {
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
-        // Convert methods with Self type resolution
-        let mut typed_methods = Vec::new();
-        for method in &impl_block.methods {
-            if let Some(typed_method) = self.convert_function_definition(method) {
-                typed_methods.push(typed_method);
+        // Convert functions with Self type resolution
+        let mut typed_functions = Vec::new();
+        for function in &impl_block.methods {
+            if let Some(typed_function) = self.convert_function_definition(function) {
+                typed_functions.push(typed_function);
             } else {
                 self.pop_generic_context(); // Clean up on failure
-                return None; // Failed to convert method
+                return None; // Failed to convert function
             }
         }
 
@@ -1931,7 +2050,7 @@ impl TypedASTBuilder {
             trait_type,
             impl_type,
             constraints,
-            methods: typed_methods,
+            functions: typed_functions,
             impl_verified,
             span: impl_block.span,
         })

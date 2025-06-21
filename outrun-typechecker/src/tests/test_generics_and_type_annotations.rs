@@ -99,16 +99,16 @@ fn test_complex_generic_struct() {
                 assert_eq!(struct_def.fields[0].name, "keys");
                 assert_eq!(struct_def.fields[1].name, "values");
 
-                // Verify method with Self and generic parameter usage
-                assert_eq!(struct_def.methods.len(), 1);
-                assert_eq!(struct_def.methods[0].name, "get");
+                // Verify function with Self and generic parameter usage
+                assert_eq!(struct_def.functions.len(), 1);
+                assert_eq!(struct_def.functions[0].name, "get");
 
-                // Method should have Self parameter and generic return type
-                assert_eq!(struct_def.methods[0].parameters.len(), 2);
-                assert_eq!(struct_def.methods[0].parameters[0].name, "self");
-                assert_eq!(struct_def.methods[0].parameters[1].name, "key");
+                // Function should have Self parameter and generic return type
+                assert_eq!(struct_def.functions[0].parameters.len(), 2);
+                assert_eq!(struct_def.functions[0].parameters[0].name, "self");
+                assert_eq!(struct_def.functions[0].parameters[1].name, "key");
 
-                println!("✓ Complex generic struct with methods successfully processed");
+                println!("✓ Complex generic struct with functions successfully processed");
             }
             TypedItemKind::Placeholder(_) => {
                 println!("Complex generic structs not yet fully integrated - placeholder found (expected)");
@@ -181,11 +181,11 @@ fn test_generic_impl_block_with_self() {
                 assert_eq!(impl_block.trait_path, vec!["Display"]);
                 assert_eq!(impl_block.type_path, vec!["Container"]);
 
-                // Verify method with Self type
-                assert_eq!(impl_block.methods.len(), 1);
-                assert_eq!(impl_block.methods[0].name, "show");
-                assert_eq!(impl_block.methods[0].parameters.len(), 1);
-                assert_eq!(impl_block.methods[0].parameters[0].name, "self");
+                // Verify function with Self type
+                assert_eq!(impl_block.functions.len(), 1);
+                assert_eq!(impl_block.functions[0].name, "show");
+                assert_eq!(impl_block.functions[0].parameters.len(), 1);
+                assert_eq!(impl_block.functions[0].parameters[0].name, "self");
 
                 // Self type should be resolved to Container<T>
                 if let Some(impl_type) = &impl_block.impl_type {

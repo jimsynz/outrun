@@ -23,17 +23,17 @@ pub struct TypedArgument {
     pub span: Span,
 }
 
-/// Dispatch method for function calls
+/// Dispatch strategy for function calls
 #[derive(Debug, Clone, PartialEq)]
 pub enum DispatchMethod {
     /// Static function call - resolved at compile time
     Static {
         function_id: String, // Reference to function registry
     },
-    /// Trait method call - dispatched at runtime
+    /// Trait function call - dispatched at runtime
     Trait {
         trait_name: String,
-        method_name: String,
+        function_name: String,
         impl_type: TypeId,
     },
 }
@@ -106,7 +106,7 @@ pub enum TypedExpressionKind {
     FunctionCall {
         function_path: TypedFunctionPath,
         arguments: Vec<TypedArgument>,
-        dispatch_method: DispatchMethod,
+        dispatch_strategy: DispatchMethod,
     },
 
     // Field access
@@ -282,7 +282,7 @@ pub struct TypedStructDefinition {
     pub name: Vec<String>,                       // Module path for the struct
     pub generic_params: Vec<TypedGenericParam>,  // Generic parameters with resolved constraints
     pub fields: Vec<TypedStructFieldDefinition>, // Validated field definitions
-    pub methods: Vec<TypedFunctionDefinition>,   // Methods defined within the struct
+    pub functions: Vec<TypedFunctionDefinition>, // Functions defined within the struct
     pub struct_id: String,                       // Reference to type registry
     pub span: outrun_parser::Span,
 }
@@ -338,7 +338,7 @@ pub struct TypedImplBlock {
     pub trait_type: Option<StructuredType>,     // Resolved trait type
     pub impl_type: Option<StructuredType>,      // Resolved implementation type
     pub constraints: Vec<TypedConstraint>,      // Validated constraints
-    pub methods: Vec<TypedFunctionDefinition>,  // Implementation methods
+    pub functions: Vec<TypedFunctionDefinition>, // Implementation functions
     pub impl_verified: bool,                    // Whether trait implementation is valid
     pub span: outrun_parser::Span,
 }
@@ -875,23 +875,5 @@ impl TypeChecker {
             span: expr.span,
             debug_info: None, // Will be populated by TypedASTBuilder
         })
-    }
-}
-
-/// Placeholder type context for compatibility
-#[derive(Debug, Clone)]
-pub struct TypeContext {
-    // TODO: Replace with unification context
-}
-
-impl Default for TypeContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TypeContext {
-    pub fn new() -> Self {
-        Self {}
     }
 }
