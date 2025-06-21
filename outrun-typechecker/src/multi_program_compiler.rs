@@ -1246,7 +1246,6 @@ impl TypeCheckingVisitor {
         Ok(result)
     }
 
-
     /// Push a new type parameter scope onto the stack
     fn push_type_parameter_scope(&mut self) {
         self.type_parameter_scopes.push(HashMap::new());
