@@ -133,8 +133,6 @@ pub struct TypedASTBuilder {
     pub struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
     /// Collection of errors encountered during AST building
     pub errors: Vec<crate::error::TypeError>,
-    /// Cache of resolved expression types (span -> type)
-    expression_types: HashMap<Span, StructuredType>,
     /// Built typed programs (filename -> typed program)
     typed_programs: HashMap<String, TypedProgram>,
     /// Current generic context for type resolution
@@ -154,14 +152,12 @@ impl TypedASTBuilder {
         context: UnificationContext,
         function_registry: FunctionRegistry,
         struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
-        expression_types: HashMap<Span, StructuredType>,
     ) -> Self {
         Self {
             context,
             function_registry,
             struct_registry,
             errors: Vec::new(),
-            expression_types,
             typed_programs: HashMap::new(),
             generic_context: None,
             comment_attacher: CommentAttacher::new(Vec::new()), // Will be initialized per program
@@ -562,7 +558,7 @@ impl TypedASTBuilder {
                     interpolation_parts.push(InterpolationPart::Expression {
                         original_expression_text: self.expression_to_text(expression),
                         original_span: *span,
-                        desugared_span: *span, // TODO: Track the actual desugared span from the desugaring phase
+                        desugared_span: self.context.get_desugared_span(*span).unwrap_or(*span),
                     });
 
                     current_pos += interpolation_text.len();
@@ -1030,7 +1026,7 @@ impl TypedASTBuilder {
     /// Get resolved type for an expression using type checking results
     fn get_expression_type(&mut self, expr: &Expression) -> Option<StructuredType> {
         // First check if we have a resolved type from the type checking phase
-        if let Some(resolved_type) = self.expression_types.get(&expr.span) {
+        if let Some(resolved_type) = self.context.get_expression_type(&expr.span) {
             return Some(resolved_type.clone());
         }
 

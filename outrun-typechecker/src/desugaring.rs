@@ -11,6 +11,47 @@ use outrun_parser::{
     TraitCaseClause, TraitCaseExpression, TraitDefinition, TraitFunction, TypeIdentifier,
     UnaryOperation, UnaryOperator,
 };
+use std::collections::HashMap;
+
+/// Mapping between original source spans and their desugared equivalents
+#[derive(Debug, Clone, Default)]
+pub struct SpanMapping {
+    /// Map from original expression spans to desugared expression spans
+    pub original_to_desugared: HashMap<Span, Span>,
+    /// Map from desugared expression spans to original spans (reverse lookup)
+    pub desugared_to_original: HashMap<Span, Span>,
+}
+
+impl SpanMapping {
+    /// Create a new empty span mapping
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a mapping between original and desugared spans
+    pub fn add_mapping(&mut self, original: Span, desugared: Span) {
+        self.original_to_desugared.insert(original, desugared);
+        self.desugared_to_original.insert(desugared, original);
+    }
+
+    /// Get the desugared span for an original span
+    pub fn get_desugared_span(&self, original: Span) -> Option<Span> {
+        self.original_to_desugared.get(&original).copied()
+    }
+
+    /// Get the original span for a desugared span  
+    pub fn get_original_span(&self, desugared: Span) -> Option<Span> {
+        self.desugared_to_original.get(&desugared).copied()
+    }
+
+    /// Merge another span mapping into this one
+    pub fn merge(&mut self, other: SpanMapping) {
+        self.original_to_desugared
+            .extend(other.original_to_desugared);
+        self.desugared_to_original
+            .extend(other.desugared_to_original);
+    }
+}
 
 /// Transformer that desugars operator expressions into trait function calls
 pub struct DesugaringVisitor;
@@ -23,6 +64,21 @@ impl DesugaringVisitor {
             debug_info: program.debug_info,
             span: program.span,
         }
+    }
+
+    /// Desugar a program and return both the desugared program and span mapping
+    pub fn desugar_program_with_span_mapping(program: Program) -> (Program, SpanMapping) {
+        let mut span_mapping = SpanMapping::new();
+        let desugared_program = Program {
+            items: program
+                .items
+                .into_iter()
+                .map(|item| Self::desugar_item_with_mapping(item, &mut span_mapping))
+                .collect(),
+            debug_info: program.debug_info,
+            span: program.span,
+        };
+        (desugared_program, span_mapping)
     }
 
     /// Desugar an item (trait, struct, function, etc.)
@@ -503,5 +559,341 @@ impl DesugaringVisitor {
         }
 
         result
+    }
+
+    // Span-mapping versions of desugaring methods
+
+    /// Desugar an item with span mapping
+    fn desugar_item_with_mapping(item: Item, span_mapping: &mut SpanMapping) -> Item {
+        Item {
+            kind: Self::desugar_item_kind_with_mapping(item.kind, span_mapping),
+            span: item.span,
+        }
+    }
+
+    /// Desugar item kinds with span mapping
+    fn desugar_item_kind_with_mapping(kind: ItemKind, span_mapping: &mut SpanMapping) -> ItemKind {
+        match kind {
+            ItemKind::TraitDefinition(trait_def) => ItemKind::TraitDefinition(
+                Self::desugar_trait_definition_with_mapping(trait_def, span_mapping),
+            ),
+            ItemKind::FunctionDefinition(func_def) => ItemKind::FunctionDefinition(
+                Self::desugar_function_definition_with_mapping(func_def, span_mapping),
+            ),
+            ItemKind::ImplBlock(impl_block) => ItemKind::ImplBlock(ImplBlock {
+                generic_params: impl_block.generic_params,
+                trait_spec: impl_block.trait_spec,
+                type_spec: impl_block.type_spec,
+                constraints: impl_block.constraints,
+                methods: impl_block
+                    .methods
+                    .into_iter()
+                    .map(|method| {
+                        Self::desugar_function_definition_with_mapping(method, span_mapping)
+                    })
+                    .collect(),
+                span: impl_block.span,
+            }),
+            ItemKind::Expression(expr) => {
+                ItemKind::Expression(Self::desugar_expression_with_mapping(expr, span_mapping))
+            }
+            // Other item kinds don't contain expressions that need desugaring
+            other => other,
+        }
+    }
+
+    /// Desugar trait definition with span mapping
+    fn desugar_trait_definition_with_mapping(
+        trait_def: TraitDefinition,
+        span_mapping: &mut SpanMapping,
+    ) -> TraitDefinition {
+        TraitDefinition {
+            attributes: trait_def.attributes,
+            name: trait_def.name,
+            generic_params: trait_def.generic_params,
+            constraints: trait_def.constraints,
+            functions: trait_def
+                .functions
+                .into_iter()
+                .map(|func| match func {
+                    TraitFunction::Signature(sig) => TraitFunction::Signature(sig),
+                    TraitFunction::Definition(def) => TraitFunction::Definition(
+                        Self::desugar_function_definition_with_mapping(def, span_mapping),
+                    ),
+                    TraitFunction::StaticDefinition(static_def) => TraitFunction::StaticDefinition(
+                        Self::desugar_static_function_definition_with_mapping(
+                            static_def,
+                            span_mapping,
+                        ),
+                    ),
+                })
+                .collect(),
+            span: trait_def.span,
+        }
+    }
+
+    /// Desugar function definition with span mapping
+    fn desugar_function_definition_with_mapping(
+        func_def: FunctionDefinition,
+        span_mapping: &mut SpanMapping,
+    ) -> FunctionDefinition {
+        FunctionDefinition {
+            attributes: func_def.attributes,
+            visibility: func_def.visibility,
+            name: func_def.name,
+            parameters: func_def.parameters,
+            return_type: func_def.return_type,
+            guard: func_def.guard.map(|guard| outrun_parser::GuardClause {
+                condition: Self::desugar_expression_with_mapping(guard.condition, span_mapping),
+                span: guard.span,
+            }),
+            body: Self::desugar_block_with_mapping(func_def.body, span_mapping),
+            span: func_def.span,
+        }
+    }
+
+    /// Desugar static function definition with span mapping
+    fn desugar_static_function_definition_with_mapping(
+        static_func_def: StaticFunctionDefinition,
+        span_mapping: &mut SpanMapping,
+    ) -> StaticFunctionDefinition {
+        StaticFunctionDefinition {
+            attributes: static_func_def.attributes,
+            name: static_func_def.name,
+            parameters: static_func_def.parameters,
+            return_type: static_func_def.return_type,
+            body: Self::desugar_block_with_mapping(static_func_def.body, span_mapping),
+            span: static_func_def.span,
+        }
+    }
+
+    /// Desugar a block with span mapping
+    fn desugar_block_with_mapping(block: Block, span_mapping: &mut SpanMapping) -> Block {
+        Block {
+            statements: block
+                .statements
+                .into_iter()
+                .map(|stmt| Self::desugar_statement_with_mapping(stmt, span_mapping))
+                .collect(),
+            span: block.span,
+        }
+    }
+
+    /// Desugar a statement with span mapping
+    fn desugar_statement_with_mapping(
+        stmt: Statement,
+        span_mapping: &mut SpanMapping,
+    ) -> Statement {
+        match stmt.kind {
+            StatementKind::LetBinding(let_binding) => Statement {
+                kind: StatementKind::LetBinding(Box::new(outrun_parser::LetBinding {
+                    pattern: let_binding.pattern,
+                    type_annotation: let_binding.type_annotation,
+                    expression: Self::desugar_expression_with_mapping(
+                        let_binding.expression,
+                        span_mapping,
+                    ),
+                    span: let_binding.span,
+                })),
+                span: stmt.span,
+            },
+            StatementKind::Expression(expr) => Statement {
+                kind: StatementKind::Expression(Box::new(Self::desugar_expression_with_mapping(
+                    *expr,
+                    span_mapping,
+                ))),
+                span: stmt.span,
+            },
+        }
+    }
+
+    /// Desugar an expression with span mapping
+    fn desugar_expression_with_mapping(
+        expr: Expression,
+        span_mapping: &mut SpanMapping,
+    ) -> Expression {
+        match expr.kind {
+            ExpressionKind::BinaryOp(op) => {
+                Self::desugar_binary_operation_with_mapping(op, span_mapping)
+            }
+            ExpressionKind::UnaryOp(op) => {
+                Self::desugar_unary_operation_with_mapping(op, span_mapping)
+            }
+            ExpressionKind::FunctionCall(call) => Expression {
+                kind: ExpressionKind::FunctionCall(FunctionCall {
+                    path: call.path,
+                    arguments: call
+                        .arguments
+                        .into_iter()
+                        .map(|arg| match arg {
+                            Argument::Named {
+                                name,
+                                expression,
+                                format,
+                                span,
+                            } => Argument::Named {
+                                name,
+                                expression: Self::desugar_expression_with_mapping(
+                                    expression,
+                                    span_mapping,
+                                ),
+                                format,
+                                span,
+                            },
+                            Argument::Spread {
+                                expression,
+                                kind,
+                                span,
+                            } => Argument::Spread {
+                                expression: Self::desugar_expression_with_mapping(
+                                    expression,
+                                    span_mapping,
+                                ),
+                                kind,
+                                span,
+                            },
+                        })
+                        .collect(),
+                    span: call.span,
+                }),
+                span: expr.span,
+            },
+            ExpressionKind::IfExpression(if_expr) => Expression {
+                kind: ExpressionKind::IfExpression(IfExpression {
+                    condition: Box::new(Self::desugar_expression_with_mapping(
+                        *if_expr.condition,
+                        span_mapping,
+                    )),
+                    then_block: Self::desugar_block_with_mapping(if_expr.then_block, span_mapping),
+                    else_block: if_expr
+                        .else_block
+                        .map(|block| Self::desugar_block_with_mapping(block, span_mapping)),
+                    span: if_expr.span,
+                }),
+                span: expr.span,
+            },
+            ExpressionKind::CaseExpression(case_expr) => Expression {
+                kind: ExpressionKind::CaseExpression(match case_expr {
+                    CaseExpression::Concrete(concrete) => {
+                        CaseExpression::Concrete(ConcreteCaseExpression {
+                            expression: Box::new(Self::desugar_expression_with_mapping(
+                                *concrete.expression,
+                                span_mapping,
+                            )),
+                            when_clauses: concrete
+                                .when_clauses
+                                .into_iter()
+                                .map(|clause| CaseWhenClause {
+                                    guard: Self::desugar_expression_with_mapping(
+                                        clause.guard,
+                                        span_mapping,
+                                    ),
+                                    result: Self::desugar_case_result_with_mapping(
+                                        clause.result,
+                                        span_mapping,
+                                    ),
+                                    span: clause.span,
+                                })
+                                .collect(),
+                            span: concrete.span,
+                        })
+                    }
+                    CaseExpression::Trait(trait_case) => {
+                        CaseExpression::Trait(TraitCaseExpression {
+                            expression: Box::new(Self::desugar_expression_with_mapping(
+                                *trait_case.expression,
+                                span_mapping,
+                            )),
+                            trait_name: trait_case.trait_name,
+                            type_clauses: trait_case
+                                .type_clauses
+                                .into_iter()
+                                .map(|clause| TraitCaseClause {
+                                    type_name: clause.type_name,
+                                    pattern: clause.pattern,
+                                    guard: clause.guard.map(|guard| {
+                                        Self::desugar_expression_with_mapping(guard, span_mapping)
+                                    }),
+                                    result: Self::desugar_case_result_with_mapping(
+                                        clause.result,
+                                        span_mapping,
+                                    ),
+                                    span: clause.span,
+                                })
+                                .collect(),
+                            span: trait_case.span,
+                        })
+                    }
+                }),
+                span: expr.span,
+            },
+            // Handle string interpolation specially since it creates new expressions
+            ExpressionKind::String(lit)
+                if lit.parts.iter().any(|part| {
+                    matches!(part, outrun_parser::StringPart::Interpolation { .. })
+                }) =>
+            {
+                Self::desugar_string_interpolation_with_mapping(lit, expr.span, span_mapping)
+            }
+            // Other expression kinds don't need desugaring
+            _ => expr,
+        }
+    }
+
+    /// Desugar case result with span mapping
+    fn desugar_case_result_with_mapping(
+        result: CaseResult,
+        span_mapping: &mut SpanMapping,
+    ) -> CaseResult {
+        match result {
+            CaseResult::Block(block) => {
+                CaseResult::Block(Self::desugar_block_with_mapping(block, span_mapping))
+            }
+            CaseResult::Expression(expr) => CaseResult::Expression(Box::new(
+                Self::desugar_expression_with_mapping(*expr, span_mapping),
+            )),
+        }
+    }
+
+    /// Transform binary operation to trait function call with span mapping
+    fn desugar_binary_operation_with_mapping(
+        op: BinaryOperation,
+        span_mapping: &mut SpanMapping,
+    ) -> Expression {
+        let original_span = op.span;
+        let desugared_expr = Self::desugar_binary_operation(op);
+
+        // Record the span mapping between original operator and desugared function call
+        span_mapping.add_mapping(original_span, desugared_expr.span);
+
+        desugared_expr
+    }
+
+    /// Transform unary operation to trait function call with span mapping
+    fn desugar_unary_operation_with_mapping(
+        op: UnaryOperation,
+        span_mapping: &mut SpanMapping,
+    ) -> Expression {
+        let original_span = op.span;
+        let desugared_expr = Self::desugar_unary_operation(op);
+
+        // Record the span mapping between original operator and desugared function call
+        span_mapping.add_mapping(original_span, desugared_expr.span);
+
+        desugared_expr
+    }
+
+    /// Transform string interpolation with span mapping
+    fn desugar_string_interpolation_with_mapping(
+        lit: StringLiteral,
+        original_span: Span,
+        span_mapping: &mut SpanMapping,
+    ) -> Expression {
+        let desugared_expr = Self::desugar_string_interpolation(lit, original_span);
+
+        // Record the span mapping between original string literal and desugared concatenation
+        span_mapping.add_mapping(original_span, desugared_expr.span);
+
+        desugared_expr
     }
 }

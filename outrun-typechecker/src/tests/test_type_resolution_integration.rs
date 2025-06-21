@@ -23,16 +23,16 @@ fn test_expression_types_captured_during_type_checking() {
 
     // Verify that expression types were captured
     assert!(
-        !result.expression_types.is_empty(),
+        !result.type_context.expression_types.is_empty(),
         "Expression types should be captured"
     );
 
     // Check that we have types for the expected expressions
     println!(
         "Captured {} expression types",
-        result.expression_types.len()
+        result.type_context.expression_types.len()
     );
-    for (span, structured_type) in &result.expression_types {
+    for (span, structured_type) in &result.type_context.expression_types {
         println!("Span {:?} -> Type: {:?}", span, structured_type);
     }
 }
@@ -90,14 +90,9 @@ fn test_fallback_to_literal_inference_when_no_resolved_type() {
     let context = crate::unification::UnificationContext::new();
     let function_registry = crate::multi_program_compiler::FunctionRegistry::default();
     let struct_registry = HashMap::new();
-    let expression_types = HashMap::new(); // Empty - should fallback to inference
 
-    let mut builder = crate::typed_ast_builder::TypedASTBuilder::new(
-        context,
-        function_registry,
-        struct_registry,
-        expression_types,
-    );
+    let mut builder =
+        crate::typed_ast_builder::TypedASTBuilder::new(context, function_registry, struct_registry);
 
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());

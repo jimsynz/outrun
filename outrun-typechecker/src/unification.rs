@@ -74,6 +74,10 @@ pub struct UnificationContext {
     pub type_interner: TypeInterner,
     /// Generic parameter substitutions
     pub generic_substitutions: HashMap<TypeId, StructuredType>,
+    /// Resolved expression types from type checking phase
+    pub expression_types: HashMap<outrun_parser::Span, StructuredType>,
+    /// Span mapping from desugaring phase for tracking original to desugared spans
+    pub span_mapping: crate::desugaring::SpanMapping,
 }
 
 impl Default for UnificationContext {
@@ -560,6 +564,8 @@ impl UnificationContext {
             trait_registry: TraitRegistry::new(),
             type_interner: TypeInterner::new(),
             generic_substitutions: HashMap::new(),
+            expression_types: HashMap::new(),
+            span_mapping: crate::desugaring::SpanMapping::new(),
         }
     }
 
@@ -638,6 +644,31 @@ impl UnificationContext {
                 }
             }
         }
+    }
+
+    /// Add an expression type mapping
+    pub fn add_expression_type(&mut self, span: outrun_parser::Span, expr_type: StructuredType) {
+        self.expression_types.insert(span, expr_type);
+    }
+
+    /// Get the resolved type for an expression by its span
+    pub fn get_expression_type(&self, span: &outrun_parser::Span) -> Option<&StructuredType> {
+        self.expression_types.get(span)
+    }
+
+    /// Merge span mapping from desugaring phase
+    pub fn merge_span_mapping(&mut self, span_mapping: crate::desugaring::SpanMapping) {
+        self.span_mapping.merge(span_mapping);
+    }
+
+    /// Get the desugared span for an original span
+    pub fn get_desugared_span(&self, original: outrun_parser::Span) -> Option<outrun_parser::Span> {
+        self.span_mapping.get_desugared_span(original)
+    }
+
+    /// Get the original span for a desugared span
+    pub fn get_original_span(&self, desugared: outrun_parser::Span) -> Option<outrun_parser::Span> {
+        self.span_mapping.get_original_span(desugared)
     }
 }
 
