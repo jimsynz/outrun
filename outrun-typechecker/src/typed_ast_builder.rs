@@ -1028,10 +1028,73 @@ impl TypedASTBuilder {
     }
 
     /// Get resolved type for an expression (placeholder for now)
-    fn get_expression_type(&self, _expr: &Expression) -> Option<StructuredType> {
+    fn get_expression_type(&mut self, expr: &Expression) -> Option<StructuredType> {
         // TODO: Use type checking results to get actual resolved types
-        // For now, return None since we don't have access to TypeCheckingVisitor results
-        None
+        // For now, implement basic type inference for literals and simple cases
+        match &expr.kind {
+            ExpressionKind::Integer(_) => {
+                let integer_type_id = self
+                    .context
+                    .type_interner
+                    .get_type("Outrun.Core.Integer64")
+                    .or_else(|| self.context.type_interner.get_type("Integer"))
+                    .unwrap_or_else(|| {
+                        // Create the type if it doesn't exist
+                        self.context
+                            .type_interner
+                            .intern_type("Outrun.Core.Integer64")
+                    });
+                Some(StructuredType::Simple(integer_type_id))
+            }
+            ExpressionKind::Float(_) => {
+                let float_type_id = self
+                    .context
+                    .type_interner
+                    .get_type("Outrun.Core.Float64")
+                    .or_else(|| self.context.type_interner.get_type("Float"))
+                    .unwrap_or_else(|| {
+                        self.context
+                            .type_interner
+                            .intern_type("Outrun.Core.Float64")
+                    });
+                Some(StructuredType::Simple(float_type_id))
+            }
+            ExpressionKind::String(_) => {
+                let string_type_id = self
+                    .context
+                    .type_interner
+                    .get_type("Outrun.Core.String")
+                    .or_else(|| self.context.type_interner.get_type("String"))
+                    .unwrap_or_else(|| {
+                        self.context.type_interner.intern_type("Outrun.Core.String")
+                    });
+                Some(StructuredType::Simple(string_type_id))
+            }
+            ExpressionKind::Boolean(_) => {
+                let boolean_type_id = self
+                    .context
+                    .type_interner
+                    .get_type("Outrun.Core.Boolean")
+                    .or_else(|| self.context.type_interner.get_type("Boolean"))
+                    .unwrap_or_else(|| {
+                        self.context
+                            .type_interner
+                            .intern_type("Outrun.Core.Boolean")
+                    });
+                Some(StructuredType::Simple(boolean_type_id))
+            }
+            ExpressionKind::Atom(_) => {
+                let atom_type_id = self
+                    .context
+                    .type_interner
+                    .get_type("Outrun.Core.Atom")
+                    .or_else(|| self.context.type_interner.get_type("Atom"))
+                    .unwrap_or_else(|| self.context.type_interner.intern_type("Outrun.Core.Atom"));
+                Some(StructuredType::Simple(atom_type_id))
+            }
+            // For other expression types, return None for now
+            _ => None,
+        }
     }
 
     /// Convert list literal with element type validation

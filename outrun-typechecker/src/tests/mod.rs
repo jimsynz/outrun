@@ -98,6 +98,9 @@ mod test_case_branch_unification;
 // Raw text preservation tests
 mod test_raw_text_preservation;
 
+// Position-based type lookup tests for LSP integration
+mod test_position_based_type_lookup;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

@@ -237,11 +237,14 @@
 //! # struct Position { line: u32, character: u32 }
 //! # struct Hover { contents: String, range: Option<()> }
 //! # fn get_cached_typed_program(uri: &str) -> Option<outrun_typechecker::TypedProgram> { None }
+//! # fn get_source_for_uri(uri: &str) -> Option<String> { None }
 //! // In your LSP implementation
 //! fn provide_hover(uri: &str, position: Position) -> Option<Hover> {
 //!     let typed_program = get_cached_typed_program(uri)?;
+//!     let source = get_source_for_uri(uri)?;
 //!     let type_info = outrun_typechecker::get_type_at_position(
 //!         &typed_program,
+//!         &source,
 //!         position.line as usize,
 //!         position.character as usize,
 //!     )?;
@@ -292,7 +295,10 @@ use desugaring::DesugaringVisitor;
 mod tests;
 
 // Re-export core types and functions for easy access
-pub use checker::{TypeChecker, TypedExpression, TypedItem, TypedProgram};
+pub use checker::{
+    TypeChecker, TypedBlock, TypedExpression, TypedExpressionKind, TypedFunctionDefinition,
+    TypedFunctionPath, TypedItem, TypedItemKind, TypedLetBinding, TypedProgram, TypedStatement,
+};
 pub use dispatch::DispatchTable;
 pub use error::{
     ErrorGroup, ErrorSummary, TypeError, TypeErrorReport, TypeErrorWithSource, TypeResult,
@@ -583,21 +589,256 @@ pub fn typecheck_status(program: Program, source: &str, filename: &str) -> Resul
 /// This function is designed for LSP implementations that need to provide
 /// hover information, go-to-definition, and other position-based features.
 ///
-/// Currently returns basic type information. Future versions will include
-/// more detailed semantic information.
+/// # Arguments
+/// * `typed_program` - The typed program with complete type information
+/// * `source` - The original source code for position resolution
+/// * `line` - Zero-based line number
+/// * `column` - Zero-based column number
+///
+/// # Returns
+/// Returns formatted type information if a typed node is found at the position,
+/// None if no typed node exists at that location.
 pub fn get_type_at_position(
     typed_program: &TypedProgram,
+    source: &str,
     line: usize,
     column: usize,
 ) -> Option<String> {
-    // This is a placeholder implementation for future LSP integration
-    // A full implementation would:
-    // 1. Find the AST node at the given position
-    // 2. Extract its type information
-    // 3. Format it for display
+    // 1. Convert line/column to byte offset
+    let target_offset = line_column_to_offset(line, column, source)?;
 
-    let _ = (typed_program, line, column);
-    None // TODO: Implement position-based type lookup
+    // 2. Find the most specific typed node at this position
+    let type_info = find_type_at_offset(typed_program, target_offset)?;
+
+    // 3. Format type information for display using built-in string representation
+    Some(format!(
+        "Type: {}",
+        type_info.to_string_representation(&typed_program.type_context.type_interner)
+    ))
+}
+
+/// Convert line and column position to byte offset in source text
+pub fn line_column_to_offset(line: usize, column: usize, source: &str) -> Option<usize> {
+    let mut current_line = 0;
+    let mut current_column = 0;
+
+    for (offset, ch) in source.char_indices() {
+        if current_line == line && current_column == column {
+            return Some(offset);
+        }
+
+        if ch == '\n' {
+            current_line += 1;
+            current_column = 0;
+        } else {
+            current_column += 1;
+        }
+    }
+
+    // Handle end-of-file position
+    if current_line == line && current_column == column {
+        Some(source.len())
+    } else {
+        None
+    }
+}
+
+/// Find type information for a typed node at the given byte offset
+fn find_type_at_offset(typed_program: &TypedProgram, offset: usize) -> Option<StructuredType> {
+    // Search through all typed items for the one containing this offset
+    for item in &typed_program.items {
+        if span_contains_offset(&item.span, offset) {
+            if let Some(type_info) = find_type_in_item(item, offset) {
+                return Some(type_info);
+            }
+        }
+    }
+    None
+}
+
+/// Check if a span contains the given byte offset
+pub fn span_contains_offset(span: &outrun_parser::Span, offset: usize) -> bool {
+    offset >= span.start && offset < span.end
+}
+
+/// Find type information within a typed item
+fn find_type_in_item(item: &TypedItem, offset: usize) -> Option<StructuredType> {
+    match &item.kind {
+        TypedItemKind::Expression(expr) => find_type_in_expression(expr, offset),
+        TypedItemKind::FunctionDefinition(func_def) => find_type_in_function(func_def, offset),
+        TypedItemKind::LetBinding(let_binding) => find_type_in_let_binding(let_binding, offset),
+        // For now, handle the most common cases
+        _ => None,
+    }
+}
+
+/// Find type information within a typed expression
+fn find_type_in_expression(expr: &TypedExpression, offset: usize) -> Option<StructuredType> {
+    // If this expression's span contains the offset, it's a candidate
+    if !span_contains_offset(&expr.span, offset) {
+        return None;
+    }
+
+    // First, check for more specific nested expressions
+    match &expr.kind {
+        TypedExpressionKind::FunctionCall {
+            function_path,
+            arguments,
+            ..
+        } => {
+            // Check function path
+            if let TypedFunctionPath::Expression { expression } = function_path {
+                if let Some(nested_type) = find_type_in_expression(expression, offset) {
+                    return Some(nested_type);
+                }
+            }
+
+            // Check arguments
+            for arg in arguments {
+                if let Some(nested_type) = find_type_in_expression(&arg.expression, offset) {
+                    return Some(nested_type);
+                }
+            }
+        }
+        TypedExpressionKind::FieldAccess { object, .. } => {
+            if let Some(nested_type) = find_type_in_expression(object, offset) {
+                return Some(nested_type);
+            }
+        }
+        TypedExpressionKind::List { elements, .. } => {
+            for element in elements {
+                if let Some(nested_type) = find_type_in_expression(element, offset) {
+                    return Some(nested_type);
+                }
+            }
+        }
+        // Add more expression kinds as needed
+        _ => {}
+    }
+
+    // If no nested expression matched, return this expression's type
+    expr.structured_type.clone()
+}
+
+/// Find type information within a function definition
+fn find_type_in_function(
+    func_def: &TypedFunctionDefinition,
+    offset: usize,
+) -> Option<StructuredType> {
+    // Check function body for the most specific match
+    find_type_in_block(&func_def.body, offset).or_else(|| {
+        // If not in body, check if we're on the function name or return type
+        if span_contains_offset(&func_def.span, offset) {
+            // Return the function's type information
+            func_def.return_type.clone()
+        } else {
+            None
+        }
+    })
+}
+
+/// Find type information within a block
+fn find_type_in_block(block: &TypedBlock, offset: usize) -> Option<StructuredType> {
+    // Search through statements in the block
+    for statement in &block.statements {
+        match statement {
+            TypedStatement::Expression(expr) => {
+                if let Some(type_info) = find_type_in_expression(expr, offset) {
+                    return Some(type_info);
+                }
+            }
+            TypedStatement::LetBinding(let_binding) => {
+                if let Some(type_info) = find_type_in_let_binding(let_binding, offset) {
+                    return Some(type_info);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find type information within a let binding
+fn find_type_in_let_binding(
+    let_binding: &TypedLetBinding,
+    offset: usize,
+) -> Option<StructuredType> {
+    // Check if the offset is in the expression part
+    find_type_in_expression(&let_binding.expression, offset).or_else(|| {
+        // If not in expression, check if we're on the variable name
+        if span_contains_offset(&let_binding.span, offset) {
+            // Return the let binding's binding type
+            let_binding.binding_type.clone()
+        } else {
+            None
+        }
+    })
+}
+
+/// Format type information for hover display
+pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
+    match structured_type {
+        StructuredType::Simple(type_name) => {
+            format!("Type: {}", type_name)
+        }
+        StructuredType::Generic { base, args } => {
+            let args_str = args
+                .iter()
+                .map(format_type_for_hover)
+                .map(|s| s.strip_prefix("Type: ").unwrap_or(&s).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Type: {}<{}>", base, args_str)
+        }
+        StructuredType::Function {
+            params,
+            return_type,
+        } => {
+            let params_str = params
+                .iter()
+                .map(|param| {
+                    format!(
+                        "{}: {}",
+                        param.name,
+                        format_type_for_hover(&param.param_type)
+                            .strip_prefix("Type: ")
+                            .unwrap_or("")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let return_str = format_type_for_hover(return_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            format!("Type: ({}) -> {}", params_str, return_str)
+        }
+        StructuredType::Tuple(elements) => {
+            let elements_str = elements
+                .iter()
+                .map(format_type_for_hover)
+                .map(|s| s.strip_prefix("Type: ").unwrap_or(&s).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Type: ({})", elements_str)
+        }
+        StructuredType::TypeError {
+            error,
+            fallback_type,
+            ..
+        } => {
+            if let Some(fallback) = fallback_type {
+                format!(
+                    "Type Error (fallback: {}): {}",
+                    format_type_for_hover(fallback)
+                        .strip_prefix("Type: ")
+                        .unwrap_or("unknown"),
+                    error
+                )
+            } else {
+                format!("Type Error: {}", error)
+            }
+        }
+    }
 }
 
 /// Get completion suggestions for a specific position

@@ -2479,7 +2479,15 @@ impl TypeCheckingVisitor {
                         .cloned();
 
                     if let Some(trait_func) = trait_func_entry {
-                        // Infer the concrete implementing type from the first Self parameter
+                        // Check if this is a static function (defs) - static functions don't need Self parameter resolution
+                        if trait_func.function_type == FunctionType::TraitStatic {
+                            // Static functions are called directly on the trait, no implementation dispatch needed
+                            self.validate_function_call_arguments(call, &trait_func.definition)?;
+                            return self
+                                .resolve_type_annotation(&trait_func.definition.return_type);
+                        }
+
+                        // For non-static trait functions, infer the concrete implementing type from the first Self parameter
                         let implementing_structured_type = self
                             .infer_implementing_type_from_arguments(
                                 module_type_id,
