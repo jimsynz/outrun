@@ -4,6 +4,7 @@
 //! in the typechecker CLAUDE.md. It handles recursive unification of generic types,
 //! trait-based compatibility, and Self type resolution.
 
+use crate::error::context;
 use crate::types::{AtomId, TypeId, TypeInterner};
 use std::collections::HashMap;
 
@@ -13,11 +14,6 @@ pub type UnificationResult<T = ()> = Result<T, UnificationError>;
 /// Errors that can occur during type unification
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnificationError {
-    /// Types cannot be unified (fundamental incompatibility)
-    IncompatibleTypes {
-        type1: StructuredType,
-        type2: StructuredType,
-    },
     /// Generic arity mismatch (e.g., Option<T> vs Map<K, V>)
     ArityMismatch {
         expected: usize,
@@ -52,6 +48,15 @@ pub enum StructuredType {
         params: Vec<FunctionParam>,
         return_type: Box<StructuredType>,
     },
+    /// Error type for recovery - represents a type that failed to resolve
+    TypeError {
+        /// The original error that caused this type failure
+        error: crate::error::TypeError,
+        /// Fallback type to use for continued type checking (if any)
+        fallback_type: Option<Box<StructuredType>>,
+        /// Original span where the type error occurred
+        error_span: outrun_parser::Span,
+    },
 }
 
 /// Function parameter with name and type (required for Outrun)
@@ -70,6 +75,10 @@ pub struct UnificationContext {
     pub type_interner: TypeInterner,
     /// Generic parameter substitutions
     pub generic_substitutions: HashMap<TypeId, StructuredType>,
+    /// Resolved expression types from type checking phase
+    pub expression_types: HashMap<outrun_parser::Span, StructuredType>,
+    /// Span mapping from desugaring phase for tracking original to desugared spans
+    pub span_mapping: crate::desugaring::SpanMapping,
 }
 
 impl Default for UnificationContext {
@@ -117,16 +126,25 @@ impl StructuredType {
         }
     }
 
+    /// Create an error type for recovery
+    pub fn type_error(
+        error: crate::error::TypeError,
+        fallback_type: Option<StructuredType>,
+        error_span: outrun_parser::Span,
+    ) -> Self {
+        StructuredType::TypeError {
+            error,
+            fallback_type: fallback_type.map(Box::new),
+            error_span,
+        }
+    }
+
     /// Convert to string representation for error messages
     pub fn to_string_representation(&self, interner: &TypeInterner) -> String {
         match self {
-            StructuredType::Simple(type_id) => interner
-                .type_name(*type_id)
-                .unwrap_or_else(|| format!("Unknown({:?})", type_id)),
+            StructuredType::Simple(type_id) => context::type_name_or_unknown(interner, *type_id),
             StructuredType::Generic { base, args } => {
-                let base_name = interner
-                    .type_name(*base)
-                    .unwrap_or_else(|| format!("Unknown({:?})", base));
+                let base_name = context::type_name_or_unknown(interner, *base);
                 let arg_names: Vec<String> = args
                     .iter()
                     .map(|arg| arg.to_string_representation(interner))
@@ -149,9 +167,7 @@ impl StructuredType {
                     .map(|p| {
                         format!(
                             "{}: {}",
-                            interner
-                                .atom_name(p.name)
-                                .unwrap_or_else(|| format!("atom_{:?}", p.name)),
+                            context::atom_name_or_fallback(interner, p.name),
                             p.param_type.to_string_representation(interner)
                         )
                     })
@@ -161,6 +177,14 @@ impl StructuredType {
                     param_strs.join(", "),
                     return_type.to_string_representation(interner)
                 )
+            }
+            StructuredType::TypeError { fallback_type, .. } => {
+                // For error types, show the fallback type if available, otherwise show error marker
+                if let Some(fallback) = fallback_type {
+                    format!("<ERROR: {}>", fallback.to_string_representation(interner))
+                } else {
+                    "<ERROR>".to_string()
+                }
             }
         }
     }
@@ -295,7 +319,25 @@ pub fn unify_structured_types(
             unify_trait_with_generic_implementation(*trait_type, *base, context)
         }
 
-        // 7. Cross-Type Unification (always fails)
+        // 7. TypeError Unification - Use fallback type if available
+        (StructuredType::TypeError { fallback_type, .. }, other) => {
+            if let Some(fallback) = fallback_type {
+                unify_structured_types(fallback, other, context)
+            } else {
+                // No fallback - can't unify with error type
+                Ok(false)
+            }
+        }
+        (other, StructuredType::TypeError { fallback_type, .. }) => {
+            if let Some(fallback) = fallback_type {
+                unify_structured_types(other, fallback, context)
+            } else {
+                // No fallback - can't unify with error type
+                Ok(false)
+            }
+        }
+
+        // 8. Cross-Type Unification (always fails)
         _ => Ok(false),
     }
 }
@@ -517,6 +559,8 @@ impl UnificationContext {
             trait_registry: TraitRegistry::new(),
             type_interner: TypeInterner::new(),
             generic_substitutions: HashMap::new(),
+            expression_types: HashMap::new(),
+            span_mapping: crate::desugaring::SpanMapping::new(),
         }
     }
 
@@ -576,7 +620,50 @@ impl UnificationContext {
                     return_type: Box::new(resolved_return),
                 })
             }
+            StructuredType::TypeError {
+                error,
+                fallback_type,
+                error_span,
+            } => {
+                // For error types, resolve the fallback type if it exists
+                if let Some(fallback) = fallback_type {
+                    let resolved_fallback = self.resolve_type(fallback)?;
+                    Ok(StructuredType::TypeError {
+                        error: error.clone(),
+                        fallback_type: Some(Box::new(resolved_fallback)),
+                        error_span: *error_span,
+                    })
+                } else {
+                    // No fallback to resolve
+                    Ok(type_ref.clone())
+                }
+            }
         }
+    }
+
+    /// Add an expression type mapping
+    pub fn add_expression_type(&mut self, span: outrun_parser::Span, expr_type: StructuredType) {
+        self.expression_types.insert(span, expr_type);
+    }
+
+    /// Get the resolved type for an expression by its span
+    pub fn get_expression_type(&self, span: &outrun_parser::Span) -> Option<&StructuredType> {
+        self.expression_types.get(span)
+    }
+
+    /// Merge span mapping from desugaring phase
+    pub fn merge_span_mapping(&mut self, span_mapping: crate::desugaring::SpanMapping) {
+        self.span_mapping.merge(span_mapping);
+    }
+
+    /// Get the desugared span for an original span
+    pub fn get_desugared_span(&self, original: outrun_parser::Span) -> Option<outrun_parser::Span> {
+        self.span_mapping.get_desugared_span(original)
+    }
+
+    /// Get the original span for a desugared span
+    pub fn get_original_span(&self, desugared: outrun_parser::Span) -> Option<outrun_parser::Span> {
+        self.span_mapping.get_original_span(desugared)
     }
 }
 

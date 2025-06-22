@@ -14,7 +14,6 @@ mod test_collections;
 mod test_comparison_operators;
 mod test_comprehensive_comment_collection;
 mod test_constant_definitions;
-mod test_control_flow_case_simple;
 mod test_control_flow_if;
 mod test_debug_info_comments;
 mod test_destructuring_patterns;

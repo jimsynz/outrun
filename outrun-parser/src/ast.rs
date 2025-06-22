@@ -2,7 +2,7 @@
 // Abstract Syntax Tree nodes with source preservation
 
 /// Source position information for AST nodes
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -141,6 +141,7 @@ pub struct BooleanLiteral {
 pub struct IntegerLiteral {
     pub value: i64, // Parse the actual numeric value
     pub format: IntegerFormat,
+    pub raw_text: String, // Original source text (e.g., "0xFF", "0b101010")
     pub span: Span,
 }
 
@@ -157,6 +158,7 @@ pub enum IntegerFormat {
 pub struct FloatLiteral {
     pub value: f64, // Parse the actual numeric value
     pub format: FloatFormat,
+    pub raw_text: String, // Original source text (e.g., "3.14", "1.23e-4")
     pub span: Span,
 }
 
@@ -382,6 +384,9 @@ pub enum BinaryOperator {
     // Pipe operators
     Pipe,      // |>
     PipeMaybe, // |?
+
+    // Type annotation operator
+    As, // as
 }
 
 /// Unary operations with operator tracking
@@ -641,45 +646,20 @@ pub struct IfExpression {
     pub span: Span,
 }
 
-/// Case expression with two variants: concrete type matching and trait dispatch
+/// Unified case expression with pattern matching and optional guards
 #[derive(Debug, Clone, PartialEq)]
-pub enum CaseExpression {
-    Concrete(ConcreteCaseExpression),
-    Trait(TraitCaseExpression),
-}
-
-/// Concrete case expression with when clauses (exhaustiveness checked)
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConcreteCaseExpression {
+pub struct CaseExpression {
     pub expression: Box<Expression>, // The value being matched
-    pub when_clauses: Vec<CaseWhenClause>,
+    pub clauses: Vec<CaseClause>,    // Pattern-based case clauses
     pub span: Span,
 }
 
-/// Trait case expression for trait-based exhaustiveness checking
+/// Case clause with pattern matching and optional guard
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitCaseExpression {
-    pub expression: Box<Expression>, // The value being matched
-    pub trait_name: TypeIdentifier,  // The trait for dispatch
-    pub type_clauses: Vec<TraitCaseClause>,
-    pub span: Span,
-}
-
-/// When clause in concrete case expression
-#[derive(Debug, Clone, PartialEq)]
-pub struct CaseWhenClause {
-    pub guard: Expression,  // The guard condition (must return boolean)
-    pub result: CaseResult, // Block or expression result
-    pub span: Span,
-}
-
-/// Type clause in trait case expression
-#[derive(Debug, Clone, PartialEq)]
-pub struct TraitCaseClause {
-    pub type_name: TypeIdentifier, // Concrete type implementing the trait
-    pub pattern: Option<StructPattern>, // Optional struct destructuring pattern
+pub struct CaseClause {
+    pub pattern: Pattern, // Pattern to match (identifier, literal, struct, etc.)
     pub guard: Option<Expression>, // Optional guard condition
-    pub result: CaseResult,        // Block or expression result
+    pub result: CaseResult, // Block or expression result
     pub span: Span,
 }
 
@@ -800,30 +780,15 @@ impl std::fmt::Display for BooleanLiteral {
 
 impl std::fmt::Display for IntegerLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Preserve the original format when displaying
-        match self.format {
-            IntegerFormat::Decimal => write!(f, "{}", self.value),
-            IntegerFormat::Binary => write!(f, "0b{:b}", self.value),
-            IntegerFormat::Octal => write!(f, "0o{:o}", self.value),
-            IntegerFormat::Hexadecimal => write!(f, "0x{:x}", self.value),
-        }
+        // Use original source text for perfect format preservation
+        write!(f, "{}", self.raw_text)
     }
 }
 
 impl std::fmt::Display for FloatLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // For now, just display the value - we'll improve format preservation later
-        match &self.format {
-            FloatFormat::Standard => write!(f, "{}", self.value),
-            FloatFormat::Scientific { exponent_case } => {
-                let output = format!("{:e}", self.value);
-                if matches!(exponent_case, ExponentCase::Uppercase) {
-                    write!(f, "{}", output.replace('e', "E"))
-                } else {
-                    write!(f, "{}", output)
-                }
-            }
-        }
+        // Use original source text for perfect format preservation
+        write!(f, "{}", self.raw_text)
     }
 }
 
@@ -1036,6 +1001,7 @@ impl std::fmt::Display for BinaryOperation {
             BinaryOperator::ShiftRight => " >> ",
             BinaryOperator::Pipe => " |> ",
             BinaryOperator::PipeMaybe => " |? ",
+            BinaryOperator::As => " as ",
         };
         write!(f, "{}{}{}", self.left, op_str, self.right)
     }
@@ -1365,56 +1331,25 @@ impl std::fmt::Display for IfExpression {
 
 impl std::fmt::Display for CaseExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CaseExpression::Concrete(concrete) => write!(f, "{}", concrete),
-            CaseExpression::Trait(trait_case) => write!(f, "{}", trait_case),
-        }
-    }
-}
-
-impl std::fmt::Display for ConcreteCaseExpression {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "case {} {{", self.expression)?;
 
-        for when_clause in &self.when_clauses {
-            writeln!(f, "    {}", when_clause)?;
+        for clause in &self.clauses {
+            writeln!(f, "    {}", clause)?;
         }
 
         write!(f, "}}")
     }
 }
 
-impl std::fmt::Display for TraitCaseExpression {
+impl std::fmt::Display for CaseClause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "case {} as {} {{", self.expression, self.trait_name)?;
-
-        for type_clause in &self.type_clauses {
-            writeln!(f, "    {}", type_clause)?;
-        }
-
-        write!(f, "}}")
-    }
-}
-
-impl std::fmt::Display for TraitCaseClause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.type_name)?;
-
-        if let Some(pattern) = &self.pattern {
-            write!(f, " {}", pattern)?;
-        }
+        write!(f, "{}", self.pattern)?;
 
         if let Some(guard) = &self.guard {
             write!(f, " when {}", guard)?;
         }
 
         write!(f, " -> {}", self.result)
-    }
-}
-
-impl std::fmt::Display for CaseWhenClause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "when {} -> {}", self.guard, self.result)
     }
 }
 

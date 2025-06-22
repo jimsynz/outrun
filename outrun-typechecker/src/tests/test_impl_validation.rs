@@ -43,15 +43,6 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    println!(
-        "DEBUG: Collection file paths: {:?}",
-        collection.file_paths()
-    );
-    println!(
-        "DEBUG: Collection has {} programs",
-        collection.programs.len()
-    );
-
     let mut compiler = MultiProgramCompiler::new();
     let result = compiler.compile(&collection);
 
@@ -416,6 +407,89 @@ impl UndefinedTrait for MyType {
                 undefined_trait_error.is_some(),
                 "Expected UndefinedTrait error"
             );
+        }
+    }
+}
+
+#[test]
+fn test_impl_validation_undefined_trait_span_information() {
+    let impl_source = r#"
+struct MyType() {}
+
+impl UndefinedTrait for MyType {
+    def some_function(value: Self): String {
+        "MyType"
+    }
+}
+"#;
+
+    let impl_program = create_program_from_source(impl_source);
+
+    let mut collection = ProgramCollection::new();
+    collection.add_program(
+        "impl.outrun".to_string(),
+        impl_program,
+        impl_source.to_string(),
+    );
+
+    let mut compiler = MultiProgramCompiler::new();
+    let result = compiler.compile(&collection);
+
+    match result {
+        Ok(_compilation_result) => {
+            panic!("Expected compilation to fail due to undefined trait, but it succeeded");
+        }
+        Err(errors) => {
+            assert!(!errors.is_empty(), "Expected at least one error");
+
+            // Check that we get an UndefinedTrait error with proper span
+            let undefined_trait_error = errors.iter().find(|e| {
+                matches!(e, TypeError::UndefinedTrait { trait_name, .. } if trait_name == "UndefinedTrait")
+            });
+
+            assert!(
+                undefined_trait_error.is_some(),
+                "Expected UndefinedTrait error but got: {:?}",
+                errors
+            );
+
+            // Extract the span and verify it's not (0,0)
+            if let Some(TypeError::UndefinedTrait {
+                span, trait_name, ..
+            }) = undefined_trait_error
+            {
+                assert_eq!(trait_name, "UndefinedTrait");
+
+                // Verify the span is not empty (0,0)
+                assert!(
+                    span.offset() > 0,
+                    "Span offset should not be 0, got: {:?}",
+                    span
+                );
+                assert!(
+                    !span.is_empty(),
+                    "Span length should not be 0, got: {:?}",
+                    span
+                );
+
+                // The span should include the trait name, verify it contains "UndefinedTrait"
+                // The TypeSpec span might include additional context, so we check it contains the trait name
+                let span_start = span.offset();
+                let span_end = span_start + span.len();
+                let trait_name_start = impl_source
+                    .find("UndefinedTrait")
+                    .expect("Should find UndefinedTrait in source");
+                let trait_name_end = trait_name_start + "UndefinedTrait".len();
+
+                assert!(
+                    span_start <= trait_name_start && span_end >= trait_name_end,
+                    "Span [{}, {}) should include 'UndefinedTrait' at [{}, {})",
+                    span_start,
+                    span_end,
+                    trait_name_start,
+                    trait_name_end
+                );
+            }
         }
     }
 }

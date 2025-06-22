@@ -284,8 +284,6 @@ fn rule_to_user_friendly_description(rule: &Rule) -> String {
         // Control flow
         Rule::if_expression => "an if expression (if condition { ... })".to_string(),
         Rule::case_expression => "a case expression (case value { ... })".to_string(),
-        Rule::concrete_case_expression => "a concrete case expression".to_string(),
-        Rule::trait_case_expression => "a trait case expression".to_string(),
         Rule::anonymous_function => "an anonymous function (fn { ... })".to_string(),
         Rule::function_capture => "a function capture (like &function)".to_string(),
 

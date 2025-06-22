@@ -60,6 +60,7 @@ impl OutrunParser {
         Ok(IntegerLiteral {
             value,
             format,
+            raw_text: text,
             span,
         })
     }
@@ -96,6 +97,7 @@ impl OutrunParser {
         Ok(FloatLiteral {
             value,
             format,
+            raw_text: text,
             span,
         })
     }

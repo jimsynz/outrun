@@ -262,10 +262,10 @@ pub fn load_and_compile_core_library_for_test(
                 }
             },
             Err(io_error) => {
-                return Err(vec![crate::error::TypeError::InternalError {
-                    span: miette::SourceSpan::new(0.into(), 0),
-                    message: format!("Failed to read core library file: {}", io_error),
-                }]);
+                return Err(vec![crate::error::TypeError::internal_with_span(
+                    format!("Failed to read core library file: {}", io_error),
+                    miette::SourceSpan::new(0.into(), 0),
+                )]);
             }
         }
     }
@@ -274,10 +274,10 @@ pub fn load_and_compile_core_library_for_test(
     if !parse_errors.is_empty() {
         let mut errors = Vec::new();
         for (file_path, _parse_error, _source_code) in parse_errors {
-            errors.push(crate::error::TypeError::InternalError {
-                span: miette::SourceSpan::new(0.into(), 0),
-                message: format!("Parse error in core library file: {}", file_path),
-            });
+            errors.push(crate::error::TypeError::internal_with_span(
+                format!("Parse error in core library file: {}", file_path),
+                miette::SourceSpan::new(0.into(), 0),
+            ));
         }
         return Err(errors);
     }

@@ -40,7 +40,9 @@ impl OutrunParser {
             .op(Op::infix(Rule::op_multiply, Assoc::Left)
                 | Op::infix(Rule::op_divide, Assoc::Left)
                 | Op::infix(Rule::op_modulo, Assoc::Left))
-            // Level 12: Exponentiation (highest precedence, right associative)
+            // Level 12: Type annotation (as Type) - higher than arithmetic
+            .op(Op::infix(Rule::op_as, Assoc::Left))
+            // Level 13: Exponentiation (highest precedence, right associative)
             .op(Op::infix(Rule::op_exponent, Assoc::Right))
     }
 
@@ -67,6 +69,8 @@ impl OutrunParser {
                         // Pipe operators
                         Rule::op_pipe => BinaryOperator::Pipe,
                         Rule::op_pipe_maybe => BinaryOperator::PipeMaybe,
+                        // Type annotation operator
+                        Rule::op_as => BinaryOperator::As,
                         // Logical operators
                         Rule::op_logical_and => BinaryOperator::LogicalAnd,
                         Rule::op_logical_or => BinaryOperator::LogicalOr,
@@ -351,6 +355,13 @@ impl OutrunParser {
                             span,
                         })
                     }
+                    Rule::sigil => {
+                        let sigil = Self::parse_sigil(first_inner)?;
+                        Ok(Expression {
+                            kind: ExpressionKind::Sigil(sigil),
+                            span,
+                        })
+                    }
                     Rule::qualified_identifier => {
                         let qualified_id = Self::parse_qualified_identifier(first_inner)?;
                         Ok(Expression {
@@ -362,6 +373,32 @@ impl OutrunParser {
                         let identifier = Self::parse_identifier(first_inner)?;
                         Ok(Expression {
                             kind: ExpressionKind::Identifier(identifier),
+                            span,
+                        })
+                    }
+                    Rule::type_with_generics => {
+                        // Parse type with generic arguments (e.g., Option<Integer>)
+                        let mut inner_pairs = first_inner.into_inner();
+                        let type_name_pair = inner_pairs.next().unwrap();
+                        let generic_args_pair = inner_pairs.next().unwrap();
+
+                        let type_name = Self::parse_type_identifier(type_name_pair)?;
+                        let generic_args = Self::parse_generic_args(generic_args_pair)?;
+
+                        // Create a string representation of the generic type
+                        let arg_strings: Vec<String> = generic_args
+                            .args
+                            .iter()
+                            .map(Self::type_annotation_to_string)
+                            .collect();
+                        let full_name = format!("{}<{}>", type_name.name, arg_strings.join(", "));
+
+                        // Create a generic type identifier expression
+                        Ok(Expression {
+                            kind: ExpressionKind::TypeIdentifier(TypeIdentifier {
+                                name: full_name,
+                                span,
+                            }),
                             span,
                         })
                     }
@@ -523,5 +560,33 @@ impl OutrunParser {
             miette::SourceSpan::from(span.start..span.end),
             "Expected expression in parentheses".to_string(),
         ))
+    }
+
+    /// Convert a type annotation to a string representation
+    /// This is a helper for generating proper type names with generics
+    fn type_annotation_to_string(type_ann: &TypeAnnotation) -> String {
+        match type_ann {
+            TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
+                let path_str = path
+                    .iter()
+                    .map(|id| id.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                if let Some(args) = generic_args {
+                    let arg_strings: Vec<String> = args
+                        .args
+                        .iter()
+                        .map(Self::type_annotation_to_string)
+                        .collect();
+                    format!("{}<{}>", path_str, arg_strings.join(", "))
+                } else {
+                    path_str
+                }
+            }
+            TypeAnnotation::Tuple { .. } => "(tuple)".to_string(),
+            TypeAnnotation::Function { .. } => "(function)".to_string(),
+        }
     }
 }

@@ -28,8 +28,6 @@ impl Display for Outrun.Core.String {
 # Inspect trait implementation
 impl Inspect for Outrun.Core.String {
     def inspect(value: Self): Outrun.Core.String {
-        # For inspect, we want to show the quoted string with escape sequences
-        # This would ideally use a string escape intrinsic, but for now return quoted version
         Outrun.Intrinsic.string_inspect(value: value)
     }
 }

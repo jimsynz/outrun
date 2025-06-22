@@ -943,11 +943,11 @@ value = if check { 1 } else { 0 }
 
 ### Case Statements
 
-Case statements use pattern matching with optional guards and support two distinct syntax forms for different use cases:
+Case statements use **unified pattern matching** with optional guards. All case branches follow the same syntax: `pattern when guard -> result`.
 
-#### Case with Concrete Type Matching
+#### Unified Case Expression Syntax
 
-Standard case statements match against the concrete type of the expression, with patterns destructuring the value:
+Case expressions support all pattern types with optional guards in a single, consistent syntax:
 
 ```outrun
 result = case user {
@@ -956,18 +956,18 @@ result = case user {
     User { name } -> :other_user
     Guest { session_id } -> :guest
     Admin { permissions } when List.contains?(list: permissions, item: :admin) -> :admin_user
-    _ -> :unknown_user
+    other -> :unknown_user  # Identifier pattern catches anything
 }
 
-# Pattern matching with complex destructuring
+# Pattern matching with complex destructuring and guards
 result = case data {
     (User { name }, Session { active }) when Boolean.and?(left: active, right: String.not_empty?(value: name)) -> {
         Logger.info(message: "Active user session")
         :valid_session
     }
     (User { name }, Session { active: false }) -> :inactive_session
-    (Guest { id }, _) -> :guest_session
-    _ -> :invalid_data
+    (Guest { id }, session) -> :guest_session  # Binds second element as 'session'
+    other -> :invalid_data  # Default case with binding
 }
 
 # Pattern types: struct, tuple, list, value, and identifier patterns
@@ -992,14 +992,42 @@ result = case value {
     n when Integer.positive?(value: n) -> "positive number"
     data when String.type?(value: data) -> "some string"
     
-    # Underscore identifier (by convention means "unused")
-    _ -> "unknown"
+    # Identifier pattern as catch-all (no underscore needed)
+    other -> "unknown: #{other}"
+}
+
+# Comprehensive example: unified patterns with guards using infix operators
+result = case request_data {
+    # Type pattern with destructuring and guard
+    HttpRequest { method: "GET", path } when path |> String.starts_with?(prefix: "/api") -> {
+        handle_api_get(path: path)
+    }
+    
+    # Type pattern with full destructuring
+    HttpRequest { method: "POST", path, body } -> {
+        handle_post(path: path, body: body)  
+    }
+    
+    # Type pattern with partial destructuring and infix guard
+    HttpRequest { method } when method == "DELETE" -> :unauthorized
+    
+    # Literal pattern with guard  
+    :health_check when System.healthy?() -> :ok
+    
+    # Identifier pattern with guard (catches any non-HttpRequest)
+    other when Debug.enabled?() -> {
+        Logger.debug(message: "Unknown request: #{other}")
+        :invalid_request
+    }
+    
+    # Final identifier pattern (default case)
+    unknown -> :invalid_request
 }
 ```
 
-#### Case with Trait Dispatch
+#### Trait Dispatch with Type Annotations
 
-The enhanced case syntax `case expr as TraitName` enables trait-based exhaustiveness checking and dispatch, allowing pattern matching based on trait implementations rather than concrete types:
+Case expressions can use type annotations to enable trait-based dispatch and exhaustiveness checking. When a case expression includes a type annotation `as TraitName`, the compiler enforces exhaustiveness across all concrete types implementing that trait:
 
 ```outrun
 # Trait-based case with exhaustiveness checking
@@ -1012,32 +1040,28 @@ result = case mixed_values as Display {
     # Compiler error if any Display implementor is missing
 }
 
-# Trait dispatch with value binding
+# Trait dispatch with identifier patterns and guards
 result = case data as Serializable {
-    config: Config when Config.valid?(config) -> config.serialize()
-    settings: Settings -> settings.to_json()
-    metadata: Metadata -> metadata.to_string()
-    # Each case binds the value with its concrete type for trait method calls
+    config when Config.valid?(config) -> config.serialize()
+    settings when Settings.active?(settings) -> settings.to_json()  
+    metadata -> metadata.to_string()
+    # Each identifier pattern binds the value with its concrete type
 }
 ```
 
-#### Exhaustiveness Checking
+#### Pattern Types and Exhaustiveness
 
-The trait-based syntax enables comprehensive exhaustiveness checking:
+The unified case syntax supports all pattern types with intelligent exhaustiveness checking:
 
-- **Concrete type cases**: Traditional exhaustiveness based on value patterns and wildcards
-- **Trait-based cases**: Exhaustiveness determined by all concrete types implementing the trait  
-- **Orphan rule analysis**: Compiler uses orphan rules to determine which types could implement the trait
-- **Open trait system**: New implementations require case statement updates for exhaustiveness
+- **Type patterns**: `User { name }`, `Config { ... }` - match specific concrete types with destructuring
+- **Identifier patterns**: `config`, `other` - match any value and bind to variable (default cases)
+- **Literal patterns**: `42`, `"hello"` - match exact values
+- **Complex patterns**: `(User { name }, active)` - nested destructuring with guards
 
-#### Case Syntax Summary
-
-Two distinct case statement forms serve different purposes:
-
-1. **`case expr { patterns... }`** - Traditional pattern matching against concrete types
-2. **`case expr as Trait { type_patterns... }`** - Trait dispatch with exhaustiveness checking
-
-The trait syntax provides stronger type safety and exhaustiveness guarantees when working with trait abstractions.
+**Exhaustiveness rules:**
+- **Without type annotation**: Exhaustiveness based on patterns and identifier catch-alls
+- **With type annotation** (`as Trait`): Must handle all concrete types implementing the trait
+- **Orphan rule analysis**: Compiler determines possible implementations for exhaustiveness
 
 #### Pattern Types
 
@@ -1261,6 +1285,64 @@ Binary operations like `a + b` are syntactic sugar for trait function calls:
 ### Pipe Operators
 - `|>` Pipe (calls `Pipe.pipe_into` trait method)
 - `|?` Pipe with unwrap (calls `Maybe.maybe_pipe` trait method)
+
+## Type Annotations
+
+Type annotations provide explicit type information to the type checker for validation and trait dispatch. Outrun uses two syntactic forms for the same underlying concept:
+
+### Annotation Syntax
+
+**Variable binding syntax**: `: Type`
+```outrun
+let name: String = "James"
+let config: Config = parse_config()
+let result: Result<User, Error> = User.create(name: name)
+```
+
+**Expression syntax**: `as Type` 
+```outrun
+let result = Sigil.parse(input: "content") as HTML
+let data = (fetch_data() |> transform()) as ProcessedData
+let parsed = parse_json(text: input) as Config
+let total = (price * quantity) as Currency
+```
+
+### Unified Semantics
+
+Both syntactic forms provide the same functionality:
+
+1. **Static type checking**: Compiler verifies type compatibility at compile time
+2. **Trait dispatch**: Enables calling trait methods on the annotated type
+3. **Type validation**: Ensures the value matches the specified type
+4. **No runtime overhead**: Pure compile-time information
+
+### Expression Type Annotations (`as Type`)
+
+The `as Type` syntax is an infix operator for annotating expressions:
+
+- **Precedence**: Lower than most operators, higher than pipes (`|>`, `|?`) and logical operators
+- **Associativity**: Right-associative (`expr as Type1 as Type2` → `expr as (Type1 as Type2)`)
+- **Usage**: Anywhere an expression needs explicit type information
+
+**Common patterns:**
+```outrun
+# Sigil desugaring (automatic)
+~HTML"content"  # Becomes: Sigil.parse(input: "content") as HTML
+
+# Trait method chaining
+let text = (user_input as Displayable).to_string()
+
+# Case expression trait dispatch
+case data as Serializable {
+    config -> config.to_json()
+    settings -> settings.serialize()
+}
+
+# Disambiguation in complex expressions
+let result = (compute_value() * factor) as PreciseNumber
+```
+
+Both `: Type` and `as Type` are compile-time type annotations that serve identical purposes in different syntactic contexts.
 
 ## Variables and Constants
 

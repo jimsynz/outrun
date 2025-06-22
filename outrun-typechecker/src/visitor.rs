@@ -129,7 +129,7 @@ pub trait TypedVisitor<T>: Sized {
     fn visit_typed_literal(
         &mut self,
         _kind: &TypedExpressionKind,
-        _type_id: crate::types::TypeId,
+        _structured_type: &Option<crate::unification::StructuredType>,
         _span: &Span,
     ) -> VisitorResult {
         // Default: no traversal needed for leaf nodes
@@ -258,7 +258,7 @@ pub fn walk_unary_operation<V: Visitor<T>, T>(
 
 /// Walk an impl block by visiting all function definitions
 pub fn walk_impl_block<V: Visitor<T>, T>(visitor: &mut V, impl_block: &ImplBlock) -> VisitorResult {
-    // Visit all methods in the impl block
+    // Visit all functions in the impl block
     for func in &impl_block.methods {
         visitor.visit_function_definition(func)?;
     }
@@ -336,7 +336,14 @@ pub fn walk_pattern<V: Visitor<T>, T>(visitor: &mut V, pattern: &Pattern) -> Vis
 pub fn walk_typed_item<V: TypedVisitor<T>, T>(visitor: &mut V, item: &TypedItem) -> VisitorResult {
     match &item.kind {
         TypedItemKind::Expression(expr) => visitor.visit_typed_expression(expr),
-        TypedItemKind::Placeholder(_) => Ok(()), // No-op for placeholders
+        TypedItemKind::FunctionDefinition(_func_def) => Ok(()), // TODO: Add function definition visiting
+        TypedItemKind::StructDefinition(_struct_def) => Ok(()), // TODO: Add struct definition visiting
+        TypedItemKind::TraitDefinition(_trait_def) => Ok(()), // TODO: Add trait definition visiting
+        TypedItemKind::ImplBlock(_impl_block) => Ok(()),      // TODO: Add impl block visiting
+        TypedItemKind::ConstDefinition(_const_def) => Ok(()), // TODO: Add const definition visiting
+        TypedItemKind::LetBinding(_let_binding) => Ok(()),    // TODO: Add let binding visiting
+        TypedItemKind::MacroDefinition(_macro_def) => Ok(()), // TODO: Add macro definition visiting
+        TypedItemKind::Placeholder(_) => Ok(()),              // No-op for placeholders
     }
 }
 
@@ -346,7 +353,7 @@ pub fn walk_typed_expression<V: TypedVisitor<T>, T>(
     expr: &TypedExpression,
 ) -> VisitorResult {
     // With our simplified typed expressions, just visit as literal
-    visitor.visit_typed_literal(&expr.kind, expr.type_id, &expr.span)
+    visitor.visit_typed_literal(&expr.kind, &expr.structured_type, &expr.span)
 }
 
 /// Helper function to convert ItemKind to ExpressionKind for literal handling
@@ -474,6 +481,7 @@ mod tests {
             kind: ExpressionKind::Integer(IntegerLiteral {
                 value: 1,
                 format: IntegerFormat::Decimal,
+                raw_text: "1".to_string(),
                 span: create_test_span(),
             }),
             span: create_test_span(),

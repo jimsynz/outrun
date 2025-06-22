@@ -10,7 +10,7 @@ use thiserror::Error;
 pub type TypeResult<T> = Result<T, TypeError>;
 
 /// All possible type checking errors
-#[derive(Error, Diagnostic, Debug, Clone)]
+#[derive(Error, Diagnostic, Debug, Clone, PartialEq)]
 pub enum TypeError {
     #[error("Type mismatch")]
     #[diagnostic(
@@ -373,6 +373,17 @@ pub enum TypeError {
         message: String,
     },
 
+    #[error("Empty block")]
+    #[diagnostic(
+        code(outrun::typechecker::empty_block),
+        help("Every expression must have a value. Add a statement or expression to this block.")
+    )]
+    EmptyBlock {
+        #[label("empty block")]
+        span: SourceSpan,
+        message: String,
+    },
+
     #[error("Undefined trait {trait_name}")]
     #[diagnostic(
         code(outrun::typechecker::undefined_trait),
@@ -637,6 +648,15 @@ impl TypeError {
         Self::UndefinedVariable { span, name }
     }
 
+    /// Create an undefined field error
+    pub fn undefined_field(field_name: String, struct_name: String, span: SourceSpan) -> Self {
+        Self::UndefinedField {
+            span,
+            struct_name,
+            field_name,
+        }
+    }
+
     /// Create an undefined function error
     pub fn undefined_function(name: String, span: SourceSpan) -> Self {
         Self::UndefinedFunction { span, name }
@@ -702,6 +722,11 @@ impl TypeError {
             message,
             span: SourceSpan::from(0..0), // Use empty span for internal errors
         }
+    }
+
+    /// Create an internal error with a specific span
+    pub fn internal_with_span(message: String, span: SourceSpan) -> Self {
+        Self::InternalError { message, span }
     }
 
     /// Create a string interpolation display error
@@ -771,6 +796,51 @@ pub trait SpanExt {
 impl SpanExt for outrun_parser::Span {
     fn to_source_span(self) -> SourceSpan {
         span_to_source_span(self)
+    }
+}
+
+/// Standardized error context utilities
+pub mod context {
+    use crate::types::{TypeId, TypeInterner};
+
+    /// Get a type name with fallback for unknown types
+    pub fn type_name_or_unknown(interner: &TypeInterner, type_id: TypeId) -> String {
+        interner
+            .type_name(type_id)
+            .unwrap_or_else(|| format!("Unknown({:?})", type_id))
+    }
+
+    /// Get an atom name with fallback for unknown atoms
+    pub fn atom_name_or_fallback(interner: &TypeInterner, atom_id: crate::types::AtomId) -> String {
+        interner
+            .atom_name(atom_id)
+            .unwrap_or_else(|| format!("atom_{:?}", atom_id))
+    }
+
+    /// Common error message constants and builders
+    pub mod messages {
+        pub const NOT_YET_SUPPORTED: &str = "not yet supported";
+        pub const NOT_YET_IMPLEMENTED: &str = "not yet implemented";
+        pub const SHOULD_BE_DESUGARED: &str = "should be desugared";
+        pub const FALLBACK_TYPE: &str = "fallback type";
+
+        /// Create a "not yet supported" message for a feature
+        pub fn not_yet_supported(feature: &str) -> String {
+            format!("{} {}", feature, NOT_YET_SUPPORTED)
+        }
+
+        /// Create a "not yet implemented" message for a feature
+        pub fn not_yet_implemented(feature: &str) -> String {
+            format!("{} {}", feature, NOT_YET_IMPLEMENTED)
+        }
+
+        /// Create a "should be desugared" message for an operation
+        pub fn should_be_desugared(operation: &str) -> String {
+            format!(
+                "{} found during type checking - {}",
+                operation, SHOULD_BE_DESUGARED
+            )
+        }
     }
 }
 
@@ -1155,15 +1225,6 @@ impl From<crate::unification::UnificationError> for TypeError {
         use crate::unification::UnificationError;
 
         match err {
-            UnificationError::IncompatibleTypes { type1, type2 } => {
-                // Create a placeholder span - this should be improved to track spans through unification
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::TypeMismatch {
-                    span,
-                    expected: format!("{:?}", type1), // TODO: Use proper string representation
-                    found: format!("{:?}", type2),    // TODO: Use proper string representation
-                }
-            }
             UnificationError::ArityMismatch {
                 expected,
                 found,

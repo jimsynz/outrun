@@ -9,6 +9,18 @@
 mod test_core_library_runtime;
 mod test_detailed_errors;
 
+// LSP integration tests
+mod test_completion_suggestions;
+
+// Span mapping tests
+mod test_span_mapping;
+
+// Tuple type inference tests
+mod test_tuple_type_inference;
+
+// If expression integration tests
+mod test_if_expression_integration;
+
 // Core visitor and unification tests
 // TODO: Fix visitor pattern tests
 // mod test_visitor_patterns;
@@ -59,10 +71,53 @@ mod test_exponentiate_generic_types;
 // Pattern typechecking tests
 // TODO: Fix test_pattern_typechecking after fixing helper function
 // mod test_pattern_typechecking;
+mod test_pattern_field_validation;
 mod test_pattern_variable_scoping;
 
 // TypedProgram conversion tests
 mod test_typed_program_conversion;
+
+// Basic typed AST tests (Week 1 functionality)
+mod test_basic_typed_ast;
+
+// Collection typed AST tests (Week 2 functionality)
+mod test_collection_typed_ast;
+
+// Control flow typed AST tests (Week 4 functionality)
+mod test_control_flow_typed_ast;
+
+// Function definition typed AST tests (Week 5 functionality)
+mod test_function_definitions_typed_ast;
+
+// Type system item typed AST tests (Week 6 functionality)
+mod test_type_system_typed_ast;
+
+// Generics and type annotations typed AST tests (Week 7 functionality)
+mod test_generics_and_type_annotations;
+
+// Debug info and comment attachment tests (Week 9 functionality)
+mod test_debug_info_comments;
+
+// Error recovery and production polish tests (Week 10 functionality)
+mod test_error_recovery_production;
+
+// Case expression verification tests
+mod test_case_expression_verification;
+
+// Case expression branch type unification tests
+mod test_case_branch_unification;
+
+// Raw text preservation tests
+mod test_raw_text_preservation;
+
+// Position-based type lookup tests for LSP integration
+mod test_position_based_type_lookup;
+
+// Sigil desugaring tests
+mod test_sigil_desugaring;
+
+// Type resolution integration tests
+mod test_type_resolution_integration;
 
 // Performance and edge case tests
 // TODO: Create these test files

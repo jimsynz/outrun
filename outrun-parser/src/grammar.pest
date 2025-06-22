@@ -15,6 +15,7 @@ op_not_equal = @{ "!=" }
 op_less_equal = @{ "<=" }
 op_greater_equal = @{ ">=" }
 op_exponent = @{ "**" }
+op_as = @{ "as" ~ !ASCII_ALPHANUMERIC }
 
 // Single-character operators (after multi-character)
 op_bitwise_and = @{ "&" }
@@ -39,6 +40,7 @@ op = _{
     op_equal | op_not_equal |                  // == !=
     op_less_equal | op_greater_equal |         // <= >=
     op_exponent |                              // **
+    op_as |                                    // as
     // Single-character operators AFTER multi-character ones
     op_bitwise_and | op_bitwise_or | op_bitwise_xor |  // & | ^
     op_less | op_greater |                     // < >
@@ -206,8 +208,11 @@ braced_expr = ${ "(" ~ ws_comment* ~ expression ~ ws_comment* ~ ")"}
 unary_expr = ${ (op_unary_minus | op_unary_plus | op_logical_not | op_bitwise_not) ~ primary_expr }
 
 primary_expr = ${ 
-    unary_expr | anonymous_function | braced_expr | if_expression | case_expression | function_call | function_capture | macro_injection | struct_literal | boolean | float | integer | string | atom | qualified_identifier | identifier | type_identifier | list | map | tuple 
+    sigil | unary_expr | anonymous_function | braced_expr | if_expression | case_expression | function_call | function_capture | macro_injection | struct_literal | boolean | float | integer | string | atom | qualified_identifier | identifier | type_with_generics | type_identifier | list | map | tuple 
 }
+
+// Type with generic arguments (atomic to avoid conflicts with comparison operators)
+type_with_generics = !{ type_identifier ~ generic_args }
 
 // Qualified identifier for module paths (e.g., String.upcase, Http.Client.get)
 qualified_identifier = ${ type_identifier ~ "." ~ identifier }
@@ -217,16 +222,11 @@ qualified_identifier = ${ type_identifier ~ "." ~ identifier }
 // If expression: if condition { body } else { body }
 if_expression = ${ keyword_if ~ ws_comment+ ~ expression ~ ws_comment+ ~ block ~ (ws_comment* ~ keyword_else ~ ws_comment* ~ block)? }
 
-// Case expression: case value { when guard -> result ... else -> default } OR case value as Trait { Type { fields } -> result ... }
-case_expression = !{ concrete_case_expression | trait_case_expression }
-concrete_case_expression = !{ keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
-trait_case_expression = !{ keyword_case ~ expression ~ keyword_as ~ type_identifier ~ "{" ~ trait_case_clauses ~ "}" }
+// Unified case expression: case value [as Type] { pattern [when guard] -> result ... }
+case_expression = !{ keyword_case ~ expression ~ "{" ~ case_clauses ~ "}" }
 
-case_clauses = { case_when_clause+ }
-case_when_clause = !{ keyword_when ~ expression ~ arrow ~ (block | expression) }
-
-trait_case_clauses = { trait_case_clause+ }
-trait_case_clause = !{ type_identifier ~ "{" ~ struct_field_patterns? ~ "}" ~ guard_clause? ~ arrow ~ (block | expression) }
+case_clauses = { case_clause+ }
+case_clause = !{ pattern ~ guard_clause? ~ arrow ~ (block | expression) }
 
 arrow = { "->" }
 
@@ -279,7 +279,7 @@ literal_pattern = { boolean | integer | float | string | atom }
 tuple_pattern = { "(" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ ")" }
 
 // Struct destructuring pattern: Type { field1: pattern1, field2 }
-struct_pattern = { type_identifier ~ "{" ~ struct_field_patterns ~ "}" }
+struct_pattern = { type_identifier ~ "{" ~ struct_field_patterns? ~ "}" }
 struct_field_patterns = { struct_field_pattern ~ ("," ~ struct_field_pattern)* ~ ","? }
 struct_field_pattern = { identifier ~ (":" ~ pattern)? } // field or field: pattern
 
@@ -410,7 +410,7 @@ const_definition = { keyword_const ~ type_identifier ~ ":" ~ type_annotation ~ "
 program = ${ SOI ~ ws_comment* ~ (program_item ~ (item_separator ~ program_item)*)? ~ ws_comment* ~ EOI }
 
 // Program items (non-atomic to restore normal parsing within items)
-program_item = !{ alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | sigil | expression | keyword }
+program_item = !{ alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | expression | keyword }
 
 // Required separator between program items
 item_separator = { ws_comment+ }
