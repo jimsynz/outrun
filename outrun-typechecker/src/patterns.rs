@@ -564,45 +564,115 @@ impl<'a> PatternChecker<'a> {
 
 /// Exhaustiveness checking utilities for pattern matching
 pub struct ExhaustivenessChecker {
-    #[allow(dead_code)] // TODO: Will be used when exhaustiveness checking is implemented
     context: UnificationContext,
+    trait_registry: Option<crate::types::traits::TraitRegistry>,
 }
 
 impl ExhaustivenessChecker {
     /// Create a new exhaustiveness checker
     pub fn new(context: UnificationContext) -> Self {
-        Self { context }
+        Self {
+            context,
+            trait_registry: None,
+        }
+    }
+
+    /// Create a new exhaustiveness checker with trait registry for trait case checking
+    pub fn with_trait_registry(
+        context: UnificationContext,
+        trait_registry: crate::types::traits::TraitRegistry,
+    ) -> Self {
+        Self {
+            context,
+            trait_registry: Some(trait_registry),
+        }
     }
 
     /// Check if a set of patterns is exhaustive for a given type
-    /// TODO: Implement full exhaustiveness checking algorithm
     pub fn is_exhaustive(
         &self,
         patterns: &[TypedPattern],
         target_type: &StructuredType,
     ) -> Result<bool, TypeError> {
-        // Placeholder implementation - for now, always consider exhaustive
-        // TODO: Implement proper exhaustiveness checking based on:
-        // 1. Pattern coverage analysis
-        // 2. Type-based completeness checking
-        // 3. Reachability analysis for overlapping patterns
+        if patterns
+            .iter()
+            .any(|p| matches!(p.kind, TypedPatternKind::Identifier { .. }))
+        {
+            return Ok(true);
+        }
 
-        let _ = (patterns, target_type); // Silence unused warnings
+        if patterns
+            .iter()
+            .any(|p| self.pattern_has_literal_constraints(p))
+        {
+            let all_constructors = self.get_all_constructors_for_type(target_type)?;
+            if all_constructors.is_empty() {
+                return Ok(false);
+            }
+        }
+
+        let covered_constructors: Vec<PatternConstructor> = patterns
+            .iter()
+            .filter_map(|p| p.get_constructor())
+            .collect();
+
+        let all_constructors = self.get_all_constructors_for_type(target_type)?;
+
+        if all_constructors.is_empty() {
+            let has_struct_wildcards = patterns.iter().any(|p| self.is_wildcard_struct_pattern(p));
+            if has_struct_wildcards {
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        for required_constructor in &all_constructors {
+            if !self.constructor_is_covered(required_constructor, &covered_constructors) {
+                return Ok(false);
+            }
+        }
+
         Ok(true)
     }
 
     /// Find missing patterns that would make the match exhaustive
-    /// TODO: Implement missing pattern generation
     pub fn find_missing_patterns(
         &self,
         patterns: &[TypedPattern],
         target_type: &StructuredType,
     ) -> Result<Vec<TypedPattern>, TypeError> {
-        // Placeholder implementation
-        // TODO: Generate minimal set of patterns that would complete the match
+        if self.is_exhaustive(patterns, target_type)? {
+            return Ok(Vec::new());
+        }
 
-        let _ = (patterns, target_type); // Silence unused warnings
-        Ok(Vec::new())
+        let covered_constructors: Vec<PatternConstructor> = patterns
+            .iter()
+            .filter_map(|p| p.get_constructor())
+            .collect();
+
+        let all_constructors = self.get_all_constructors_for_type(target_type)?;
+
+        if all_constructors.is_empty() {
+            let wildcard_pattern = TypedPattern::new(
+                TypedPatternKind::Identifier {
+                    name: "_".to_string(),
+                },
+                Some(target_type.clone()),
+                Span::new(0, 0),
+            );
+            return Ok(vec![wildcard_pattern]);
+        }
+
+        let mut missing_patterns = Vec::new();
+        for required_constructor in &all_constructors {
+            if !self.constructor_is_covered(required_constructor, &covered_constructors) {
+                let missing_pattern =
+                    self.generate_pattern_for_constructor(required_constructor, target_type)?;
+                missing_patterns.push(missing_pattern);
+            }
+        }
+
+        Ok(missing_patterns)
     }
 
     /// Check if patterns have any unreachable cases (overlapping patterns)
@@ -616,6 +686,393 @@ impl ExhaustivenessChecker {
 
         let _ = patterns; // Silence unused warnings
         Ok(Vec::new())
+    }
+
+    /// Get all possible constructors for a given type
+    fn get_all_constructors_for_type(
+        &self,
+        target_type: &StructuredType,
+    ) -> Result<Vec<PatternConstructor>, TypeError> {
+        match target_type {
+            // Simple types: check if it's a known type with limited constructors or a trait
+            StructuredType::Simple(type_id) => {
+                // Check if this is a trait type for trait case exhaustiveness
+                if let Some(trait_registry) = &self.trait_registry {
+                    if trait_registry.has_trait(*type_id) {
+                        // This is a trait - return all implementor types as constructors
+                        let implementors = trait_registry.get_trait_implementors(*type_id);
+                        return Ok(implementors
+                            .into_iter()
+                            .map(PatternConstructor::TraitImplementor)
+                            .collect());
+                    }
+                }
+
+                let type_name = self
+                    .context
+                    .type_interner
+                    .resolve_type(*type_id)
+                    .unwrap_or("UnknownType");
+                match type_name {
+                    "Boolean" | "Outrun.Core.Boolean" => Ok(vec![
+                        PatternConstructor::Literal(Literal::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: true,
+                                span: Span::new(0, 0),
+                            },
+                        )),
+                        PatternConstructor::Literal(Literal::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: false,
+                                span: Span::new(0, 0),
+                            },
+                        )),
+                    ]),
+
+                    // For literal types, we can check exhaustiveness by collecting all literal patterns
+                    // but since they have infinite possible values, we require explicit wildcard
+                    "Integer"
+                    | "Outrun.Core.Integer"
+                    | "Outrun.Core.Integer64"
+                    | "String"
+                    | "Outrun.Core.String"
+                    | "Float"
+                    | "Outrun.Core.Float"
+                    | "Outrun.Core.Float64"
+                    | "Atom"
+                    | "Outrun.Core.Atom" => Ok(vec![]),
+
+                    // For unknown simple types, assume infinite constructor space
+                    _ => Ok(vec![]),
+                }
+            }
+
+            // Generic types: analyze base type and args for algebraic data types
+            StructuredType::Generic { base, args: _ } => {
+                let base_type_name = self
+                    .context
+                    .type_interner
+                    .resolve_type(*base)
+                    .unwrap_or("UnknownType");
+
+                match base_type_name {
+                    "Option" | "Outrun.Core.Option" => {
+                        // Option<T> has Some and None constructors
+                        Ok(vec![
+                            PatternConstructor::Struct(vec![
+                                "Option".to_string(),
+                                "Some".to_string(),
+                            ]),
+                            PatternConstructor::Struct(vec![
+                                "Option".to_string(),
+                                "None".to_string(),
+                            ]),
+                        ])
+                    }
+
+                    "Result" | "Outrun.Core.Result" => {
+                        // Result<T, E> has Ok and Err constructors
+                        Ok(vec![
+                            PatternConstructor::Struct(vec![
+                                "Result".to_string(),
+                                "Ok".to_string(),
+                            ]),
+                            PatternConstructor::Struct(vec![
+                                "Result".to_string(),
+                                "Err".to_string(),
+                            ]),
+                        ])
+                    }
+
+                    "List" | "Outrun.Core.List" => {
+                        // Lists (linked lists) have three exhaustive patterns:
+                        // - Empty list: []
+                        // - Single element: [elem]
+                        // - Multiple elements with rest: [elem, ..rest]
+                        Ok(vec![
+                            PatternConstructor::List {
+                                min_length: 0,
+                                has_rest: false,
+                            }, // []
+                            PatternConstructor::List {
+                                min_length: 1,
+                                has_rest: false,
+                            }, // [elem]
+                            PatternConstructor::List {
+                                min_length: 1,
+                                has_rest: true,
+                            }, // [elem, ..rest]
+                        ])
+                    }
+
+                    // For other generic types, we can't enumerate constructors
+                    _ => Ok(vec![]),
+                }
+            }
+
+            // Tuple types: single constructor with fixed arity (must be non-empty)
+            StructuredType::Tuple(elements) => {
+                if elements.is_empty() {
+                    return Err(TypeError::internal(
+                        "Empty tuples are not allowed in Outrun - use Unit type instead"
+                            .to_string(),
+                    ));
+                }
+                Ok(vec![PatternConstructor::Tuple(elements.len())])
+            }
+
+            // Function types: single constructor (functions can be pattern matched as values)
+            StructuredType::Function { .. } => {
+                // Functions have a single constructor based on their signature
+                // For pattern matching, we treat them as opaque values
+                Ok(vec![])
+            }
+
+            // For other structured types, we don't have enough information yet
+            // TODO: Add support for user-defined structs, enums, unions
+            _ => Ok(vec![]),
+        }
+    }
+
+    /// Check if a required constructor is covered by any of the provided constructors
+    fn constructor_is_covered(
+        &self,
+        required: &PatternConstructor,
+        covered: &[PatternConstructor],
+    ) -> bool {
+        covered.iter().any(|c| self.constructors_match(required, c))
+    }
+
+    /// Check if two constructors match (represent the same value space)
+    fn constructors_match(&self, c1: &PatternConstructor, c2: &PatternConstructor) -> bool {
+        match (c1, c2) {
+            // Exact literal matches
+            (PatternConstructor::Literal(lit1), PatternConstructor::Literal(lit2)) => lit1 == lit2,
+
+            // Struct type matches
+            (PatternConstructor::Struct(path1), PatternConstructor::Struct(path2)) => {
+                path1 == path2
+            }
+
+            // Tuple arity matches
+            (PatternConstructor::Tuple(arity1), PatternConstructor::Tuple(arity2)) => {
+                arity1 == arity2
+            }
+
+            // List pattern matching for exhaustiveness checking
+            (
+                PatternConstructor::List {
+                    min_length: len1,
+                    has_rest: rest1,
+                },
+                PatternConstructor::List {
+                    min_length: len2,
+                    has_rest: rest2,
+                },
+            ) => {
+                match (rest1, rest2) {
+                    // Both have rest patterns - they cover overlapping ranges
+                    (true, true) => true,
+
+                    // Pattern with rest covers the exact length pattern if min_length <= exact_length
+                    (true, false) => len1 <= len2,
+                    (false, true) => len2 <= len1,
+
+                    // Both exact lengths must match exactly
+                    (false, false) => len1 == len2,
+                }
+            }
+
+            // Trait implementor matches
+            (
+                PatternConstructor::TraitImplementor(type1),
+                PatternConstructor::TraitImplementor(type2),
+            ) => type1 == type2,
+
+            // Trait implementor matches struct pattern by type name
+            (PatternConstructor::TraitImplementor(type_id), PatternConstructor::Struct(path))
+            | (PatternConstructor::Struct(path), PatternConstructor::TraitImplementor(type_id)) => {
+                if let Some(type_name) = self.context.type_interner.resolve_type(*type_id) {
+                    // Check if the type name matches the struct path
+                    let type_path: Vec<String> =
+                        type_name.split('.').map(|s| s.to_string()).collect();
+                    &type_path == path || path.len() == 1 && path[0] == type_name
+                } else {
+                    false
+                }
+            }
+
+            // Different constructor types never match
+            _ => false,
+        }
+    }
+
+    /// Generate a pattern for a given constructor
+    fn generate_pattern_for_constructor(
+        &self,
+        constructor: &PatternConstructor,
+        target_type: &StructuredType,
+    ) -> Result<TypedPattern, TypeError> {
+        let span = Span::new(0, 0); // Dummy span for generated patterns
+
+        match constructor {
+            PatternConstructor::Literal(literal) => Ok(TypedPattern::new(
+                TypedPatternKind::Literal {
+                    literal: TypedLiteralPattern {
+                        literal: literal.clone(),
+                        literal_type: Some(target_type.clone()),
+                        span,
+                    },
+                },
+                Some(target_type.clone()),
+                span,
+            )),
+
+            PatternConstructor::Struct(type_path) => {
+                Ok(TypedPattern::new(
+                    TypedPatternKind::Struct {
+                        type_path: type_path.clone(),
+                        fields: vec![], // Simplified - could generate field patterns
+                    },
+                    Some(target_type.clone()),
+                    span,
+                ))
+            }
+
+            PatternConstructor::Tuple(arity) => {
+                // Generate wildcard patterns for each tuple element
+                let element_patterns: Vec<TypedPattern> = (0..*arity)
+                    .map(|i| {
+                        TypedPattern::new(
+                            TypedPatternKind::Identifier {
+                                name: format!("_{}", i),
+                            },
+                            None, // Don't know element types yet
+                            span,
+                        )
+                    })
+                    .collect();
+
+                Ok(TypedPattern::new(
+                    TypedPatternKind::Tuple {
+                        elements: element_patterns,
+                    },
+                    Some(target_type.clone()),
+                    span,
+                ))
+            }
+
+            PatternConstructor::List {
+                min_length,
+                has_rest,
+            } => {
+                // Generate wildcard patterns for minimum required elements
+                let element_patterns: Vec<TypedPattern> = (0..*min_length)
+                    .map(|i| {
+                        TypedPattern::new(
+                            TypedPatternKind::Identifier {
+                                name: format!("_{}", i),
+                            },
+                            None,
+                            span,
+                        )
+                    })
+                    .collect();
+
+                let rest = if *has_rest {
+                    Some(BoundVariable {
+                        name: "_rest".to_string(),
+                        variable_type: None,
+                        span,
+                    })
+                } else {
+                    None
+                };
+
+                Ok(TypedPattern::new(
+                    TypedPatternKind::List {
+                        elements: element_patterns,
+                        rest,
+                    },
+                    Some(target_type.clone()),
+                    span,
+                ))
+            }
+
+            PatternConstructor::TraitImplementor(type_id) => {
+                // Generate a struct pattern for the trait implementor type
+                if let Some(type_name) = self.context.type_interner.resolve_type(*type_id) {
+                    // Split type name into path components (e.g., "Outrun.Core.String" -> ["Outrun", "Core", "String"])
+                    let type_path: Vec<String> =
+                        type_name.split('.').map(|s| s.to_string()).collect();
+
+                    Ok(TypedPattern::new(
+                        TypedPatternKind::Struct {
+                            type_path,
+                            fields: vec![], // Simplified - could generate field patterns
+                        },
+                        Some(target_type.clone()),
+                        span,
+                    ))
+                } else {
+                    Err(TypeError::internal(format!(
+                        "Unknown trait implementor type ID: {:?}",
+                        type_id
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Check if a pattern has literal constraints that make it non-exhaustive
+    #[allow(clippy::only_used_in_recursion)]
+    fn pattern_has_literal_constraints(&self, pattern: &TypedPattern) -> bool {
+        match &pattern.kind {
+            // Literal patterns are constraints
+            TypedPatternKind::Literal { .. } => true,
+
+            // Struct patterns with literal field patterns are constraints
+            TypedPatternKind::Struct { fields, .. } => {
+                fields.iter().any(|field| {
+                    if let Some(field_pattern) = &field.pattern {
+                        self.pattern_has_literal_constraints(field_pattern)
+                    } else {
+                        false // Shorthand field patterns are wildcards
+                    }
+                })
+            }
+
+            // Tuple patterns with literal elements are constraints
+            TypedPatternKind::Tuple { elements } => elements
+                .iter()
+                .any(|elem| self.pattern_has_literal_constraints(elem)),
+
+            // List patterns with literal elements are constraints
+            TypedPatternKind::List { elements, .. } => elements
+                .iter()
+                .any(|elem| self.pattern_has_literal_constraints(elem)),
+
+            // Identifier patterns are wildcards - no constraints
+            TypedPatternKind::Identifier { .. } => false,
+        }
+    }
+
+    /// Check if a pattern is a struct pattern with only wildcard fields (exhaustive for user types)
+    fn is_wildcard_struct_pattern(&self, pattern: &TypedPattern) -> bool {
+        match &pattern.kind {
+            TypedPatternKind::Struct { fields, .. } => {
+                // All fields must be wildcards (either shorthand or identifier patterns)
+                fields.iter().all(|field| {
+                    match &field.pattern {
+                        None => true, // Shorthand field is a wildcard
+                        Some(field_pattern) => {
+                            matches!(field_pattern.kind, TypedPatternKind::Identifier { .. })
+                        }
+                    }
+                })
+            }
+            _ => false,
+        }
     }
 }
 
@@ -682,6 +1139,7 @@ pub enum PatternConstructor {
     Struct(Vec<String>), // Type path
     Tuple(usize),        // Number of elements
     List { min_length: usize, has_rest: bool },
+    TraitImplementor(TypeId), // Trait implementor type for trait case exhaustiveness
 }
 
 #[cfg(test)]
@@ -1220,5 +1678,1118 @@ mod tests {
         let names: Vec<String> = bound_vars.iter().map(|v| v.name.clone()).collect();
         assert!(names.contains(&"x".to_string()));
         assert!(names.contains(&"name".to_string()));
+    }
+
+    #[test]
+    fn test_boolean_exhaustiveness_complete() {
+        let mut context = UnificationContext::new();
+        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let boolean_type = StructuredType::Simple(boolean_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Create patterns for true and false
+        let true_pattern = TypedPattern::new(
+            TypedPatternKind::Literal {
+                literal: TypedLiteralPattern {
+                    literal: Literal::Boolean(outrun_parser::BooleanLiteral {
+                        value: true,
+                        span: Span::new(0, 0),
+                    }),
+                    literal_type: Some(boolean_type.clone()),
+                    span: Span::new(0, 0),
+                },
+            },
+            Some(boolean_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let false_pattern = TypedPattern::new(
+            TypedPatternKind::Literal {
+                literal: TypedLiteralPattern {
+                    literal: Literal::Boolean(outrun_parser::BooleanLiteral {
+                        value: false,
+                        span: Span::new(0, 0),
+                    }),
+                    literal_type: Some(boolean_type.clone()),
+                    span: Span::new(0, 0),
+                },
+            },
+            Some(boolean_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![true_pattern, false_pattern];
+
+        // Should be exhaustive
+        assert!(checker.is_exhaustive(&patterns, &boolean_type).unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &boolean_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_boolean_exhaustiveness_incomplete() {
+        let mut context = UnificationContext::new();
+        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let boolean_type = StructuredType::Simple(boolean_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Only true pattern
+        let true_pattern = TypedPattern::new(
+            TypedPatternKind::Literal {
+                literal: TypedLiteralPattern {
+                    literal: Literal::Boolean(outrun_parser::BooleanLiteral {
+                        value: true,
+                        span: Span::new(0, 0),
+                    }),
+                    literal_type: Some(boolean_type.clone()),
+                    span: Span::new(0, 0),
+                },
+            },
+            Some(boolean_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![true_pattern];
+
+        // Should not be exhaustive
+        assert!(!checker.is_exhaustive(&patterns, &boolean_type).unwrap());
+
+        // Should have missing false pattern
+        let missing = checker
+            .find_missing_patterns(&patterns, &boolean_type)
+            .unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is false
+        if let TypedPatternKind::Literal { literal } = &missing[0].kind {
+            if let Literal::Boolean(bool_lit) = &literal.literal {
+                assert!(!bool_lit.value);
+            } else {
+                panic!("Expected boolean literal");
+            }
+        } else {
+            panic!("Expected literal pattern");
+        }
+    }
+
+    #[test]
+    fn test_wildcard_makes_exhaustive() {
+        let mut context = UnificationContext::new();
+        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let boolean_type = StructuredType::Simple(boolean_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Wildcard pattern (identifier)
+        let wildcard_pattern = TypedPattern::new(
+            TypedPatternKind::Identifier {
+                name: "_".to_string(),
+            },
+            Some(boolean_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![wildcard_pattern];
+
+        // Should be exhaustive due to wildcard
+        assert!(checker.is_exhaustive(&patterns, &boolean_type).unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &boolean_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_option_exhaustiveness() {
+        let mut context = UnificationContext::new();
+        let option_type_id = context.type_interner.intern_type("Option");
+        let string_type_id = context.type_interner.intern_type("String");
+        let option_type = StructuredType::Generic {
+            base: option_type_id,
+            args: vec![StructuredType::Simple(string_type_id)],
+        };
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Some pattern
+        let some_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["Option".to_string(), "Some".to_string()],
+                fields: vec![],
+            },
+            Some(option_type.clone()),
+            Span::new(0, 0),
+        );
+
+        // None pattern
+        let none_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["Option".to_string(), "None".to_string()],
+                fields: vec![],
+            },
+            Some(option_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![some_pattern, none_pattern];
+
+        // Should be exhaustive
+        assert!(checker.is_exhaustive(&patterns, &option_type).unwrap());
+    }
+
+    #[test]
+    fn test_option_exhaustiveness_incomplete() {
+        let mut context = UnificationContext::new();
+        let option_type_id = context.type_interner.intern_type("Option");
+        let string_type_id = context.type_interner.intern_type("String");
+        let option_type = StructuredType::Generic {
+            base: option_type_id,
+            args: vec![StructuredType::Simple(string_type_id)],
+        };
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Only Some pattern
+        let some_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["Option".to_string(), "Some".to_string()],
+                fields: vec![],
+            },
+            Some(option_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![some_pattern];
+
+        // Should not be exhaustive
+        assert!(!checker.is_exhaustive(&patterns, &option_type).unwrap());
+
+        // Should have missing None pattern
+        let missing = checker
+            .find_missing_patterns(&patterns, &option_type)
+            .unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is None
+        if let TypedPatternKind::Struct { type_path, .. } = &missing[0].kind {
+            assert_eq!(type_path, &vec!["Option".to_string(), "None".to_string()]);
+        } else {
+            panic!("Expected struct pattern");
+        }
+    }
+
+    #[test]
+    fn test_tuple_exhaustiveness() {
+        let mut context = UnificationContext::new();
+        let string_type_id = context.type_interner.intern_type("String");
+        let int_type_id = context.type_interner.intern_type("Integer");
+        let tuple_type = StructuredType::Tuple(vec![
+            StructuredType::Simple(string_type_id),
+            StructuredType::Simple(int_type_id),
+        ]);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Tuple pattern with correct arity
+        let tuple_pattern = TypedPattern::new(
+            TypedPatternKind::Tuple {
+                elements: vec![
+                    TypedPattern::new(
+                        TypedPatternKind::Identifier {
+                            name: "name".to_string(),
+                        },
+                        None,
+                        Span::new(0, 0),
+                    ),
+                    TypedPattern::new(
+                        TypedPatternKind::Identifier {
+                            name: "age".to_string(),
+                        },
+                        None,
+                        Span::new(0, 0),
+                    ),
+                ],
+            },
+            Some(tuple_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![tuple_pattern];
+
+        // Should be exhaustive (single constructor for tuples)
+        assert!(checker.is_exhaustive(&patterns, &tuple_type).unwrap());
+    }
+
+    #[test]
+    fn test_integer_requires_wildcard_for_exhaustiveness() {
+        let mut context = UnificationContext::new();
+        let int_type_id = context.type_interner.intern_type("Integer");
+        let int_type = StructuredType::Simple(int_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Integer literal pattern
+        let int_pattern = TypedPattern::new(
+            TypedPatternKind::Literal {
+                literal: TypedLiteralPattern {
+                    literal: Literal::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
+                        span: Span::new(0, 0),
+                    }),
+                    literal_type: Some(int_type.clone()),
+                    span: Span::new(0, 0),
+                },
+            },
+            Some(int_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![int_pattern];
+
+        // Should NOT be exhaustive - integers have infinite possible values
+        assert!(!checker.is_exhaustive(&patterns, &int_type).unwrap());
+
+        // Should suggest a wildcard pattern
+        let missing = checker.find_missing_patterns(&patterns, &int_type).unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is a wildcard
+        if let TypedPatternKind::Identifier { name } = &missing[0].kind {
+            assert_eq!(name, "_");
+        } else {
+            panic!("Expected identifier pattern (wildcard)");
+        }
+    }
+
+    #[test]
+    fn test_literal_with_wildcard_is_exhaustive() {
+        let mut context = UnificationContext::new();
+        let int_type_id = context.type_interner.intern_type("Integer");
+        let int_type = StructuredType::Simple(int_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Integer literal pattern + wildcard
+        let int_pattern = TypedPattern::new(
+            TypedPatternKind::Literal {
+                literal: TypedLiteralPattern {
+                    literal: Literal::Integer(outrun_parser::IntegerLiteral {
+                        value: 42,
+                        format: outrun_parser::IntegerFormat::Decimal,
+                        raw_text: "42".to_string(),
+                        span: Span::new(0, 0),
+                    }),
+                    literal_type: Some(int_type.clone()),
+                    span: Span::new(0, 0),
+                },
+            },
+            Some(int_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let wildcard_pattern = TypedPattern::new(
+            TypedPatternKind::Identifier {
+                name: "_".to_string(),
+            },
+            Some(int_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![int_pattern, wildcard_pattern];
+
+        // Should be exhaustive with wildcard
+        assert!(checker.is_exhaustive(&patterns, &int_type).unwrap());
+    }
+
+    #[test]
+    fn test_trait_exhaustiveness_complete() {
+        let mut context = UnificationContext::new();
+        let mut trait_registry = crate::types::traits::TraitRegistry::new();
+
+        // Set up trait and implementors
+        let display_trait_id = context.type_interner.intern_type("Display");
+        let string_type_id = context.type_interner.intern_type("String");
+        let integer_type_id = context.type_interner.intern_type("Integer");
+
+        // Register trait
+        trait_registry.register_trait(crate::types::traits::TraitDefinition::new(
+            display_trait_id,
+            "Display".to_string(),
+            vec![],
+            Span::new(0, 0),
+        ));
+
+        // Register implementations
+        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
+            display_trait_id,
+            string_type_id,
+            HashMap::new(),
+            Span::new(0, 0),
+        ));
+        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
+            display_trait_id,
+            integer_type_id,
+            HashMap::new(),
+            Span::new(0, 0),
+        ));
+
+        let display_trait_type = StructuredType::Simple(display_trait_id);
+        let checker = ExhaustivenessChecker::with_trait_registry(context, trait_registry);
+
+        // Create patterns for both implementors
+        let string_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["String".to_string()],
+                fields: vec![],
+            },
+            Some(display_trait_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let integer_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["Integer".to_string()],
+                fields: vec![],
+            },
+            Some(display_trait_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![string_pattern, integer_pattern];
+
+        // Should be exhaustive - covers all implementors
+        assert!(checker
+            .is_exhaustive(&patterns, &display_trait_type)
+            .unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &display_trait_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_trait_exhaustiveness_incomplete() {
+        let mut context = UnificationContext::new();
+        let mut trait_registry = crate::types::traits::TraitRegistry::new();
+
+        // Set up trait and implementors
+        let display_trait_id = context.type_interner.intern_type("Display");
+        let string_type_id = context.type_interner.intern_type("String");
+        let integer_type_id = context.type_interner.intern_type("Integer");
+
+        // Register trait
+        trait_registry.register_trait(crate::types::traits::TraitDefinition::new(
+            display_trait_id,
+            "Display".to_string(),
+            vec![],
+            Span::new(0, 0),
+        ));
+
+        // Register implementations
+        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
+            display_trait_id,
+            string_type_id,
+            HashMap::new(),
+            Span::new(0, 0),
+        ));
+        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
+            display_trait_id,
+            integer_type_id,
+            HashMap::new(),
+            Span::new(0, 0),
+        ));
+
+        let display_trait_type = StructuredType::Simple(display_trait_id);
+        let checker = ExhaustivenessChecker::with_trait_registry(context, trait_registry);
+
+        // Only String pattern (missing Integer)
+        let string_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["String".to_string()],
+                fields: vec![],
+            },
+            Some(display_trait_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![string_pattern];
+
+        // Should NOT be exhaustive - missing Integer implementor
+        assert!(!checker
+            .is_exhaustive(&patterns, &display_trait_type)
+            .unwrap());
+
+        // Should have missing Integer pattern
+        let missing = checker
+            .find_missing_patterns(&patterns, &display_trait_type)
+            .unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is for Integer
+        if let TypedPatternKind::Struct { type_path, .. } = &missing[0].kind {
+            assert_eq!(type_path, &vec!["Integer".to_string()]);
+        } else {
+            panic!("Expected struct pattern for missing trait implementor");
+        }
+    }
+
+    #[test]
+    fn test_list_exhaustiveness_complete() {
+        let mut context = UnificationContext::new();
+        let list_type_id = context.type_interner.intern_type("List");
+        let string_type_id = context.type_interner.intern_type("String");
+        let list_type = StructuredType::Generic {
+            base: list_type_id,
+            args: vec![StructuredType::Simple(string_type_id)],
+        };
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Create patterns for all three list constructors
+        // Empty list: []
+        let empty_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![],
+                rest: None,
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        // Single element: [elem]
+        let single_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![TypedPattern::new(
+                    TypedPatternKind::Identifier {
+                        name: "elem".to_string(),
+                    },
+                    None,
+                    Span::new(0, 0),
+                )],
+                rest: None,
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        // Multiple elements with rest: [elem, ..rest]
+        let rest_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![TypedPattern::new(
+                    TypedPatternKind::Identifier {
+                        name: "elem".to_string(),
+                    },
+                    None,
+                    Span::new(0, 0),
+                )],
+                rest: Some(BoundVariable {
+                    name: "rest".to_string(),
+                    variable_type: None,
+                    span: Span::new(0, 0),
+                }),
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![empty_pattern, single_pattern, rest_pattern];
+
+        // Should be exhaustive - covers all three list patterns
+        assert!(checker.is_exhaustive(&patterns, &list_type).unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &list_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_list_exhaustiveness_incomplete() {
+        let mut context = UnificationContext::new();
+        let list_type_id = context.type_interner.intern_type("List");
+        let string_type_id = context.type_interner.intern_type("String");
+        let list_type = StructuredType::Generic {
+            base: list_type_id,
+            args: vec![StructuredType::Simple(string_type_id)],
+        };
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Only empty list pattern (missing single element and rest patterns)
+        let empty_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![],
+                rest: None,
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![empty_pattern];
+
+        // Should NOT be exhaustive - missing [elem] and [elem, ..rest] patterns
+        assert!(!checker.is_exhaustive(&patterns, &list_type).unwrap());
+
+        // Should have missing patterns
+        let missing = checker
+            .find_missing_patterns(&patterns, &list_type)
+            .unwrap();
+        assert_eq!(missing.len(), 2); // [elem] and [elem, ..rest]
+    }
+
+    #[test]
+    fn test_list_with_rest_covers_multiple_lengths() {
+        let mut context = UnificationContext::new();
+        let list_type_id = context.type_interner.intern_type("List");
+        let string_type_id = context.type_interner.intern_type("String");
+        let list_type = StructuredType::Generic {
+            base: list_type_id,
+            args: vec![StructuredType::Simple(string_type_id)],
+        };
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Empty list: []
+        let empty_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![],
+                rest: None,
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        // Any non-empty list: [elem, ..rest] (covers [elem], [elem1, elem2], etc.)
+        let rest_pattern = TypedPattern::new(
+            TypedPatternKind::List {
+                elements: vec![TypedPattern::new(
+                    TypedPatternKind::Identifier {
+                        name: "elem".to_string(),
+                    },
+                    None,
+                    Span::new(0, 0),
+                )],
+                rest: Some(BoundVariable {
+                    name: "rest".to_string(),
+                    variable_type: None,
+                    span: Span::new(0, 0),
+                }),
+            },
+            Some(list_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![empty_pattern, rest_pattern];
+
+        // Should be exhaustive - [] covers empty, [elem, ..rest] covers all non-empty
+        assert!(checker.is_exhaustive(&patterns, &list_type).unwrap());
+    }
+
+    #[test]
+    fn test_struct_pattern_with_literals_non_exhaustive() {
+        let mut context = UnificationContext::new();
+        let user_type_id = context.type_interner.intern_type("User");
+        let user_type = StructuredType::Simple(user_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Struct pattern with literal constraint: User { id: 1, name: name }
+        let literal_struct_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["User".to_string()],
+                fields: vec![
+                    TypedStructFieldPattern {
+                        name: "id".to_string(),
+                        pattern: Some(TypedPattern::new(
+                            TypedPatternKind::Literal {
+                                literal: TypedLiteralPattern {
+                                    literal: Literal::Integer(outrun_parser::IntegerLiteral {
+                                        value: 1,
+                                        format: outrun_parser::IntegerFormat::Decimal,
+                                        raw_text: "1".to_string(),
+                                        span: Span::new(0, 0),
+                                    }),
+                                    literal_type: None,
+                                    span: Span::new(0, 0),
+                                },
+                            },
+                            None,
+                            Span::new(0, 0),
+                        )),
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                    TypedStructFieldPattern {
+                        name: "name".to_string(),
+                        pattern: Some(TypedPattern::new(
+                            TypedPatternKind::Identifier {
+                                name: "name".to_string(),
+                            },
+                            None,
+                            Span::new(0, 0),
+                        )),
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                ],
+            },
+            Some(user_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![literal_struct_pattern];
+
+        // Should NOT be exhaustive - has literal constraint on id field
+        assert!(!checker.is_exhaustive(&patterns, &user_type).unwrap());
+
+        // Should suggest wildcard pattern
+        let missing = checker
+            .find_missing_patterns(&patterns, &user_type)
+            .unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is a wildcard
+        if let TypedPatternKind::Identifier { name } = &missing[0].kind {
+            assert_eq!(name, "_");
+        } else {
+            panic!("Expected identifier pattern (wildcard)");
+        }
+    }
+
+    #[test]
+    fn test_struct_pattern_with_wildcards_exhaustive() {
+        let mut context = UnificationContext::new();
+        let user_type_id = context.type_interner.intern_type("User");
+        let user_type = StructuredType::Simple(user_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Struct pattern with wildcard fields: User { id: id, name: name }
+        let wildcard_struct_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["User".to_string()],
+                fields: vec![
+                    TypedStructFieldPattern {
+                        name: "id".to_string(),
+                        pattern: Some(TypedPattern::new(
+                            TypedPatternKind::Identifier {
+                                name: "id".to_string(),
+                            },
+                            None,
+                            Span::new(0, 0),
+                        )),
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                    TypedStructFieldPattern {
+                        name: "name".to_string(),
+                        pattern: Some(TypedPattern::new(
+                            TypedPatternKind::Identifier {
+                                name: "name".to_string(),
+                            },
+                            None,
+                            Span::new(0, 0),
+                        )),
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                ],
+            },
+            Some(user_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![wildcard_struct_pattern];
+
+        // Should be exhaustive - all fields are wildcards
+        assert!(checker.is_exhaustive(&patterns, &user_type).unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &user_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_struct_pattern_shorthand_exhaustive() {
+        let mut context = UnificationContext::new();
+        let user_type_id = context.type_interner.intern_type("User");
+        let user_type = StructuredType::Simple(user_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Struct pattern with shorthand fields: User { id, name }
+        let shorthand_struct_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["User".to_string()],
+                fields: vec![
+                    TypedStructFieldPattern {
+                        name: "id".to_string(),
+                        pattern: None, // Shorthand - equivalent to wildcard
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                    TypedStructFieldPattern {
+                        name: "name".to_string(),
+                        pattern: None, // Shorthand - equivalent to wildcard
+                        field_type: None,
+                        span: Span::new(0, 0),
+                    },
+                ],
+            },
+            Some(user_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![shorthand_struct_pattern];
+
+        // Should be exhaustive - shorthand fields are wildcards
+        assert!(checker.is_exhaustive(&patterns, &user_type).unwrap());
+
+        // Should have no missing patterns
+        assert!(checker
+            .find_missing_patterns(&patterns, &user_type)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_nested_struct_pattern_literal_constraints() {
+        let mut context = UnificationContext::new();
+        let user_type_id = context.type_interner.intern_type("User");
+        let user_type = StructuredType::Simple(user_type_id);
+
+        let checker = ExhaustivenessChecker::new(context);
+
+        // Nested struct pattern with literal: User { address: Address { city: "NYC" } }
+        let nested_literal_pattern = TypedPattern::new(
+            TypedPatternKind::Struct {
+                type_path: vec!["User".to_string()],
+                fields: vec![TypedStructFieldPattern {
+                    name: "address".to_string(),
+                    pattern: Some(TypedPattern::new(
+                        TypedPatternKind::Struct {
+                            type_path: vec!["Address".to_string()],
+                            fields: vec![TypedStructFieldPattern {
+                                name: "city".to_string(),
+                                pattern: Some(TypedPattern::new(
+                                    TypedPatternKind::Literal {
+                                        literal: TypedLiteralPattern {
+                                            literal: Literal::String(
+                                                outrun_parser::StringLiteral {
+                                                    parts: vec![outrun_parser::StringPart::Text {
+                                                        content: "NYC".to_string(),
+                                                        raw_content: "NYC".to_string(),
+                                                    }],
+                                                    format: outrun_parser::StringFormat::Basic,
+                                                    span: Span::new(0, 0),
+                                                },
+                                            ),
+                                            literal_type: None,
+                                            span: Span::new(0, 0),
+                                        },
+                                    },
+                                    None,
+                                    Span::new(0, 0),
+                                )),
+                                field_type: None,
+                                span: Span::new(0, 0),
+                            }],
+                        },
+                        None,
+                        Span::new(0, 0),
+                    )),
+                    field_type: None,
+                    span: Span::new(0, 0),
+                }],
+            },
+            Some(user_type.clone()),
+            Span::new(0, 0),
+        );
+
+        let patterns = vec![nested_literal_pattern];
+
+        // Should NOT be exhaustive - has literal constraint in nested struct
+        assert!(!checker.is_exhaustive(&patterns, &user_type).unwrap());
+
+        // Should suggest wildcard pattern
+        let missing = checker
+            .find_missing_patterns(&patterns, &user_type)
+            .unwrap();
+        assert_eq!(missing.len(), 1);
+
+        // Check the missing pattern is a wildcard
+        if let TypedPatternKind::Identifier { name } = &missing[0].kind {
+            assert_eq!(name, "_");
+        } else {
+            panic!("Expected identifier pattern (wildcard)");
+        }
+    }
+}
+
+/// SAT-based guard exhaustiveness analysis
+pub mod guard_exhaustiveness {
+    use crate::checker::TypedExpression;
+    use crate::types::traits::{ExhaustivenessResult, GuardCounterExample};
+    use rustsat::instances::{BasicVarManager, Cnf, ManageVars};
+    use rustsat::solvers::{Solve, SolverResult};
+    use rustsat::types::{Lit, Var};
+    use rustsat_cadical::CaDiCaL;
+    use std::collections::HashMap;
+
+    /// Converts guard expressions to SAT clauses for exhaustiveness analysis
+    pub struct GuardExpressionConverter {
+        /// Variable manager for generating SAT variables
+        var_manager: BasicVarManager,
+        /// Maps expression names/identifiers to SAT variables
+        variable_map: HashMap<String, Var>,
+        /// CNF formula being built
+        cnf: Cnf,
+    }
+
+    /// Result of SAT-based guard completeness checking
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum SatResult {
+        /// Guards are exhaustive - no counter-examples found
+        Exhaustive,
+        /// Guards are not exhaustive - contains counter-examples
+        Missing(Vec<GuardCounterExample>),
+    }
+
+    impl Default for GuardExpressionConverter {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl GuardExpressionConverter {
+        /// Create a new guard expression converter
+        pub fn new() -> Self {
+            Self {
+                var_manager: BasicVarManager::default(),
+                variable_map: HashMap::new(),
+                cnf: Cnf::new(),
+            }
+        }
+
+        /// Get or create a SAT variable for a given identifier
+        fn get_or_create_variable(&mut self, identifier: &str) -> Var {
+            if let Some(&var) = self.variable_map.get(identifier) {
+                var
+            } else {
+                let var = self.var_manager.new_var();
+                self.variable_map.insert(identifier.to_string(), var);
+                var
+            }
+        }
+
+        /// Convert a guard expression to SAT clauses and return the guard literal
+        pub fn convert_guard_expression(
+            &mut self,
+            guard: &TypedExpression,
+        ) -> Result<Lit, crate::error::TypeError> {
+            use crate::checker::TypedExpressionKind;
+
+            match &guard.kind {
+                TypedExpressionKind::Boolean(value) => {
+                    let var = self.var_manager.new_var();
+                    let lit = Lit::positive(var.idx() as u32);
+                    let final_lit = if *value { lit } else { !lit };
+                    self.cnf.add_clause([final_lit].into());
+                    Ok(final_lit)
+                }
+
+                TypedExpressionKind::Identifier(name) => {
+                    let var = self.get_or_create_variable(name);
+                    Ok(Lit::positive(var.idx() as u32))
+                }
+
+                TypedExpressionKind::FunctionCall { .. } => {
+                    let aux_var = self.var_manager.new_var();
+                    Ok(Lit::positive(aux_var.idx() as u32))
+                }
+
+                _ => {
+                    let aux_var = self.var_manager.new_var();
+                    Ok(Lit::positive(aux_var.idx() as u32))
+                }
+            }
+        }
+
+        /// Add constraints for Boolean AND operation: guard_lit <-> (left && right)
+        pub fn add_and_constraint(&mut self, guard_lit: Lit, left_lit: Lit, right_lit: Lit) {
+            self.cnf.add_clause([!guard_lit, left_lit].into());
+            self.cnf.add_clause([!guard_lit, right_lit].into());
+            self.cnf
+                .add_clause([guard_lit, !left_lit, !right_lit].into());
+        }
+
+        /// Add constraints for Boolean OR operation: guard_lit <-> (left || right)
+        pub fn add_or_constraint(&mut self, guard_lit: Lit, left_lit: Lit, right_lit: Lit) {
+            self.cnf
+                .add_clause([!guard_lit, left_lit, right_lit].into());
+            self.cnf.add_clause([guard_lit, !left_lit].into());
+            self.cnf.add_clause([guard_lit, !right_lit].into());
+        }
+
+        /// Add constraints for Boolean NOT operation: guard_lit <-> !operand
+        pub fn add_not_constraint(&mut self, guard_lit: Lit, operand_lit: Lit) {
+            self.cnf.add_clause([!guard_lit, !operand_lit].into());
+            self.cnf.add_clause([guard_lit, operand_lit].into());
+        }
+
+        /// Generate CNF formula and return it for SAT solving
+        pub fn finalize(self) -> (Cnf, HashMap<String, Var>) {
+            (self.cnf, self.variable_map)
+        }
+    }
+
+    /// Check if a set of guards provides exhaustive coverage using SAT solving
+    pub fn check_guard_completeness_sat(
+        guards: &[TypedExpression],
+        has_default_case: bool,
+    ) -> Result<SatResult, crate::error::TypeError> {
+        if has_default_case {
+            return Ok(SatResult::Exhaustive);
+        }
+
+        let mut converter = GuardExpressionConverter::new();
+        let mut guard_literals = Vec::new();
+
+        for guard in guards {
+            let guard_lit = converter.convert_guard_expression(guard)?;
+            guard_literals.push(guard_lit);
+        }
+
+        let (mut cnf, _variable_map) = converter.finalize();
+
+        for &guard_lit in &guard_literals {
+            cnf.add_clause([!guard_lit].into());
+        }
+
+        let mut solver = CaDiCaL::default();
+        solver
+            .add_cnf(cnf)
+            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {:?}", e)))?;
+
+        match solver
+            .solve()
+            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {:?}", e)))?
+        {
+            SolverResult::Sat => {
+                let counter_examples = vec![GuardCounterExample {
+                    variable_assignments: HashMap::new(),
+                    description: "Missing guard pattern detected by SAT solver".to_string(),
+                    suggested_guard: Some("Add additional guard condition".to_string()),
+                }];
+                Ok(SatResult::Missing(counter_examples))
+            }
+            SolverResult::Unsat => Ok(SatResult::Exhaustive),
+            SolverResult::Interrupted => Err(crate::error::TypeError::internal(
+                "SAT solver was interrupted before completion".to_string(),
+            )),
+        }
+    }
+
+    /// Main function to analyze guard exhaustiveness for function definitions
+    pub fn analyze_function_guard_exhaustiveness(
+        _function_name: &str,
+        guards: &[TypedExpression],
+        has_default_case: bool,
+        _span: outrun_parser::Span,
+    ) -> Result<ExhaustivenessResult, crate::error::TypeError> {
+        match check_guard_completeness_sat(guards, has_default_case)? {
+            SatResult::Exhaustive => Ok(ExhaustivenessResult::Exhaustive),
+            SatResult::Missing(counter_examples) => {
+                Ok(ExhaustivenessResult::MissingGuardPatterns(counter_examples))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::checker::{TypedExpression, TypedExpressionKind};
+        use outrun_parser::Span;
+
+        #[test]
+        fn test_guard_expression_converter_creation() {
+            let converter = GuardExpressionConverter::new();
+            assert!(converter.variable_map.is_empty());
+        }
+
+        #[test]
+        fn test_boolean_literal_conversion() {
+            let mut converter = GuardExpressionConverter::new();
+
+            let true_expr = TypedExpression {
+                kind: TypedExpressionKind::Boolean(true),
+                structured_type: None,
+                span: Span::new(0, 0),
+                debug_info: None,
+            };
+
+            let result = converter.convert_guard_expression(&true_expr);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_identifier_conversion() {
+            let mut converter = GuardExpressionConverter::new();
+
+            let identifier_expr = TypedExpression {
+                kind: TypedExpressionKind::Identifier("flag".to_string()),
+                structured_type: None,
+                span: Span::new(0, 0),
+                debug_info: None,
+            };
+
+            let result = converter.convert_guard_expression(&identifier_expr);
+            assert!(result.is_ok());
+            assert!(converter.variable_map.contains_key("flag"));
+        }
+
+        #[test]
+        fn test_exhaustive_guards_with_default() {
+            let guards = vec![];
+            let result = check_guard_completeness_sat(&guards, true);
+
+            assert!(result.is_ok());
+            match result.unwrap() {
+                SatResult::Exhaustive => (),
+                _ => panic!("Expected exhaustive result with default case"),
+            }
+        }
+
+        #[test]
+        fn test_analyze_function_guard_exhaustiveness_with_default() {
+            let guards = vec![];
+            let result = analyze_function_guard_exhaustiveness(
+                "test_function",
+                &guards,
+                true,
+                Span::new(0, 0),
+            );
+
+            assert!(result.is_ok());
+            match result.unwrap() {
+                ExhaustivenessResult::Exhaustive => (),
+                _ => panic!("Expected exhaustive result"),
+            }
+        }
     }
 }

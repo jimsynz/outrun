@@ -53,13 +53,28 @@ pub struct TraitImplementation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub u32);
 
-/// Result of exhaustiveness checking for trait case statements
+/// Result of exhaustiveness checking for trait case statements and guard analysis
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExhaustivenessResult {
-    /// All possible trait implementations are covered
+    /// All possible cases are covered
     Exhaustive,
     /// Some trait implementations are missing from the case statement
-    Missing(Vec<TypeId>),
+    MissingTraitImplementations(Vec<TypeId>),
+    /// Some guard patterns are missing - contains counter-examples from SAT solving
+    MissingGuardPatterns(Vec<GuardCounterExample>),
+    /// Open type domain (infinite) - requires explicit default case for exhaustiveness
+    OpenType,
+}
+
+/// Counter-example from SAT solving showing missing guard coverage
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuardCounterExample {
+    /// Variable assignments that satisfy the negated guard condition
+    pub variable_assignments: std::collections::HashMap<String, bool>,
+    /// Human-readable description of the missing pattern
+    pub description: String,
+    /// Suggested guard condition to add for coverage
+    pub suggested_guard: Option<String>,
 }
 
 impl TraitDefinition {
@@ -315,7 +330,7 @@ impl TraitRegistry {
         if missing_types.is_empty() {
             ExhaustivenessResult::Exhaustive
         } else {
-            ExhaustivenessResult::Missing(missing_types)
+            ExhaustivenessResult::MissingTraitImplementations(missing_types)
         }
     }
 

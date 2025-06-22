@@ -21,6 +21,10 @@ indexmap = "2.0"
 lazy_static = "1.4"
 petgraph = "0.8"
 
+# SAT solver for guard exhaustiveness checking
+rustsat = "0.7.2"
+rustsat-cadical = "0.7.2"
+
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"
