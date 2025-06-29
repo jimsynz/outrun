@@ -291,7 +291,7 @@ use outrun_parser::Program;
 /// * `Err(Vec<TypeError>)` - Collection of type errors encountered during checking
 pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError>> {
     // First desugar the program to transform operators into trait function calls
-    let program_source = format!("{}", program); // Get source before move
+    let program_source = format!("{program}"); // Get source before move
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
     // Use CompilerEnvironment directly without core library bootstrap
@@ -820,7 +820,7 @@ fn find_type_in_let_binding(
 pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
     match structured_type {
         StructuredType::Simple(type_name) => {
-            format!("Type: {}", type_name)
+            format!("Type: {type_name}")
         }
         StructuredType::Generic { base, args } => {
             let args_str = args
@@ -829,7 +829,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .map(|s| s.strip_prefix("Type: ").unwrap_or(&s).to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("Type: {}<{}>", base, args_str)
+            format!("Type: {base}<{args_str}>")
         }
         StructuredType::Function {
             params,
@@ -852,7 +852,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .strip_prefix("Type: ")
                 .unwrap_or("")
                 .to_string();
-            format!("Type: ({}) -> {}", params_str, return_str)
+            format!("Type: ({params_str}) -> {return_str}")
         }
         StructuredType::Tuple(elements) => {
             let elements_str = elements
@@ -861,7 +861,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .map(|s| s.strip_prefix("Type: ").unwrap_or(&s).to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("Type: ({})", elements_str)
+            format!("Type: ({elements_str})")
         }
         // Concrete primitive types
         StructuredType::Integer64 => "Type: Integer64".to_string(),
@@ -876,7 +876,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .strip_prefix("Type: ")
                 .unwrap_or("")
                 .to_string();
-            format!("Type: List<{}>", elem_str)
+            format!("Type: List<{elem_str}>")
         }
         StructuredType::Map {
             key_type,
@@ -890,7 +890,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .strip_prefix("Type: ")
                 .unwrap_or("")
                 .to_string();
-            format!("Type: Map<{}, {}>", key_str, value_str)
+            format!("Type: Map<{key_str}, {value_str}>")
         }
 
         // Concrete option and result types
@@ -899,7 +899,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .strip_prefix("Type: ")
                 .unwrap_or("")
                 .to_string();
-            format!("Type: Option<{}>", inner_str)
+            format!("Type: Option<{inner_str}>")
         }
         StructuredType::Result { ok_type, err_type } => {
             let ok_str = format_type_for_hover(ok_type)
@@ -910,15 +910,15 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .strip_prefix("Type: ")
                 .unwrap_or("")
                 .to_string();
-            format!("Type: Result<{}, {}>", ok_str, err_str)
+            format!("Type: Result<{ok_str}, {err_str}>")
         }
 
         // Concrete struct and trait types
         StructuredType::Struct { name, .. } => {
-            format!("Type: struct {}", name)
+            format!("Type: struct {name}")
         }
         StructuredType::Trait { name, .. } => {
-            format!("Type: trait {}", name)
+            format!("Type: trait {name}")
         }
 
         StructuredType::TypeError {
@@ -935,7 +935,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                     error
                 )
             } else {
-                format!("Type Error: {}", error)
+                format!("Type Error: {error}")
             }
         }
     }

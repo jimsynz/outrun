@@ -163,14 +163,13 @@ impl FunctionDispatcher {
                         call_context.span,
                     )
                     .map_err(|e| DispatchError::FunctionExecution {
-                        message: format!("{:?}", e),
+                        message: format!("{e:?}"),
                         span: call_context.span,
                     });
             } else {
                 return Err(DispatchError::Internal {
                     message: format!(
-                        "Function '{}' found in registry but missing typed definition",
-                        function_id
+                        "Function '{function_id}' found in registry but missing typed definition"
                     ),
                     span: call_context.span,
                 });
@@ -178,7 +177,7 @@ impl FunctionDispatcher {
         }
 
         Err(DispatchError::Internal {
-            message: format!("Static function '{}' not found in registry", function_id),
+            message: format!("Static function '{function_id}' not found in registry"),
             span: call_context.span,
         })
     }
@@ -199,7 +198,7 @@ impl FunctionDispatcher {
             outrun_typechecker::unification::StructuredType::Generic { base, .. } => base.clone(),
             _ => {
                 return Err(DispatchError::Internal {
-                    message: format!("Unsupported impl_type for trait dispatch: {:?}", impl_type),
+                    message: format!("Unsupported impl_type for trait dispatch: {impl_type:?}"),
                     span: call_context.span,
                 });
             }
@@ -227,15 +226,15 @@ impl FunctionDispatcher {
                         outrun_typechecker::unification::StructuredType::Simple(type_id) => self
                             .compiler_environment
                             .resolve_type(type_id.clone())
-                            .unwrap_or_else(|| format!("TypeNameId {:?} not found", type_id)),
+                            .unwrap_or_else(|| format!("TypeNameId {type_id:?} not found")),
                         outrun_typechecker::unification::StructuredType::Generic { base, args } => {
                             let base_name = self
                                 .compiler_environment
                                 .resolve_type(base.clone())
-                                .unwrap_or_else(|| format!("TypeNameId {:?} not found", base));
+                                .unwrap_or_else(|| format!("TypeNameId {base:?} not found"));
                             format!("{}<{} args>", base_name, args.len())
                         }
-                        _ => format!("{:?}", impl_type),
+                        _ => format!("{impl_type:?}"),
                     };
                     return Err(DispatchError::NoTraitImplementation {
                         trait_name: trait_name.to_string(),
@@ -258,7 +257,7 @@ impl FunctionDispatcher {
                                 call_context.span,
                             )
                             .map_err(|e| DispatchError::FunctionExecution {
-                                message: format!("{:?}", e),
+                                message: format!("{e:?}"),
                                 span: call_context.span,
                             });
                     } else {
@@ -317,8 +316,7 @@ impl FunctionDispatcher {
                         // For other cases, return the original error
                         return Err(DispatchError::Internal {
                             message: format!(
-                                "Impl function '{}' found in registry but missing typed definition. This indicates a TypeInterner synchronization issue.",
-                                function_name
+                                "Impl function '{function_name}' found in registry but missing typed definition. This indicates a TypeInterner synchronization issue."
                             ),
                             span: call_context.span,
                         });
@@ -332,22 +330,21 @@ impl FunctionDispatcher {
             outrun_typechecker::unification::StructuredType::Simple(type_id) => self
                 .compiler_environment
                 .resolve_type(type_id.clone())
-                .unwrap_or_else(|| format!("TypeNameId {:?} not found", type_id)),
+                .unwrap_or_else(|| format!("TypeNameId {type_id:?} not found")),
             outrun_typechecker::unification::StructuredType::Generic { base, args } => {
                 let base_name = self
                     .compiler_environment
                     .resolve_type(base.clone())
-                    .unwrap_or_else(|| format!("TypeNameId {:?} not found", base));
+                    .unwrap_or_else(|| format!("TypeNameId {base:?} not found"));
                 format!("{}<{} args>", base_name, args.len())
             }
-            _ => format!("{:?}", impl_type),
+            _ => format!("{impl_type:?}"),
         };
 
         Err(DispatchError::Internal {
             message: format!(
-                "INTERPRETER BUG: Trait implementation for '{}' on type '{}' was not loaded into trait registry. \
-                 Since typechecking passed, this implementation must exist but was not properly loaded by the interpreter.",
-                trait_name, type_name
+                "INTERPRETER BUG: Trait implementation for '{trait_name}' on type '{type_name}' was not loaded into trait registry. \
+                 Since typechecking passed, this implementation must exist but was not properly loaded by the interpreter."
             ),
             span: call_context.span,
         })

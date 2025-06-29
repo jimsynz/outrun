@@ -234,7 +234,7 @@ fn test_macro_source_reconstruction() {
 }"#;
 
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     assert!(reconstructed.contains("macro debug(msg)"));
     assert!(reconstructed.contains("IO.puts(message: ^msg)"));

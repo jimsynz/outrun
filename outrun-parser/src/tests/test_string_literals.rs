@@ -171,7 +171,7 @@ fn test_string_display_preserves_raw_format() {
     let input = r#""Hello\nWorld""#;
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 

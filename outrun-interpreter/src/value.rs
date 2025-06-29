@@ -502,12 +502,12 @@ impl Eq for Value {}
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Integer64(n) => write!(f, "{}", n),
-            Value::Float64(fl) => write!(f, "{}", fl),
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::String(s) => write!(f, "\"{}\"", s),
+            Value::Integer64(n) => write!(f, "{n}"),
+            Value::Float64(fl) => write!(f, "{fl}"),
+            Value::Boolean(b) => write!(f, "{b}"),
+            Value::String(s) => write!(f, "\"{s}\""),
             Value::Atom(_) => write!(f, ":atom"), // TODO: Get atom name from interner
-            Value::List { list, .. } => write!(f, "{}", list),
+            Value::List { list, .. } => write!(f, "{list}"),
             Value::Map { entries, .. } => {
                 write!(f, "{{")?;
                 let mut first = true;
@@ -515,7 +515,7 @@ impl std::fmt::Display for Value {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{} => {}", key, value)?;
+                    write!(f, "{key} => {value}")?;
                     first = false;
                 }
                 write!(f, "}}")
@@ -526,7 +526,7 @@ impl std::fmt::Display for Value {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", element)?;
+                    write!(f, "{element}")?;
                 }
                 if elements.len() == 1 {
                     write!(f, ",")?; // Trailing comma for single-element tuples
@@ -542,7 +542,7 @@ impl std::fmt::Display for Value {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    write!(f, "field_{:?}: {}", field_name, value)?; // TODO: Get field name from interner
+                    write!(f, "field_{field_name:?}: {value}")?; // TODO: Get field name from interner
                     first = false;
                 }
                 write!(f, "}}")
@@ -591,7 +591,7 @@ impl Hash for Value {
                 "map".hash(state);
                 // Hash all key-value pairs (order independent)
                 let mut pairs: Vec<_> = entries.iter().collect();
-                pairs.sort_by_key(|(k, _)| format!("{:?}", k)); // Simple ordering
+                pairs.sort_by_key(|(k, _)| format!("{k:?}")); // Simple ordering
                 for (key, value) in pairs {
                     key.hash(state);
                     value.hash(state);
@@ -610,7 +610,7 @@ impl Hash for Value {
                 type_id.hash(state);
                 // Hash all field-value pairs (order independent)
                 let mut pairs: Vec<_> = fields.iter().collect();
-                pairs.sort_by_key(|(k, _)| format!("{:?}", k)); // Sort by AtomId debug representation
+                pairs.sort_by_key(|(k, _)| format!("{k:?}")); // Sort by AtomId debug representation
                 for (field, value) in pairs {
                     field.hash(state);
                     value.hash(state);
@@ -791,13 +791,13 @@ mod tests {
 
         let values = vec![Value::integer(1), Value::integer(2)];
         let list_val = Value::list_from_vec(values, simple_type("Integer"));
-        assert_eq!(format!("{}", list_val), "[1, 2]");
+        assert_eq!(format!("{list_val}"), "[1, 2]");
 
         let tuple_val = Value::tuple_from_vec(
             vec![Value::integer(1), Value::string("test".to_string())],
             simple_type("Tuple"),
         );
-        assert_eq!(format!("{}", tuple_val), "(1, \"test\")");
+        assert_eq!(format!("{tuple_val}"), "(1, \"test\")");
     }
 
     #[test]

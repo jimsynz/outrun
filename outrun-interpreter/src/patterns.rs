@@ -104,7 +104,7 @@ impl MatchResult {
         for (name, value) in other.bindings {
             if self.bindings.contains_key(&name) {
                 return Err(PatternMatchError::VariableBinding {
-                    message: format!("Variable '{}' bound multiple times in pattern", name),
+                    message: format!("Variable '{name}' bound multiple times in pattern"),
                     span: Span::new(0, 0), // TODO: Better span tracking
                 });
             }

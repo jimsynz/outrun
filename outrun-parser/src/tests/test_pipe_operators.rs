@@ -211,7 +211,7 @@ fn test_pipe_display_preserves_format() {
 
     for input in inputs.iter() {
         let result = parse_program(input).unwrap();
-        let formatted = format!("{}", result);
+        let formatted = format!("{result}");
         assert_eq!(formatted, *input);
     }
 }

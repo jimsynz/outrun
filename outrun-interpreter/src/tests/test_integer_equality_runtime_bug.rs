@@ -61,7 +61,7 @@ fn test_integer_equality_runtime_dispatch_bug() {
             outrun_typechecker::checker::DispatchMethod::Trait { impl_type, .. } => {
                 let type_name = impl_type.to_string_representation();
                 assert_eq!(type_name, "Outrun.Core.Integer64");
-                println!("✅ Typechecker dispatch strategy: {}", type_name);
+                println!("✅ Typechecker dispatch strategy: {type_name}");
             }
             _ => panic!("Expected trait dispatch method"),
         },
@@ -85,8 +85,8 @@ fn test_integer_equality_runtime_dispatch_bug() {
     };
 
     println!("🔍 Debug dispatch details:");
-    println!("  trait_name: {}", trait_name);
-    println!("  function_name: {}", function_name);
+    println!("  trait_name: {trait_name}");
+    println!("  function_name: {function_name}");
     println!("  impl_type: {}", impl_type.to_string_representation());
 
     // Now test the interpreter evaluation (this is where the bug occurs)
@@ -107,27 +107,23 @@ fn test_integer_equality_runtime_dispatch_bug() {
             println!("🎉 The bug has been fixed!");
         }
         Ok(value) => {
-            panic!(
-                "❌ WRONG RESULT: 1 == 1 should return Boolean(true), got {:?}",
-                value
-            );
+            panic!("❌ WRONG RESULT: 1 == 1 should return Boolean(true), got {value:?}");
         }
         Err(error) => {
             // This is the bug we're reproducing
-            let error_msg = format!("{:?}", error);
+            let error_msg = format!("{error:?}");
             if error_msg.contains("Map.size") {
                 println!(
                     "🐛 BUG REPRODUCED: Integer equality incorrectly dispatched to Map implementation"
                 );
-                println!("📋 Error details: {}", error_msg);
+                println!("📋 Error details: {error_msg}");
 
                 // This is expected for now - the test documents the bug
                 // Once fixed, this should become a successful evaluation
                 panic!("BUG: Integer equality evaluation dispatched to wrong implementation");
             } else {
                 panic!(
-                    "❌ UNEXPECTED ERROR: Different error than expected Map.size bug: {}",
-                    error_msg
+                    "❌ UNEXPECTED ERROR: Different error than expected Map.size bug: {error_msg}"
                 );
             }
         }

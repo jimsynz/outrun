@@ -54,6 +54,6 @@ fn test_chained_field_access() {
 fn test_field_access_display() {
     let input = "self.name";
     let expr = OutrunParser::parse_expression(input).unwrap();
-    let formatted = format!("{}", expr);
+    let formatted = format!("{expr}");
     assert_eq!(formatted, "self.name");
 }

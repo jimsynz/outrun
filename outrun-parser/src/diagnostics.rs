@@ -412,7 +412,7 @@ impl DiagnosticCollector {
         let source_name = if filename.ends_with(".outrun") {
             filename.to_string()
         } else {
-            format!("{}.outrun", filename)
+            format!("{filename}.outrun")
         };
 
         let named_source = NamedSource::new(source_name, self.source.clone());

@@ -132,13 +132,13 @@ impl std::fmt::Display for CollectionError {
         match self {
             CollectionError::EmptyTuple => write!(f, "Tuples cannot be empty"),
             CollectionError::InvalidKeyType { type_id } => {
-                write!(f, "Type {:?} cannot be used as map key", type_id)
+                write!(f, "Type {type_id:?} cannot be used as map key")
             }
             CollectionError::InvalidValueType { type_id } => {
-                write!(f, "Type {:?} cannot be used as map value", type_id)
+                write!(f, "Type {type_id:?} cannot be used as map value")
             }
             CollectionError::IncompatibleElementTypes { expected, found } => {
-                write!(f, "Expected element type {:?}, found {:?}", expected, found)
+                write!(f, "Expected element type {expected:?}, found {found:?}")
             }
         }
     }

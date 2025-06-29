@@ -228,7 +228,7 @@ fn test_sigil_display_preserves_format() {
     let input = "~SQL\"SELECT * FROM users WHERE id = #{user_id}\"";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 
@@ -242,7 +242,7 @@ fn test_multiline_sigil_display_preserves_format() {
 \"\"\"";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 

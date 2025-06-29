@@ -18,11 +18,11 @@ fn test_core_library_function_bodies_have_statements() {
         .values()
         .map(|p| p.items.len())
         .sum();
-    println!("  - Typed program items: {}", total_items);
+    println!("  - Typed program items: {total_items}");
 
     // Look for List trait implementation functions
     for (program_name, typed_program) in &core_compilation.typed_programs {
-        println!("\n📄 Program: {}", program_name);
+        println!("\n📄 Program: {program_name}");
         for (i, item) in typed_program.items.iter().enumerate() {
             if let outrun_typechecker::checker::TypedItemKind::FunctionDefinition(func) = &item.kind
             {
@@ -89,10 +89,7 @@ fn test_core_library_function_bodies_have_statements() {
         })
         .count();
 
-    println!(
-        "\n📊 Summary: Found {} functions total",
-        total_functions_count
-    );
+    println!("\n📊 Summary: Found {total_functions_count} functions total");
 
     // Look for any functions related to List
     let list_functions_count = core_compilation
@@ -114,7 +111,7 @@ fn test_core_library_function_bodies_have_statements() {
         })
         .count();
 
-    println!("📊 Found {} List-related functions", list_functions_count);
+    println!("📊 Found {list_functions_count} List-related functions");
 
     // Don't assert for now - let's just see what we have
     // assert!(total_functions_count > 0, "Should find at least one function in core library");

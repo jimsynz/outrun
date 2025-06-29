@@ -43,9 +43,9 @@ fn test_list_literal_typed_ast_conversion() {
                     for (i, element) in elements.iter().enumerate() {
                         match &element.kind {
                             TypedExpressionKind::Integer(value) => {
-                                assert_eq!(*value, (i + 1) as i64, "Element {} should match", i);
+                                assert_eq!(*value, (i + 1) as i64, "Element {i} should match");
                             }
-                            _ => panic!("Element {} should be an integer", i),
+                            _ => panic!("Element {i} should be an integer"),
                         }
                     }
                 }
@@ -96,7 +96,7 @@ fn test_map_literal_typed_ast_conversion() {
                                     "Value should be string"
                                 );
                             }
-                            _ => panic!("Expected assignment entry, got {:?}", entry),
+                            _ => panic!("Expected assignment entry, got {entry:?}"),
                         }
                     }
                 }
@@ -238,13 +238,12 @@ fn test_empty_tuple_error() {
         // Should have at least one error about empty tuples
         let error_messages = errors
             .iter()
-            .map(|e| format!("{}", e))
+            .map(|e| format!("{e}"))
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
             error_messages.contains("Empty tuples are not allowed"),
-            "Should have empty tuple error message, got: {}",
-            error_messages
+            "Should have empty tuple error message, got: {error_messages}"
         );
     }
 }
@@ -275,7 +274,7 @@ fn test_non_empty_tuple_typed_ast() {
                     } => {
                         assert_eq!(elements.len(), 2, "Tuple should have two elements");
                         // tuple_type might be None if literal type inference isn't complete
-                        println!("Tuple type: {:?}", tuple_type);
+                        println!("Tuple type: {tuple_type:?}");
                     }
                     _ => panic!("Expected tuple expression, got: {:?}", expr.kind),
                 },
@@ -285,7 +284,7 @@ fn test_non_empty_tuple_typed_ast() {
         Err(errors) => {
             // If it fails, print the errors for debugging
             for error in &errors {
-                println!("Compilation error: {}", error);
+                println!("Compilation error: {error}");
             }
             panic!("Non-empty tuple compilation should succeed");
         }
@@ -326,8 +325,7 @@ fn test_nested_collections_typed_ast() {
                                 assert_eq!(
                                     nested_elements.len(),
                                     2,
-                                    "Nested list {} should have 2 elements",
-                                    i
+                                    "Nested list {i} should have 2 elements"
                                 );
 
                                 // Check nested elements are integers
@@ -338,7 +336,7 @@ fn test_nested_collections_typed_ast() {
                                     }
                                 }
                             }
-                            _ => panic!("Element {} should be a list", i),
+                            _ => panic!("Element {i} should be a list"),
                         }
                     }
                 }

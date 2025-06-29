@@ -72,10 +72,10 @@ def test_exponentiate_generic(): Integer {
                 {
                     if function_name == "exponentiate" {
                         println!("🔍 Found exponentiate type mismatch:");
-                        println!("   Function: {}", function_name);
-                        println!("   Parameter: {}", parameter_name);
-                        println!("   Expected: {}", expected_type);
-                        println!("   Found: {}", found_type);
+                        println!("   Function: {function_name}");
+                        println!("   Parameter: {parameter_name}");
+                        println!("   Expected: {expected_type}");
+                        println!("   Found: {found_type}");
                     }
                 }
             }
@@ -121,8 +121,8 @@ def test_scale_calculation(precision: Option<Integer>): Integer {
                 {
                     if function_name == "exponentiate" && parameter_name == "rhs" {
                         println!("🎯 Found the exact issue:");
-                        println!("   Expected: {} (concrete type)", expected_type);
-                        println!("   Found: {} (generic type)", found_type);
+                        println!("   Expected: {expected_type} (concrete type)");
+                        println!("   Found: {found_type} (generic type)");
                         println!(
                             "   Problem: Option.unwrap returns T, but ** needs concrete Integer"
                         );

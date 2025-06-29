@@ -806,13 +806,13 @@ pub mod context {
     /// Get a type name with fallback for unknown types (using TypeNameId directly)
     pub fn type_name_or_unknown(_type_id: TypeNameId) -> String {
         // TypeNameId has its own Display implementation now
-        format!("{}", _type_id)
+        format!("{_type_id}")
     }
 
     /// Get an atom name with fallback for unknown atoms (using AtomId directly)
     pub fn atom_name_or_fallback(_atom_id: AtomId) -> String {
         // AtomId has its own Display implementation now
-        format!("{}", _atom_id)
+        format!("{_atom_id}")
     }
 
     /// Common error message constants and builders
@@ -824,20 +824,17 @@ pub mod context {
 
         /// Create a "not yet supported" message for a feature
         pub fn not_yet_supported(feature: &str) -> String {
-            format!("{} {}", feature, NOT_YET_SUPPORTED)
+            format!("{feature} {NOT_YET_SUPPORTED}")
         }
 
         /// Create a "not yet implemented" message for a feature
         pub fn not_yet_implemented(feature: &str) -> String {
-            format!("{} {}", feature, NOT_YET_IMPLEMENTED)
+            format!("{feature} {NOT_YET_IMPLEMENTED}")
         }
 
         /// Create a "should be desugared" message for an operation
         pub fn should_be_desugared(operation: &str) -> String {
-            format!(
-                "{} found during type checking - {}",
-                operation, SHOULD_BE_DESUGARED
-            )
+            format!("{operation} found during type checking - {SHOULD_BE_DESUGARED}")
         }
     }
 }
@@ -1232,8 +1229,7 @@ impl From<crate::unification::UnificationError> for TypeError {
                 TypeError::InternalError {
                     span,
                     message: format!(
-                        "Arity mismatch for type {:?}: expected {}, found {}",
-                        base_type, expected, found
+                        "Arity mismatch for type {base_type:?}: expected {expected}, found {found}"
                     ),
                 }
             }
@@ -1242,8 +1238,7 @@ impl From<crate::unification::UnificationError> for TypeError {
                 TypeError::InternalError {
                     span,
                     message: format!(
-                        "Parameter name mismatch: expected {:?}, found {:?}",
-                        expected, found
+                        "Parameter name mismatch: expected {expected:?}, found {found:?}"
                     ),
                 }
             }
@@ -1251,15 +1246,15 @@ impl From<crate::unification::UnificationError> for TypeError {
                 let span = miette::SourceSpan::new(0.into(), 0);
                 TypeError::TraitNotImplemented {
                     span,
-                    trait_name: format!("{:?}", trait_id), // TODO: Use proper name lookup
-                    type_name: format!("{:?}", type_id),   // TODO: Use proper name lookup
+                    trait_name: format!("{trait_id:?}"), // TODO: Use proper name lookup
+                    type_name: format!("{type_id:?}"),   // TODO: Use proper name lookup
                 }
             }
             UnificationError::UnboundTypeVariable { name } => {
                 let span = miette::SourceSpan::new(0.into(), 0);
                 TypeError::InternalError {
                     span,
-                    message: format!("Unbound type variable: {}", name),
+                    message: format!("Unbound type variable: {name}"),
                 }
             }
         }

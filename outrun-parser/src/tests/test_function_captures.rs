@@ -238,7 +238,7 @@ fn test_function_capture_source_reconstruction() {
     let input = r#"&String.upcase"#;
 
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     assert!(reconstructed.contains("&String.upcase"));
 }
@@ -248,7 +248,7 @@ fn test_function_capture_with_arity_source_reconstruction() {
     let input = r#"&List.map/2"#;
 
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     assert!(reconstructed.contains("&List.map/2"));
 }

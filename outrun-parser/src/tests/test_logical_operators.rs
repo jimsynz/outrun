@@ -278,11 +278,10 @@ fn test_logical_operators_display_preserves_format() {
 
     for (input, expected) in test_cases.iter() {
         let result = parse_program(input).unwrap();
-        let formatted = format!("{}", result);
+        let formatted = format!("{result}");
         assert_eq!(
             &formatted, expected,
-            "Display format preservation failed for: {}",
-            input
+            "Display format preservation failed for: {input}"
         );
     }
 }

@@ -203,7 +203,7 @@ fn test_multiline_string_display_preserves_format() {
     let input = "\"\"\"Hello\nWorld\"\"\"";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 

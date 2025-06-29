@@ -139,7 +139,7 @@ fn test_desugaring_with_span_mapping_binary_operations() {
     }
 
     // Verify the program was actually desugared (contains function calls)
-    let source_code = format!("{}", desugared_program);
+    let source_code = format!("{desugared_program}");
     assert!(
         source_code.contains("BinaryAddition.add")
             || source_code.contains("BinaryMultiplication.multiply"),
@@ -171,7 +171,7 @@ fn test_desugaring_with_span_mapping_unary_operations() {
     }
 
     // Verify desugaring occurred - check for various possible unary operation names
-    let source_code = format!("{}", desugared_program);
+    let source_code = format!("{desugared_program}");
     let has_unary_desugar = source_code.contains("UnaryMinus")
         || source_code.contains("negate")
         || source_code.contains("Outrun.UnaryMinus")
@@ -237,14 +237,12 @@ fn test_desugaring_with_span_mapping_nested_expressions() {
         assert_eq!(
             span_mapping.get_original_span(*desugared),
             Some(*original),
-            "Mapping consistency failed for spans {:?} -> {:?}",
-            original,
-            desugared
+            "Mapping consistency failed for spans {original:?} -> {desugared:?}"
         );
     }
 
     // Verify operations were desugared (be flexible about exact count)
-    let source_code = format!("{}", desugared_program);
+    let source_code = format!("{desugared_program}");
     let binary_ops = [
         "BinaryAddition",
         "BinarySubtraction",
@@ -428,9 +426,7 @@ fn test_span_mapping_with_complex_expressions() {
             assert_eq!(
                 span_mapping.get_original_span(*desugared),
                 Some(*original),
-                "Complex expression span mapping failed for {:?} -> {:?}",
-                original,
-                desugared
+                "Complex expression span mapping failed for {original:?} -> {desugared:?}"
             );
         }
 

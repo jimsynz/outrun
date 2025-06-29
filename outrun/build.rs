@@ -12,7 +12,7 @@ fn main() {
         println!("cargo:warning=Generating outrun_syntax.dump from YAML source...");
 
         if let Err(e) = generate_syntax_dump_from_yaml() {
-            panic!("Failed to generate syntax dump: {}", e);
+            panic!("Failed to generate syntax dump: {e}");
         }
 
         println!("cargo:warning=Generated outrun_syntax.dump successfully");

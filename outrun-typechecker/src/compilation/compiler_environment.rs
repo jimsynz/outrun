@@ -46,7 +46,7 @@ impl TypeNameId {
 impl fmt::Display for TypeNameId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.storage.read().unwrap().get(&self.hash) {
-            Some(name) => write!(f, "{}", name),
+            Some(name) => write!(f, "{name}"),
             None => write!(f, "<unknown type:{}>", self.hash),
         }
     }
@@ -55,7 +55,7 @@ impl fmt::Display for TypeNameId {
 impl fmt::Debug for TypeNameId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.storage.read().unwrap().get(&self.hash) {
-            Some(name) => write!(f, "TypeNameId({})", name),
+            Some(name) => write!(f, "TypeNameId({name})"),
             None => write!(f, "TypeNameId(<unknown:{}>)", self.hash),
         }
     }
@@ -97,7 +97,7 @@ impl AtomId {
 impl fmt::Display for AtomId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.storage.read().unwrap().get(&self.hash) {
-            Some(name) => write!(f, "{}", name),
+            Some(name) => write!(f, "{name}"),
             None => write!(f, "<unknown atom:{}>", self.hash),
         }
     }
@@ -106,7 +106,7 @@ impl fmt::Display for AtomId {
 impl fmt::Debug for AtomId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.storage.read().unwrap().get(&self.hash) {
-            Some(name) => write!(f, "AtomId({})", name),
+            Some(name) => write!(f, "AtomId({name})"),
             None => write!(f, "AtomId(<unknown:{}>)", self.hash),
         }
     }
@@ -745,8 +745,7 @@ impl CompilerEnvironment {
                     }
                     _ => {
                         let error = TypeError::internal(format!(
-                            "Unexpected dependency error in {}: {:?}",
-                            file_path, err
+                            "Unexpected dependency error in {file_path}: {err:?}"
                         ));
                         self.compilation_state.write().unwrap().errors.push(error);
                     }
@@ -1030,7 +1029,7 @@ impl CompilerEnvironment {
         };
 
         // Get the module type (use source file as module identifier for now)
-        let module_type_name = format!("Module::{}", source_file);
+        let module_type_name = format!("Module::{source_file}");
         // Create module if it doesn't exist
         let module_type_id = self.intern_type_name(&module_type_name);
         let module_key = ModuleKey::Module(module_type_id.hash);
@@ -1122,10 +1121,7 @@ impl CompilerEnvironment {
                 function_id,
                 is_guard,
             },
-            _ => panic!(
-                "Unexpected function type for trait function: {:?}",
-                function_type
-            ),
+            _ => panic!("Unexpected function type for trait function: {function_type:?}"),
         };
 
         // Create trait module if it doesn't exist
@@ -1384,8 +1380,7 @@ impl CompilerEnvironment {
 
                         errors.push(TypeError::internal_with_span(
                             format!(
-                                "Function '{}' in module {:?} missing typed definition after type checking. This indicates a compilation pipeline issue.",
-                                function_name, module_key
+                                "Function '{function_name}' in module {module_key:?} missing typed definition after type checking. This indicates a compilation pipeline issue."
                             ),
                             span.to_source_span(),
                         ));
@@ -2986,7 +2981,7 @@ impl CompilerEnvironment {
                 Ok(merged) => merged,
                 Err(conflicts) => {
                     // Log conflicts but proceed with user compilation only
-                    eprintln!("Warning: Compilation conflicts detected: {:?}", conflicts);
+                    eprintln!("Warning: Compilation conflicts detected: {conflicts:?}");
                     user_compilation
                 }
             }
@@ -3084,7 +3079,7 @@ mod tests {
         let atom_id = env.intern_atom_name("test_atom");
 
         // Verify it works
-        assert_eq!(format!("{}", atom_id), "test_atom");
+        assert_eq!(format!("{atom_id}"), "test_atom");
         assert!(env.resolve_atom(atom_id).is_some());
     }
 

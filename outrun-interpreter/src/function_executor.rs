@@ -85,7 +85,7 @@ impl FunctionExecutor {
         context
             .pop_scope()
             .map_err(|e| FunctionExecutionError::Internal {
-                message: format!("Failed to pop function scope: {:?}", e),
+                message: format!("Failed to pop function scope: {e:?}"),
                 span,
             })?;
 
@@ -108,7 +108,7 @@ impl FunctionExecutor {
                 context
                     .define_variable(param_name.clone(), value.clone())
                     .map_err(|e| FunctionExecutionError::Internal {
-                        message: format!("Failed to bind parameter '{}': {:?}", param_name, e),
+                        message: format!("Failed to bind parameter '{param_name}': {e:?}"),
                         span,
                     })?;
             } else {
@@ -148,7 +148,7 @@ impl FunctionExecutor {
                     // Execute the typed expression directly - no conversion needed!
                     last_value = Some(evaluator.evaluate(context, typed_expr).map_err(|e| {
                         FunctionExecutionError::Evaluation {
-                            message: format!("{:?}", e),
+                            message: format!("{e:?}"),
                             span: typed_expr.span,
                         }
                     })?);
@@ -158,7 +158,7 @@ impl FunctionExecutor {
                     let value = evaluator
                         .evaluate(context, &let_binding.expression)
                         .map_err(|e| FunctionExecutionError::Evaluation {
-                            message: format!("{:?}", e),
+                            message: format!("{e:?}"),
                             span: let_binding.expression.span,
                         })?;
 
@@ -171,7 +171,7 @@ impl FunctionExecutor {
                         context
                             .define_variable(first_var, value.clone())
                             .map_err(|e| FunctionExecutionError::Internal {
-                                message: format!("Failed to bind let variable: {:?}", e),
+                                message: format!("Failed to bind let variable: {e:?}"),
                                 span: let_binding.span,
                             })?;
                         last_value = Some(value);

@@ -533,7 +533,7 @@ impl TypedASTBuilder {
             }
         }
 
-        let original_text = format!("{}{}{}", delimiter, content, delimiter);
+        let original_text = format!("{delimiter}{content}{delimiter}");
         (original_text, None)
     }
 
@@ -650,7 +650,7 @@ impl TypedASTBuilder {
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                format!("{}({})", path_text, args_text)
+                format!("{path_text}({args_text})")
             }
             _ => {
                 // For complex expressions, fall back to a placeholder
@@ -942,20 +942,19 @@ impl TypedASTBuilder {
         // If no stored strategy found, this indicates a bug in the type checking process
         let function_name = match function_path {
             TypedFunctionPath::Simple { name } => name.clone(),
-            TypedFunctionPath::Qualified { module, name } => format!("{}.{}", module, name),
+            TypedFunctionPath::Qualified { module, name } => format!("{module}.{name}"),
             TypedFunctionPath::Expression { .. } => "dynamic_function_expression".to_string(),
         };
 
         panic!(
-            "CRITICAL BUG: TypedASTBuilder found no dispatch strategy for function call '{}'.\n\
+            "CRITICAL BUG: TypedASTBuilder found no dispatch strategy for function call '{function_name}'.\n\
              This indicates that either:\n\
              1. The type checker failed to process this function call, or\n\
              2. There's a bug in storing/retrieving dispatch strategies.\n\
              \n\
              All function calls should have dispatch strategies computed during type checking.\n\
-             Call span: {:?}\n\
-             Arguments passed: {:?}",
-            function_name, call_span, arguments
+             Call span: {call_span:?}\n\
+             Arguments passed: {arguments:?}"
         );
     }
 

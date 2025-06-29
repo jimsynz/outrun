@@ -283,7 +283,7 @@ fn test_if_expression_display_formatting() {
 
     for (input, expected_pattern) in inputs_and_expected.iter() {
         let program = OutrunParser::parse_program(input).unwrap();
-        let formatted = format!("{}", program);
+        let formatted = format!("{program}");
         assert!(formatted.contains("if"));
         if expected_pattern.contains("else") {
             assert!(formatted.contains("else"));

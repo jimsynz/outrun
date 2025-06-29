@@ -9,7 +9,7 @@ use outrun_parser::parse_program;
 /// Helper function to create a typed program from source
 fn create_typed_program_with_source(source: &str) -> (crate::TypedProgram, String) {
     let program = parse_program(source).unwrap_or_else(|e| {
-        panic!("Failed to parse test program: {:?}\nSource: {}", e, source);
+        panic!("Failed to parse test program: {e:?}\nSource: {source}");
     });
 
     let result = typecheck_with_core_library(program, source, "test.outrun")
@@ -49,7 +49,7 @@ fn test_position_based_type_lookup_simple_literal() {
     // Position at the start of "42" (line 0, column 0)
     let result = get_type_at_position(&typed_program, &source_text, 0, 0);
 
-    println!("Type lookup result: {:?}", result);
+    println!("Type lookup result: {result:?}");
 
     assert!(result.is_some());
     let type_info = result.unwrap();
@@ -156,11 +156,7 @@ fn test_line_column_to_offset_conversion() {
         assert_eq!(
             result,
             Some(expected_offset),
-            "Failed for line {} column {}: expected {}, got {:?}",
-            line,
-            column,
-            expected_offset,
-            result
+            "Failed for line {line} column {column}: expected {expected_offset}, got {result:?}"
         );
     }
 

@@ -6,7 +6,7 @@ fn extract_import(input: &str) -> ImportDefinition {
 
     match &result.items[0].kind {
         ItemKind::ImportDefinition(import_def) => import_def.clone(),
-        other => panic!("Expected ImportDefinition, got {:?}", other),
+        other => panic!("Expected ImportDefinition, got {other:?}"),
     }
 }
 
@@ -59,7 +59,7 @@ fn test_import_with_only_clause_single_function() {
             assert_eq!(functions[0].name.name, "length");
             assert_eq!(functions[0].arity, 1);
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 }
 
@@ -85,7 +85,7 @@ fn test_import_with_only_clause_multiple_functions() {
             assert_eq!(functions[2].name.name, "append");
             assert_eq!(functions[2].arity, 2);
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 }
 
@@ -104,7 +104,7 @@ fn test_import_with_except_clause_single_function() {
             assert_eq!(functions[0].name.name, "unsafe_operation");
             assert_eq!(functions[0].arity, 1);
         }
-        other => panic!("Expected Except clause, got {:?}", other),
+        other => panic!("Expected Except clause, got {other:?}"),
     }
 }
 
@@ -130,7 +130,7 @@ fn test_import_with_except_clause_multiple_functions() {
             assert_eq!(functions[2].name.name, "old_api");
             assert_eq!(functions[2].arity, 3);
         }
-        other => panic!("Expected Except clause, got {:?}", other),
+        other => panic!("Expected Except clause, got {other:?}"),
     }
 }
 
@@ -149,7 +149,7 @@ fn test_import_with_multiple_clauses() {
             assert_eq!(functions[0].name.name, "helper");
             assert_eq!(functions[0].arity, 1);
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 
     match &import.clauses[1] {
@@ -158,7 +158,7 @@ fn test_import_with_multiple_clauses() {
             assert_eq!(functions[0].name.name, "debug_print");
             assert_eq!(functions[0].arity, 1);
         }
-        other => panic!("Expected Except clause, got {:?}", other),
+        other => panic!("Expected Except clause, got {other:?}"),
     }
 }
 
@@ -175,7 +175,7 @@ fn test_import_with_trailing_comma_in_function_list() {
             assert_eq!(functions[0].name.name, "length");
             assert_eq!(functions[1].name.name, "empty?");
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 }
 
@@ -192,7 +192,7 @@ fn test_import_with_zero_arity_function() {
             assert_eq!(functions[1].name.name, "get_seed");
             assert_eq!(functions[1].arity, 0);
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 }
 
@@ -207,7 +207,7 @@ fn test_import_with_high_arity_function() {
             assert_eq!(functions[0].name.name, "complex_operation");
             assert_eq!(functions[0].arity, 10);
         }
-        other => panic!("Expected Only clause, got {:?}", other),
+        other => panic!("Expected Only clause, got {other:?}"),
     }
 }
 
@@ -215,7 +215,7 @@ fn test_import_with_high_arity_function() {
 fn test_import_display_simple() {
     let input = "import String";
     let import = extract_import(input);
-    let displayed = format!("{}", import);
+    let displayed = format!("{import}");
     assert_eq!(displayed, "import String");
 }
 
@@ -223,7 +223,7 @@ fn test_import_display_simple() {
 fn test_import_display_nested() {
     let input = "import Http.Client";
     let import = extract_import(input);
-    let displayed = format!("{}", import);
+    let displayed = format!("{import}");
     assert_eq!(displayed, "import Http.Client");
 }
 
@@ -231,7 +231,7 @@ fn test_import_display_nested() {
 fn test_import_display_with_only_clause() {
     let input = "import List, only: [length: 1, append: 2]";
     let import = extract_import(input);
-    let displayed = format!("{}", import);
+    let displayed = format!("{import}");
     assert_eq!(displayed, "import List, only: [length: 1, append: 2]");
 }
 
@@ -239,7 +239,7 @@ fn test_import_display_with_only_clause() {
 fn test_import_display_with_except_clause() {
     let input = "import Map, except: [unsafe_get: 2]";
     let import = extract_import(input);
-    let displayed = format!("{}", import);
+    let displayed = format!("{import}");
     assert_eq!(displayed, "import Map, except: [unsafe_get: 2]");
 }
 
@@ -247,7 +247,7 @@ fn test_import_display_with_except_clause() {
 fn test_import_display_with_multiple_clauses() {
     let input = "import Utilities, only: [helper: 1], except: [debug: 1]";
     let import = extract_import(input);
-    let displayed = format!("{}", import);
+    let displayed = format!("{import}");
     assert_eq!(
         displayed,
         "import Utilities, only: [helper: 1], except: [debug: 1]"

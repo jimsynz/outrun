@@ -69,7 +69,7 @@ impl CompilationResult {
             for (trait_id, trait_def) in other.traits {
                 if let Some(existing) = merged.traits.get(&trait_id) {
                     if !traits_compatible(existing, &trait_def) {
-                        conflicts.push(format!("Conflicting trait definition: {}", trait_id));
+                        conflicts.push(format!("Conflicting trait definition: {trait_id}"));
                     }
                 } else {
                     merged.traits.insert(trait_id, trait_def);
@@ -80,7 +80,7 @@ impl CompilationResult {
             for (struct_id, struct_def) in other.structs {
                 if let Some(existing) = merged.structs.get(&struct_id) {
                     if !structs_compatible(existing, &struct_def) {
-                        conflicts.push(format!("Conflicting struct definition: {}", struct_id));
+                        conflicts.push(format!("Conflicting struct definition: {struct_id}"));
                     }
                 } else {
                     merged.structs.insert(struct_id, struct_def);
@@ -94,7 +94,7 @@ impl CompilationResult {
             for (filename, typed_program) in other.typed_programs {
                 match merged.typed_programs.entry(filename.clone()) {
                     std::collections::hash_map::Entry::Occupied(_) => {
-                        conflicts.push(format!("Duplicate program file: {}", filename));
+                        conflicts.push(format!("Duplicate program file: {filename}"));
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
                         entry.insert(typed_program);
@@ -135,7 +135,7 @@ impl CompilationResult {
         for (trait_id, trait_def) in &other.traits {
             if let Some(existing) = self.traits.get(trait_id) {
                 if !traits_compatible(existing, trait_def) {
-                    conflicts.push(format!("Incompatible trait: {}", trait_id));
+                    conflicts.push(format!("Incompatible trait: {trait_id}"));
                 }
             }
         }
@@ -144,7 +144,7 @@ impl CompilationResult {
         for (struct_id, struct_def) in &other.structs {
             if let Some(existing) = self.structs.get(struct_id) {
                 if !structs_compatible(existing, struct_def) {
-                    conflicts.push(format!("Incompatible struct: {}", struct_id));
+                    conflicts.push(format!("Incompatible struct: {struct_id}"));
                 }
             }
         }

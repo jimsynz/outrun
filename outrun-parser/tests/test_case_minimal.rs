@@ -12,7 +12,7 @@ fn test_minimal_case_expression() {
 
     let result = parse_program(input);
     if let Err(ref e) = result {
-        println!("Parse error: {:?}", e);
+        println!("Parse error: {e:?}");
     }
     assert!(result.is_ok(), "Failed to parse minimal case expression");
 }
@@ -27,7 +27,7 @@ fn test_case_with_simple_guard() {
 
     let result = parse_program(input);
     if let Err(ref e) = result {
-        println!("Parse error: {:?}", e);
+        println!("Parse error: {e:?}");
     }
     assert!(result.is_ok(), "Failed to parse case with simple guard");
 }
@@ -42,7 +42,7 @@ fn test_case_with_identifier_pattern() {
 
     let result = parse_program(input);
     if let Err(ref e) = result {
-        println!("Parse error: {:?}", e);
+        println!("Parse error: {e:?}");
     }
     assert!(
         result.is_ok(),

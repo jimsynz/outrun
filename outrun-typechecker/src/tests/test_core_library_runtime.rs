@@ -46,8 +46,7 @@ fn test_runtime_file_loading() {
                 .programs
                 .keys()
                 .any(|key| key.contains(expected_file)),
-            "Should contain {}",
-            expected_file
+            "Should contain {expected_file}"
         );
     }
 }
@@ -73,7 +72,7 @@ fn test_core_library_stats() {
         stats.total_structs
     );
 
-    println!("Core library stats: {}", stats);
+    println!("Core library stats: {stats}");
 }
 
 #[test]
@@ -83,7 +82,7 @@ fn test_unary_traits_loaded() {
     // Debug: Print all trait names
     println!("All loaded traits:");
     for name in compilation.traits.keys() {
-        println!("  - {}", name);
+        println!("  - {name}");
     }
 
     // Look for traits that contain "Unary" in their name
@@ -96,8 +95,8 @@ fn test_unary_traits_loaded() {
         .keys()
         .any(|name| name.to_string().contains("UnaryMinus"));
 
-    println!("UnaryPlus found: {}", unary_plus_found);
-    println!("UnaryMinus found: {}", unary_minus_found);
+    println!("UnaryPlus found: {unary_plus_found}");
+    println!("UnaryMinus found: {unary_minus_found}");
 
     // Check implementations
     println!("All implementations:");

@@ -139,7 +139,7 @@ impl ExpressionEvaluator {
                 // For now, create a mock AtomId - in full implementation this would use interner
                 // This is a temporary solution until we integrate with the interner properly
                 Err(EvaluationError::Internal {
-                    message: format!("Atom literals not yet supported: {}", value),
+                    message: format!("Atom literals not yet supported: {value}"),
                     span: expression.span,
                 })
             }
@@ -215,13 +215,13 @@ impl ExpressionEvaluator {
 
             // Error recovery - propagate the error
             TypedExpressionKind::TypeError { error, .. } => Err(EvaluationError::Internal {
-                message: format!("Type error during evaluation: {:?}", error),
+                message: format!("Type error during evaluation: {error:?}"),
                 span: expression.span,
             }),
 
             // Placeholder - used during development
             TypedExpressionKind::Placeholder(message) => Err(EvaluationError::Internal {
-                message: format!("Placeholder expression: {}", message),
+                message: format!("Placeholder expression: {message}"),
                 span: expression.span,
             }),
         }
@@ -293,14 +293,14 @@ impl ExpressionEvaluator {
                     Some(value) => Ok(value.clone()),
                     None => Err(EvaluationError::FieldNotFound {
                         field: field.to_string(),
-                        type_name: format!("{:?}", type_id), // Convert TypeId to string for error
+                        type_name: format!("{type_id:?}"), // Convert TypeId to string for error
                         span,
                     }),
                 }
             }
             _ => Err(EvaluationError::TypeMismatch {
                 expected: "Struct".to_string(),
-                found: format!("{:?}", object),
+                found: format!("{object:?}"),
                 span,
             }),
         }
@@ -362,7 +362,7 @@ impl ExpressionEvaluator {
                         Ok(other) => {
                             return Err(EvaluationError::TypeMismatch {
                                 expected: "Map".to_string(),
-                                found: format!("{:?}", other),
+                                found: format!("{other:?}"),
                                 span: outrun_parser::Span::new(0, 0), // TODO: Get proper span
                             });
                         }
@@ -460,7 +460,7 @@ impl ExpressionEvaluator {
                         Ok(other) => {
                             return Err(EvaluationError::TypeMismatch {
                                 expected: "Struct".to_string(),
-                                found: format!("{:?}", other),
+                                found: format!("{other:?}"),
                                 span,
                             });
                         }
@@ -516,7 +516,7 @@ impl ExpressionEvaluator {
                 }
             }
             _ => Err(EvaluationError::InvalidConditionType {
-                found: format!("{:?}", condition_value),
+                found: format!("{condition_value:?}"),
                 span,
             }),
         }
@@ -551,7 +551,7 @@ impl ExpressionEvaluator {
                         }
                         _ => {
                             return Err(EvaluationError::InvalidConditionType {
-                                found: format!("{:?}", guard_value),
+                                found: format!("{guard_value:?}"),
                                 span: when_clause.span,
                             });
                         }

@@ -55,7 +55,7 @@ fn test_simple_generic_struct() {
 
                 // Field type should be resolved to generic parameter
                 if let Some(field_type) = &struct_def.fields[0].field_type {
-                    println!("Field type resolved: {:?}", field_type);
+                    println!("Field type resolved: {field_type:?}");
                 }
 
                 println!("✓ Simple generic struct successfully processed");
@@ -189,7 +189,7 @@ fn test_generic_impl_block_with_self() {
 
                 // Self type should be resolved to Container<T>
                 if let Some(impl_type) = &impl_block.impl_type {
-                    println!("Implementation type resolved: {:?}", impl_type);
+                    println!("Implementation type resolved: {impl_type:?}");
                 }
 
                 println!("✓ Generic impl block with Self type successfully processed");
@@ -235,17 +235,17 @@ fn test_function_type_annotations() {
 
                 // First parameter should be List<String>
                 if let Some(param_type) = &func_def.parameters[0].param_type {
-                    println!("Items parameter type: {:?}", param_type);
+                    println!("Items parameter type: {param_type:?}");
                 }
 
                 // Second parameter should be Function<(item: String) -> Integer>
                 if let Some(param_type) = &func_def.parameters[1].param_type {
-                    println!("Processor parameter type: {:?}", param_type);
+                    println!("Processor parameter type: {param_type:?}");
                 }
 
                 // Return type should be List<Integer>
                 if let Some(return_type) = &func_def.return_type {
-                    println!("Return type: {:?}", return_type);
+                    println!("Return type: {return_type:?}");
                 }
 
                 println!("✓ Function type annotations successfully processed");
@@ -282,7 +282,7 @@ fn test_tuple_type_annotations() {
 
                 // Return type should be (Float, Float)
                 if let Some(return_type) = &func_def.return_type {
-                    println!("Tuple return type: {:?}", return_type);
+                    println!("Tuple return type: {return_type:?}");
                 }
 
                 println!("✓ Tuple type annotations successfully processed");
@@ -325,14 +325,11 @@ fn test_nested_generic_types() {
 
                 // Field types should be resolved with nested generics
                 if let Some(field_type) = &struct_def.fields[0].field_type {
-                    println!("Inner field type (Container<Option<T>>): {:?}", field_type);
+                    println!("Inner field type (Container<Option<T>>): {field_type:?}");
                 }
 
                 if let Some(field_type) = &struct_def.fields[1].field_type {
-                    println!(
-                        "Metadata field type (Map<String, List<T>>): {:?}",
-                        field_type
-                    );
+                    println!("Metadata field type (Map<String, List<T>>): {field_type:?}");
                 }
 
                 println!("✓ Nested generic types successfully processed");
@@ -381,7 +378,7 @@ fn test_self_type_in_different_contexts() {
 
                 // Self should be resolved to String type
                 if let Some(impl_type) = &impl_block.impl_type {
-                    println!("Self resolved to: {:?}", impl_type);
+                    println!("Self resolved to: {impl_type:?}");
                 }
 
                 println!("✓ Self type in impl block successfully processed");
@@ -416,7 +413,7 @@ fn test_type_annotation_comprehensive_conversion() {
 
                 // Type should be Map<String, (Integer, Option<Float>)>
                 if let Some(const_type) = &const_def.const_type {
-                    println!("Complex constant type: {:?}", const_type);
+                    println!("Complex constant type: {const_type:?}");
                 }
 
                 println!("✓ Complex type annotation successfully processed");

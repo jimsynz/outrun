@@ -34,7 +34,7 @@ fn test_expression_types_captured_during_type_checking() {
         result.type_context.expression_types.len()
     );
     for (span, structured_type) in &result.type_context.expression_types {
-        println!("Span {:?} -> Type: {:?}", span, structured_type);
+        println!("Span {span:?} -> Type: {structured_type:?}");
     }
 }
 

@@ -754,7 +754,7 @@ impl TypeChecker {
         collection.add_program(
             "main.outrun".to_string(),
             program.clone(),
-            format!("{}", program), // Use Display for source reconstruction
+            format!("{program}"), // Use Display for source reconstruction
         );
 
         // Compile using the compiler environment

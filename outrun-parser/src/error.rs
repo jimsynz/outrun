@@ -137,7 +137,7 @@ impl ParseError {
                 let mut message_parts = Vec::new();
 
                 // Add the original error description
-                let base_message = format!("{}", error);
+                let base_message = format!("{error}");
                 message_parts.push(base_message);
 
                 // Add helpful context about what was expected
@@ -153,7 +153,7 @@ impl ParseError {
                     } else {
                         message_parts.push("   One of:".to_string());
                         for desc in expected_descriptions {
-                            message_parts.push(format!("   • {}", desc));
+                            message_parts.push(format!("   • {desc}"));
                         }
                     }
                 }
@@ -161,13 +161,13 @@ impl ParseError {
                 // Add context about the parsing location
                 let location_context = get_parsing_context(&src, &error.location);
                 if !location_context.is_empty() {
-                    message_parts.push(format!("\n📍 CONTEXT: {}", location_context));
+                    message_parts.push(format!("\n📍 CONTEXT: {location_context}"));
                 }
 
                 // Add helpful suggestions based on the expected rules
                 let suggestions = get_suggestions_for_rules(positives);
                 if !suggestions.is_empty() {
-                    message_parts.push(format!("\n💡 SUGGESTIONS:\n{}", suggestions));
+                    message_parts.push(format!("\n💡 SUGGESTIONS:\n{suggestions}"));
                 }
 
                 // Add debug info for developers
@@ -404,7 +404,7 @@ fn rule_to_user_friendly_description(rule: &Rule) -> String {
         Rule::impl_constraints => "implementation constraints".to_string(),
 
         // Fallback for unknown rules
-        _ => format!("a {:?}", rule).replace('_', " "),
+        _ => format!("a {rule:?}").replace('_', " "),
     }
 }
 
@@ -438,7 +438,7 @@ fn get_parsing_context(source: &str, location: &pest::error::InputLocation) -> S
                 "on empty line".to_string()
             };
 
-            return format!("{}, {}, {}", file_context, line_context, content_context);
+            return format!("{file_context}, {line_context}, {content_context}");
         }
 
         current_pos = line_end + 1; // +1 for newline

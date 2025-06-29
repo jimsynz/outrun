@@ -155,7 +155,7 @@ trait Test {
 "#;
 
     let program = parse_program(input).unwrap();
-    let output = format!("{}", program);
+    let output = format!("{program}");
 
     assert!(output.contains("defs create"));
     assert!(output.contains("value: Integer"));
@@ -202,7 +202,7 @@ fn test_static_function_source_reconstruction() {
 }"#;
 
     let program = parse_program(input).unwrap();
-    let reconstructed = format!("{}", program);
+    let reconstructed = format!("{program}");
 
     assert!(reconstructed.contains("defs ok"));
     assert!(reconstructed.contains("value: T"));

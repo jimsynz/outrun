@@ -516,10 +516,10 @@ impl StructuredType {
             }
             // Concrete struct and trait types
             StructuredType::Struct { name, .. } => {
-                format!("struct {}", name)
+                format!("struct {name}")
             }
             StructuredType::Trait { name, .. } => {
-                format!("trait {}", name)
+                format!("trait {name}")
             }
             StructuredType::TypeError { fallback_type, .. } => {
                 // For error types, show the fallback type if available, otherwise show error marker
@@ -1437,7 +1437,7 @@ impl UnificationContext {
                 // This avoids the infinite recursion issue that occurred with unify_structured_types
                 if existing != &substitution {
                     return Err(UnificationError::UnboundTypeVariable {
-                        name: format!("Conflicting generic substitution for {:?}", param_id),
+                        name: format!("Conflicting generic substitution for {param_id:?}"),
                     });
                 }
             } else {
@@ -1452,7 +1452,7 @@ impl UnificationContext {
                 // This avoids the infinite recursion issue that occurred with unify_structured_types
                 if existing != &expr_type {
                     return Err(UnificationError::UnboundTypeVariable {
-                        name: format!("Conflicting expression type for span {:?}", span),
+                        name: format!("Conflicting expression type for span {span:?}"),
                     });
                 }
             } else {

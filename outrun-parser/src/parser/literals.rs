@@ -254,21 +254,18 @@ impl OutrunParser {
                                 result.push(unicode_char);
                             } else {
                                 return Err(Self::invalid_string_escape_error(&format!(
-                                    "Invalid unicode code point: {}",
-                                    hex_digits
+                                    "Invalid unicode code point: {hex_digits}"
                                 )));
                             }
                         } else {
                             return Err(Self::invalid_string_escape_error(&format!(
-                                "Invalid hex digits in unicode escape: {}",
-                                hex_digits
+                                "Invalid hex digits in unicode escape: {hex_digits}"
                             )));
                         }
                     }
                     Some(other) => {
                         return Err(Self::invalid_string_escape_error(&format!(
-                            "Unknown escape sequence: \\{}",
-                            other
+                            "Unknown escape sequence: \\{other}"
                         )));
                     }
                     None => {

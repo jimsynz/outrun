@@ -376,7 +376,7 @@ fn test_list_display_preserves_format() {
     let input = "[1, 2, 3]";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 
@@ -385,7 +385,7 @@ fn test_map_shorthand_display_preserves_format() {
     let input = "{name: \"James\", age: 35}";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 
@@ -474,7 +474,7 @@ fn test_list_with_multiple_spreads() {
             for (index, expected_name) in spread_indices.iter().zip(expected_spreads.iter()) {
                 match &list.elements[*index] {
                     ListElement::Spread(id) => assert_eq!(id.name, *expected_name),
-                    ListElement::Expression(_) => panic!("Expected spread at index {}", index),
+                    ListElement::Expression(_) => panic!("Expected spread at index {index}"),
                 }
             }
 
@@ -529,7 +529,7 @@ fn test_spread_operator_display() {
     let input = "[first, ..rest, last]";
     let result = parse_program(input).unwrap();
 
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
     assert!(reconstructed.contains("[first, ..rest, last]"));
 }
 
@@ -563,7 +563,7 @@ fn test_map_explicit_display_preserves_format() {
     let input = "{1 => :one, 2 => :two}";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 
@@ -572,7 +572,7 @@ fn test_tuple_display_preserves_format() {
     let input = "(\"name\", 35, true)";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 
@@ -581,7 +581,7 @@ fn test_single_element_tuple_display() {
     let input = "(42,)";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 

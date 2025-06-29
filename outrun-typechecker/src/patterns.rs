@@ -949,7 +949,7 @@ impl ExhaustivenessChecker {
                     .map(|i| {
                         TypedPattern::new(
                             TypedPatternKind::Identifier {
-                                name: format!("_{}", i),
+                                name: format!("_{i}"),
                             },
                             None, // Don't know element types yet
                             span,
@@ -975,7 +975,7 @@ impl ExhaustivenessChecker {
                     .map(|i| {
                         TypedPattern::new(
                             TypedPatternKind::Identifier {
-                                name: format!("_{}", i),
+                                name: format!("_{i}"),
                             },
                             None,
                             span,
@@ -2685,11 +2685,11 @@ pub mod guard_exhaustiveness {
         let mut solver = CaDiCaL::default();
         solver
             .add_cnf(cnf)
-            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {:?}", e)))?;
+            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {e:?}")))?;
 
         match solver
             .solve()
-            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {:?}", e)))?
+            .map_err(|e| crate::error::TypeError::internal(format!("SAT solver error: {e:?}")))?
         {
             SolverResult::Sat => {
                 let counter_examples = vec![GuardCounterExample {

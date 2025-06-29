@@ -114,7 +114,7 @@ impl CallFrame {
     pub fn function_name(&self) -> String {
         match &self.function_path {
             TypedFunctionPath::Simple { name } => name.clone(),
-            TypedFunctionPath::Qualified { module, name } => format!("{}.{}", module, name),
+            TypedFunctionPath::Qualified { module, name } => format!("{module}.{name}"),
             TypedFunctionPath::Expression { .. } => "<dynamic function>".to_string(),
         }
     }
@@ -316,7 +316,7 @@ impl CallStack {
 
     /// Get a formatted stack trace string
     pub fn format_stack_trace(&self, title: &str) -> String {
-        let mut result = format!("{}\n", title);
+        let mut result = format!("{title}\n");
 
         if self.frames.is_empty() {
             result.push_str("  (no call stack)\n");
@@ -326,8 +326,7 @@ impl CallStack {
         let total_tail_calls = self.total_tail_calls_optimized();
         if total_tail_calls > 0 {
             result.push_str(&format!(
-                "  (tail call optimization: {} calls optimized)\n",
-                total_tail_calls
+                "  (tail call optimization: {total_tail_calls} calls optimized)\n"
             ));
         }
 

@@ -167,7 +167,7 @@ fn test_macro_injection_display_format() {
     let input = r#"macro test(x) { ^x }"#;
 
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     assert!(
         reconstructed.contains("^x"),

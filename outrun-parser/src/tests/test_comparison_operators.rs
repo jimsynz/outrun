@@ -320,9 +320,9 @@ fn test_compare_different_types() {
         let expr = extract_expression_from_item(&result.items[0]);
         match &expr.kind {
             ExpressionKind::BinaryOp(op) => {
-                assert_eq!(op.operator, expected_op, "Failed for input: {}", input);
+                assert_eq!(op.operator, expected_op, "Failed for input: {input}");
             }
-            _ => panic!("Expected binary operation for input: {}", input),
+            _ => panic!("Expected binary operation for input: {input}"),
         }
     }
 }
@@ -344,7 +344,7 @@ fn test_comparison_display_preserves_format() {
 
     for input in test_cases {
         let result = parse_program(input).unwrap();
-        let formatted = format!("{}", result);
-        assert_eq!(formatted, input, "Display format mismatch for: {}", input);
+        let formatted = format!("{result}");
+        assert_eq!(formatted, input, "Display format mismatch for: {input}");
     }
 }

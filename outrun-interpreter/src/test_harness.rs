@@ -100,7 +100,7 @@ impl OutrunTestHarness {
         // Parse the expression directly
         let parsed_expr =
             parse_expression(expression_code).map_err(|e| TestHarnessError::Parse {
-                message: format!("Failed to parse expression '{}': {:?}", expression_code, e),
+                message: format!("Failed to parse expression '{expression_code}': {e:?}"),
             })?;
 
         // Create a simple program with just the expression (like REPL does)
@@ -134,7 +134,7 @@ impl OutrunTestHarness {
                 self.external_variables.clone(),
             )
             .map_err(|e| TestHarnessError::Compilation {
-                message: format!("Failed to compile expression: {:?}", e),
+                message: format!("Failed to compile expression: {e:?}"),
             })?
         };
 
@@ -171,7 +171,7 @@ impl OutrunTestHarness {
                             arg.name, arg.expression.structured_type
                         );
                     }
-                    eprintln!("  Dispatch strategy: {:?}", dispatch_strategy);
+                    eprintln!("  Dispatch strategy: {dispatch_strategy:?}");
                 }
                 expr.clone()
             } else {
@@ -224,8 +224,8 @@ impl OutrunTestHarness {
                 actual: actual.to_string(),
             }),
             other => Err(TestHarnessError::AssertionFailed {
-                expected: format!("Boolean({})", expected),
-                actual: format!("{:?}", other),
+                expected: format!("Boolean({expected})"),
+                actual: format!("{other:?}"),
             }),
         }
     }
@@ -244,8 +244,8 @@ impl OutrunTestHarness {
                 actual: actual.to_string(),
             }),
             other => Err(TestHarnessError::AssertionFailed {
-                expected: format!("Integer64({})", expected),
-                actual: format!("{:?}", other),
+                expected: format!("Integer64({expected})"),
+                actual: format!("{other:?}"),
             }),
         }
     }
@@ -264,8 +264,8 @@ impl OutrunTestHarness {
                 actual,
             }),
             other => Err(TestHarnessError::AssertionFailed {
-                expected: format!("String(\"{}\")", expected),
-                actual: format!("{:?}", other),
+                expected: format!("String(\"{expected}\")"),
+                actual: format!("{other:?}"),
             }),
         }
     }
@@ -284,8 +284,8 @@ impl OutrunTestHarness {
                 actual: actual.to_string(),
             }),
             other => Err(TestHarnessError::AssertionFailed {
-                expected: format!("Float64({})", expected),
-                actual: format!("{:?}", other),
+                expected: format!("Float64({expected})"),
+                actual: format!("{other:?}"),
             }),
         }
     }
@@ -296,7 +296,7 @@ impl OutrunTestHarness {
         self.context
             .define_variable(name.to_string(), value.clone())
             .map_err(|e| TestHarnessError::Setup {
-                message: format!("Failed to bind variable '{}': {:?}", name, e),
+                message: format!("Failed to bind variable '{name}': {e:?}"),
             })?;
 
         // Also store variable type in external_variables for type checking
@@ -337,7 +337,7 @@ impl OutrunTestHarness {
         // Use the same pipeline as the working evaluate method, but for let bindings
         // Parse the let binding (as a program, not expression)
         let parsed_program = parse_program(binding_code).map_err(|e| TestHarnessError::Parse {
-            message: format!("Failed to parse let binding '{}': {:?}", binding_code, e),
+            message: format!("Failed to parse let binding '{binding_code}': {e:?}"),
         })?;
 
         // Create a program collection with the let binding (like evaluate method)
@@ -357,7 +357,7 @@ impl OutrunTestHarness {
                 self.external_variables.clone(),
             )
             .map_err(|e| TestHarnessError::Compilation {
-                message: format!("Failed to compile let binding: {:?}", e),
+                message: format!("Failed to compile let binding: {e:?}"),
             })?
         };
 
@@ -391,10 +391,7 @@ impl OutrunTestHarness {
                     self.context
                         .define_variable(first_variable.clone(), value.clone())
                         .map_err(|e| TestHarnessError::Setup {
-                            message: format!(
-                                "Failed to bind variable '{}': {:?}",
-                                first_variable, e
-                            ),
+                            message: format!("Failed to bind variable '{first_variable}': {e:?}"),
                         })?;
 
                     // Store variable type in external_variables for future type checking
@@ -463,7 +460,7 @@ impl OutrunTestHarness {
         self.context
             .define_variable(temp_var_name.clone(), value.clone())
             .map_err(|e| TestHarnessError::Setup {
-                message: format!("Failed to bind temporary variable for inspect: {:?}", e),
+                message: format!("Failed to bind temporary variable for inspect: {e:?}"),
             })?;
 
         // Also add to external_variables for the typechecker
@@ -522,7 +519,7 @@ impl OutrunTestHarness {
             .insert(temp_var_name.clone(), variable_type);
 
         // Create and evaluate the expression: Inspect.inspect(value: __harness_temp_inspect_value)
-        let inspect_expression = format!("Inspect.inspect(value: {})", temp_var_name);
+        let inspect_expression = format!("Inspect.inspect(value: {temp_var_name})");
 
         // Evaluate the inspect call
         let inspect_result = self.evaluate(&inspect_expression)?;
@@ -531,10 +528,7 @@ impl OutrunTestHarness {
         match inspect_result {
             Value::String(s) => Ok(s),
             other => Err(TestHarnessError::Internal {
-                message: format!(
-                    "Inspect.inspect should return a String, but got: {:?}",
-                    other
-                ),
+                message: format!("Inspect.inspect should return a String, but got: {other:?}"),
                 span: outrun_parser::Span::new(0, 0),
             }),
         }

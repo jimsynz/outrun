@@ -31,15 +31,9 @@ fn test_trait_implementation_lookup_investigation() {
     let function_name_atom = compiler_env.intern_atom_name(head_function_name);
 
     println!("\n🔍 Testing trait implementation lookup:");
-    println!("  - Trait: {} (id: {})", list_trait_name, trait_type_id);
-    println!(
-        "  - Implementation type: {} (id: {})",
-        list_type_name, impl_type_id
-    );
-    println!(
-        "  - Function: {} (atom: {})",
-        head_function_name, function_name_atom
-    );
+    println!("  - Trait: {list_trait_name} (id: {trait_type_id})");
+    println!("  - Implementation type: {list_type_name} (id: {impl_type_id})");
+    println!("  - Function: {head_function_name} (atom: {function_name_atom})");
 
     // Create trait and impl types for lookup
     let trait_type = StructuredType::Simple(trait_type_id);
@@ -51,8 +45,8 @@ fn test_trait_implementation_lookup_investigation() {
         ],
     };
 
-    println!("\n  - Trait type for lookup: {:?}", trait_type);
-    println!("  - Impl type for lookup: {:?}", impl_type);
+    println!("\n  - Trait type for lookup: {trait_type:?}");
+    println!("  - Impl type for lookup: {impl_type:?}");
 
     // Attempt the lookup
     let lookup_result =
@@ -72,7 +66,7 @@ fn test_trait_implementation_lookup_investigation() {
                     definition, typed_definition, function_id, ..
                 } => {
                     println!("  - Entry type: TraitSignature");
-                    println!("  - Function ID: {}", function_id);
+                    println!("  - Function ID: {function_id}");
                     println!("  - Has typed definition: {}", typed_definition.is_some());
                     if let Some(typed_def) = typed_definition {
                         println!("  - Typed definition body statements: {}", typed_def.body.statements.len());
@@ -83,7 +77,7 @@ fn test_trait_implementation_lookup_investigation() {
                     definition, typed_definition, function_id, ..
                 } => {
                     println!("  - Entry type: ImplFunction");
-                    println!("  - Function ID: {}", function_id);
+                    println!("  - Function ID: {function_id}");
                     println!("  - Has typed definition: {}", typed_definition.is_some());
                     if let Some(typed_def) = typed_definition {
                         println!("  - Typed definition body statements: {}", typed_def.body.statements.len());
@@ -94,7 +88,7 @@ fn test_trait_implementation_lookup_investigation() {
                     definition, typed_definition, function_id, ..
                 } => {
                     println!("  - Entry type: TraitDefault");
-                    println!("  - Function ID: {}", function_id);
+                    println!("  - Function ID: {function_id}");
                     println!("  - Has typed definition: {}", typed_definition.is_some());
                     if let Some(typed_def) = typed_definition {
                         println!("  - Typed definition body statements: {}", typed_def.body.statements.len());
@@ -102,7 +96,7 @@ fn test_trait_implementation_lookup_investigation() {
                     println!("  - Original definition name: {}", definition.name.name);
                 }
                 other => {
-                    println!("  - Entry type: {:?}", other);
+                    println!("  - Entry type: {other:?}");
                 }
             }
 

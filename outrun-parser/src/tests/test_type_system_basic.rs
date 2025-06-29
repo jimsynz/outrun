@@ -164,7 +164,7 @@ fn test_simple_impl_block() {
 fn test_struct_display_formatting() {
     let input = r#"struct User(name: String) {}"#;
     let program = OutrunParser::parse_program(input).unwrap();
-    let formatted = format!("{}", program);
+    let formatted = format!("{program}");
 
     assert!(formatted.contains("struct User"));
     assert!(formatted.contains("name: String"));
@@ -174,7 +174,7 @@ fn test_struct_display_formatting() {
 fn test_trait_display_formatting() {
     let input = r#"trait Drawable {}"#;
     let program = OutrunParser::parse_program(input).unwrap();
-    let formatted = format!("{}", program);
+    let formatted = format!("{program}");
 
     assert!(formatted.contains("trait Drawable"));
 }
@@ -183,7 +183,7 @@ fn test_trait_display_formatting() {
 fn test_impl_display_formatting() {
     let input = r#"impl Drawable for User {}"#;
     let program = OutrunParser::parse_program(input).unwrap();
-    let formatted = format!("{}", program);
+    let formatted = format!("{program}");
 
     assert!(formatted.contains("impl Drawable for User"));
 }

@@ -91,7 +91,7 @@ fn test_parse_string_with_multiple_interpolations() {
                     ("interpolation", StringPart::Interpolation { expression, .. }) => {
                         assert_identifier_expression(expression, expected_content);
                     }
-                    _ => panic!("Unexpected part type at index {}", i),
+                    _ => panic!("Unexpected part type at index {i}"),
                 }
             }
         }
@@ -306,7 +306,7 @@ fn test_string_interpolation_display_preserves_format() {
     let input = "\"Hello #{name}!\"";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert_eq!(formatted, input);
 }
 

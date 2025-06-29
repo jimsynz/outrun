@@ -160,7 +160,7 @@ struct User(name: String) {
 
     match &result.items[0].kind {
         ItemKind::StructDefinition(struct_def) => {
-            let formatted = format!("{}", struct_def);
+            let formatted = format!("{struct_def}");
 
             assert!(formatted.contains("@Derive"));
             assert!(formatted.contains("traits:"));

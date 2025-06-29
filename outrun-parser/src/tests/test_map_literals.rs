@@ -169,6 +169,6 @@ fn test_map_literal_display() {
     let input = "{ name: \"John\", age: 30, ..defaults }";
     let result = parse_program(input).unwrap();
 
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
     assert!(reconstructed.contains("{name: \"John\", age: 30, ..defaults}"));
 }

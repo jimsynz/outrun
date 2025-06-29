@@ -13,7 +13,7 @@ use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
     parse_program(source).unwrap_or_else(|e| {
-        panic!("Failed to parse test program: {:?}\nSource: {}", e, source);
+        panic!("Failed to parse test program: {e:?}\nSource: {source}");
     })
 }
 
@@ -63,8 +63,7 @@ def test(): Integer {
             e,
             TypeError::CannotInferListType { .. }
         )),
-        "Should have CannotInferListType error, but got: {:?}",
-        errors
+        "Should have CannotInferListType error, but got: {errors:?}"
     );
 }
 
@@ -99,12 +98,11 @@ def test(): String {
             })
             .collect();
 
-        println!("List-specific errors found: {:?}", list_errors);
+        println!("List-specific errors found: {list_errors:?}");
 
         assert!(
             list_errors.is_empty(),
-            "Empty list with type hint should not have list-specific errors, but got: {:?}",
-            list_errors
+            "Empty list with type hint should not have list-specific errors, but got: {list_errors:?}"
         );
     }
 }
@@ -133,8 +131,7 @@ def test(): Integer {
 
         assert!(
             list_errors.is_empty(),
-            "Homogeneous list should not have list-specific errors, but got: {:?}",
-            list_errors
+            "Homogeneous list should not have list-specific errors, but got: {list_errors:?}"
         );
     }
 }
@@ -160,8 +157,7 @@ def test(): Integer {
             e,
             TypeError::MixedListElements { .. }
         )),
-        "Should have MixedListElements error, but got: {:?}",
-        errors
+        "Should have MixedListElements error, but got: {errors:?}"
     );
 }
 
@@ -193,8 +189,7 @@ def test(): Integer {
 
         assert!(
             list_errors.is_empty(),
-            "Type hint validation with compatible types should not error, but got: {:?}",
-            list_errors
+            "Type hint validation with compatible types should not error, but got: {list_errors:?}"
         );
     }
 }
@@ -218,8 +213,7 @@ def test(): Integer {
             e,
             TypeError::TypeMismatch { .. } | TypeError::TraitNotImplemented { .. }
         )),
-        "Should have TypeMismatch or TraitNotImplemented error for hint validation, but got: {:?}",
-        errors
+        "Should have TypeMismatch or TraitNotImplemented error for hint validation, but got: {errors:?}"
     );
 }
 
@@ -247,8 +241,7 @@ def test(): Integer {
 
         assert!(
             list_errors.is_empty(),
-            "Nested list literals should work with proper type hints, but got: {:?}",
-            list_errors
+            "Nested list literals should work with proper type hints, but got: {list_errors:?}"
         );
     }
 }
@@ -271,8 +264,7 @@ def test(): Integer {
             e,
             TypeError::CannotInferListType { .. }
         )),
-        "Should have CannotInferListType error for nested empty list, but got: {:?}",
-        errors
+        "Should have CannotInferListType error for nested empty list, but got: {errors:?}"
     );
 }
 
@@ -299,8 +291,7 @@ def test(): Integer {
 
         assert!(
             list_errors.is_empty(),
-            "Empty list with trait type hint should not have CannotInferListType error, but got: {:?}",
-            list_errors
+            "Empty list with trait type hint should not have CannotInferListType error, but got: {list_errors:?}"
         );
     }
 }
@@ -332,8 +323,7 @@ def test(): Integer {
     let error_msg = format!("{}", list_error.unwrap());
     assert!(
         error_msg.contains("Cannot infer type"),
-        "Error message should mention type inference: {}",
-        error_msg
+        "Error message should mention type inference: {error_msg}"
     );
 }
 
@@ -360,7 +350,6 @@ def test(): Integer {
     let error_msg = format!("{}", list_error.unwrap());
     assert!(
         error_msg.contains("incompatible types"),
-        "Error message should mention incompatible types: {}",
-        error_msg
+        "Error message should mention incompatible types: {error_msg}"
     );
 }

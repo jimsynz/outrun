@@ -123,7 +123,7 @@ fn load_precompiled_syntax_set() -> syntect::parsing::SyntaxSet {
         const SYNTAX_DATA: &[u8] = include_bytes!("../outrun_syntax.dump");
         match syntect::dumps::from_uncompressed_data(SYNTAX_DATA) {
             Ok(syntax_set) => return syntax_set,
-            Err(e) => eprintln!("Warning: Failed to load embedded syntax: {}", e),
+            Err(e) => eprintln!("Warning: Failed to load embedded syntax: {e}"),
         }
     }
 
@@ -136,9 +136,9 @@ fn load_precompiled_syntax_set() -> syntect::parsing::SyntaxSet {
             match std::fs::read(dump_path) {
                 Ok(data) => match syntect::dumps::from_uncompressed_data(&data) {
                     Ok(syntax_set) => return syntax_set,
-                    Err(e) => eprintln!("Warning: Failed to parse pre-compiled syntax: {}", e),
+                    Err(e) => eprintln!("Warning: Failed to parse pre-compiled syntax: {e}"),
                 },
-                Err(e) => eprintln!("Warning: Failed to read pre-compiled syntax file: {}", e),
+                Err(e) => eprintln!("Warning: Failed to read pre-compiled syntax file: {e}"),
             }
         }
     }
@@ -163,12 +163,12 @@ fn handle_parse_command(files: Vec<PathBuf>) {
         match parse_single_file(&file_path) {
             Ok(()) => {
                 if multiple_files {
-                    println!("✅ {}", display_name);
+                    println!("✅ {display_name}");
                 }
             }
             Err(e) => {
                 // Use miette's beautiful error reporting
-                eprintln!("{:?}", e);
+                eprintln!("{e:?}");
                 success = false;
             }
         }
@@ -210,13 +210,13 @@ fn parse_single_file(file_path: &PathBuf) -> Result<()> {
     // Print any diagnostics (errors, warnings, info) with beautiful formatting
     if diagnostics.has_diagnostics() {
         for report in diagnostics.create_reports_with_filename(&source_name) {
-            eprintln!("{:?}", report);
+            eprintln!("{report:?}");
         }
 
         // Print summary
         let summary = diagnostics.summary();
         if summary.total > 0 {
-            eprintln!("\n📊 Diagnostics Summary: {}", summary);
+            eprintln!("\n📊 Diagnostics Summary: {summary}");
         }
 
         // Return error if there were actual errors (not just warnings/info)
@@ -264,8 +264,8 @@ fn typecheck_core_library() -> Result<()> {
                 println!("\n📋 CORE LIBRARY TYPED AST DEBUG:");
                 println!("{}", "-".repeat(40));
                 for (filename, typed_program) in &result.typed_programs {
-                    println!("\n🗂️ File: {}", filename);
-                    println!("{:#?}", typed_program);
+                    println!("\n🗂️ File: {filename}");
+                    println!("{typed_program:#?}");
                 }
             }
 
@@ -284,7 +284,7 @@ fn typecheck_core_library() -> Result<()> {
             println!("{}", "-".repeat(40));
 
             for error in &errors {
-                eprintln!("{:?}", error);
+                eprintln!("{error:?}");
                 eprintln!();
             }
 
@@ -304,7 +304,7 @@ fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
                 println!("✅ Core library type checking completed successfully");
             }
             Err(e) => {
-                eprintln!("{:?}", e);
+                eprintln!("{e:?}");
                 process::exit(1);
             }
         }
@@ -329,12 +329,12 @@ fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
         match typecheck_single_file(&file_path) {
             Ok(()) => {
                 if multiple_files {
-                    println!("✅ {}", display_name);
+                    println!("✅ {display_name}");
                 }
             }
             Err(e) => {
                 // Use miette's beautiful error reporting
-                eprintln!("{:?}", e);
+                eprintln!("{e:?}");
                 success = false;
             }
         }
@@ -374,19 +374,19 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
         parse_program_with_diagnostics_and_source(&source, Some(source_name.clone()));
 
     // Print parsing results
-    println!("🔍 PARSING RESULTS for {}", source_name);
+    println!("🔍 PARSING RESULTS for {source_name}");
     println!("{}", "=".repeat(60));
 
     // Print any diagnostics (errors, warnings, info) with beautiful formatting
     if diagnostics.has_diagnostics() {
         for report in diagnostics.create_reports_with_filename(&source_name) {
-            eprintln!("{:?}", report);
+            eprintln!("{report:?}");
         }
 
         // Print summary
         let summary = diagnostics.summary();
         if summary.total > 0 {
-            eprintln!("\n📊 Parsing Diagnostics Summary: {}", summary);
+            eprintln!("\n📊 Parsing Diagnostics Summary: {summary}");
         }
 
         // Return error if there were actual errors (not just warnings/info)
@@ -416,16 +416,16 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
                 println!("✅ Type checking successful!");
                 println!("\n📋 TYPED AST DEBUG:");
                 println!("{}", "-".repeat(40));
-                println!("{:#?}", typed_program);
+                println!("{typed_program:#?}");
             }
             Err(error_report) => {
                 let summary = error_report.error_summary();
-                println!("❌ Type checking failed: {}", summary);
+                println!("❌ Type checking failed: {summary}");
                 println!("{}", "-".repeat(40));
 
                 // Display each error individually with beautiful miette formatting
                 for report in error_report.create_individual_reports() {
-                    eprintln!("{:?}", report);
+                    eprintln!("{report:?}");
                     eprintln!(); // Add spacing between errors
                 }
 
@@ -463,12 +463,12 @@ fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>
     match ReplSession::with_config(config) {
         Ok(mut session) => {
             if let Err(e) = session.run() {
-                eprintln!("REPL error: {:?}", e);
+                eprintln!("REPL error: {e:?}");
                 process::exit(1);
             }
         }
         Err(e) => {
-            eprintln!("Failed to start REPL: {:?}", e);
+            eprintln!("Failed to start REPL: {e:?}");
             process::exit(1);
         }
     }

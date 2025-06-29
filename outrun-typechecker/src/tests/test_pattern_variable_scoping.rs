@@ -35,13 +35,10 @@ impl MyTrait for MyStruct {
                 .any(|msg| msg.contains("Undefined variable") && msg.contains("x"));
 
             if has_undefined_variable_x {
-                panic!(
-                    "Variable 'x' from let pattern not registered in scope: {:?}",
-                    errors
-                );
+                panic!("Variable 'x' from let pattern not registered in scope: {errors:?}");
             } else {
                 // Other errors are OK for this test - we just care about variable scoping
-                println!("Other errors found (not variable scoping): {:?}", errors);
+                println!("Other errors found (not variable scoping): {errors:?}");
             }
         }
     }

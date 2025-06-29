@@ -10,7 +10,7 @@ use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
     parse_program(source).unwrap_or_else(|e| {
-        panic!("Failed to parse test program: {:?}\nSource: {}", e, source);
+        panic!("Failed to parse test program: {e:?}\nSource: {source}");
     })
 }
 
@@ -26,7 +26,7 @@ fn test_integer_raw_text_preservation() {
     ];
 
     for (input, expected_raw) in test_cases {
-        let source = format!("def test(): Integer {{ {} }}", input);
+        let source = format!("def test(): Integer {{ {input} }}");
         let program = create_program_from_source(&source);
         let mut collection = ProgramCollection::from_core_library();
         collection.add_program("test.outrun".to_string(), program, source.clone());
@@ -71,13 +71,13 @@ fn test_integer_raw_text_preservation() {
                             panic!("Expected integer format details");
                         }
                     } else {
-                        panic!("Expected literal format info for input: {}", input);
+                        panic!("Expected literal format info for input: {input}");
                     }
                 } else {
-                    panic!("Expected debug info for input: {}", input);
+                    panic!("Expected debug info for input: {input}");
                 }
             } else {
-                panic!("Expected expression statement for input: {}", input);
+                panic!("Expected expression statement for input: {input}");
             }
         }
     }
@@ -94,7 +94,7 @@ fn test_float_raw_text_preservation() {
     ];
 
     for (input, expected_raw) in test_cases {
-        let source = format!("def test(): Float {{ {} }}", input);
+        let source = format!("def test(): Float {{ {input} }}");
         let program = create_program_from_source(&source);
         let mut collection = ProgramCollection::from_core_library();
         collection.add_program("test.outrun".to_string(), program, source.clone());
@@ -139,13 +139,13 @@ fn test_float_raw_text_preservation() {
                             panic!("Expected float format details");
                         }
                     } else {
-                        panic!("Expected literal format info for input: {}", input);
+                        panic!("Expected literal format info for input: {input}");
                     }
                 } else {
-                    panic!("Expected debug info for input: {}", input);
+                    panic!("Expected debug info for input: {input}");
                 }
             } else {
-                panic!("Expected expression statement for input: {}", input);
+                panic!("Expected expression statement for input: {input}");
             }
         }
     }
@@ -160,12 +160,11 @@ fn test_parser_source_reconstruction_with_raw_text() {
 
     for input in test_cases {
         let result = parse_program(input).unwrap();
-        let reconstructed = format!("{}", result);
+        let reconstructed = format!("{result}");
 
         assert_eq!(
             reconstructed, input,
-            "Source reconstruction failed for '{}': expected '{}', got '{}'",
-            input, input, reconstructed
+            "Source reconstruction failed for '{input}': expected '{input}', got '{reconstructed}'"
         );
     }
 }

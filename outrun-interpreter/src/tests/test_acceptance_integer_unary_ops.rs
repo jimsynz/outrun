@@ -28,8 +28,8 @@ fn test_debug_simple_unary() {
     println!("Testing --42 as expression...");
     let result = harness.evaluate("--42");
     match result {
-        Ok(value) => println!("--42 as expression works: {:?}", value),
-        Err(e) => println!("--42 as expression fails: {}", e),
+        Ok(value) => println!("--42 as expression works: {value:?}"),
+        Err(e) => println!("--42 as expression fails: {e}"),
     }
 
     // Test the failing case as let binding
@@ -37,7 +37,7 @@ fn test_debug_simple_unary() {
     let result = harness.execute_let_binding("let result3 = --42");
     match result {
         Ok(_) => println!("--42 as let binding works!"),
-        Err(e) => println!("--42 as let binding fails: {}", e),
+        Err(e) => println!("--42 as let binding fails: {e}"),
     }
 
     // Test if simple let binding with unary minus works (no double minus)
@@ -45,7 +45,7 @@ fn test_debug_simple_unary() {
     let result = harness.execute_let_binding("let result_simple = -42");
     match result {
         Ok(_) => println!("-42 as let binding works!"),
-        Err(e) => println!("-42 as let binding fails: {}", e),
+        Err(e) => println!("-42 as let binding fails: {e}"),
     }
 }
 

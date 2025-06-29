@@ -60,7 +60,7 @@ fn test_if_else_with_literals_typed_ast() {
                     );
                 }
                 TypedExpressionKind::Placeholder(msg) => {
-                    panic!("Expected typed if expression, got placeholder: {}", msg);
+                    panic!("Expected typed if expression, got placeholder: {msg}");
                 }
                 _ => {
                     panic!("Expected if expression, got: {:?}", expr.kind);
@@ -118,7 +118,7 @@ fn test_if_without_else_compilation_success() {
                     println!("✓ If without else successfully compiled with Default trait");
                 }
                 TypedExpressionKind::Placeholder(msg) => {
-                    panic!("Expected typed if expression, got placeholder: {}", msg);
+                    panic!("Expected typed if expression, got placeholder: {msg}");
                 }
                 _ => {
                     panic!("Expected if expression, got: {:?}", expr.kind);
@@ -171,7 +171,7 @@ fn test_if_else_with_string_literals() {
                     println!("✓ If-else with string literals successfully compiled");
                 }
                 TypedExpressionKind::Placeholder(msg) => {
-                    panic!("Expected typed if expression, got placeholder: {}", msg);
+                    panic!("Expected typed if expression, got placeholder: {msg}");
                 }
                 _ => {
                     panic!("Expected if expression, got: {:?}", expr.kind);
@@ -208,14 +208,13 @@ fn test_if_else_with_incompatible_types_failure() {
     if let Err(errors) = result {
         let error_messages = errors
             .iter()
-            .map(|e| format!("{}", e))
+            .map(|e| format!("{e}"))
             .collect::<Vec<_>>()
             .join(" ");
         let error_lower = error_messages.to_lowercase();
         assert!(
             error_lower.contains("type mismatch") || error_lower.contains("typemismatch"),
-            "Should mention type mismatch, got: {}",
-            error_messages
+            "Should mention type mismatch, got: {error_messages}"
         );
     }
 }
@@ -244,13 +243,12 @@ fn test_if_without_else_with_non_default_type_failure() {
     if let Err(errors) = result {
         let error_messages = errors
             .iter()
-            .map(|e| format!("{}", e))
+            .map(|e| format!("{e}"))
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
             error_messages.contains("Default") || error_messages.contains("TraitNotImplemented"),
-            "Should mention Default trait requirement, got: {}",
-            error_messages
+            "Should mention Default trait requirement, got: {error_messages}"
         );
     }
 }
@@ -305,8 +303,7 @@ fn test_nested_if_expressions() {
                 }
                 TypedExpressionKind::Placeholder(msg) => {
                     println!(
-                        "If expression still a placeholder: {} - expected until full integration",
-                        msg
+                        "If expression still a placeholder: {msg} - expected until full integration"
                     );
                 }
                 _ => {

@@ -219,7 +219,7 @@ fn test_function_definition_display() {
         "def example(name: String): String when String.non_empty?(name) { \"Hello, \" + name }";
     let program = OutrunParser::parse_program(input).unwrap();
 
-    let reconstructed = format!("{}", program);
+    let reconstructed = format!("{program}");
 
     assert!(reconstructed.contains("def example"));
     assert!(reconstructed.contains("name: String"));

@@ -160,8 +160,7 @@ impl DispatchValidator {
                         .is_none()
                     {
                         return Err(crate::error::TypeError::internal(format!(
-                            "Missing dispatch entry for trait {:?} on type {:?}",
-                            trait_id, impl_id
+                            "Missing dispatch entry for trait {trait_id:?} on type {impl_id:?}"
                         )));
                     }
                 }

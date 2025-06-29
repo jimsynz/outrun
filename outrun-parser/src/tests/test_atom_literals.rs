@@ -173,12 +173,12 @@ fn test_parse_quoted_atom_empty() {
 fn test_atom_display_preserves_format() {
     let input1 = ":hello";
     let result1 = parse_program(input1).unwrap();
-    let formatted1 = format!("{}", result1);
+    let formatted1 = format!("{result1}");
     assert_eq!(formatted1, input1);
 
     let input2 = r#":"hello world""#;
     let result2 = parse_program(input2).unwrap();
-    let formatted2 = format!("{}", result2);
+    let formatted2 = format!("{result2}");
     assert_eq!(formatted2, input2);
 }
 

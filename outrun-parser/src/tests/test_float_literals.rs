@@ -176,11 +176,10 @@ fn test_parse_mixed_float_formats() {
                 );
                 assert_eq!(
                     float.format, *expected_format,
-                    "Format mismatch at position {}",
-                    i
+                    "Format mismatch at position {i}"
                 );
             }
-            _ => panic!("Expected expression at position {}", i),
+            _ => panic!("Expected expression at position {i}"),
         }
     }
 }
@@ -288,7 +287,7 @@ fn test_float_edge_cases() {
                     float.value
                 );
             }
-            _ => panic!("Expected expression for input '{}'", input),
+            _ => panic!("Expected expression for input '{input}'"),
         }
     }
 }

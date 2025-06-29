@@ -246,7 +246,7 @@ impl RuntimeAssertions {
         if !assertion_context.can_unify(value, expected_type) {
             return Err(AssertionError::TypeMismatch {
                 expected: expected_type.clone(),
-                actual_value: format!("{:?}", value),
+                actual_value: format!("{value:?}"),
                 context: context.to_string(),
                 span,
             });
@@ -310,7 +310,7 @@ impl RuntimeAssertions {
                     function_name: function_name.to_string(),
                     parameter_name: param_name.clone(),
                     expected: (*expected_type).clone(),
-                    actual_value: format!("{:?}", value),
+                    actual_value: format!("{value:?}"),
                     span,
                 });
             }
@@ -368,7 +368,7 @@ impl RuntimeAssertions {
             return Err(AssertionError::ReturnTypeMismatch {
                 function_name: function_name.to_string(),
                 expected: expected_type.clone(),
-                actual_value: format!("{:?}", return_value),
+                actual_value: format!("{return_value:?}"),
                 span,
             });
         }
@@ -426,7 +426,7 @@ impl RuntimeAssertions {
         if !matches!(condition_value, Value::Boolean(_)) {
             return Err(AssertionError::ControlFlowError {
                 expected: "Boolean".to_string(),
-                actual: format!("{:?}", condition_value),
+                actual: format!("{condition_value:?}"),
                 context: context.to_string(),
                 span,
             });
@@ -457,7 +457,7 @@ impl RuntimeAssertions {
         if !should_match {
             return Err(AssertionError::PatternMatchFailure {
                 pattern_description: pattern_description.to_string(),
-                value_description: format!("{:?}", value),
+                value_description: format!("{value:?}"),
                 span,
             });
         }

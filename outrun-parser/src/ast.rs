@@ -708,7 +708,7 @@ pub enum ExpressionKind {
 impl std::fmt::Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for item in &self.items {
-            write!(f, "{}", item)?;
+            write!(f, "{item}")?;
         }
         Ok(())
     }
@@ -717,29 +717,29 @@ impl std::fmt::Display for Program {
 impl std::fmt::Display for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            ItemKind::Keyword(kw) => write!(f, "{}", kw),
-            ItemKind::Expression(expr) => write!(f, "{}", expr),
-            ItemKind::BooleanLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::IntegerLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::FloatLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::StringLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::AtomLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::SigilLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::ListLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::MapLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::TupleLiteral(lit) => write!(f, "{}", lit),
-            ItemKind::Identifier(id) => write!(f, "{}", id),
-            ItemKind::TypeIdentifier(id) => write!(f, "{}", id),
-            ItemKind::FunctionDefinition(func) => write!(f, "{}", func),
-            ItemKind::ConstDefinition(const_def) => write!(f, "{}", const_def),
-            ItemKind::LetBinding(let_binding) => write!(f, "{}", let_binding),
-            ItemKind::StructDefinition(struct_def) => write!(f, "{}", struct_def),
-            ItemKind::TraitDefinition(trait_def) => write!(f, "{}", trait_def),
-            ItemKind::ImplBlock(impl_block) => write!(f, "{}", impl_block),
-            ItemKind::AliasDefinition(alias_def) => write!(f, "{}", alias_def),
-            ItemKind::ImportDefinition(import_def) => write!(f, "{}", import_def),
-            ItemKind::MacroDefinition(macro_def) => write!(f, "{}", macro_def),
-            ItemKind::Comment(comment) => write!(f, "{}", comment),
+            ItemKind::Keyword(kw) => write!(f, "{kw}"),
+            ItemKind::Expression(expr) => write!(f, "{expr}"),
+            ItemKind::BooleanLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::IntegerLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::FloatLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::StringLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::AtomLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::SigilLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::ListLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::MapLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::TupleLiteral(lit) => write!(f, "{lit}"),
+            ItemKind::Identifier(id) => write!(f, "{id}"),
+            ItemKind::TypeIdentifier(id) => write!(f, "{id}"),
+            ItemKind::FunctionDefinition(func) => write!(f, "{func}"),
+            ItemKind::ConstDefinition(const_def) => write!(f, "{const_def}"),
+            ItemKind::LetBinding(let_binding) => write!(f, "{let_binding}"),
+            ItemKind::StructDefinition(struct_def) => write!(f, "{struct_def}"),
+            ItemKind::TraitDefinition(trait_def) => write!(f, "{trait_def}"),
+            ItemKind::ImplBlock(impl_block) => write!(f, "{impl_block}"),
+            ItemKind::AliasDefinition(alias_def) => write!(f, "{alias_def}"),
+            ItemKind::ImportDefinition(import_def) => write!(f, "{import_def}"),
+            ItemKind::MacroDefinition(macro_def) => write!(f, "{macro_def}"),
+            ItemKind::Comment(comment) => write!(f, "{comment}"),
         }
     }
 }
@@ -768,7 +768,7 @@ impl std::fmt::Display for Keyword {
             KeywordKind::Only => "only",
             KeywordKind::Except => "except",
         };
-        write!(f, "{}", keyword_str)
+        write!(f, "{keyword_str}")
     }
 }
 
@@ -800,14 +800,14 @@ impl std::fmt::Display for StringLiteral {
             StringFormat::Multiline => "\"\"\"",
         };
 
-        write!(f, "{}", quote_str)?;
+        write!(f, "{quote_str}")?;
         for part in &self.parts {
             match part {
-                StringPart::Text { raw_content, .. } => write!(f, "{}", raw_content)?,
-                StringPart::Interpolation { expression, .. } => write!(f, "#{{{}}}", expression)?,
+                StringPart::Text { raw_content, .. } => write!(f, "{raw_content}")?,
+                StringPart::Interpolation { expression, .. } => write!(f, "#{{{expression}}}")?,
             }
         }
-        write!(f, "{}", quote_str)
+        write!(f, "{quote_str}")
     }
 }
 
@@ -831,8 +831,8 @@ impl std::fmt::Display for SigilLiteral {
 impl std::fmt::Display for ListElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ListElement::Expression(expr) => write!(f, "{}", expr),
-            ListElement::Spread(identifier) => write!(f, "..{}", identifier),
+            ListElement::Expression(expr) => write!(f, "{expr}"),
+            ListElement::Spread(identifier) => write!(f, "..{identifier}"),
         }
     }
 }
@@ -844,7 +844,7 @@ impl std::fmt::Display for ListLiteral {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", element)?;
+            write!(f, "{element}")?;
         }
         write!(f, "]")
     }
@@ -857,7 +857,7 @@ impl std::fmt::Display for MapLiteral {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", entry)?;
+            write!(f, "{entry}")?;
         }
         write!(f, "}}")
     }
@@ -866,9 +866,9 @@ impl std::fmt::Display for MapLiteral {
 impl std::fmt::Display for MapEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MapEntry::Assignment { key, value } => write!(f, "{} => {}", key, value),
-            MapEntry::Shorthand { name, value } => write!(f, "{}: {}", name, value),
-            MapEntry::Spread(name) => write!(f, "..{}", name),
+            MapEntry::Assignment { key, value } => write!(f, "{key} => {value}"),
+            MapEntry::Shorthand { name, value } => write!(f, "{name}: {value}"),
+            MapEntry::Spread(name) => write!(f, "..{name}"),
         }
     }
 }
@@ -880,7 +880,7 @@ impl std::fmt::Display for TupleLiteral {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", element)?;
+            write!(f, "{element}")?;
         }
         // Add trailing comma for single-element tuples
         if self.elements.len() == 1 {
@@ -893,9 +893,9 @@ impl std::fmt::Display for TupleLiteral {
 impl std::fmt::Display for StructLiteralField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StructLiteralField::Assignment { name, value } => write!(f, "{}: {}", name, value),
-            StructLiteralField::Shorthand(name) => write!(f, "{}", name),
-            StructLiteralField::Spread(name) => write!(f, "..{}", name),
+            StructLiteralField::Assignment { name, value } => write!(f, "{name}: {value}"),
+            StructLiteralField::Shorthand(name) => write!(f, "{name}"),
+            StructLiteralField::Spread(name) => write!(f, "..{name}"),
         }
     }
 }
@@ -914,7 +914,7 @@ impl std::fmt::Display for StructLiteral {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", field)?;
+            write!(f, "{field}")?;
         }
         write!(f, "}}")
     }
@@ -950,29 +950,29 @@ impl std::fmt::Display for Comment {
 impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            ExpressionKind::Boolean(lit) => write!(f, "{}", lit),
-            ExpressionKind::Integer(lit) => write!(f, "{}", lit),
-            ExpressionKind::Float(lit) => write!(f, "{}", lit),
-            ExpressionKind::String(lit) => write!(f, "{}", lit),
-            ExpressionKind::Atom(lit) => write!(f, "{}", lit),
-            ExpressionKind::Sigil(lit) => write!(f, "{}", lit),
-            ExpressionKind::List(lit) => write!(f, "{}", lit),
-            ExpressionKind::Map(lit) => write!(f, "{}", lit),
-            ExpressionKind::Tuple(lit) => write!(f, "{}", lit),
-            ExpressionKind::Struct(lit) => write!(f, "{}", lit),
-            ExpressionKind::Identifier(id) => write!(f, "{}", id),
-            ExpressionKind::TypeIdentifier(id) => write!(f, "{}", id),
-            ExpressionKind::QualifiedIdentifier(qid) => write!(f, "{}", qid),
-            ExpressionKind::BinaryOp(op) => write!(f, "{}", op),
-            ExpressionKind::UnaryOp(op) => write!(f, "{}", op),
-            ExpressionKind::FieldAccess(access) => write!(f, "{}", access),
-            ExpressionKind::FunctionCall(call) => write!(f, "{}", call),
-            ExpressionKind::IfExpression(if_expr) => write!(f, "{}", if_expr),
-            ExpressionKind::CaseExpression(case_expr) => write!(f, "{}", case_expr),
-            ExpressionKind::MacroInjection(injection) => write!(f, "{}", injection),
-            ExpressionKind::AnonymousFunction(anon_fn) => write!(f, "{}", anon_fn),
-            ExpressionKind::FunctionCapture(capture) => write!(f, "{}", capture),
-            ExpressionKind::Parenthesized(expr) => write!(f, "({})", expr),
+            ExpressionKind::Boolean(lit) => write!(f, "{lit}"),
+            ExpressionKind::Integer(lit) => write!(f, "{lit}"),
+            ExpressionKind::Float(lit) => write!(f, "{lit}"),
+            ExpressionKind::String(lit) => write!(f, "{lit}"),
+            ExpressionKind::Atom(lit) => write!(f, "{lit}"),
+            ExpressionKind::Sigil(lit) => write!(f, "{lit}"),
+            ExpressionKind::List(lit) => write!(f, "{lit}"),
+            ExpressionKind::Map(lit) => write!(f, "{lit}"),
+            ExpressionKind::Tuple(lit) => write!(f, "{lit}"),
+            ExpressionKind::Struct(lit) => write!(f, "{lit}"),
+            ExpressionKind::Identifier(id) => write!(f, "{id}"),
+            ExpressionKind::TypeIdentifier(id) => write!(f, "{id}"),
+            ExpressionKind::QualifiedIdentifier(qid) => write!(f, "{qid}"),
+            ExpressionKind::BinaryOp(op) => write!(f, "{op}"),
+            ExpressionKind::UnaryOp(op) => write!(f, "{op}"),
+            ExpressionKind::FieldAccess(access) => write!(f, "{access}"),
+            ExpressionKind::FunctionCall(call) => write!(f, "{call}"),
+            ExpressionKind::IfExpression(if_expr) => write!(f, "{if_expr}"),
+            ExpressionKind::CaseExpression(case_expr) => write!(f, "{case_expr}"),
+            ExpressionKind::MacroInjection(injection) => write!(f, "{injection}"),
+            ExpressionKind::AnonymousFunction(anon_fn) => write!(f, "{anon_fn}"),
+            ExpressionKind::FunctionCapture(capture) => write!(f, "{capture}"),
+            ExpressionKind::Parenthesized(expr) => write!(f, "({expr})"),
         }
     }
 }
@@ -1032,7 +1032,7 @@ impl std::fmt::Display for FunctionCall {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", arg)?;
+            write!(f, "{arg}")?;
         }
         write!(f, ")")
     }
@@ -1041,9 +1041,9 @@ impl std::fmt::Display for FunctionCall {
 impl std::fmt::Display for FunctionPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FunctionPath::Simple { name } => write!(f, "{}", name),
-            FunctionPath::Qualified { module, name } => write!(f, "{}.{}", module, name),
-            FunctionPath::Expression { expression } => write!(f, "{}", expression),
+            FunctionPath::Simple { name } => write!(f, "{name}"),
+            FunctionPath::Qualified { module, name } => write!(f, "{module}.{name}"),
+            FunctionPath::Expression { expression } => write!(f, "{expression}"),
         }
     }
 }
@@ -1060,11 +1060,11 @@ impl std::fmt::Display for Argument {
                 match format {
                     ArgumentFormat::Shorthand => {
                         // For shorthand, just display the identifier (no colon)
-                        write!(f, "{}", name)
+                        write!(f, "{name}")
                     }
                     ArgumentFormat::Explicit => {
                         // For explicit, display name: expression
-                        write!(f, "{}: {}", name, expression)
+                        write!(f, "{name}: {expression}")
                     }
                 }
             }
@@ -1075,7 +1075,7 @@ impl std::fmt::Display for Argument {
                     SpreadKind::Strict => "..",
                     SpreadKind::Lenient => "..?",
                 };
-                write!(f, "{}{}", spread_op, expression)
+                write!(f, "{spread_op}{expression}")
             }
         }
     }
@@ -1085,7 +1085,7 @@ impl std::fmt::Display for FunctionDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Display attributes
         for attr in &self.attributes {
-            writeln!(f, "{}", attr)?;
+            writeln!(f, "{attr}")?;
         }
 
         // Display function visibility
@@ -1103,7 +1103,7 @@ impl std::fmt::Display for FunctionDefinition {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
         }
         write!(f, ")")?;
 
@@ -1112,7 +1112,7 @@ impl std::fmt::Display for FunctionDefinition {
 
         // Guard clause
         if let Some(guard) = &self.guard {
-            write!(f, " {}", guard)?;
+            write!(f, " {guard}")?;
         }
 
         // Body
@@ -1136,10 +1136,10 @@ impl std::fmt::Display for TypeAnnotation {
                     if i > 0 {
                         write!(f, ".")?;
                     }
-                    write!(f, "{}", part)?;
+                    write!(f, "{part}")?;
                 }
                 if let Some(generic_args) = generic_args {
-                    write!(f, "{}", generic_args)?;
+                    write!(f, "{generic_args}")?;
                 }
                 Ok(())
             }
@@ -1149,7 +1149,7 @@ impl std::fmt::Display for TypeAnnotation {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", type_annotation)?;
+                    write!(f, "{type_annotation}")?;
                 }
                 write!(f, ")")
             }
@@ -1163,9 +1163,9 @@ impl std::fmt::Display for TypeAnnotation {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", param)?;
+                    write!(f, "{param}")?;
                 }
-                write!(f, ") -> {}>", return_type)
+                write!(f, ") -> {return_type}>")
             }
         }
     }
@@ -1187,7 +1187,7 @@ impl std::fmt::Display for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{")?;
         for statement in &self.statements {
-            writeln!(f, "    {}", statement)?;
+            writeln!(f, "    {statement}")?;
         }
         write!(f, "}}")
     }
@@ -1196,8 +1196,8 @@ impl std::fmt::Display for Block {
 impl std::fmt::Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            StatementKind::Expression(expr) => write!(f, "{}", expr),
-            StatementKind::LetBinding(let_binding) => write!(f, "{}", let_binding),
+            StatementKind::Expression(expr) => write!(f, "{expr}"),
+            StatementKind::LetBinding(let_binding) => write!(f, "{let_binding}"),
         }
     }
 }
@@ -1205,11 +1205,11 @@ impl std::fmt::Display for Statement {
 impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Boolean(boolean) => write!(f, "{}", boolean),
-            Literal::Integer(integer) => write!(f, "{}", integer),
-            Literal::Float(float) => write!(f, "{}", float),
-            Literal::String(string) => write!(f, "{}", string),
-            Literal::Atom(atom) => write!(f, "{}", atom),
+            Literal::Boolean(boolean) => write!(f, "{boolean}"),
+            Literal::Integer(integer) => write!(f, "{integer}"),
+            Literal::Float(float) => write!(f, "{float}"),
+            Literal::String(string) => write!(f, "{string}"),
+            Literal::Atom(atom) => write!(f, "{atom}"),
         }
     }
 }
@@ -1233,11 +1233,11 @@ impl std::fmt::Display for StructFieldPattern {
 impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Pattern::Identifier(identifier) => write!(f, "{}", identifier),
-            Pattern::Literal(literal_pattern) => write!(f, "{}", literal_pattern),
-            Pattern::Tuple(tuple) => write!(f, "{}", tuple),
-            Pattern::Struct(struct_pattern) => write!(f, "{}", struct_pattern),
-            Pattern::List(list) => write!(f, "{}", list),
+            Pattern::Identifier(identifier) => write!(f, "{identifier}"),
+            Pattern::Literal(literal_pattern) => write!(f, "{literal_pattern}"),
+            Pattern::Tuple(tuple) => write!(f, "{tuple}"),
+            Pattern::Struct(struct_pattern) => write!(f, "{struct_pattern}"),
+            Pattern::List(list) => write!(f, "{list}"),
         }
     }
 }
@@ -1249,7 +1249,7 @@ impl std::fmt::Display for TuplePattern {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", element)?;
+            write!(f, "{element}")?;
         }
         write!(f, ")")
     }
@@ -1269,7 +1269,7 @@ impl std::fmt::Display for StructPattern {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", field)?;
+            write!(f, "{field}")?;
         }
         write!(f, " }}")
     }
@@ -1282,13 +1282,13 @@ impl std::fmt::Display for ListPattern {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", element)?;
+            write!(f, "{element}")?;
         }
         if let Some(rest) = &self.rest {
             if !self.elements.is_empty() {
                 write!(f, ", ")?;
             }
-            write!(f, "..{}", rest)?;
+            write!(f, "..{rest}")?;
         }
         write!(f, "]")
     }
@@ -1310,7 +1310,7 @@ impl std::fmt::Display for LetBinding {
 
         // Add type annotation if present
         if let Some(type_annotation) = &self.type_annotation {
-            write!(f, ": {}", type_annotation)?;
+            write!(f, ": {type_annotation}")?;
         }
 
         write!(f, " = {}", self.expression)
@@ -1322,7 +1322,7 @@ impl std::fmt::Display for IfExpression {
         write!(f, "if {} {}", self.condition, self.then_block)?;
 
         if let Some(else_block) = &self.else_block {
-            write!(f, " else {}", else_block)?;
+            write!(f, " else {else_block}")?;
         }
 
         Ok(())
@@ -1334,7 +1334,7 @@ impl std::fmt::Display for CaseExpression {
         writeln!(f, "case {} {{", self.expression)?;
 
         for clause in &self.clauses {
-            writeln!(f, "    {}", clause)?;
+            writeln!(f, "    {clause}")?;
         }
 
         write!(f, "}}")
@@ -1346,7 +1346,7 @@ impl std::fmt::Display for CaseClause {
         write!(f, "{}", self.pattern)?;
 
         if let Some(guard) = &self.guard {
-            write!(f, " when {}", guard)?;
+            write!(f, " when {guard}")?;
         }
 
         write!(f, " -> {}", self.result)
@@ -1356,8 +1356,8 @@ impl std::fmt::Display for CaseClause {
 impl std::fmt::Display for CaseResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CaseResult::Block(block) => write!(f, "{}", block),
-            CaseResult::Expression(expr) => write!(f, "{}", expr),
+            CaseResult::Block(block) => write!(f, "{block}"),
+            CaseResult::Expression(expr) => write!(f, "{expr}"),
         }
     }
 }
@@ -1512,23 +1512,23 @@ impl std::fmt::Display for StructDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Display attributes
         for attr in &self.attributes {
-            writeln!(f, "{}", attr)?;
+            writeln!(f, "{attr}")?;
         }
 
         write!(f, "struct {}", self.name_as_string())?;
         if let Some(generics) = &self.generic_params {
-            write!(f, "{}", generics)?;
+            write!(f, "{generics}")?;
         }
         write!(f, "(")?;
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", field)?;
+            write!(f, "{field}")?;
         }
         write!(f, ") {{")?;
         for method in &self.methods {
-            write!(f, "\n    {}", method)?;
+            write!(f, "\n    {method}")?;
         }
         write!(f, "\n}}")
     }
@@ -1544,19 +1544,19 @@ impl std::fmt::Display for TraitDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Display attributes
         for attr in &self.attributes {
-            writeln!(f, "{}", attr)?;
+            writeln!(f, "{attr}")?;
         }
 
         write!(f, "trait {}", self.name_as_string())?;
         if let Some(generics) = &self.generic_params {
-            write!(f, "{}", generics)?;
+            write!(f, "{generics}")?;
         }
         if let Some(constraints) = &self.constraints {
-            write!(f, " when {}", constraints)?;
+            write!(f, " when {constraints}")?;
         }
         write!(f, " {{")?;
         for function in &self.functions {
-            write!(f, "\n    {}", function)?;
+            write!(f, "\n    {function}")?;
         }
         write!(f, "\n}}")
     }
@@ -1565,9 +1565,9 @@ impl std::fmt::Display for TraitDefinition {
 impl std::fmt::Display for TraitFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TraitFunction::Signature(sig) => write!(f, "{}", sig),
-            TraitFunction::Definition(def) => write!(f, "{}", def),
-            TraitFunction::StaticDefinition(static_def) => write!(f, "{}", static_def),
+            TraitFunction::Signature(sig) => write!(f, "{sig}"),
+            TraitFunction::Definition(def) => write!(f, "{def}"),
+            TraitFunction::StaticDefinition(static_def) => write!(f, "{static_def}"),
         }
     }
 }
@@ -1580,12 +1580,12 @@ impl std::fmt::Display for FunctionSignature {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
         }
         write!(f, ")")?;
         write!(f, ": {}", self.return_type)?;
         if let Some(guard) = &self.guard {
-            write!(f, " {}", guard)?;
+            write!(f, " {guard}")?;
         }
         Ok(())
     }
@@ -1595,7 +1595,7 @@ impl std::fmt::Display for StaticFunctionDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Display attributes
         for attr in &self.attributes {
-            writeln!(f, "{}", attr)?;
+            writeln!(f, "{attr}")?;
         }
 
         write!(f, "defs {}", self.name)?;
@@ -1604,7 +1604,7 @@ impl std::fmt::Display for StaticFunctionDefinition {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
         }
         write!(f, ")")?;
         write!(f, ": {}", self.return_type)?;
@@ -1616,15 +1616,15 @@ impl std::fmt::Display for ImplBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "impl")?;
         if let Some(generics) = &self.generic_params {
-            write!(f, "{}", generics)?;
+            write!(f, "{generics}")?;
         }
         write!(f, " {} for {}", self.trait_spec, self.type_spec)?;
         if let Some(constraints) = &self.constraints {
-            write!(f, " when {}", constraints)?;
+            write!(f, " when {constraints}")?;
         }
         write!(f, " {{")?;
         for method in &self.methods {
-            write!(f, "\n    {}", method)?;
+            write!(f, "\n    {method}")?;
         }
         write!(f, "\n}}")
     }
@@ -1637,7 +1637,7 @@ impl std::fmt::Display for GenericParams {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
         }
         write!(f, ">")
     }
@@ -1656,7 +1656,7 @@ impl std::fmt::Display for GenericArgs {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", arg)?;
+            write!(f, "{arg}")?;
         }
         write!(f, ">")
     }
@@ -1668,10 +1668,10 @@ impl std::fmt::Display for TypeSpec {
             if i > 0 {
                 write!(f, ".")?;
             }
-            write!(f, "{}", part)?;
+            write!(f, "{part}")?;
         }
         if let Some(args) = &self.generic_args {
-            write!(f, "{}", args)?;
+            write!(f, "{args}")?;
         }
         Ok(())
     }
@@ -1691,24 +1691,24 @@ impl std::fmt::Display for ConstraintExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConstraintExpression::And { left, right, .. } => {
-                write!(f, "{} && {}", left, right)
+                write!(f, "{left} && {right}")
             }
             ConstraintExpression::Constraint {
                 type_param,
                 trait_bound,
                 ..
             } => {
-                write!(f, "{}: ", type_param)?;
+                write!(f, "{type_param}: ")?;
                 for (i, bound) in trait_bound.iter().enumerate() {
                     if i > 0 {
                         write!(f, ".")?;
                     }
-                    write!(f, "{}", bound)?;
+                    write!(f, "{bound}")?;
                 }
                 Ok(())
             }
             ConstraintExpression::Parenthesized { expression, .. } => {
-                write!(f, "({})", expression)
+                write!(f, "({expression})")
             }
         }
     }
@@ -1781,7 +1781,7 @@ impl std::fmt::Display for AliasDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "alias {}", self.path)?;
         if let Some(alias_name) = &self.alias_name {
-            write!(f, " as {}", alias_name)?;
+            write!(f, " as {alias_name}")?;
         }
         Ok(())
     }
@@ -1795,7 +1795,7 @@ impl std::fmt::Display for AliasPath {
                     if i > 0 {
                         write!(f, ".")?;
                     }
-                    write!(f, "{}", part)?;
+                    write!(f, "{part}")?;
                 }
                 Ok(())
             }
@@ -1806,14 +1806,14 @@ impl std::fmt::Display for AliasPath {
                     if i > 0 {
                         write!(f, ".")?;
                     }
-                    write!(f, "{}", part)?;
+                    write!(f, "{part}")?;
                 }
                 write!(f, ".{{")?;
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", item)?;
+                    write!(f, "{item}")?;
                 }
                 write!(f, "}}")
             }
@@ -1825,7 +1825,7 @@ impl std::fmt::Display for AliasBraceItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(alias_name) = &self.alias_name {
-            write!(f, " as {}", alias_name)?;
+            write!(f, " as {alias_name}")?;
         }
         Ok(())
     }
@@ -1838,11 +1838,11 @@ impl std::fmt::Display for ImportDefinition {
             if i > 0 {
                 write!(f, ".")?;
             }
-            write!(f, "{}", part)?;
+            write!(f, "{part}")?;
         }
         for clause in &self.clauses {
             write!(f, ", ")?;
-            write!(f, "{}", clause)?;
+            write!(f, "{clause}")?;
         }
         Ok(())
     }
@@ -1857,7 +1857,7 @@ impl std::fmt::Display for ImportClause {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", func)?;
+                    write!(f, "{func}")?;
                 }
                 write!(f, "]")
             }
@@ -1867,7 +1867,7 @@ impl std::fmt::Display for ImportClause {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", func)?;
+                    write!(f, "{func}")?;
                 }
                 write!(f, "]")
             }
@@ -1959,7 +1959,7 @@ impl std::fmt::Display for MacroDefinition {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
         }
         write!(f, ") {}", self.body)
     }
@@ -1980,7 +1980,7 @@ impl std::fmt::Display for AnonymousFunction {
             if i > 0 {
                 write!(f, " ")?; // Separate multiple clauses
             }
-            write!(f, "{}", clause)?;
+            write!(f, "{clause}")?;
         }
         write!(f, " }}")
     }
@@ -1990,7 +1990,7 @@ impl std::fmt::Display for AnonymousClause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.parameters)?;
         if let Some(guard) = &self.guard {
-            write!(f, " when {}", guard)?;
+            write!(f, " when {guard}")?;
         }
         write!(f, " -> {}", self.body)
     }
@@ -2001,7 +2001,7 @@ impl std::fmt::Display for AnonymousParameters {
         match self {
             AnonymousParameters::None { .. } => write!(f, "()"),
             AnonymousParameters::Single { parameter, .. } => {
-                write!(f, "{}", parameter)
+                write!(f, "{parameter}")
             }
             AnonymousParameters::Multiple { parameters, .. } => {
                 write!(f, "(")?;
@@ -2009,7 +2009,7 @@ impl std::fmt::Display for AnonymousParameters {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", param)?;
+                    write!(f, "{param}")?;
                 }
                 write!(f, ")")
             }
@@ -2020,8 +2020,8 @@ impl std::fmt::Display for AnonymousParameters {
 impl std::fmt::Display for AnonymousBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AnonymousBody::Expression(expr) => write!(f, "{}", expr),
-            AnonymousBody::Block(block) => write!(f, "{}", block),
+            AnonymousBody::Expression(expr) => write!(f, "{expr}"),
+            AnonymousBody::Block(block) => write!(f, "{block}"),
         }
     }
 }
@@ -2034,13 +2034,13 @@ impl std::fmt::Display for FunctionCapture {
                 if i > 0 {
                     write!(f, ".")?;
                 }
-                write!(f, "{}", part)?;
+                write!(f, "{part}")?;
             }
             write!(f, ".")?;
         }
         write!(f, "{}", self.function_name)?;
         if let Some(arity) = self.arity {
-            write!(f, "/{}", arity)?;
+            write!(f, "/{arity}")?;
         }
         Ok(())
     }
@@ -2050,7 +2050,7 @@ impl std::fmt::Display for Attribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "@{}", self.name)?;
         if let Some(args) = &self.args {
-            write!(f, "({})", args)?;
+            write!(f, "({args})")?;
         }
         Ok(())
     }
@@ -2062,7 +2062,7 @@ impl std::fmt::Display for AttributeArgs {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", arg)?;
+            write!(f, "{arg}")?;
         }
         Ok(())
     }

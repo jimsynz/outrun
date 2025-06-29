@@ -6,14 +6,13 @@ fn test_source_reconstruction_integers() {
 
     for input in &inputs {
         let result = parse_program(input).unwrap();
-        let reconstructed = format!("{}", result);
+        let reconstructed = format!("{result}");
 
         let expected = *input; // Now preserves exact original format
 
         assert_eq!(
             reconstructed, expected,
-            "Source reconstruction failed for '{}': expected '{}', got '{}'",
-            input, expected, reconstructed
+            "Source reconstruction failed for '{input}': expected '{expected}', got '{reconstructed}'"
         );
     }
 }
@@ -22,7 +21,7 @@ fn test_source_reconstruction_integers() {
 fn test_source_reconstruction_mixed() {
     let input = "struct true 42 0b1010 MyType false 0o755 my_var 0xFF";
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     let expected = "structtrue420b1010MyTypefalse0o755my_var0xFF"; // Preserves original case
 
@@ -43,21 +42,19 @@ fn test_integer_value_vs_format_preservation() {
                 ExpressionKind::Integer(integer) => {
                     assert_eq!(
                         integer.value, expected_value,
-                        "Value should be {} for input '{}'",
-                        expected_value, input
+                        "Value should be {expected_value} for input '{input}'"
                     );
 
-                    let display = format!("{}", integer);
+                    let display = format!("{integer}");
                     let expected_display = *input; // Now preserves exact original format
                     assert_eq!(
                         display, expected_display,
-                        "Display format should be preserved for input '{}'",
-                        input
+                        "Display format should be preserved for input '{input}'"
                     );
                 }
-                _ => panic!("Expected integer in expression for input '{}'", input),
+                _ => panic!("Expected integer in expression for input '{input}'"),
             },
-            _ => panic!("Expected expression for input '{}'", input),
+            _ => panic!("Expected expression for input '{input}'"),
         }
     }
 }

@@ -260,7 +260,7 @@ where
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", value)?;
+            write!(f, "{value}")?;
             first = false;
         }
         write!(f, "]")
@@ -390,10 +390,10 @@ mod tests {
         assert_eq!(sum_right, 10);
 
         // Test that order matters for non-commutative operations
-        let concat_left = list.fold_left(String::new(), |acc, x| format!("{}{}", acc, x));
+        let concat_left = list.fold_left(String::new(), |acc, x| format!("{acc}{x}"));
         assert_eq!(concat_left, "1234");
 
-        let concat_right = list.fold_right(String::new(), |x, acc| format!("{}{}", x, acc));
+        let concat_right = list.fold_right(String::new(), |x, acc| format!("{x}{acc}"));
         assert_eq!(concat_right, "1234");
     }
 
@@ -450,14 +450,14 @@ mod tests {
     #[test]
     fn test_display() {
         let list = List::from_vec(vec![1, 2, 3]);
-        let display_str = format!("{}", list);
+        let display_str = format!("{list}");
         assert_eq!(display_str, "[1, 2, 3]");
 
         let empty: List<i32> = List::new();
-        assert_eq!(format!("{}", empty), "[]");
+        assert_eq!(format!("{empty}"), "[]");
 
         let singleton = List::singleton(42);
-        assert_eq!(format!("{}", singleton), "[42]");
+        assert_eq!(format!("{singleton}"), "[42]");
     }
 
     #[test]

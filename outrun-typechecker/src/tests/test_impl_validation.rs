@@ -5,7 +5,7 @@ use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
     parse_program(source).unwrap_or_else(|e| {
-        panic!("Failed to parse test program: {:?}\nSource: {}", e, source);
+        panic!("Failed to parse test program: {e:?}\nSource: {source}");
     })
 }
 
@@ -390,7 +390,7 @@ impl UndefinedTrait for MyType {
         Err(errors) => {
             println!("Got {} errors:", errors.len());
             for (i, error) in errors.iter().enumerate() {
-                println!("Error {}: {:?}", i, error);
+                println!("Error {i}: {error:?}");
             }
 
             assert!(!errors.is_empty(), "Expected at least one error");
@@ -446,8 +446,7 @@ impl UndefinedTrait for MyType {
 
             assert!(
                 undefined_trait_error.is_some(),
-                "Expected UndefinedTrait error but got: {:?}",
-                errors
+                "Expected UndefinedTrait error but got: {errors:?}"
             );
 
             // Extract the span and verify it's not (0,0)
@@ -460,13 +459,11 @@ impl UndefinedTrait for MyType {
                 // Verify the span is not empty (0,0)
                 assert!(
                     span.offset() > 0,
-                    "Span offset should not be 0, got: {:?}",
-                    span
+                    "Span offset should not be 0, got: {span:?}"
                 );
                 assert!(
                     !span.is_empty(),
-                    "Span length should not be 0, got: {:?}",
-                    span
+                    "Span length should not be 0, got: {span:?}"
                 );
 
                 // The span should include the trait name, verify it contains "UndefinedTrait"
@@ -480,11 +477,7 @@ impl UndefinedTrait for MyType {
 
                 assert!(
                     span_start <= trait_name_start && span_end >= trait_name_end,
-                    "Span [{}, {}) should include 'UndefinedTrait' at [{}, {})",
-                    span_start,
-                    span_end,
-                    trait_name_start,
-                    trait_name_end
+                    "Span [{span_start}, {span_end}) should include 'UndefinedTrait' at [{trait_name_start}, {trait_name_end})"
                 );
             }
         }

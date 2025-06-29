@@ -37,7 +37,7 @@ fn test_diagnostic_collector_max_errors() {
     let span = Span::new(0, 1);
 
     for i in 0..3 {
-        collector.add_diagnostic(DiagnosticError::syntax_error(format!("Error {}", i), span));
+        collector.add_diagnostic(DiagnosticError::syntax_error(format!("Error {i}"), span));
     }
 
     assert_eq!(collector.total_count(), 2);

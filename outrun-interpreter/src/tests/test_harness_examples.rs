@@ -222,8 +222,8 @@ fn test_list_operations() {
     match harness.assert_evaluates_to("[1, 2, 3]", "[1, 2, 3]") {
         Ok(_) => {}
         Err(e) => {
-            println!("List evaluation error: {:?}", e);
-            panic!("List evaluation failed: {:?}", e);
+            println!("List evaluation error: {e:?}");
+            panic!("List evaluation failed: {e:?}");
         }
     }
     // Skip empty list test for now due to type unification issues

@@ -43,7 +43,7 @@ fn test_spread_operator_display_integration() {
     let input = "let result = [1, 2, ..middle, 3, 4]";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert!(formatted.contains("[1, 2, ..middle, 3, 4]"));
 }
 
@@ -236,7 +236,7 @@ fn test_spread_argument_display() {
     let input = "func(..data, ..?optional, explicit: value)";
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
     assert!(formatted.contains("..data"));
     assert!(formatted.contains("..?optional"));
     assert!(formatted.contains("explicit: value"));

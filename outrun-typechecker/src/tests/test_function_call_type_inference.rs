@@ -49,7 +49,7 @@ fn test_static_trait_function_generic_inference_from_return_type() {
         Err(errors) => {
             println!("❌ Compilation failed with errors:");
             for error in &errors {
-                println!("  - {}", error);
+                println!("  - {error}");
             }
 
             // Check if the error is the specific "Cannot infer generic type parameter" error
@@ -95,7 +95,7 @@ fn test_function_call_without_type_hint_still_works() {
         Err(errors) => {
             println!("Compilation errors (may be expected in test environment):");
             for error in &errors {
-                println!("  - {}", error);
+                println!("  - {error}");
             }
 
             // As long as it's not a generic inference error, the test passes
@@ -144,7 +144,7 @@ fn test_function_call_with_argument_based_inference() {
         Err(errors) => {
             println!("Compilation errors:");
             for error in &errors {
-                println!("  - {}", error);
+                println!("  - {error}");
             }
 
             // Check that we don't have the specific inference error we're trying to fix
@@ -194,7 +194,7 @@ fn test_parameterless_static_function_with_type_hint() {
         Err(errors) => {
             println!("❌ Compilation failed:");
             for error in &errors {
-                println!("  - {}", error);
+                println!("  - {error}");
             }
 
             // This is the key test - if this specific pattern fails, our fix isn't working

@@ -382,7 +382,7 @@ fn test_arithmetic_display_preserves_format() {
 
     for input in test_cases {
         let result = parse_program(input).unwrap();
-        let formatted = format!("{}", result);
-        assert_eq!(formatted, input, "Display format mismatch for: {}", input);
+        let formatted = format!("{result}");
+        assert_eq!(formatted, input, "Display format mismatch for: {input}");
     }
 }

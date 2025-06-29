@@ -74,12 +74,12 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
         }
         ParseError::InvalidKeyword { span, found, .. } => {
             let ast_span = Span::new(span.offset(), span.offset() + span.len());
-            DiagnosticError::syntax_error(format!("Invalid keyword: {}", found), ast_span)
+            DiagnosticError::syntax_error(format!("Invalid keyword: {found}"), ast_span)
         }
         ParseError::InvalidBoolean { span, found, .. } => {
             let ast_span = Span::new(span.offset(), span.offset() + span.len());
             DiagnosticError::invalid_literal(
-                format!("Invalid boolean literal: {}", found),
+                format!("Invalid boolean literal: {found}"),
                 "Use 'true' or 'false'".to_string(),
                 ast_span,
             )
@@ -87,7 +87,7 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
         ParseError::InvalidInteger { span, found, .. } => {
             let ast_span = Span::new(span.offset(), span.offset() + span.len());
             DiagnosticError::invalid_literal(
-                format!("Invalid integer literal: {}", found),
+                format!("Invalid integer literal: {found}"),
                 "Use decimal, binary (0b), octal (0o), or hexadecimal (0x) format".to_string(),
                 ast_span,
             )
@@ -95,7 +95,7 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
         ParseError::InvalidFloat { span, found, .. } => {
             let ast_span = Span::new(span.offset(), span.offset() + span.len());
             DiagnosticError::invalid_literal(
-                format!("Invalid float literal: {}", found),
+                format!("Invalid float literal: {found}"),
                 "Use decimal format like 3.14 or scientific notation like 1.23e-4".to_string(),
                 ast_span,
             )
@@ -103,7 +103,7 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
         ParseError::InvalidStringEscape { span, found, .. } => {
             let ast_span = Span::new(span.offset(), span.offset() + span.len());
             DiagnosticError::invalid_literal(
-                format!("Invalid string escape sequence: {}", found),
+                format!("Invalid string escape sequence: {found}"),
                 "Valid escapes: \\n, \\t, \\r, \\\\, \\\", \\uXXXX".to_string(),
                 ast_span,
             )

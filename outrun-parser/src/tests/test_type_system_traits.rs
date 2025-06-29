@@ -299,15 +299,12 @@ fn test_trait_display_formatting() {
 
     for (input, expected_patterns) in inputs_and_patterns.iter() {
         let program = OutrunParser::parse_program(input).unwrap();
-        let formatted = format!("{}", program);
+        let formatted = format!("{program}");
 
         for pattern in expected_patterns {
             assert!(
                 formatted.contains(pattern),
-                "Display format failed for: {}. Expected pattern '{}' not found in: {}",
-                input,
-                pattern,
-                formatted
+                "Display format failed for: {input}. Expected pattern '{pattern}' not found in: {formatted}"
             );
         }
     }

@@ -244,7 +244,7 @@ fn test_anonymous_function_source_reconstruction() {
     let input = r#"fn { x: Integer -> x + 1 }"#;
 
     let result = parse_program(input).unwrap();
-    let reconstructed = format!("{}", result);
+    let reconstructed = format!("{result}");
 
     assert!(reconstructed.contains("fn { x: Integer -> x + 1 }"));
 }

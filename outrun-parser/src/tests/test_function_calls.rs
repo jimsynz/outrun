@@ -367,13 +367,13 @@ fn test_multiple_function_calls() {
                         FunctionPath::Simple { name } => {
                             assert_eq!(name.name, expected_names[i]);
                         }
-                        _ => panic!("Expected simple function path at position {}", i),
+                        _ => panic!("Expected simple function path at position {i}"),
                     }
                     assert_eq!(call.arguments.len(), expected_arg_counts[i]);
                 }
-                _ => panic!("Expected function call in expression at position {}", i),
+                _ => panic!("Expected function call in expression at position {i}"),
             },
-            _ => panic!("Expected expression at position {}", i),
+            _ => panic!("Expected expression at position {i}"),
         }
     }
 }
@@ -385,7 +385,7 @@ fn test_function_call_display_formatting() {
 
     match &result.items[0].kind {
         ItemKind::Expression(expr) => {
-            let formatted = format!("{}", expr);
+            let formatted = format!("{expr}");
             assert!(formatted.contains("add(left, right: 10)"));
         }
         _ => panic!("Expected expression"),

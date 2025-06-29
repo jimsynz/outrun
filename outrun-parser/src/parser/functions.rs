@@ -748,7 +748,7 @@ impl OutrunParser {
                             miette::SourceSpan::from(
                                 inner_pair.as_span().start()..inner_pair.as_span().end(),
                             ),
-                            format!("Invalid arity number: {}", arity_str),
+                            format!("Invalid arity number: {arity_str}"),
                         )
                     })?);
                 }

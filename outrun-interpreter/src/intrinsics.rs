@@ -726,7 +726,7 @@ impl IntrinsicsHandler {
         if !(0..=63).contains(&rhs) {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "shift amount 0-63".to_string(),
-                found: format!("{}", rhs),
+                found: format!("{rhs}"),
                 span,
             });
         }
@@ -743,7 +743,7 @@ impl IntrinsicsHandler {
         if !(0..=63).contains(&rhs) {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "shift amount 0-63".to_string(),
-                found: format!("{}", rhs),
+                found: format!("{rhs}"),
                 span,
             });
         }
@@ -771,7 +771,7 @@ impl IntrinsicsHandler {
         if exp < 0 {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "non-negative exponent".to_string(),
-                found: format!("{}", exp),
+                found: format!("{exp}"),
                 span,
             });
         }
@@ -803,7 +803,7 @@ impl IntrinsicsHandler {
         if !(2..=36).contains(&radix) {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "radix 2-36".to_string(),
-                found: format!("{}", radix),
+                found: format!("{radix}"),
                 span,
             });
         }
@@ -1303,7 +1303,7 @@ impl IntrinsicsHandler {
     ) -> Result<Value, IntrinsicError> {
         let lhs = self.get_string_arg(arguments, "lhs", span)?;
         let rhs = self.get_string_arg(arguments, "rhs", span)?;
-        Ok(Value::string(format!("{}{}", lhs, rhs)))
+        Ok(Value::string(format!("{lhs}{rhs}")))
     }
 
     // Additional string operations
@@ -1330,7 +1330,7 @@ impl IntrinsicsHandler {
         if start < 0 {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "non-negative start index".to_string(),
-                found: format!("{}", start),
+                found: format!("{start}"),
                 span,
             });
         }
@@ -1362,7 +1362,7 @@ impl IntrinsicsHandler {
         if index < 0 {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "non-negative index".to_string(),
-                found: format!("{}", index),
+                found: format!("{index}"),
                 span,
             });
         }
@@ -1496,7 +1496,7 @@ impl IntrinsicsHandler {
             },
             _ => Err(IntrinsicError::TypeMismatch {
                 expected: "Map".to_string(),
-                found: format!("{:?}", map),
+                found: format!("{map:?}"),
                 span,
             }),
         }
@@ -1546,7 +1546,7 @@ impl IntrinsicsHandler {
             }
             _ => Err(IntrinsicError::TypeMismatch {
                 expected: "Map".to_string(),
-                found: format!("{:?}", map),
+                found: format!("{map:?}"),
                 span,
             }),
         }
@@ -1589,7 +1589,7 @@ impl IntrinsicsHandler {
             }
             _ => Err(IntrinsicError::TypeMismatch {
                 expected: "Map".to_string(),
-                found: format!("{:?}", map),
+                found: format!("{map:?}"),
                 span,
             }),
         }
@@ -1612,7 +1612,7 @@ impl IntrinsicsHandler {
             Value::Map { entries, .. } => Ok(Value::integer(entries.len() as i64)),
             _ => Err(IntrinsicError::TypeMismatch {
                 expected: "Map".to_string(),
-                found: format!("{:?}", map),
+                found: format!("{map:?}"),
                 span,
             }),
         }
@@ -1651,7 +1651,7 @@ impl IntrinsicsHandler {
             ) => Ok(Value::boolean(lhs_entries == rhs_entries)),
             _ => Err(IntrinsicError::TypeMismatch {
                 expected: "Map".to_string(),
-                found: format!("lhs: {:?}, rhs: {:?}", lhs, rhs),
+                found: format!("lhs: {lhs:?}, rhs: {rhs:?}"),
                 span,
             }),
         }
@@ -1667,7 +1667,7 @@ impl IntrinsicsHandler {
         let value = self.get_string_arg(arguments, "value", span)?;
         let hex_string = value
             .bytes()
-            .map(|b| format!("{:02x}", b))
+            .map(|b| format!("{b:02x}"))
             .collect::<String>();
         Ok(Value::string(hex_string))
     }
@@ -1746,7 +1746,7 @@ impl IntrinsicsHandler {
         if index < 0 {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "non-negative index".to_string(),
-                found: format!("{}", index),
+                found: format!("{index}"),
                 span,
             });
         }
@@ -1773,7 +1773,7 @@ impl IntrinsicsHandler {
         if start < 0 {
             return Err(IntrinsicError::TypeMismatch {
                 expected: "non-negative start index".to_string(),
-                found: format!("{}", start),
+                found: format!("{start}"),
                 span,
             });
         }
@@ -1873,7 +1873,7 @@ impl IntrinsicsHandler {
             Some(Value::Integer64(value)) => Ok(*value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "Integer64".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1894,7 +1894,7 @@ impl IntrinsicsHandler {
             Some(Value::Float64(value)) => Ok(*value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "Float64".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1915,7 +1915,7 @@ impl IntrinsicsHandler {
             Some(Value::Boolean(value)) => Ok(*value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "Boolean".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1936,7 +1936,7 @@ impl IntrinsicsHandler {
             Some(Value::String(value)) => Ok(value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "String".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1957,7 +1957,7 @@ impl IntrinsicsHandler {
             Some(Value::List { list, .. }) => Ok(list.as_ref()),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "List".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1978,7 +1978,7 @@ impl IntrinsicsHandler {
             Some(value @ Value::List { .. }) => Ok(value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "List".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -1999,7 +1999,7 @@ impl IntrinsicsHandler {
             Some(Value::Atom(value)) => Ok(value),
             Some(other) => Err(IntrinsicError::TypeMismatch {
                 expected: "Atom".to_string(),
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 span,
             }),
             None => Err(IntrinsicError::MissingArgument {
@@ -2101,7 +2101,7 @@ impl IntrinsicsHandler {
             Value::Float64(f) => f.to_string(),
             Value::Boolean(b) => b.to_string(),
             Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
-            Value::Atom(a) => format!(":{}", a),
+            Value::Atom(a) => format!(":{a}"),
             Value::List { list, .. } => {
                 // Format as [elem1, elem2, ...]
                 let elements: Vec<String> = list
@@ -2112,7 +2112,7 @@ impl IntrinsicsHandler {
                         inspect_args.insert("value".to_string(), elem.clone());
                         match self.inspect_value(&inspect_args, span) {
                             Ok(Value::String(s)) => s,
-                            _ => format!("{:?}", elem), // Fallback
+                            _ => format!("{elem:?}"), // Fallback
                         }
                     })
                     .collect();
@@ -2128,17 +2128,17 @@ impl IntrinsicsHandler {
                         key_args.insert("value".to_string(), key.clone());
                         let key_str = match self.inspect_value(&key_args, span) {
                             Ok(Value::String(s)) => s,
-                            _ => format!("{:?}", key), // Fallback
+                            _ => format!("{key:?}"), // Fallback
                         };
 
                         let mut val_args = HashMap::new();
                         val_args.insert("value".to_string(), val.clone());
                         let val_str = match self.inspect_value(&val_args, span) {
                             Ok(Value::String(s)) => s,
-                            _ => format!("{:?}", val), // Fallback
+                            _ => format!("{val:?}"), // Fallback
                         };
 
-                        format!("{}: {}", key_str, val_str)
+                        format!("{key_str}: {val_str}")
                     })
                     .collect();
                 format!("%{{{}}}", entry_strings.join(", "))
@@ -2153,7 +2153,7 @@ impl IntrinsicsHandler {
                         inspect_args.insert("value".to_string(), elem.clone());
                         match self.inspect_value(&inspect_args, span) {
                             Ok(Value::String(s)) => s,
-                            _ => format!("{:?}", elem), // Fallback
+                            _ => format!("{elem:?}"), // Fallback
                         }
                     })
                     .collect();
@@ -2166,7 +2166,7 @@ impl IntrinsicsHandler {
                 let type_name = type_id.to_string();
 
                 if fields.is_empty() {
-                    format!("{} {{}}", type_name)
+                    format!("{type_name} {{}}")
                 } else {
                     let field_strings: Vec<String> = fields
                         .iter()
@@ -2177,9 +2177,9 @@ impl IntrinsicsHandler {
                             field_args.insert("value".to_string(), field_value.clone());
                             let field_value_str = match self.inspect_value(&field_args, span) {
                                 Ok(Value::String(s)) => s,
-                                _ => format!("{:?}", field_value), // Fallback
+                                _ => format!("{field_value:?}"), // Fallback
                             };
-                            format!("{}: {}", field_name_str, field_value_str)
+                            format!("{field_name_str}: {field_value_str}")
                         })
                         .collect();
 
@@ -2553,7 +2553,7 @@ mod intrinsic_validation {
         ];
 
         for intrinsic in &candidate_intrinsics {
-            let full_name = format!("Outrun.Intrinsic.{}", intrinsic);
+            let full_name = format!("Outrun.Intrinsic.{intrinsic}");
             if handler.has_intrinsic(&full_name) {
                 implemented.push(intrinsic.to_string());
             }
@@ -2588,7 +2588,7 @@ mod intrinsic_validation {
         let mut sorted_names = implemented_names.clone();
         sorted_names.sort();
         for name in sorted_names {
-            println!("  - {}", name);
+            println!("  - {name}");
         }
     }
 }

@@ -33,7 +33,7 @@ fn test_parse_multiple_keywords() {
             ItemKind::Keyword(keyword) => {
                 assert_eq!(keyword.kind, expected[i]);
             }
-            _ => panic!("Expected keyword item at position {}", i),
+            _ => panic!("Expected keyword item at position {i}"),
         }
     }
 }
@@ -312,7 +312,7 @@ fn test_identifier_with_underscores() {
                 }
                 _ => panic!("Expected identifier in expression"),
             },
-            _ => panic!("Expected expression at position {}", i),
+            _ => panic!("Expected expression at position {i}"),
         }
     }
 }
@@ -340,38 +340,35 @@ fn test_comprehensive_mix() {
                 assert_eq!(struct_def.name[0].name, *expected_value);
             }
             (ItemKind::Keyword(kw), "keyword") => {
-                assert_eq!(format!("{}", kw), *expected_value);
+                assert_eq!(format!("{kw}"), *expected_value);
             }
             (ItemKind::Expression(expr), "type_identifier") => match &expr.kind {
                 ExpressionKind::TypeIdentifier(type_identifier) => {
                     assert_eq!(type_identifier.name, *expected_value);
                 }
-                _ => panic!("Expected type identifier in expression at position {}", i),
+                _ => panic!("Expected type identifier in expression at position {i}"),
             },
             (ItemKind::Expression(expr), "boolean") => match &expr.kind {
                 ExpressionKind::Boolean(boolean) => {
                     let expected_bool = *expected_value == "true";
                     assert_eq!(boolean.value, expected_bool);
                 }
-                _ => panic!("Expected boolean in expression at position {}", i),
+                _ => panic!("Expected boolean in expression at position {i}"),
             },
             (ItemKind::Expression(expr), "identifier") => match &expr.kind {
                 ExpressionKind::Identifier(identifier) => {
                     assert_eq!(identifier.name, *expected_value);
                 }
-                _ => panic!("Expected identifier in expression at position {}", i),
+                _ => panic!("Expected identifier in expression at position {i}"),
             },
             (ItemKind::Expression(expr), "integer") => match &expr.kind {
                 ExpressionKind::Integer(integer) => {
                     let expected_int: i64 = expected_value.parse().unwrap();
                     assert_eq!(integer.value, expected_int);
                 }
-                _ => panic!("Expected integer in expression at position {}", i),
+                _ => panic!("Expected integer in expression at position {i}"),
             },
-            _ => panic!(
-                "Unexpected item type at position {}: expected {}",
-                i, expected_type
-            ),
+            _ => panic!("Unexpected item type at position {i}: expected {expected_type}"),
         }
     }
 }

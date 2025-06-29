@@ -7,7 +7,7 @@ use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
     parse_program(source).unwrap_or_else(|e| {
-        panic!("Failed to parse test program: {:?}\nSource: {}", e, source);
+        panic!("Failed to parse test program: {e:?}\nSource: {source}");
     })
 }
 
@@ -101,7 +101,7 @@ def test(): String {
             } else {
                 println!("Note: Expected TypeMismatch error but got other errors");
                 for error in errors {
-                    println!("  {:?}", error);
+                    println!("  {error:?}");
                 }
             }
         }

@@ -128,10 +128,7 @@ pub fn load_core_library_collection() -> ProgramCollection {
                 }
             },
             Err(io_error) => {
-                eprintln!(
-                    "❌ Failed to read core library file {}: {}",
-                    relative_path, io_error
-                );
+                eprintln!("❌ Failed to read core library file {relative_path}: {io_error}");
                 std::process::exit(1);
             }
         }
@@ -149,7 +146,7 @@ pub fn load_core_library_collection() -> ProgramCollection {
         for (file_path, parse_error, source_code) in parse_errors {
             let report = Report::from(parse_error)
                 .with_source_code(NamedSource::new(file_path.clone(), source_code));
-            eprintln!("📄 {}:\n{:?}\n", file_path, report);
+            eprintln!("📄 {file_path}:\n{report:?}\n");
         }
 
         eprintln!("💡 Fix the parse errors above and try again.");
@@ -289,7 +286,7 @@ pub fn load_and_compile_core_library_for_test(
             },
             Err(io_error) => {
                 return Err(vec![crate::error::TypeError::internal_with_span(
-                    format!("Failed to read core library file: {}", io_error),
+                    format!("Failed to read core library file: {io_error}"),
                     miette::SourceSpan::new(0.into(), 0),
                 )]);
             }
@@ -301,7 +298,7 @@ pub fn load_and_compile_core_library_for_test(
         let mut errors = Vec::new();
         for (file_path, _parse_error, _source_code) in parse_errors {
             errors.push(crate::error::TypeError::internal_with_span(
-                format!("Parse error in core library file: {}", file_path),
+                format!("Parse error in core library file: {file_path}"),
                 miette::SourceSpan::new(0.into(), 0),
             ));
         }
@@ -319,7 +316,7 @@ mod tests {
     #[test]
     fn test_core_library_loads() {
         let stats = core_library_stats();
-        println!("{}", stats);
+        println!("{stats}");
 
         // Verify core library loaded successfully
         assert!(stats.parsed_files > 0, "No core library files were parsed");

@@ -373,7 +373,7 @@ fn test_function_type_display_formatting() {
         r#"def process(callback: Function<(x: Integer) -> String>): String { callback(x: 42) }"#;
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
 
     assert!(formatted.contains("Function<(x: Integer) -> String>"));
 }
@@ -383,7 +383,7 @@ fn test_function_type_no_parameters_display() {
     let input = r#"def run(task: Function<() -> Unit>): Unit { task() }"#;
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
 
     assert!(formatted.contains("Function<() -> Unit>"));
 }
@@ -394,7 +394,7 @@ fn test_function_type_multiple_parameters_display() {
         r#"def combine(merger: Function<(x: Integer, y: String) -> Boolean>): Boolean { true }"#;
     let result = parse_program(input).unwrap();
 
-    let formatted = format!("{}", result);
+    let formatted = format!("{result}");
 
     assert!(formatted.contains("Function<(x: Integer, y: String) -> Boolean>"));
 }

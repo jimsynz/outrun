@@ -2642,7 +2642,7 @@ impl TypeCheckingVisitor {
             return Err(TypeError::SignatureMismatch {
                 span: impl_func.span.to_source_span(),
                 function_name: impl_func.name.name.clone(),
-                expected: format!("Visibility: {:?}", trait_visibility),
+                expected: format!("Visibility: {trait_visibility:?}"),
                 found: format!("Visibility: {:?}", impl_func.visibility),
             });
         }
@@ -2904,8 +2904,7 @@ impl TypeCheckingVisitor {
                     Err(unification_error) => {
                         return Err(TypeError::internal_with_span(
                             format!(
-                                "Unification error during Self type inference: {:?}",
-                                unification_error
+                                "Unification error during Self type inference: {unification_error:?}"
                             ),
                             call.span.to_source_span(),
                         ));
@@ -2922,7 +2921,7 @@ impl TypeCheckingVisitor {
             .get_trait(&trait_type_id)
             .ok_or_else(|| {
                 TypeError::internal_with_span(
-                    format!("Trait not found: {:?}", trait_type_id),
+                    format!("Trait not found: {trait_type_id:?}"),
                     call.span.to_source_span(),
                 )
             })?;
@@ -3056,8 +3055,7 @@ impl TypeCheckingVisitor {
                 Err(unification_error) => {
                     return Err(TypeError::internal_with_span(
                         format!(
-                            "Unification error during Self type inference: {:?}",
-                            unification_error
+                            "Unification error during Self type inference: {unification_error:?}"
                         ),
                         call.span.to_source_span(),
                     ));
@@ -3577,7 +3575,7 @@ impl TypeCheckingVisitor {
             let function_name = function_name_atom.to_string();
 
             Err(TypeError::undefined_function(
-                format!("{}.{}", trait_name, function_name),
+                format!("{trait_name}.{function_name}"),
                 call.span.to_source_span(),
             ))
         }

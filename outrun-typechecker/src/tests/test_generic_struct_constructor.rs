@@ -78,8 +78,8 @@ def test_option(): Outrun.Option.Some<Integer> {
                 {
                     if expected.contains("Option.Some<") || found.contains("Option.Some<") {
                         println!("🔍 Found Option.Some type mismatch:");
-                        println!("   Expected: {}", expected);
-                        println!("   Found:    {}", found);
+                        println!("   Expected: {expected}");
+                        println!("   Found:    {found}");
                     }
                 }
             }

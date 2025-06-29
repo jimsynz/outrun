@@ -57,7 +57,7 @@ impl SharedCompilationContext {
             Ok(merged) => merged,
             Err(conflicts) => {
                 // Log conflicts but proceed with user compilation only
-                eprintln!("Warning: Compilation conflicts detected: {:?}", conflicts);
+                eprintln!("Warning: Compilation conflicts detected: {conflicts:?}");
                 user_compilation
             }
         }

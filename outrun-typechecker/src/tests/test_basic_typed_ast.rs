@@ -248,7 +248,7 @@ fn test_simple_function_call_typed_ast_conversion() {
                         TypedFunctionPath::Simple { name } => {
                             assert_eq!(name, "print", "Function name should be print");
                         }
-                        _ => panic!("Expected simple function path, got {:?}", function_path),
+                        _ => panic!("Expected simple function path, got {function_path:?}"),
                     }
 
                     // Check arguments
@@ -276,7 +276,7 @@ fn test_simple_function_call_typed_ast_conversion() {
                                 "Static dispatch should reference print"
                             );
                         }
-                        _ => panic!("Expected static dispatch, got {:?}", dispatch_strategy),
+                        _ => panic!("Expected static dispatch, got {dispatch_strategy:?}"),
                     }
                 }
                 _ => panic!("Expected function call expression, got {:?}", expr.kind),
@@ -323,7 +323,7 @@ fn test_qualified_function_call_typed_ast_conversion() {
                             assert_eq!(module, "String", "Module should be String");
                             assert_eq!(name, "length", "Function name should be length");
                         }
-                        _ => panic!("Expected qualified function path, got {:?}", function_path),
+                        _ => panic!("Expected qualified function path, got {function_path:?}"),
                     }
 
                     // Check arguments
@@ -553,8 +553,7 @@ fn test_binary_operation_desugaring_typed_ast() {
                             assert_eq!(name, "add", "Function name should be add");
                         }
                         _ => panic!(
-                            "Expected qualified function path for desugared binary op, got {:?}",
-                            function_path
+                            "Expected qualified function path for desugared binary op, got {function_path:?}"
                         ),
                     }
 
@@ -627,7 +626,7 @@ fn test_nested_expressions_typed_ast_conversion() {
                         TypedFunctionPath::Simple { name } => {
                             assert_eq!(name, "process", "Function name should be process");
                         }
-                        _ => panic!("Expected simple function path, got {:?}", function_path),
+                        _ => panic!("Expected simple function path, got {function_path:?}"),
                     }
 
                     // Check argument is field access

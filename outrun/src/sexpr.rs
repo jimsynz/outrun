@@ -111,7 +111,7 @@ fn format_let_binding_with_indent(let_binding: &LetBinding, indent: usize) -> St
     let expression = format_expression_with_indent(&let_binding.expression, indent + 2);
 
     if type_annotation.is_empty() {
-        format!("(let {} {})", pattern, expression)
+        format!("(let {pattern} {expression})")
     } else {
         format!(
             "(let {}{}\n{}{})",
@@ -249,7 +249,7 @@ fn format_binary_op_with_indent(bin_op: &BinaryOperation, indent: usize) -> Stri
 
     // Simple expressions on one line
     if !left.contains('\n') && !right.contains('\n') && (left.len() + right.len() + op.len()) < 50 {
-        format!("({} {} {})", op, left, right)
+        format!("({op} {left} {right})")
     } else {
         // Complex expressions with indentation
         format!(
@@ -295,7 +295,7 @@ fn format_function_call_with_indent(call: &FunctionCall, indent: usize) -> Strin
     let function_name = format_function_path(&call.path);
 
     if call.arguments.is_empty() {
-        format!("(call {})", function_name)
+        format!("(call {function_name})")
     } else {
         let args: Vec<String> = call
             .arguments
@@ -354,7 +354,7 @@ fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: u
     let methods_count = struct_def.methods.len();
 
     if methods_count == 0 {
-        format!("(struct {})", name)
+        format!("(struct {name})")
     } else {
         format!(
             "(struct {}\n{}(methods {}))",
@@ -370,7 +370,7 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
     let functions_count = trait_def.functions.len();
 
     if functions_count == 0 {
-        format!("(trait {})", name)
+        format!("(trait {name})")
     } else {
         // Count different types of functions
         let mut signatures = 0;
@@ -387,13 +387,13 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
 
         let mut function_details = Vec::new();
         if signatures > 0 {
-            function_details.push(format!("signatures {}", signatures));
+            function_details.push(format!("signatures {signatures}"));
         }
         if definitions > 0 {
-            function_details.push(format!("definitions {}", definitions));
+            function_details.push(format!("definitions {definitions}"));
         }
         if static_definitions > 0 {
-            function_details.push(format!("static {}", static_definitions));
+            function_details.push(format!("static {static_definitions}"));
         }
 
         format!(
@@ -425,7 +425,7 @@ fn format_function_definition_with_indent(func_def: &FunctionDefinition, indent:
     let param_count = func_def.parameters.len();
 
     if func_def.body.statements.is_empty() {
-        format!("(function {} (params {}))", name, param_count)
+        format!("(function {name} (params {param_count}))")
     } else {
         let body_statements: Vec<String> = func_def
             .body
@@ -553,7 +553,7 @@ fn format_struct_literal_with_indent(struct_lit: &StructLiteral, indent: usize) 
         .join(".");
 
     if struct_lit.fields.is_empty() {
-        format!("{} {{}}", type_name)
+        format!("{type_name} {{}}")
     } else {
         let fields: Vec<String> = struct_lit
             .fields
@@ -586,13 +586,13 @@ fn format_unary_op_with_indent(unary_op: &UnaryOperation, _indent: usize) -> Str
         UnaryOperator::BitwiseNot => "~",
     };
     let operand = format_expression_with_indent(&unary_op.operand, 0);
-    format!("({} {})", op, operand)
+    format!("({op} {operand})")
 }
 
 fn format_field_access_with_indent(field_access: &FieldAccess, indent: usize) -> String {
     let object = format_expression_with_indent(&field_access.object, indent);
     let field = &field_access.field.name;
-    format!("(field-access {} {})", object, field)
+    format!("(field-access {object} {field})")
 }
 
 fn format_if_expression_with_indent(if_expr: &IfExpression, indent: usize) -> String {
@@ -692,7 +692,7 @@ fn format_function_capture_with_indent(fn_capture: &FunctionCapture, _indent: us
         .arity
         .map(|a| a.to_string())
         .unwrap_or("?".to_string());
-    format!("(capture {} arity: {})", function_name, arity)
+    format!("(capture {function_name} arity: {arity})")
 }
 
 fn format_block_with_indent(block: &Block, indent: usize) -> String {

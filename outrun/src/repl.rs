@@ -569,10 +569,7 @@ impl ReplSession {
             },
 
             unknown => Err(ReplError::Command {
-                message: format!(
-                    "Unknown command: {}. Type :help for available commands.",
-                    unknown
-                ),
+                message: format!("Unknown command: {unknown}. Type :help for available commands."),
             }),
         }
     }
@@ -599,7 +596,7 @@ impl ReplSession {
         match pattern {
             outrun_parser::Pattern::Identifier(identifier) => Ok(vec![identifier.name.clone()]),
             _ => Err(ReplError::Internal {
-                message: format!("Complex patterns not yet supported in REPL: {:?}", pattern),
+                message: format!("Complex patterns not yet supported in REPL: {pattern:?}"),
             }),
         }
     }
@@ -628,7 +625,7 @@ impl ReplSession {
         collection.add_program(
             "<repl-let>".to_string(),
             temp_program.clone(),
-            format!("{}", temp_program),
+            format!("{temp_program}"),
         );
 
         let external_variables: HashMap<String, StructuredType> = self
@@ -703,7 +700,7 @@ impl ReplSession {
                     self.interpreter_context
                         .update_variable(variable_name, value.clone())
                         .map_err(|_| ReplError::Internal {
-                            message: format!("Failed to bind variable '{}'", variable_name),
+                            message: format!("Failed to bind variable '{variable_name}'"),
                         })?;
                 }
             }
@@ -775,9 +772,9 @@ impl ReplSession {
             } => {
                 // Display the value
                 if self.config.show_types {
-                    println!("{}: {}", value, type_display);
+                    println!("{value}: {type_display}");
                 } else {
-                    println!("{}", value);
+                    println!("{value}");
                 }
 
                 // Display bound variables if any
@@ -786,9 +783,9 @@ impl ReplSession {
                         if let Some((val, structured_type)) = self.user_variables.get(&var) {
                             if self.config.show_types {
                                 let type_display = structured_type.to_string_representation();
-                                println!("{}: {} = {}", var, type_display, val);
+                                println!("{var}: {type_display} = {val}");
                             } else {
-                                println!("{} = {}", var, val);
+                                println!("{var} = {val}");
                             }
                         }
                     }
@@ -796,7 +793,7 @@ impl ReplSession {
             }
 
             ReplResult::Command { message } => {
-                println!("{}", message);
+                println!("{message}");
             }
 
             ReplResult::LetBinding { variables, value } => {
@@ -806,12 +803,12 @@ impl ReplSession {
                     let first_var = variables.split(',').next().unwrap_or("").trim();
                     if let Some((_, structured_type)) = self.user_variables.get(first_var) {
                         let type_display = structured_type.to_string_representation();
-                        println!("{}: {} = {}", variables, type_display, value);
+                        println!("{variables}: {type_display} = {value}");
                     } else {
-                        println!("{} = {}", variables, value);
+                        println!("{variables} = {value}");
                     }
                 } else {
-                    println!("{} = {}", variables, value);
+                    println!("{variables} = {value}");
                 }
             }
 
@@ -829,36 +826,36 @@ impl ReplSession {
                 if let Some(source_code) = source_code {
                     let named_source = miette::NamedSource::new("<repl>", source_code.to_string());
                     let report = miette::Report::new(source).with_source_code(named_source);
-                    eprintln!("{:?}", report);
+                    eprintln!("{report:?}");
                 } else {
                     // Without source context, create a simple report
                     let report = miette::Report::new(source);
-                    eprintln!("{:?}", report);
+                    eprintln!("{report:?}");
                 }
             }
             ReplError::Parse { source } => {
                 // ParseError implements Diagnostic and contains its own source code
                 // from #[source_code] annotation, so we can create a report directly
                 let report = miette::Report::new(source);
-                eprintln!("{:?}", report);
+                eprintln!("{report:?}");
             }
             ReplError::Internal { .. } | ReplError::Command { .. } => {
                 // Create a miette report for internal/command errors
                 if let Some(source_code) = source_code {
                     let named_source = miette::NamedSource::new("<repl>", source_code.to_string());
                     let report = miette::Report::new(error).with_source_code(named_source);
-                    eprintln!("{:?}", report);
+                    eprintln!("{report:?}");
                 } else {
                     let report = miette::Report::new(error);
-                    eprintln!("{:?}", report);
+                    eprintln!("{report:?}");
                 }
             }
             error => {
                 // For other errors, use regular formatting
                 if self.config.verbose_errors {
-                    eprintln!("Error: {:?}", error);
+                    eprintln!("Error: {error:?}");
                 } else {
-                    eprintln!("Error: {}", error);
+                    eprintln!("Error: {error}");
                 }
             }
         }
@@ -924,9 +921,9 @@ Use Ctrl+C to interrupt, Ctrl+D to exit."#
             for (name, (value, structured_type)) in &self.user_variables {
                 if self.config.show_types {
                     let type_display = structured_type.to_string_representation();
-                    lines.push(format!("  {}: {} = {}", name, type_display, value));
+                    lines.push(format!("  {name}: {type_display} = {value}"));
                 } else {
-                    lines.push(format!("  {} = {}", name, value));
+                    lines.push(format!("  {name} = {value}"));
                 }
             }
             lines.join("\n")
@@ -1180,9 +1177,9 @@ mod tests {
         for (input, expected) in test_cases {
             let result = repl.evaluate_line(input).unwrap();
             if let ReplResult::Value { value, .. } = result {
-                assert_eq!(value, expected, "Failed for input: {}", input);
+                assert_eq!(value, expected, "Failed for input: {input}");
             } else {
-                panic!("Expected value result for input: {}", input);
+                panic!("Expected value result for input: {input}");
             }
         }
     }

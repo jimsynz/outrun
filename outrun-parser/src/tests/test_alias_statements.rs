@@ -6,7 +6,7 @@ fn extract_alias(input: &str) -> AliasDefinition {
 
     match &result.items[0].kind {
         ItemKind::AliasDefinition(alias_def) => alias_def.clone(),
-        other => panic!("Expected AliasDefinition, got {:?}", other),
+        other => panic!("Expected AliasDefinition, got {other:?}"),
     }
 }
 
@@ -21,7 +21,7 @@ fn test_alias_simple_module_path() {
             assert_eq!(path[0].name, "Outrun");
             assert_eq!(path[1].name, "Option");
         }
-        other => panic!("Expected Simple alias path, got {:?}", other),
+        other => panic!("Expected Simple alias path, got {other:?}"),
     }
 
     assert!(alias.alias_name.is_none());
@@ -38,7 +38,7 @@ fn test_alias_simple_with_as_clause() {
             assert_eq!(path[0].name, "Outrun");
             assert_eq!(path[1].name, "Option");
         }
-        other => panic!("Expected Simple alias path, got {:?}", other),
+        other => panic!("Expected Simple alias path, got {other:?}"),
     }
 
     let alias_name = alias.alias_name.expect("Expected alias name");
@@ -55,7 +55,7 @@ fn test_alias_single_module() {
             assert_eq!(path.len(), 1);
             assert_eq!(path[0].name, "String");
         }
-        other => panic!("Expected Simple alias path, got {:?}", other),
+        other => panic!("Expected Simple alias path, got {other:?}"),
     }
 
     assert!(alias.alias_name.is_none());
@@ -79,7 +79,7 @@ fn test_alias_brace_expansion_simple() {
             assert_eq!(items[1].name.name, "Result");
             assert!(items[1].alias_name.is_none());
         }
-        other => panic!("Expected BraceExpansion alias path, got {:?}", other),
+        other => panic!("Expected BraceExpansion alias path, got {other:?}"),
     }
 
     assert!(alias.alias_name.is_none());
@@ -110,7 +110,7 @@ fn test_alias_brace_expansion_with_as_clauses() {
             let iter_alias = items[2].alias_name.as_ref().expect("Expected alias name");
             assert_eq!(iter_alias.name, "Iter");
         }
-        other => panic!("Expected BraceExpansion alias path, got {:?}", other),
+        other => panic!("Expected BraceExpansion alias path, got {other:?}"),
     }
 
     assert!(alias.alias_name.is_none());
@@ -134,7 +134,7 @@ fn test_alias_brace_expansion_nested_module() {
             assert_eq!(items[1].name.name, "Request");
             assert_eq!(items[2].name.name, "Response");
         }
-        other => panic!("Expected BraceExpansion alias path, got {:?}", other),
+        other => panic!("Expected BraceExpansion alias path, got {other:?}"),
     }
 }
 
@@ -154,7 +154,7 @@ fn test_alias_brace_expansion_trailing_comma() {
             assert_eq!(items[0].name.name, "String");
             assert_eq!(items[1].name.name, "Integer");
         }
-        other => panic!("Expected BraceExpansion alias path, got {:?}", other),
+        other => panic!("Expected BraceExpansion alias path, got {other:?}"),
     }
 }
 
@@ -162,7 +162,7 @@ fn test_alias_brace_expansion_trailing_comma() {
 fn test_alias_display_simple() {
     let input = "alias Outrun.Option";
     let alias = extract_alias(input);
-    let displayed = format!("{}", alias);
+    let displayed = format!("{alias}");
     assert_eq!(displayed, "alias Outrun.Option");
 }
 
@@ -170,7 +170,7 @@ fn test_alias_display_simple() {
 fn test_alias_display_with_as() {
     let input = "alias Outrun.Option as Option";
     let alias = extract_alias(input);
-    let displayed = format!("{}", alias);
+    let displayed = format!("{alias}");
     assert_eq!(displayed, "alias Outrun.Option as Option");
 }
 
@@ -178,7 +178,7 @@ fn test_alias_display_with_as() {
 fn test_alias_display_brace_expansion() {
     let input = "alias Outrun.{Option, Result}";
     let alias = extract_alias(input);
-    let displayed = format!("{}", alias);
+    let displayed = format!("{alias}");
     assert_eq!(displayed, "alias Outrun.{Option, Result}");
 }
 
@@ -186,6 +186,6 @@ fn test_alias_display_brace_expansion() {
 fn test_alias_display_brace_expansion_with_as() {
     let input = "alias Outrun.{Option as Opt, Result}";
     let alias = extract_alias(input);
-    let displayed = format!("{}", alias);
+    let displayed = format!("{alias}");
     assert_eq!(displayed, "alias Outrun.{Option as Opt, Result}");
 }

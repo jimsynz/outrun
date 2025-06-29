@@ -359,12 +359,10 @@ fn test_const_definition_display_formatting() {
 
     for (input, expected) in inputs_and_expected.iter() {
         let program = OutrunParser::parse_program(input).unwrap();
-        let formatted = format!("{}", program);
+        let formatted = format!("{program}");
         assert!(
             formatted.contains(expected),
-            "Display format failed for: {}. Got: {}",
-            input,
-            formatted
+            "Display format failed for: {input}. Got: {formatted}"
         );
     }
 }

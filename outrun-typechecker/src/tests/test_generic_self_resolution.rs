@@ -86,8 +86,8 @@ def test_option_generic_inference(): Option<Integer> {
                 {
                     if function_name == "some?" && parameter_name == "value" {
                         println!("🔍 Self resolution issue found:");
-                        println!("   Expected: {}", expected_type);
-                        println!("   Found:    {}", found_type);
+                        println!("   Expected: {expected_type}");
+                        println!("   Found:    {found_type}");
 
                         // This should show something like:
                         // Expected: Self (where Self = Option<Integer>)

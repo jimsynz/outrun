@@ -108,16 +108,14 @@ fn test_parse_mixed_integer_formats() {
                 let integer = extract_integer_from_expression(expr);
                 assert_eq!(
                     integer.value, *expected_value,
-                    "Value mismatch at position {}",
-                    i
+                    "Value mismatch at position {i}"
                 );
                 assert_eq!(
                     integer.format, *expected_format,
-                    "Format mismatch at position {}",
-                    i
+                    "Format mismatch at position {i}"
                 );
             }
-            _ => panic!("Expected expression at position {}", i),
+            _ => panic!("Expected expression at position {i}"),
         }
     }
 }
@@ -139,14 +137,13 @@ fn test_integer_format_display_preservation() {
         match &result.items[0].kind {
             ItemKind::Expression(expr) => {
                 let integer = extract_integer_from_expression(expr);
-                let display_result = format!("{}", integer);
+                let display_result = format!("{integer}");
                 assert_eq!(
                     display_result, *expected_display,
-                    "Display format mismatch for input '{}': expected '{}', got '{}'",
-                    input, expected_display, display_result
+                    "Display format mismatch for input '{input}': expected '{expected_display}', got '{display_result}'"
                 );
             }
-            _ => panic!("Expected expression for input '{}'", input),
+            _ => panic!("Expected expression for input '{input}'"),
         }
     }
 }
@@ -214,11 +211,10 @@ fn test_zero_in_all_formats() {
                 assert_eq!(integer.value, 0, "All zeros should have value 0");
                 assert_eq!(
                     integer.format, *expected_format,
-                    "Format mismatch at position {}",
-                    i
+                    "Format mismatch at position {i}"
                 );
             }
-            _ => panic!("Expected expression at position {}", i),
+            _ => panic!("Expected expression at position {i}"),
         }
     }
 }

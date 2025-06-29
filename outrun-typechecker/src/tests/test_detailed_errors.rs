@@ -26,18 +26,18 @@ fn test_detailed_core_library_errors() {
                     } => {
                         type_mismatches += 1;
                         println!("\nError {}: Type Mismatch", i + 1);
-                        println!("  Expected: {}", expected);
-                        println!("  Found: {}", found);
+                        println!("  Expected: {expected}");
+                        println!("  Found: {found}");
                     }
                     TypeError::UndefinedFunction { name, .. } => {
                         undefined_functions += 1;
                         println!("\nError {}: Undefined Function", i + 1);
-                        println!("  Function: {}", name);
+                        println!("  Function: {name}");
                     }
                     TypeError::UndefinedType { name, .. } => {
                         undefined_types += 1;
                         println!("\nError {}: Undefined Type", i + 1);
-                        println!("  Type: {}", name);
+                        println!("  Type: {name}");
                     }
                     TypeError::TraitNotImplemented {
                         trait_name,
@@ -46,12 +46,12 @@ fn test_detailed_core_library_errors() {
                     } => {
                         other_errors += 1;
                         println!("\nError {}: Trait Not Implemented", i + 1);
-                        println!("  Trait: {} for Type: {}", trait_name, type_name);
+                        println!("  Trait: {trait_name} for Type: {type_name}");
                     }
                     TypeError::UndefinedTrait { trait_name, .. } => {
                         other_errors += 1;
                         println!("\nError {}: Undefined Trait", i + 1);
-                        println!("  Trait: {}", trait_name);
+                        println!("  Trait: {trait_name}");
                     }
                     TypeError::SignatureMismatch {
                         function_name,
@@ -61,9 +61,9 @@ fn test_detailed_core_library_errors() {
                     } => {
                         other_errors += 1;
                         println!("\nError {}: Signature Mismatch", i + 1);
-                        println!("  Function: {}", function_name);
-                        println!("  Expected: {}", expected);
-                        println!("  Found: {}", found);
+                        println!("  Function: {function_name}");
+                        println!("  Expected: {expected}");
+                        println!("  Found: {found}");
                     }
                     _ => {
                         other_errors += 1;
@@ -73,10 +73,10 @@ fn test_detailed_core_library_errors() {
             }
 
             println!("\n📊 Error Summary:");
-            println!("  Type Mismatches: {}", type_mismatches);
-            println!("  Undefined Functions: {}", undefined_functions);
-            println!("  Undefined Types: {}", undefined_types);
-            println!("  Other Errors: {}", other_errors);
+            println!("  Type Mismatches: {type_mismatches}");
+            println!("  Undefined Functions: {undefined_functions}");
+            println!("  Undefined Types: {undefined_types}");
+            println!("  Other Errors: {other_errors}");
             println!("  Total: {}", errors.len());
 
             // For now, just assert that we have some errors so the test fails visibly if errors are resolved
