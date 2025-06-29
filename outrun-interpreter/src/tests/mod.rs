@@ -1,5 +1,6 @@
 //! Integration tests for the Outrun interpreter
 
+mod test_acceptance_atom_trait_functions;
 mod test_acceptance_float_binary_ops;
 mod test_acceptance_float_trait_functions;
 mod test_acceptance_float_unary_ops;

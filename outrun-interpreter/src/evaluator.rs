@@ -136,12 +136,13 @@ impl ExpressionEvaluator {
             TypedExpressionKind::String(value) => Ok(Value::string(value.clone())),
             TypedExpressionKind::Boolean(value) => Ok(Value::boolean(*value)),
             TypedExpressionKind::Atom(value) => {
-                // For now, create a mock AtomId - in full implementation this would use interner
-                // This is a temporary solution until we integrate with the interner properly
-                Err(EvaluationError::Internal {
-                    message: format!("Atom literals not yet supported: {value}"),
-                    span: expression.span,
-                })
+                let atom_id = self
+                    .dispatch_context
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_atom_name(value);
+                Ok(Value::atom(atom_id))
             }
 
             // Variable lookup

@@ -411,6 +411,10 @@ impl OutrunTestHarness {
                                 let type_id = env.intern_type_name("Outrun.Core.String");
                                 outrun_typechecker::unification::StructuredType::Simple(type_id)
                             }
+                            Value::Atom(_) => {
+                                let type_id = env.intern_type_name("Outrun.Core.Atom");
+                                outrun_typechecker::unification::StructuredType::Simple(type_id)
+                            }
                             Value::List { element_type, .. } => {
                                 // Create Outrun.Core.List<ElementType> from the actual element type
                                 let list_type_id = env.intern_type_name("Outrun.Core.List");

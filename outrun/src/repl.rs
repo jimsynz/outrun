@@ -360,7 +360,7 @@ impl ReplSession {
         }
 
         // Handle REPL commands
-        if trimmed.starts_with(':') {
+        if trimmed.starts_with('/') {
             return self.execute_command(trimmed);
         }
 
@@ -511,15 +511,15 @@ impl ReplSession {
         }
 
         match parts[0] {
-            ":help" | ":h" => Ok(ReplResult::Command {
+            "/help" | "/h" => Ok(ReplResult::Command {
                 message: self.help_message(),
             }),
 
-            ":vars" | ":variables" => Ok(ReplResult::Command {
+            "/vars" | "/variables" => Ok(ReplResult::Command {
                 message: self.format_variables(),
             }),
 
-            ":clear" => {
+            "/clear" => {
                 self.user_variables.clear();
 
                 // Reset compilation session back to just the core library (efficient, no cloning)
@@ -537,17 +537,17 @@ impl ReplSession {
                 })
             }
 
-            ":stats" => Ok(ReplResult::Command {
+            "/stats" => Ok(ReplResult::Command {
                 message: self.format_stats(),
             }),
 
-            ":config" => Ok(ReplResult::Command {
+            "/config" => Ok(ReplResult::Command {
                 message: self.format_config(),
             }),
 
-            ":quit" | ":q" | ":exit" => Ok(ReplResult::Exit),
+            "/quit" | "/q" | "/exit" => Ok(ReplResult::Exit),
 
-            ":types" => match parts.get(1) {
+            "/types" => match parts.get(1) {
                 Some(&"on") => {
                     self.config.show_types = true;
                     Ok(ReplResult::Command {
@@ -569,7 +569,7 @@ impl ReplSession {
             },
 
             unknown => Err(ReplError::Command {
-                message: format!("Unknown command: {unknown}. Type :help for available commands."),
+                message: format!("Unknown command: {unknown}. Type /help for available commands."),
             }),
         }
     }
@@ -864,7 +864,7 @@ impl ReplSession {
     /// Print welcome message
     fn print_welcome(&self) {
         println!("🌆 Outrun REPL v0.1.0 🌃");
-        println!("Type :help for commands, :quit to exit");
+        println!("Type /help for commands, /quit to exit");
         println!();
     }
 
@@ -886,13 +886,13 @@ impl ReplSession {
     /// Get help message
     fn help_message(&self) -> String {
         r#"Outrun REPL Commands:
-  :help, :h           Show this help message
-  :vars, :variables   List all variables with their values and types
-  :clear              Clear all variables and reset the session
-  :stats              Show session statistics
-  :config             Show current configuration
-  :types [on|off]     Toggle type display
-  :quit, :q, :exit    Exit the REPL
+  /help, /h           Show this help message
+  /vars, /variables   List all variables with their values and types
+  /clear              Clear all variables and reset the session
+  /stats              Show session statistics
+  /config             Show current configuration
+  /types [on|off]     Toggle type display
+  /quit, /q, /exit    Exit the REPL
 
 Examples:
   42                  # Evaluate an integer literal
@@ -1025,12 +1025,12 @@ mod tests {
     fn test_help_command() {
         let mut repl = create_test_repl();
 
-        let result = repl.evaluate_line(":help").unwrap();
+        let result = repl.evaluate_line("/help").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("Outrun REPL Commands"));
-            assert!(message.contains(":help"));
-            assert!(message.contains(":vars"));
-            assert!(message.contains(":quit"));
+            assert!(message.contains("/help"));
+            assert!(message.contains("/vars"));
+            assert!(message.contains("/quit"));
         } else {
             panic!("Expected command result");
         }
@@ -1042,7 +1042,7 @@ mod tests {
     fn test_vars_command_empty() {
         let mut repl = create_test_repl();
 
-        let result = repl.evaluate_line(":vars").unwrap();
+        let result = repl.evaluate_line("/vars").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("No variables defined"));
         } else {
@@ -1061,7 +1061,7 @@ mod tests {
         repl.user_variables
             .insert("x".to_string(), (Value::integer(42), integer_type));
 
-        let result = repl.evaluate_line(":clear").unwrap();
+        let result = repl.evaluate_line("/clear").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("Variables and compilation state cleared"));
         } else {
@@ -1075,13 +1075,13 @@ mod tests {
     fn test_quit_command() {
         let mut repl = create_test_repl();
 
-        let result = repl.evaluate_line(":quit").unwrap();
+        let result = repl.evaluate_line("/quit").unwrap();
         assert!(matches!(result, ReplResult::Exit));
 
-        let result = repl.evaluate_line(":q").unwrap();
+        let result = repl.evaluate_line("/q").unwrap();
         assert!(matches!(result, ReplResult::Exit));
 
-        let result = repl.evaluate_line(":exit").unwrap();
+        let result = repl.evaluate_line("/exit").unwrap();
         assert!(matches!(result, ReplResult::Exit));
     }
 
@@ -1090,7 +1090,7 @@ mod tests {
         let mut repl = create_test_repl();
 
         // Test toggling types on
-        let result = repl.evaluate_line(":types on").unwrap();
+        let result = repl.evaluate_line("/types on").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("enabled"));
         } else {
@@ -1099,7 +1099,7 @@ mod tests {
         assert!(repl.config.show_types);
 
         // Test toggling types off
-        let result = repl.evaluate_line(":types off").unwrap();
+        let result = repl.evaluate_line("/types off").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("disabled"));
         } else {
@@ -1108,7 +1108,7 @@ mod tests {
         assert!(!repl.config.show_types);
 
         // Test status query
-        let result = repl.evaluate_line(":types").unwrap();
+        let result = repl.evaluate_line("/types").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("off"));
         } else {
@@ -1120,11 +1120,11 @@ mod tests {
     fn test_unknown_command() {
         let mut repl = create_test_repl();
 
-        let result = repl.evaluate_line(":unknown");
+        let result = repl.evaluate_line("/unknown");
         assert!(result.is_err());
         if let Err(ReplError::Command { message }) = result {
             assert!(message.contains("Unknown command"));
-            assert!(message.contains(":unknown"));
+            assert!(message.contains("/unknown"));
         } else {
             panic!("Expected command error");
         }
@@ -1136,13 +1136,13 @@ mod tests {
 
         // Execute some operations first
         let _ = repl.evaluate_line("42");
-        let _ = repl.evaluate_line(":help");
+        let _ = repl.evaluate_line("/help");
 
-        let result = repl.evaluate_line(":stats").unwrap();
+        let result = repl.evaluate_line("/stats").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("Session Statistics"));
             assert!(message.contains("Expressions evaluated: 1"));
-            assert!(message.contains("Commands executed: 2")); // :help + :stats
+            assert!(message.contains("Commands executed: 2")); // /help + /stats
         } else {
             panic!("Expected command result");
         }
@@ -1152,7 +1152,7 @@ mod tests {
     fn test_config_command() {
         let mut repl = create_test_repl();
 
-        let result = repl.evaluate_line(":config").unwrap();
+        let result = repl.evaluate_line("/config").unwrap();
         if let ReplResult::Command { message } = result {
             assert!(message.contains("REPL Configuration"));
             assert!(message.contains("Show types"));

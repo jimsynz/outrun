@@ -1291,7 +1291,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         // Return character count (Unicode code points), not byte count
         Ok(Value::integer(string.chars().count() as i64))
     }
@@ -1323,7 +1323,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         let start = self.get_integer_arg(arguments, "start", span)?;
         let end = self.get_integer_arg(arguments, "end", span)?;
 
@@ -1356,7 +1356,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         let index = self.get_integer_arg(arguments, "index", span)?;
 
         if index < 0 {
@@ -1385,7 +1385,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         let substring = self.get_string_arg(arguments, "substring", span)?;
 
         match string.find(substring) {
@@ -1405,7 +1405,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         Ok(Value::string(string.to_uppercase()))
     }
 
@@ -1414,7 +1414,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         Ok(Value::string(string.to_lowercase()))
     }
 
@@ -1423,7 +1423,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         Ok(Value::string(string.trim().to_string()))
     }
 
@@ -1432,7 +1432,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         Ok(Value::string(string.trim_start().to_string()))
     }
 
@@ -1441,7 +1441,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let string = self.get_string_arg(arguments, "string", span)?;
+        let string = self.get_string_arg(arguments, "value", span)?;
         Ok(Value::string(string.trim_end().to_string()))
     }
 
@@ -1450,7 +1450,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let _string = self.get_string_arg(arguments, "string", span)?;
+        let _string = self.get_string_arg(arguments, "value", span)?;
         // In Rust, String is always valid UTF-8 by construction
         Ok(Value::boolean(true))
     }
@@ -1842,7 +1842,7 @@ impl IntrinsicsHandler {
         arguments: &HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, IntrinsicError> {
-        let atom = self.get_atom_arg(arguments, "atom", span)?;
+        let atom = self.get_atom_arg(arguments, "value", span)?;
         Ok(Value::string(atom.to_string()))
     }
 
@@ -2010,6 +2010,46 @@ impl IntrinsicsHandler {
         }
     }
 
+    // Atom formatting helpers
+
+    /// Format an atom for inspect output, with proper quoting when needed
+    fn format_atom_for_inspect(&self, atom: &AtomId) -> String {
+        let atom_string = atom.to_string();
+
+        // Check if the atom needs quotes:
+        // - Contains spaces or special characters
+        // - Starts with a digit
+        // - Is empty
+        // - Contains non-ASCII alphanumeric characters (except underscore)
+        // - Contains any non-alphanumeric ASCII characters (except underscore)
+        let needs_quotes = atom_string.is_empty()
+            || atom_string
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit())
+            || atom_string.chars().any(|c| {
+                // Need quotes for any non-ASCII character
+                if !c.is_ascii() {
+                    return true;
+                }
+                // Need quotes for ASCII characters that are not alphanumeric or underscore
+                !c.is_ascii_alphanumeric() && c != '_'
+            });
+
+        if needs_quotes {
+            // Escape special characters in the atom string
+            let escaped = atom_string
+                .replace("\\", "\\\\") // Escape backslashes first
+                .replace("\"", "\\\"") // Escape quotes
+                .replace("\n", "\\n") // Escape newlines
+                .replace("\r", "\\r") // Escape carriage returns
+                .replace("\t", "\\t"); // Escape tabs
+            format!(":\"{escaped}\"")
+        } else {
+            format!(":{atom_string}")
+        }
+    }
+
     // Option/Result construction helpers
 
     fn create_option_some(&mut self, value: Value, _span: Span) -> Result<Value, IntrinsicError> {
@@ -2101,7 +2141,7 @@ impl IntrinsicsHandler {
             Value::Float64(f) => f.to_string(),
             Value::Boolean(b) => b.to_string(),
             Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
-            Value::Atom(a) => format!(":{a}"),
+            Value::Atom(a) => self.format_atom_for_inspect(a),
             Value::List { list, .. } => {
                 // Format as [elem1, elem2, ...]
                 let elements: Vec<String> = list
@@ -2375,7 +2415,7 @@ mod tests {
 
         // Test string length
         let mut args = HashMap::new();
-        args.insert("string".to_string(), Value::string("hello".to_string()));
+        args.insert("value".to_string(), Value::string("hello".to_string()));
 
         let result = handler
             .execute_intrinsic("Outrun.Intrinsic.string_length", args, span)

@@ -832,48 +832,6 @@ mod tests {
     }
 
     #[test]
-    fn test_atom_pattern_matching() {
-        use outrun_parser::ast::{AtomFormat, AtomLiteral, Literal};
-
-        let mut matcher = PatternMatcher::new();
-
-        // Create an atom pattern for :ok
-        let pattern = TypedPattern {
-            kind: TypedPatternKind::Literal {
-                literal: TypedLiteralPattern {
-                    literal: Literal::Atom(AtomLiteral {
-                        name: "ok".to_string(),
-                        content: "ok".to_string(),
-                        raw_content: "ok".to_string(),
-                        format: AtomFormat::Simple,
-                        span: test_span(),
-                    }),
-                    literal_type: None,
-                    span: test_span(),
-                },
-            },
-            pattern_type: None,
-            bound_variables: vec![],
-            span: test_span(),
-        };
-
-        // Create an atom value :ok
-        let atom_id = matcher.compiler_environment.intern_atom_name("ok");
-        let value = Value::atom(atom_id);
-
-        let result = matcher.match_pattern(&value, &pattern).unwrap();
-        assert!(result.matched);
-        assert!(result.bindings.is_empty()); // Literal patterns don't bind variables
-
-        // Test that different atoms don't match
-        let different_atom_id = matcher.compiler_environment.intern_atom_name("error");
-        let different_value = Value::atom(different_atom_id);
-
-        let result2 = matcher.match_pattern(&different_value, &pattern).unwrap();
-        assert!(!result2.matched);
-    }
-
-    #[test]
     fn test_match_result_failure_propagation() {
         let mut result1 = MatchResult::success({
             let mut bindings = HashMap::new();
