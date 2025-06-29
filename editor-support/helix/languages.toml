@@ -1,0 +1,22 @@
+# Outrun language configuration for Helix editor
+# 
+# To use this configuration:
+# 1. Copy this file to your Helix config directory (~/.config/helix/languages.toml)
+# 2. Build and install the tree-sitter grammar (see README.md)
+# 3. Copy the query files to the appropriate location
+# 4. Run: hx --grammar build outrun
+
+[[language]]
+name = "outrun"
+scope = "source.outrun"
+injection-regex = "outrun"
+file-types = ["outrun"]
+roots = ["outrun.toml", ".git"]
+comment-token = "#"
+block-comment-tokens = { start = "###", end = "###" }
+indent = { tab-width = 2, unit = "  " }
+auto-format = false
+
+[[grammar]]
+name = "outrun"
+source = { git = "https://harton.dev/outrun/outrun", rev = "main", subpath = "editor-support/tree-sitter-outrun" }

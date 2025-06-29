@@ -5,7 +5,7 @@ use std::path::Path;
 
 fn main() {
     let dump_path = Path::new("outrun_syntax.dump");
-    let _yaml_path = Path::new("../outrun.sublime-syntax");
+    let _yaml_path = Path::new("../editor-support/outrun.sublime-syntax");
 
     // Only generate if the dump file doesn't exist
     if !dump_path.exists() {

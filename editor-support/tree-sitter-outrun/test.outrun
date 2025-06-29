@@ -1,0 +1,45 @@
+# Simple Outrun test file
+
+# Function definition
+def greet(name: String): String {
+    let message = "Hello, #{name}!"
+    message
+}
+
+# Struct definition
+struct Person(name: String, age: Integer)
+
+# Trait definition
+trait Display<T> {
+    def display(value: T): String
+}
+
+# Implementation
+impl Display<Person> for Person {
+    def display(person: Person): String {
+        "#{person.name} (#{person.age})"
+    }
+}
+
+# Constants
+const MAX_AGE: Integer = 150
+
+# List and map literals
+let people = [
+    Person { name: "Alice", age: 30 },
+    Person { name: "Bob", age: 25 }
+]
+
+let config = {
+    "debug" => true,
+    "max_retries" => 3
+}
+
+# Case expression
+def describe_age(age: Integer): String {
+    case age {
+        age when Integer.less_than?(age, 18) -> "Young"
+        age when Integer.between?(age, 18, 65) -> "Adult"  
+        _ -> "Senior"
+    }
+}

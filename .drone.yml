@@ -73,11 +73,25 @@ steps:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - rustup component add clippy
 
-  - name: build
+  - name: tree-sitter grammar
     image: harton.dev/james/asdf_container:latest
     pull: never
     depends_on:
       - setup
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cd editor-support/tree-sitter-outrun
+      - tree-sitter generate
+      - echo "Testing grammar with sample files..."
+      - tree-sitter parse test.outrun > /dev/null 2>&1 && echo "✓ test.outrun parsed successfully" || echo "✗ test.outrun failed to parse"
+      - tree-sitter parse ../../outrun-core/lib/list.outrun > /dev/null 2>&1 && echo "✓ list.outrun parsed successfully" || echo "✗ list.outrun failed to parse"
+      - tree-sitter parse ../../outrun-core/lib/option.outrun > /dev/null 2>&1 && echo "✓ option.outrun parsed successfully" || echo "✗ option.outrun failed to parse"
+
+  - name: build
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - tree-sitter grammar
     commands:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - cargo fetch

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "outrun",
+      "camelcase": "Outrun",
+      "title": "Outrun",
+      "scope": "source.outrun",
+      "file-types": [
+        "outrun"
+      ],
+      "injection-regex": "^outrun$",
+      "class-name": "TreeSitterOutrun"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "A statically-typed, immutible, functional language where the trait is king!",
+    "authors": [
+      {
+        "name": "James Harton",
+        "email": "james@harton.dev",
+        "url": "https://harton.nz/"
+      }
+    ],
+    "links": {
+      "repository": "https://harton.dev/outrun/outrun",
+      "funding": "https://github.com/sponsors/jimsynz"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": false
+  }
+}
