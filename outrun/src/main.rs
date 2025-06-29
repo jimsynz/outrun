@@ -7,7 +7,10 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process;
 
+mod repl;
 mod sexpr;
+
+use repl::{ReplConfig, ReplSession};
 
 #[derive(Parser)]
 #[command(
@@ -40,6 +43,20 @@ enum Commands {
         #[arg(long)]
         core_lib: bool,
     },
+    /// Start an interactive REPL session for evaluating Outrun expressions
+    Repl {
+        /// Show type information with results
+        #[arg(long, short = 't')]
+        show_types: bool,
+
+        /// Enable verbose error messages
+        #[arg(long, short = 'v')]
+        verbose: bool,
+
+        /// Load program context from file (for variables and functions)
+        #[arg(long, value_name = "FILE")]
+        context: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -54,6 +71,13 @@ fn main() {
         }
         Some(Commands::Typecheck { files, core_lib }) => {
             handle_typecheck_command(files, core_lib);
+        }
+        Some(Commands::Repl {
+            show_types,
+            verbose,
+            context,
+        }) => {
+            handle_repl_command(show_types, verbose, context);
         }
         None => {
             // No subcommand provided, show help
@@ -229,9 +253,9 @@ fn typecheck_core_library() -> Result<()> {
 
     // Load and compile just the core library
     let collection = outrun_typechecker::core_library::load_core_library_collection();
-    let mut compiler = outrun_typechecker::multi_program_compiler::MultiProgramCompiler::new();
+    let mut compiler_env = outrun_typechecker::CompilerEnvironment::new();
 
-    match compiler.compile(&collection) {
+    match compiler_env.compile_collection(collection) {
         Ok(result) => {
             println!("✅ Core library type checking successful!");
 
@@ -250,7 +274,7 @@ fn typecheck_core_library() -> Result<()> {
             println!("• Traits: {}", result.traits.len());
             println!("• Structs: {}", result.structs.len());
             println!("• Implementations: {}", result.implementations.len());
-            println!("• Functions: {}", result.function_registry.len());
+            println!("• Functions: {}", compiler_env.function_count());
             println!("• Typed Programs: {}", result.typed_programs.len());
 
             Ok(())
@@ -416,5 +440,36 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
     } else {
         // This case should not happen since we checked has_errors above
         Err(miette::miette!("Unknown parsing failure"))
+    }
+}
+
+fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>) {
+    // Create REPL configuration based on command line options
+    let config = ReplConfig {
+        show_types,
+        verbose_errors: verbose,
+        ..Default::default()
+    };
+
+    // TODO: Handle context file loading in future versions
+    if let Some(_context_file) = context {
+        eprintln!("Warning: --context option not yet implemented");
+        eprintln!(
+            "Note: Variables from previous sessions are not yet persistent across REPL restarts"
+        );
+    }
+
+    // Create and start the REPL session
+    match ReplSession::with_config(config) {
+        Ok(mut session) => {
+            if let Err(e) = session.run() {
+                eprintln!("REPL error: {:?}", e);
+                process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to start REPL: {:?}", e);
+            process::exit(1);
+        }
     }
 }

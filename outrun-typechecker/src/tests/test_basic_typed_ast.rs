@@ -4,7 +4,7 @@
 //! core expression types from parser AST to typed AST structures.
 
 use crate::checker::{DispatchMethod, TypedExpressionKind, TypedFunctionPath};
-use crate::multi_program_compiler::MultiProgramCompiler;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
 #[test]
@@ -12,12 +12,12 @@ fn test_integer_literal_typed_ast_conversion() {
     let source = "42";
     let program = parse_program(source).expect("Failed to parse integer");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -45,12 +45,12 @@ fn test_float_literal_typed_ast_conversion() {
     let source = "42.5";
     let program = parse_program(source).expect("Failed to parse float");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -80,12 +80,12 @@ fn test_boolean_literal_typed_ast_conversion() {
     for (source, expected) in test_cases {
         let program = parse_program(source).expect("Failed to parse boolean");
 
-        let mut compiler = MultiProgramCompiler::new();
+        let mut compiler_env = CompilerEnvironment::new();
         let mut collection = crate::core_library::load_core_library_collection();
         collection.add_program("test.outrun".to_string(), program, source.to_string());
 
         // This may fail type checking, but should still produce typed AST structure
-        let result = compiler.compile(&collection);
+        let result = compiler_env.compile_collection(collection);
         let compilation_succeeded = result.is_ok();
         if !compilation_succeeded {
             println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -114,12 +114,12 @@ fn test_string_literal_typed_ast_conversion() {
     let source = r#""hello world""#;
     let program = parse_program(source).expect("Failed to parse string");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -147,12 +147,12 @@ fn test_atom_literal_typed_ast_conversion() {
     let source = ":atom_name";
     let program = parse_program(source).expect("Failed to parse atom");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -180,12 +180,12 @@ fn test_identifier_typed_ast_conversion() {
     let source = "some_variable";
     let program = parse_program(source).expect("Failed to parse identifier");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking due to undefined variable, but should still produce typed AST
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     match result {
         Ok(compilation_result) => {
             let typed_program = compilation_result
@@ -217,12 +217,12 @@ fn test_simple_function_call_typed_ast_conversion() {
     let source = r#"print(message: "Hello")"#;
     let program = parse_program(source).expect("Failed to parse function call");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -291,12 +291,12 @@ fn test_qualified_function_call_typed_ast_conversion() {
     let source = r#"String.length(text: "hello")"#;
     let program = parse_program(source).expect("Failed to parse qualified function call");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -342,12 +342,12 @@ fn test_function_call_with_multiple_arguments() {
     let source = r#"add(a: 5, b: 3)"#;
     let program = parse_program(source).expect("Failed to parse function call with multiple args");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -402,12 +402,12 @@ fn test_field_access_typed_ast_conversion() {
     let source = "user.name";
     let program = parse_program(source).expect("Failed to parse field access");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -457,12 +457,12 @@ fn test_chained_field_access_typed_ast_conversion() {
     let source = "user.address.city";
     let program = parse_program(source).expect("Failed to parse chained field access");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -520,12 +520,12 @@ fn test_binary_operation_desugaring_typed_ast() {
     let source = "5 + 3";
     let program = parse_program(source).expect("Failed to parse binary operation");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -537,7 +537,7 @@ fn test_binary_operation_desugaring_typed_ast() {
         .get("test.outrun")
         .expect("Should have test program");
 
-    // Binary operations should be desugared into function calls or handled gracefully
+    // Binary operations should be desugared into function calls
     match &typed_program.items[0].kind {
         crate::checker::TypedItemKind::Expression(expr) => {
             match &expr.kind {
@@ -577,11 +577,12 @@ fn test_binary_operation_desugaring_typed_ast() {
                     }
                 }
                 TypedExpressionKind::Placeholder(_) => {
-                    // If it's a placeholder, that's also acceptable - means some expression type isn't implemented yet
-                    println!("Binary operation resulted in placeholder - expression type not yet fully implemented");
+                    // If it's a placeholder, it means some functionality isn't implemented yet
+                    // This is no longer expected to happen with our fix
+                    panic!("Binary operation should not result in placeholder after fix");
                 }
                 _ => panic!(
-                    "Expected function call (desugared binary op) or placeholder, got {:?}",
+                    "Expected function call (desugared binary op), got {:?}",
                     expr.kind
                 ),
             }
@@ -595,12 +596,12 @@ fn test_nested_expressions_typed_ast_conversion() {
     let source = r#"process(data: user.name)"#;
     let program = parse_program(source).expect("Failed to parse nested expression");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -661,12 +662,12 @@ fn test_string_interpolation_typed_ast_conversion() {
     let source = r#""Hello #{name}!""#;
     let program = parse_program(source).expect("Failed to parse string interpolation");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");

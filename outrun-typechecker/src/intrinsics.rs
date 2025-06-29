@@ -1,1318 +1,771 @@
-//! Intrinsic function registry for compiler-implemented functions
+//! Minimal intrinsic function bootstrap for compiler-implemented functions
 //!
-//! This module provides all the function signatures for operations that are
-//! implemented by the compiler runtime rather than in Outrun code.
+//! This module provides a single bootstrap function that populates a CompilerEnvironment
+//! with all intrinsic function definitions in the Outrun.Intrinsic module.
 
-use crate::types::AtomId;
-use crate::unification::UnificationContext;
-use outrun_parser::{
-    FunctionDefinition, GenericArgs, Identifier, Parameter, Span, TypeAnnotation, TypeIdentifier,
+use crate::compilation::compiler_environment::{
+    CompilerEnvironment, ModuleKey, ModuleKind, SourceLocation, UnifiedFunctionEntry,
 };
-use std::collections::HashMap;
+use crate::unification::StructuredType;
+use outrun_parser::{
+    Block, FunctionDefinition, FunctionVisibility, GenericArgs, Identifier, Parameter, Span,
+    TypeAnnotation, TypeIdentifier,
+};
 
-/// Definition of a generic intrinsic function using proper AST types
-#[derive(Debug, Clone)]
-pub struct GenericIntrinsicDef {
-    pub name: String,
-    pub generic_params: Vec<String>,
-    pub parameters: Vec<Parameter>,
-    pub return_type: TypeAnnotation,
+/// Bootstrap intrinsic functions into a CompilerEnvironment
+/// Returns the updated environment with Outrun.Intrinsic module populated
+pub fn bootstrap_intrinsics(env: CompilerEnvironment) -> CompilerEnvironment {
+    // Create Outrun.Intrinsic module
+    let intrinsic_module_type = env.intern_type_name("Outrun.Intrinsic");
+    let module_key = ModuleKey::Module(intrinsic_module_type.hash);
+    let structured_type = StructuredType::Simple(intrinsic_module_type.clone());
+
+    env.get_or_create_module(
+        module_key.clone(),
+        ModuleKind::Struct,
+        SourceLocation::Input("intrinsics".to_string()),
+        structured_type.clone(),
+    );
+
+    // Add all intrinsic function definitions and create their typed definitions
+    for func_def in get_intrinsic_function_definitions() {
+        let function_name = env.intern_atom_name(&func_def.name.name);
+
+        // Create typed definition for the intrinsic function
+        let typed_definition = create_typed_definition_for_intrinsic(&func_def);
+
+        let function_entry = UnifiedFunctionEntry::Intrinsic {
+            definition: func_def.clone(),
+            typed_definition: Some(typed_definition),
+            function_id: format!("Outrun.Intrinsic.{}", func_def.name.name),
+            is_guard: func_def.name.name.ends_with('?'),
+        };
+
+        env.add_unified_function_to_module(
+            module_key.clone(),
+            structured_type.clone(),
+            function_name,
+            function_entry,
+        );
+    }
+
+    env
 }
 
-/// All type patterns needed for intrinsics
-pub struct IntrinsicTypes {
-    // Basic types
-    pub atom: TypeAnnotation,
-    pub boolean: TypeAnnotation,
-    pub integer64: TypeAnnotation,
-    pub float64: TypeAnnotation,
-    pub string: TypeAnnotation,
-    pub list: TypeAnnotation,
-    pub map: TypeAnnotation,
-    pub any: TypeAnnotation,
+/// Create a typed definition for an intrinsic function
+fn create_typed_definition_for_intrinsic(
+    func_def: &FunctionDefinition,
+) -> crate::checker::TypedFunctionDefinition {
+    use crate::checker::*;
 
-    // Generic types
-    pub list_t: TypeAnnotation, // Outrun.Core.List<T>
-    pub map_kv: TypeAnnotation, // Outrun.Core.Map<K, V>
+    // Convert parameters to typed parameters
+    let typed_parameters: Vec<TypedParameter> = func_def
+        .parameters
+        .iter()
+        .map(|param| {
+            TypedParameter {
+                name: param.name.name.clone(),
+                param_type: None, // TODO: Convert type annotations properly
+                span: param.span,
+            }
+        })
+        .collect();
 
-    // Option variants
-    pub option_any: TypeAnnotation,
-    pub option_integer64: TypeAnnotation,
-    pub option_string: TypeAnnotation,
-    pub option_float64: TypeAnnotation,
+    // Create empty body for intrinsics
+    let empty_body = TypedBlock {
+        statements: Vec::new(),
+        result_type: None,
+        span: func_def.span,
+    };
+
+    TypedFunctionDefinition {
+        name: func_def.name.name.clone(),
+        parameters: typed_parameters,
+        return_type: None, // TODO: Convert return type properly
+        guard: None,       // Intrinsics don't have guards
+        body: empty_body,
+        function_id: format!("Outrun.Intrinsic.{}", func_def.name.name),
+        span: func_def.span,
+    }
 }
 
-/// Registry of all intrinsic function signatures
-pub struct IntrinsicRegistry;
+/// Get all intrinsic function definitions
+/// These reuse the existing FunctionDefinition structure from the parser
+pub fn get_intrinsic_function_definitions() -> Vec<FunctionDefinition> {
+    vec![
+        // List operations
+        create_function_def(
+            "list_empty",
+            vec![],
+            create_generic_type("Outrun.Core.List", vec!["T"]),
+        ),
+        create_function_def(
+            "list_head",
+            vec![("value", create_generic_type("Outrun.Core.List", vec!["T"]))],
+            create_generic_type("Option", vec!["T"]),
+        ),
+        create_function_def(
+            "list_tail",
+            vec![("value", create_generic_type("Outrun.Core.List", vec!["T"]))],
+            create_generic_type("Outrun.Core.List", vec!["T"]),
+        ),
+        create_function_def(
+            "list_prepend",
+            vec![
+                ("list", create_generic_type("Outrun.Core.List", vec!["T"])),
+                ("elem", create_simple_type("T")),
+            ],
+            create_generic_type("Outrun.Core.List", vec!["T"]),
+        ),
+        create_function_def(
+            "list_length",
+            vec![("value", create_generic_type("Outrun.Core.List", vec!["T"]))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        // Map operations
+        create_function_def(
+            "map_get",
+            vec![
+                (
+                    "map",
+                    create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+                ),
+                ("key", create_simple_type("K")),
+            ],
+            create_generic_type("Option", vec!["V"]),
+        ),
+        create_function_def(
+            "map_put",
+            vec![
+                (
+                    "map",
+                    create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+                ),
+                ("key", create_simple_type("K")),
+                ("value", create_simple_type("V")),
+            ],
+            create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+        ),
+        // Integer operations
+        create_function_def(
+            "i64_add",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_sub",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_mul",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_eq",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "i64_gt",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        // Float operations
+        create_function_def(
+            "f64_add",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_sub",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        // Boolean operations
+        create_function_def(
+            "bool_and",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Boolean")),
+                ("rhs", create_simple_type("Outrun.Core.Boolean")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "bool_or",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Boolean")),
+                ("rhs", create_simple_type("Outrun.Core.Boolean")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "bool_not",
+            vec![("value", create_simple_type("Outrun.Core.Boolean"))],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        // String operations
+        create_function_def(
+            "string_length",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "string_concat",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.String")),
+                ("rhs", create_simple_type("Outrun.Core.String")),
+            ],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_eq",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.String")),
+                ("rhs", create_simple_type("Outrun.Core.String")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        // Atom operations
+        create_function_def(
+            "atom_eq",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Atom")),
+                ("rhs", create_simple_type("Outrun.Core.Atom")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "atom_to_string",
+            vec![("value", create_simple_type("Outrun.Core.Atom"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        // Additional integer operations
+        create_function_def(
+            "i64_div",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Integer64"]),
+        ),
+        create_function_def(
+            "i64_mod",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Integer64"]),
+        ),
+        create_function_def(
+            "i64_pow",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_pos",
+            vec![("value", create_simple_type("Outrun.Core.Integer64"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_neg",
+            vec![("value", create_simple_type("Outrun.Core.Integer64"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_ge",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "i64_lt",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "i64_le",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "i64_to_string",
+            vec![("value", create_simple_type("Outrun.Core.Integer64"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "i64_to_string_radix",
+            vec![
+                ("value", create_simple_type("Outrun.Core.Integer64")),
+                ("radix", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "i64_abs",
+            vec![("value", create_simple_type("Outrun.Core.Integer64"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        // Bitwise integer operations
+        create_function_def(
+            "i64_and",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_or",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_xor",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_not",
+            vec![("value", create_simple_type("Outrun.Core.Integer64"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_shl",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "i64_shr",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Integer64")),
+                ("rhs", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        // Additional float operations
+        create_function_def(
+            "f64_mul",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_div",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Float64"]),
+        ),
+        create_function_def(
+            "f64_mod",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Float64"]),
+        ),
+        create_function_def(
+            "f64_pow",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_pos",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_neg",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_eq",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_gt",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_ge",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_lt",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_le",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Float64")),
+                ("rhs", create_simple_type("Outrun.Core.Float64")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_to_string",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "f64_abs",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_is_nan",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_is_infinite",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_is_finite",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "f64_ceil",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_floor",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_round",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_trunc",
+            vec![("value", create_simple_type("Outrun.Core.Float64"))],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        // Additional string operations needed by tests
+        create_function_def(
+            "string_char_at",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("index", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.String"]),
+        ),
+        create_function_def(
+            "string_slice",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("start", create_simple_type("Outrun.Core.Integer64")),
+                ("end", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_index_of",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("search", create_simple_type("Outrun.Core.String")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Integer64"]),
+        ),
+        create_function_def(
+            "string_to_upper",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_to_lower",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_trim",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_trim_start",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_trim_end",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "string_valid_utf8",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        // Binary operations
+        create_function_def(
+            "binary_byte_at",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("index", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Integer64"]),
+        ),
+        create_function_def(
+            "binary_byte_size",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        create_function_def(
+            "binary_slice",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("start", create_simple_type("Outrun.Core.Integer64")),
+                ("end", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "binary_concat",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.String")),
+                ("rhs", create_simple_type("Outrun.Core.String")),
+            ],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "binary_index_of",
+            vec![
+                ("value", create_simple_type("Outrun.Core.String")),
+                ("search", create_simple_type("Outrun.Core.String")),
+            ],
+            create_generic_type("Option", vec!["Outrun.Core.Integer64"]),
+        ),
+        create_function_def(
+            "binary_to_hex",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+        create_function_def(
+            "binary_from_hex",
+            vec![("value", create_simple_type("Outrun.Core.String"))],
+            create_generic_type("Option", vec!["Outrun.Core.String"]),
+        ),
+        // Additional map operations
+        create_function_def(
+            "map_equal",
+            vec![
+                (
+                    "lhs",
+                    create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+                ),
+                (
+                    "rhs",
+                    create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+                ),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        create_function_def(
+            "map_remove",
+            vec![
+                (
+                    "map",
+                    create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+                ),
+                ("key", create_simple_type("K")),
+            ],
+            create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+        ),
+        create_function_def(
+            "map_size",
+            vec![(
+                "map",
+                create_generic_type("Outrun.Core.Map", vec!["K", "V"]),
+            )],
+            create_simple_type("Outrun.Core.Integer64"),
+        ),
+        // Panic/error operations
+        create_function_def(
+            "panic",
+            vec![("message", create_simple_type("Outrun.Core.String"))],
+            create_simple_type("T"),
+        ),
+        // Additional precision-based float operations that tests expect
+        create_function_def(
+            "f64_ceil_precision",
+            vec![
+                ("value", create_simple_type("Outrun.Core.Float64")),
+                ("precision", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_floor_precision",
+            vec![
+                ("value", create_simple_type("Outrun.Core.Float64")),
+                ("precision", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        create_function_def(
+            "f64_round_precision",
+            vec![
+                ("value", create_simple_type("Outrun.Core.Float64")),
+                ("precision", create_simple_type("Outrun.Core.Integer64")),
+            ],
+            create_simple_type("Outrun.Core.Float64"),
+        ),
+        // Additional boolean operations that tests expect
+        create_function_def(
+            "bool_eq",
+            vec![
+                ("lhs", create_simple_type("Outrun.Core.Boolean")),
+                ("rhs", create_simple_type("Outrun.Core.Boolean")),
+            ],
+            create_simple_type("Outrun.Core.Boolean"),
+        ),
+        // Universal inspect operation for default trait implementation
+        create_function_def(
+            "inspect_value",
+            vec![("value", create_simple_type("Self"))],
+            create_simple_type("Outrun.Core.String"),
+        ),
+    ]
+}
 
-impl IntrinsicRegistry {
-    /// Create helper functions to build AST nodes
-    fn create_type_annotation(
-        type_name: &str,
-        generic_args: Vec<TypeAnnotation>,
-    ) -> TypeAnnotation {
-        let span = Span::new(0, 0); // Dummy span for intrinsics
+/// Create a FunctionDefinition struct with the given name, parameters, and return type
+fn create_function_def(
+    name: &str,
+    params: Vec<(&str, TypeAnnotation)>,
+    return_type: TypeAnnotation,
+) -> FunctionDefinition {
+    let span = Span::new(0, 0); // Dummy span for intrinsics
 
-        let generic_args_option = if generic_args.is_empty() {
+    FunctionDefinition {
+        attributes: vec![],
+        visibility: FunctionVisibility::Public,
+        name: Identifier {
+            name: name.to_string(),
+            span,
+        },
+        parameters: params
+            .into_iter()
+            .map(|(param_name, param_type)| Parameter {
+                name: Identifier {
+                    name: param_name.to_string(),
+                    span,
+                },
+                type_annotation: param_type,
+                span,
+            })
+            .collect(),
+        return_type,
+        guard: None,
+        body: Block {
+            statements: vec![], // Empty body for intrinsics
+            span,
+        },
+        span,
+    }
+}
+
+/// Create a simple type annotation (e.g., "String", "T")
+fn create_simple_type(type_name: &str) -> TypeAnnotation {
+    let span = Span::new(0, 0);
+    TypeAnnotation::Simple {
+        path: vec![TypeIdentifier {
+            name: type_name.to_string(),
+            span,
+        }],
+        generic_args: None,
+        span,
+    }
+}
+
+/// Create a generic type annotation (e.g., "Option<T>", "Map<K, V>")
+fn create_generic_type(base_type: &str, type_args: Vec<&str>) -> TypeAnnotation {
+    let span = Span::new(0, 0);
+    TypeAnnotation::Simple {
+        path: vec![TypeIdentifier {
+            name: base_type.to_string(),
+            span,
+        }],
+        generic_args: if type_args.is_empty() {
             None
         } else {
             Some(GenericArgs {
-                args: generic_args,
+                args: type_args.into_iter().map(create_simple_type).collect(),
                 span,
             })
-        };
-
-        TypeAnnotation::Simple {
-            path: vec![TypeIdentifier {
-                name: type_name.to_string(),
-                span,
-            }],
-            generic_args: generic_args_option,
-            span,
-        }
-    }
-
-    fn create_parameter(name: &str, type_annotation: TypeAnnotation) -> Parameter {
-        Parameter {
-            name: Identifier {
-                name: name.to_string(),
-                span: Span::new(0, 0),
-            },
-            type_annotation,
-            span: Span::new(0, 0),
-        }
-    }
-
-    /// Register all types needed for intrinsics in the unification context
-    fn register_intrinsic_types(context: &mut UnificationContext) -> IntrinsicTypes {
-        let span = Span::new(0, 0);
-
-        // Register base types in type interner
-        let _ = context.type_interner.intern_type("Option");
-        let _ = context.type_interner.intern_type("List");
-        let _ = context.type_interner.intern_type("Map");
-        let _ = context.type_interner.intern_type("Any");
-        let _ = context.type_interner.intern_type("Outrun.Core.Integer64");
-        let _ = context.type_interner.intern_type("Outrun.Core.String");
-        let _ = context.type_interner.intern_type("Outrun.Core.Float64");
-        let _ = context.type_interner.intern_type("Outrun.Core.Atom");
-        let _ = context.type_interner.intern_type("Outrun.Core.Boolean");
-        let _ = context.type_interner.intern_type("Outrun.Core.List");
-        let _ = context.type_interner.intern_type("Outrun.Core.Map");
-
-        // Helper function to create simple type
-        let simple_type = |name: &str| TypeAnnotation::Simple {
-            path: vec![TypeIdentifier {
-                name: name.to_string(),
-                span,
-            }],
-            generic_args: None,
-            span,
-        };
-
-        // Helper function to create Option<T>
-        let option_type = |inner: TypeAnnotation| TypeAnnotation::Simple {
-            path: vec![TypeIdentifier {
-                name: "Option".to_string(),
-                span,
-            }],
-            generic_args: Some(GenericArgs {
-                args: vec![inner],
-                span,
-            }),
-            span,
-        };
-
-        // Build all basic types
-        let atom = simple_type("Outrun.Core.Atom");
-        let boolean = simple_type("Outrun.Core.Boolean");
-        let integer64 = simple_type("Outrun.Core.Integer64");
-        let float64 = simple_type("Outrun.Core.Float64");
-        let string = simple_type("Outrun.Core.String");
-        let list = simple_type("Outrun.Core.List");
-        let map = simple_type("Outrun.Core.Map");
-        let any = simple_type("Any");
-
-        // Build Option variants
-        let option_any = option_type(any.clone());
-        let option_integer64 = option_type(integer64.clone());
-        let option_string = option_type(string.clone());
-        let option_float64 = option_type(float64.clone());
-
-        // Build generic types using Any as the type parameter (since all types implement Any)
-        let list_t = TypeAnnotation::Simple {
-            path: vec![TypeIdentifier {
-                name: "Outrun.Core.List".to_string(),
-                span,
-            }],
-            generic_args: Some(GenericArgs {
-                args: vec![any.clone()],
-                span,
-            }),
-            span,
-        };
-        let map_kv = TypeAnnotation::Simple {
-            path: vec![TypeIdentifier {
-                name: "Outrun.Core.Map".to_string(),
-                span,
-            }],
-            generic_args: Some(GenericArgs {
-                args: vec![any.clone(), any.clone()],
-                span,
-            }),
-            span,
-        };
-
-        IntrinsicTypes {
-            atom,
-            boolean,
-            integer64,
-            float64,
-            string,
-            list,
-            map,
-            any,
-            list_t,
-            map_kv,
-            option_any,
-            option_integer64,
-            option_string,
-            option_float64,
-        }
-    }
-
-    /// Get all generic intrinsic function definitions using proper AST
-    pub fn get_generic_intrinsics() -> HashMap<String, GenericIntrinsicDef> {
-        let mut intrinsics = HashMap::new();
-
-        // Type T for lists
-        let t_type = Self::create_type_annotation("T", vec![]);
-
-        // List<T> type (using concrete type name)
-        let list_t_type = Self::create_type_annotation("Outrun.Core.List", vec![t_type.clone()]);
-
-        // Option<T> type
-        let option_t_type = Self::create_type_annotation("Option", vec![t_type.clone()]);
-
-        // List operations with proper generics
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_empty".to_string(),
-            GenericIntrinsicDef {
-                name: "list_empty".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![],
-                return_type: list_t_type.clone(),
-            },
-        );
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_head".to_string(),
-            GenericIntrinsicDef {
-                name: "list_head".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("value", list_t_type.clone())],
-                return_type: option_t_type.clone(),
-            },
-        );
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_tail".to_string(),
-            GenericIntrinsicDef {
-                name: "list_tail".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("value", list_t_type.clone())],
-                return_type: list_t_type.clone(),
-            },
-        );
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_prepend".to_string(),
-            GenericIntrinsicDef {
-                name: "list_prepend".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![
-                    Self::create_parameter("list", list_t_type.clone()),
-                    Self::create_parameter("elem", t_type.clone()),
-                ],
-                return_type: list_t_type.clone(),
-            },
-        );
-
-        // Map operations with K, V generics
-        let k_type = Self::create_type_annotation("K", vec![]);
-        let v_type = Self::create_type_annotation("V", vec![]);
-        let map_kv_type =
-            Self::create_type_annotation("Outrun.Core.Map", vec![k_type.clone(), v_type.clone()]);
-        let option_v_type = Self::create_type_annotation("Option", vec![v_type.clone()]);
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_get".to_string(),
-            GenericIntrinsicDef {
-                name: "map_get".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![
-                    Self::create_parameter("map", map_kv_type.clone()),
-                    Self::create_parameter("key", k_type.clone()),
-                ],
-                return_type: option_v_type,
-            },
-        );
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_put".to_string(),
-            GenericIntrinsicDef {
-                name: "map_put".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![
-                    Self::create_parameter("map", map_kv_type.clone()),
-                    Self::create_parameter("key", k_type.clone()),
-                    Self::create_parameter("value", v_type.clone()),
-                ],
-                return_type: map_kv_type.clone(),
-            },
-        );
-
-        // Add missing intrinsic functions needed by core library
-        let atom_type = Self::create_type_annotation("Outrun.Core.Atom", vec![]);
-        let boolean_type = Self::create_type_annotation("Outrun.Core.Boolean", vec![]);
-        let integer64_type = Self::create_type_annotation("Outrun.Core.Integer64", vec![]);
-        let float64_type = Self::create_type_annotation("Outrun.Core.Float64", vec![]);
-        let string_type = Self::create_type_annotation("Outrun.Core.String", vec![]);
-
-        // Atom operations
-        intrinsics.insert(
-            "Outrun.Intrinsic.atom_eq".to_string(),
-            GenericIntrinsicDef {
-                name: "atom_eq".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", atom_type.clone()),
-                    Self::create_parameter("rhs", atom_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.atom_to_string".to_string(),
-            GenericIntrinsicDef {
-                name: "atom_to_string".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", atom_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.atom_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "atom_inspect".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", atom_type)],
-                return_type: string_type.clone(),
-            },
-        );
-
-        // Boolean operations
-        intrinsics.insert(
-            "Outrun.Intrinsic.bool_eq".to_string(),
-            GenericIntrinsicDef {
-                name: "bool_eq".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", boolean_type.clone()),
-                    Self::create_parameter("rhs", boolean_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.bool_and".to_string(),
-            GenericIntrinsicDef {
-                name: "bool_and".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", boolean_type.clone()),
-                    Self::create_parameter("rhs", boolean_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.bool_or".to_string(),
-            GenericIntrinsicDef {
-                name: "bool_or".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", boolean_type.clone()),
-                    Self::create_parameter("rhs", boolean_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.bool_not".to_string(),
-            GenericIntrinsicDef {
-                name: "bool_not".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", boolean_type.clone())],
-                return_type: boolean_type.clone(),
-            },
-        );
-
-        // Integer operations (basic set)
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_add".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_add".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_sub".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_sub".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_mul".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_mul".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_div".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_div".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![integer64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_mod".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_mod".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![integer64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_pow".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_pow".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_pos".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_pos".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_neg".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_neg".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_eq".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_eq".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_gt".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_gt".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_ge".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_ge".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_lt".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_lt".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_le".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_le".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_to_string".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_to_string".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_inspect".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_to_string_radix".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_to_string_radix".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("value", integer64_type.clone()),
-                    Self::create_parameter("radix", integer64_type.clone()),
-                ],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_abs".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_abs".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-
-        // Bitwise integer operations
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_and".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_and".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_or".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_or".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_xor".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_xor".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_not".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_not".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", integer64_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_shl".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_shl".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.i64_shr".to_string(),
-            GenericIntrinsicDef {
-                name: "i64_shr".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", integer64_type.clone()),
-                    Self::create_parameter("rhs", integer64_type.clone()),
-                ],
-                return_type: integer64_type.clone(),
-            },
-        );
-
-        // Float operations (basic set)
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_add".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_add".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_sub".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_sub".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_mul".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_mul".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_div".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_div".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![float64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_mod".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_mod".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![float64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_pow".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_pow".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_pos".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_pos".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_neg".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_neg".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_eq".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_eq".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_gt".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_gt".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_ge".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_ge".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_lt".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_lt".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_le".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_le".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", float64_type.clone()),
-                    Self::create_parameter("rhs", float64_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_to_string".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_to_string".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_inspect".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_abs".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_abs".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_is_nan".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_is_nan".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_is_infinite".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_is_infinite".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_is_finite".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_is_finite".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_ceil".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_ceil".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_floor".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_floor".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_round".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_round".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_trunc".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_trunc".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_fract".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_fract".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", float64_type.clone())],
-                return_type: float64_type.clone(),
-            },
-        );
-
-        // Precision float operations as mentioned in TYPECHECKER_REWRITE_PLAN.md
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_ceil_precision".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_ceil_precision".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("value", float64_type.clone()),
-                    Self::create_parameter("precision", integer64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_floor_precision".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_floor_precision".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("value", float64_type.clone()),
-                    Self::create_parameter("precision", integer64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.f64_round_precision".to_string(),
-            GenericIntrinsicDef {
-                name: "f64_round_precision".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("value", float64_type.clone()),
-                    Self::create_parameter("precision", integer64_type.clone()),
-                ],
-                return_type: float64_type.clone(),
-            },
-        );
-
-        // String operations (basic set)
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_length".to_string(),
-            GenericIntrinsicDef {
-                name: "string_length".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_concat".to_string(),
-            GenericIntrinsicDef {
-                name: "string_concat".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", string_type.clone()),
-                    Self::create_parameter("rhs", string_type.clone()),
-                ],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_eq".to_string(),
-            GenericIntrinsicDef {
-                name: "string_eq".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", string_type.clone()),
-                    Self::create_parameter("rhs", string_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "string_inspect".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-
-        // Additional String operations needed by core library
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_char_at".to_string(),
-            GenericIntrinsicDef {
-                name: "string_char_at".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("string", string_type.clone()),
-                    Self::create_parameter("index", integer64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![string_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_slice".to_string(),
-            GenericIntrinsicDef {
-                name: "string_slice".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("string", string_type.clone()),
-                    Self::create_parameter("start", integer64_type.clone()),
-                    Self::create_parameter("end", integer64_type.clone()),
-                ],
-                return_type: string_type.clone(),
-            },
-        );
-
-        // Additional string operations needed by core library
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_index_of".to_string(),
-            GenericIntrinsicDef {
-                name: "string_index_of".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("haystack", string_type.clone()),
-                    Self::create_parameter("needle", string_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![integer64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_to_upper".to_string(),
-            GenericIntrinsicDef {
-                name: "string_to_upper".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_to_lower".to_string(),
-            GenericIntrinsicDef {
-                name: "string_to_lower".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_trim".to_string(),
-            GenericIntrinsicDef {
-                name: "string_trim".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_trim_start".to_string(),
-            GenericIntrinsicDef {
-                name: "string_trim_start".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-
-        // Binary operations needed by core library (implemented by String)
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_byte_at".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_byte_at".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("binary", string_type.clone()),
-                    Self::create_parameter("index", integer64_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![integer64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_byte_size".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_byte_size".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("binary", string_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_slice".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_slice".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("binary", string_type.clone()),
-                    Self::create_parameter("start", integer64_type.clone()),
-                    Self::create_parameter("end", integer64_type.clone()),
-                ],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_concat".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_concat".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("lhs", string_type.clone()),
-                    Self::create_parameter("rhs", string_type.clone()),
-                ],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_index_of".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_index_of".to_string(),
-                generic_params: vec![],
-                parameters: vec![
-                    Self::create_parameter("haystack", string_type.clone()),
-                    Self::create_parameter("needle", string_type.clone()),
-                ],
-                return_type: Self::create_type_annotation("Option", vec![integer64_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_to_hex".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_to_hex".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("binary", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_trim_end".to_string(),
-            GenericIntrinsicDef {
-                name: "string_trim_end".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.string_valid_utf8".to_string(),
-            GenericIntrinsicDef {
-                name: "string_valid_utf8".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", string_type.clone())],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.binary_from_hex".to_string(),
-            GenericIntrinsicDef {
-                name: "binary_from_hex".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("hex", string_type.clone())],
-                return_type: Self::create_type_annotation("Option", vec![string_type.clone()]),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.panic_unwrap_none".to_string(),
-            GenericIntrinsicDef {
-                name: "panic_unwrap_none".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("message", string_type.clone())],
-                return_type: Self::create_type_annotation("T", vec![]),
-            },
-        );
-
-        // List operations needed by core library
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "list_inspect".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("value", list_t_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.list_length".to_string(),
-            GenericIntrinsicDef {
-                name: "list_length".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("value", list_t_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-
-        // Map operations
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "map_inspect".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![Self::create_parameter("map", map_kv_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-
-        // Additional Map operations needed by core library
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_equal".to_string(),
-            GenericIntrinsicDef {
-                name: "map_equal".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![
-                    Self::create_parameter("lhs", map_kv_type.clone()),
-                    Self::create_parameter("rhs", map_kv_type.clone()),
-                ],
-                return_type: boolean_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_remove".to_string(),
-            GenericIntrinsicDef {
-                name: "map_remove".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![
-                    Self::create_parameter("map", map_kv_type.clone()),
-                    Self::create_parameter("key", k_type.clone()),
-                ],
-                return_type: map_kv_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.map_size".to_string(),
-            GenericIntrinsicDef {
-                name: "map_size".to_string(),
-                generic_params: vec!["K".to_string(), "V".to_string()],
-                parameters: vec![Self::create_parameter("map", map_kv_type.clone())],
-                return_type: integer64_type.clone(),
-            },
-        );
-
-        // Option operations for inspect - need specific functions for Option types
-        let option_none_type = Self::create_type_annotation("Outrun.Option.None", vec![]);
-        let option_some_type =
-            Self::create_type_annotation("Outrun.Option.Some", vec![t_type.clone()]);
-
-        intrinsics.insert(
-            "Outrun.Intrinsic.option_none_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "option_none_inspect".to_string(),
-                generic_params: vec![],
-                parameters: vec![Self::create_parameter("value", option_none_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-        intrinsics.insert(
-            "Outrun.Intrinsic.option_some_inspect".to_string(),
-            GenericIntrinsicDef {
-                name: "option_some_inspect".to_string(),
-                generic_params: vec!["T".to_string()],
-                parameters: vec![Self::create_parameter("value", option_some_type.clone())],
-                return_type: string_type.clone(),
-            },
-        );
-
-        intrinsics
-    }
-
-    /// Setup core concrete types and automatically implement Any trait
-    pub fn setup_core_types(context: &mut UnificationContext) {
-        // Get the Any trait ID
-        let any_trait_id = context.type_interner.intern_type("Any");
-
-        // Register Any as a trait
-        context.trait_registry.register_trait(any_trait_id);
-
-        // All concrete types automatically implement Any
-        let concrete_types = vec![
-            "Outrun.Core.Atom",
-            "Outrun.Core.Boolean",
-            "Outrun.Core.Integer64",
-            "Outrun.Core.Float64",
-            "Outrun.Core.String",
-            "Outrun.Core.List",
-            "Outrun.Core.Map",
-        ];
-
-        for type_name in concrete_types {
-            let type_id = context.type_interner.intern_type(type_name);
-            context
-                .trait_registry
-                .register_concrete_type(type_id, any_trait_id);
-        }
-    }
-
-    /// Create all intrinsic function signatures and return them as a HashMap
-    pub fn create_all_signatures(
-        context: &mut UnificationContext,
-    ) -> HashMap<AtomId, FunctionDefinition> {
-        let mut intrinsic_functions = HashMap::new();
-
-        // Register all intrinsic types first
-        let _types = Self::register_intrinsic_types(context);
-
-        // Use the proper generic intrinsic system
-        let generic_intrinsics = Self::get_generic_intrinsics();
-
-        for (name, generic_def) in generic_intrinsics {
-            let function_def =
-                Self::convert_generic_intrinsic_to_function_definition(generic_def, context);
-
-            let function_atom_id = context.type_interner.intern_atom(&name);
-            intrinsic_functions.insert(function_atom_id, function_def);
-        }
-
-        intrinsic_functions
-    }
-
-    /// Get generic parameters for a specific intrinsic function by name
-    pub fn get_intrinsic_generic_params(function_name: &str) -> Vec<String> {
-        let generic_intrinsics = Self::get_generic_intrinsics();
-        if let Some(intrinsic_def) = generic_intrinsics.get(function_name) {
-            intrinsic_def.generic_params.clone()
-        } else {
-            vec![]
-        }
-    }
-
-    /// Convert a generic intrinsic definition to a FunctionDefinition for the function registry
-    fn convert_generic_intrinsic_to_function_definition(
-        generic_def: GenericIntrinsicDef,
-        _context: &mut UnificationContext,
-    ) -> FunctionDefinition {
-        // The parameters are already in the correct format (Parameter struct)
-        let parameters = generic_def.parameters;
-
-        // For now, ignore generic parameters in intrinsics - the type checker will handle them
-
-        FunctionDefinition {
-            attributes: vec![],
-            visibility: outrun_parser::FunctionVisibility::Public,
-            name: outrun_parser::Identifier {
-                name: generic_def.name,
-                span: outrun_parser::Span::new(0, 0),
-            },
-            parameters,
-            return_type: generic_def.return_type,
-            guard: None,
-            body: outrun_parser::Block {
-                statements: vec![],
-                span: outrun_parser::Span::new(0, 0),
-            },
-            span: outrun_parser::Span::new(0, 0),
-        }
+        },
+        span,
     }
 }

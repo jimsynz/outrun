@@ -139,12 +139,6 @@ impl Display for Outrun.Core.Integer64 {
     }
 }
 
-# Inspect trait implementation
-impl Inspect for Outrun.Core.Integer64 {
-    def inspect(value: Self): Outrun.Core.String {
-        Outrun.Intrinsic.i64_to_string_radix(value: value, radix: 10)
-    }
-}
 
 # Integer trait implementation
 impl Integer for Outrun.Core.Integer64 {

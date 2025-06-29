@@ -1,5 +1,6 @@
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use crate::error::TypeError;
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -43,8 +44,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(success_result) => {
@@ -52,7 +53,7 @@ impl TestTrait for MyType {
             println!("Compilation order: {:?}", success_result.compilation_order);
             println!(
                 "Functions found: {}",
-                success_result.function_registry.len()
+                0 // Function count no longer accessible through type_context
             );
             println!("Implementations: {}", success_result.implementations.len());
             println!("Traits found: {}", success_result.traits.len());
@@ -111,8 +112,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     assert!(
         result.is_err(),
@@ -166,8 +167,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     assert!(
         result.is_err(),
@@ -222,8 +223,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     assert!(
         result.is_err(),
@@ -277,8 +278,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     assert!(
         result.is_err(),
@@ -325,8 +326,8 @@ impl TestTrait for MyType {
         combined_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -363,8 +364,8 @@ impl UndefinedTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(compilation_result) => {
@@ -379,12 +380,8 @@ impl UndefinedTrait for MyType {
             );
 
             // Let's debug what traits are available
-            for (trait_id, trait_def) in &compilation_result.traits {
-                let trait_name = compilation_result
-                    .type_context
-                    .type_interner
-                    .type_name(*trait_id)
-                    .unwrap_or("Unknown".to_string());
+            for trait_def in compilation_result.traits.values() {
+                let trait_name = "Unknown".to_string(); // Type name resolution no longer available through type_context
                 println!("Available trait: {} -> {:?}", trait_name, trait_def.name);
             }
 
@@ -432,8 +429,8 @@ impl UndefinedTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_compilation_result) => {

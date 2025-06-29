@@ -20,10 +20,6 @@ fn test_lazy_static_compilation_caching() {
     assert!(!compilation1.traits.is_empty(), "Should have traits");
     assert!(!compilation1.structs.is_empty(), "Should have structs");
     assert!(
-        !compilation1.function_registry.is_empty(),
-        "Should have functions"
-    );
-    assert!(
         !compilation1.compilation_order.is_empty(),
         "Should have compilation order"
     );
@@ -81,6 +77,39 @@ fn test_core_library_stats() {
 }
 
 #[test]
+fn test_unary_traits_loaded() {
+    let compilation = get_core_library_compilation();
+
+    // Debug: Print all trait names
+    println!("All loaded traits:");
+    for name in compilation.traits.keys() {
+        println!("  - {}", name);
+    }
+
+    // Look for traits that contain "Unary" in their name
+    let unary_plus_found = compilation
+        .traits
+        .keys()
+        .any(|name| name.to_string().contains("UnaryPlus"));
+    let unary_minus_found = compilation
+        .traits
+        .keys()
+        .any(|name| name.to_string().contains("UnaryMinus"));
+
+    println!("UnaryPlus found: {}", unary_plus_found);
+    println!("UnaryMinus found: {}", unary_minus_found);
+
+    // Check implementations
+    println!("All implementations:");
+    for impl_block in &compilation.implementations {
+        println!(
+            "  - impl {} for {}",
+            impl_block.trait_spec, impl_block.type_spec
+        );
+    }
+}
+
+#[test]
 fn test_compilation_reproducibility() {
     // Test that compilation is deterministic across multiple loads
     let collection1 = load_core_library_collection();
@@ -111,9 +140,8 @@ fn test_no_build_rs_dependencies() {
 
     println!("✅ Runtime core library loading works without build.rs!");
     println!(
-        "   Loaded {} traits, {} structs, {} functions",
+        "   Loaded {} traits, {} structs",
         compilation.traits.len(),
-        compilation.structs.len(),
-        compilation.function_registry.len()
+        compilation.structs.len()
     );
 }

@@ -67,12 +67,118 @@ macro unless(condition, do_block) {
 }
 ```
 
-### Notes to reduce confusion:
-- Outrun is functional, not OOP. There are no methods, instances, objects or classes.
-- All functions take keyword arguments.
-- All function calls must provide keyword arguments (althought shorthand is available).
-- There are no Enum or union types. Instead define structs and implement the same trait for them.
-- The only constructors are struct constructors.
+### Critical Language Differences
+
+**⚠️ Outrun is NOT Like Other Languages** - These differences are crucial for all development:
+
+#### 1. **NO METHODS OR INSTANCE FUNCTIONS**
+```outrun
+// ❌ WRONG - This is NOT how Outrun works
+let list = [1, 2, 3];
+let head = list.head();  // Methods don't exist in Outrun
+
+// ✅ CORRECT - Outrun uses static trait functions
+let list = [1, 2, 3];
+let head = List.head(value: list);  // Static function call
+```
+
+#### 2. **NO ENUM VARIANT CONSTRUCTORS**
+```outrun
+// ❌ WRONG - Outrun has no enum constructors
+let opt = Some(42);        // This syntax doesn't exist
+let result = Ok("success"); // This syntax doesn't exist
+
+// ✅ CORRECT - Use static trait functions
+let opt = Option.some(value: 42);        // Static function creates struct
+let result = Result.ok(value: "success"); // Static function creates struct
+```
+
+#### 3. **NO EMPTY TUPLE OR UNIT TYPES**
+```outrun
+// ❌ WRONG - No unit type in Outrun
+def do_something() {  // No return type = void (doesn't exist)
+    // ...
+}
+
+// ✅ CORRECT - All functions return meaningful values
+def do_something(): Boolean {  // Must return actual value
+    // ... 
+    true  // Always return a value
+}
+```
+
+#### 4. **ONLY NAMED PARAMETERS (with shorthand)**
+```outrun
+// ❌ WRONG - No positional arguments
+List.prepend(list, element);  // Positional args don't exist
+
+// ✅ CORRECT - All parameters must be named
+List.prepend(list: my_list, elem: element);  // Named parameters required
+
+// ✅ SHORTHAND - When variable name matches parameter name
+let list = [1, 2, 3];
+let elem = 0;
+List.prepend(list, elem);  // Shorthand: list means list: list, elem means elem: elem
+```
+
+#### 5. **STRUCTS CREATED BY FUNCTIONS, NOT CONSTRUCTORS**
+```outrun
+// ❌ WRONG - Direct struct construction doesn't exist for users
+let opt = Some { value: 42 };  // Direct construction not available
+
+// ✅ CORRECT - Use static trait functions (which create structs internally)
+let opt = Option.some(value: 42);  // Creates Outrun.Option.Some<T> struct internally
+```
+
+### Common Programming Mistakes to Avoid
+
+#### ❌ Thinking Object-Oriented
+```rust
+// WRONG - Treating values as objects with methods
+let list = [1, 2, 3];
+let head = list.head();  // Methods don't exist!
+
+// CORRECT - Everything is function calls
+let head = List.head(value: list);
+```
+
+#### ❌ Using Direct Enum/Variant Construction
+```rust
+// WRONG - Direct variant construction 
+let opt = Some(value);
+let result = Ok(data);
+
+// CORRECT - Via trait functions
+let opt = Option.some(value: value);
+let result = Result.ok(value: data);
+```
+
+#### ❌ Expecting Unit/Void Returns
+```rust
+// WRONG - Functions returning nothing
+def print_line(text: String) {  // Void return
+    // ...
+}
+
+// CORRECT - Everything returns a value
+def print_line(text: String): Boolean {  // Success indicator
+    // ...
+    true
+}
+```
+
+#### ❌ Using Positional Arguments
+```rust
+// WRONG - Positional function calls
+List.append(list1, list2);
+Map.get(map, key);
+
+// CORRECT - Named arguments (with optional shorthand)
+List.append(first: list1, second: list2);
+Map.get(map: map, key: key);
+// Or shorthand when variable names match:
+Map.get(map, key);  // Equivalent to Map.get(map: map, key: key)
+```
 
 ## Development Workflow
 
@@ -167,6 +273,78 @@ outrun-component/
 - Improves compilation times for production builds
 - Separates unit logic from test logic clearly
 - Tests can access internal modules more easily when in src/tests/
+
+## Package Composition System
+
+The Outrun compiler supports composing multiple compilation results together, enabling:
+
+1. **Package Systems** - Import pre-compiled packages
+2. **Incremental Compilation** - Reuse previously compiled modules  
+3. **Build Systems** - Compose multiple compilation units
+
+### Core Components
+
+#### CompilationResult::merge()
+Combines multiple compilation results into a single coherent unit:
+
+```rust
+let core_lib = compile_core_library();
+let user_package = compile_user_package();
+let third_party = compile_third_party_package();
+
+let combined = CompilationResult::merge(
+    core_lib, 
+    vec![user_package, third_party]
+)?;
+```
+
+#### PackageSummary
+Lightweight interface extraction for fast imports:
+
+```rust
+// Create package summary from compilation
+let summary = compilation.create_package_summary("my_package");
+
+// Package summary contains only public interface:
+// - Exported traits and their signatures
+// - Exported structs and their fields  
+// - Exported function signatures
+// - Trait implementations
+
+// Convert back to compilation result for merging
+let import_compilation = summary.to_compilation_result();
+```
+
+#### MultiProgramCompiler composition methods
+
+```rust
+// Compose multiple packages
+let composed = MultiProgramCompiler::compose_packages(vec![
+    core_library_compilation,
+    math_library_compilation, 
+    user_code_compilation,
+])?;
+
+// Import a package into existing compiler
+let mut compiler = MultiProgramCompiler::from_compilation_result(core_lib);
+compiler.import_package(&math_package_summary)?;
+```
+
+### Conflict Resolution
+
+The system handles conflicts through:
+
+1. **Trait Compatibility** - Same trait must have identical signatures
+2. **Struct Compatibility** - Same struct must have identical fields
+3. **Function Overrides** - Later packages can override earlier functions (with warnings)
+4. **Orphan Rules** - Prevent conflicting trait implementations
+
+### Performance Benefits
+
+1. **No Recompilation** - Core library compiled once, reused everywhere
+2. **Fast Imports** - Package summaries contain only interface, not implementation
+3. **Incremental Builds** - Only recompile changed modules
+4. **Parallel Compilation** - Independent packages can compile in parallel
 
 ## Useful Commands
 

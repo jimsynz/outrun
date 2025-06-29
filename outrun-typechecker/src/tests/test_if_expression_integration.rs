@@ -1,7 +1,7 @@
 //! Integration tests for If expression type checking and typed AST generation
 
 use crate::checker::{TypedExpressionKind, TypedItemKind};
-use crate::multi_program_compiler::MultiProgramCompiler;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
 #[test]
@@ -15,12 +15,12 @@ fn test_if_else_with_literals_typed_ast() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler
-        .compile(&collection)
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Compilation should succeed with literals");
     let typed_program = result
         .typed_programs
@@ -80,13 +80,13 @@ fn test_if_without_else_compilation_success() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Should succeed because Integer implements Default (returns 0)
-    let result = compiler
-        .compile(&collection)
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Compilation should succeed when type implements Default");
     let typed_program = result
         .typed_programs
@@ -140,12 +140,12 @@ fn test_if_else_with_string_literals() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler
-        .compile(&collection)
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Compilation should succeed with compatible string types");
     let typed_program = result
         .typed_programs
@@ -193,12 +193,12 @@ fn test_if_else_with_incompatible_types_failure() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Should fail compilation due to incompatible branch types
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     assert!(
         result.is_err(),
         "If-else with incompatible types should fail"
@@ -229,12 +229,12 @@ fn test_if_without_else_with_non_default_type_failure() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Should fail compilation because Atom doesn't implement Default
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     assert!(
         result.is_err(),
         "If without else should fail when type doesn't implement Default"
@@ -270,12 +270,12 @@ fn test_nested_if_expressions() {
 
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler
-        .compile(&collection)
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Nested if expressions should compile");
     let typed_program = result
         .typed_programs

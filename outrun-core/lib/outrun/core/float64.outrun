@@ -101,12 +101,6 @@ impl Display for Outrun.Core.Float64 {
     }
 }
 
-# Inspect trait implementation
-impl Inspect for Outrun.Core.Float64 {
-    def inspect(value: Self): Outrun.Core.String {
-        Outrun.Intrinsic.f64_to_string(value: value)
-    }
-}
 
 # Float trait implementation
 impl Float for Outrun.Core.Float64 {

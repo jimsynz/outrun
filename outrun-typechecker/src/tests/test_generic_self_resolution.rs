@@ -1,4 +1,5 @@
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use outrun_parser::parse_program;
 
 fn load_core_library() -> ProgramCollection {
@@ -60,8 +61,8 @@ def test_option_generic_inference(): Option<Integer> {
     let program = parse_program(test_source).expect("Failed to parse test program");
     collection.add_program("test.outrun".to_string(), program, test_source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -120,8 +121,8 @@ def test_let_binding(): Boolean {
     let program = parse_program(test_source).expect("Failed to parse test program");
     collection.add_program("test.outrun".to_string(), program, test_source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {

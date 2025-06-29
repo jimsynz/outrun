@@ -54,5 +54,8 @@ trait Inspect {
     Inspect.inspect(value: :atom)      # ":atom"
     ```
     """)
-    def inspect(value: Self): String
+    def inspect(value: Self): String {
+        # Default implementation using universal intrinsic
+        Outrun.Intrinsic.inspect_value(value: value)
+    }
 }

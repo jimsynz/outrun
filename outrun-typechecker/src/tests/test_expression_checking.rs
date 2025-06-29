@@ -1,4 +1,5 @@
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -24,8 +25,8 @@ def test_literals(): String {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -65,8 +66,8 @@ def test_collections(): String {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -105,8 +106,8 @@ def test_if_default(): Integer {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -158,8 +159,8 @@ def test_function(): Outrun.Core.Integer64 {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     // We expect compilation to fail
     match result {

@@ -3,80 +3,88 @@
 use crate::unification::{
     unify_structured_types, FunctionParam, StructuredType, UnificationContext, UnificationError,
 };
-fn create_test_context() -> UnificationContext {
-    let mut context = UnificationContext::new();
+fn create_test_context() -> (
+    UnificationContext,
+    crate::compilation::compiler_environment::CompilerEnvironment,
+) {
+    let context = UnificationContext::new();
+    let compiler_env = crate::compilation::compiler_environment::CompilerEnvironment::new();
 
     // Set up some basic types
-    let string_trait_id = context.type_interner.intern_type("String");
-    let boolean_trait_id = context.type_interner.intern_type("Boolean");
-    let integer_trait_id = context.type_interner.intern_type("Integer");
-    let _option_id = context.type_interner.intern_type("Option");
-    let _map_id = context.type_interner.intern_type("Map");
-    let core_string_id = context.type_interner.intern_type("Outrun.Core.String");
-    let core_boolean_id = context.type_interner.intern_type("Outrun.Core.Boolean");
-    let core_integer_id = context.type_interner.intern_type("Outrun.Core.Integer64");
+    let string_trait_id = compiler_env.intern_type_name("String");
+    let boolean_trait_id = compiler_env.intern_type_name("Boolean");
+    let integer_trait_id = compiler_env.intern_type_name("Integer");
+    let _option_id = compiler_env.intern_type_name("Option");
+    let _map_id = compiler_env.intern_type_name("Map");
+    let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
+    let core_boolean_id = compiler_env.intern_type_name("Outrun.Core.Boolean");
+    let core_integer_id = compiler_env.intern_type_name("Outrun.Core.Integer64");
 
-    // Register traits
-    context.trait_registry.register_trait(string_trait_id);
-    context.trait_registry.register_trait(boolean_trait_id);
-    context.trait_registry.register_trait(integer_trait_id);
+    // Register trait implementations using CompilerEnvironment
+    compiler_env.register_trait_implementation(
+        StructuredType::Simple(core_string_id.clone()),
+        StructuredType::Simple(string_trait_id.clone()),
+    );
+    compiler_env.register_trait_implementation(
+        StructuredType::Simple(core_boolean_id.clone()),
+        StructuredType::Simple(boolean_trait_id.clone()),
+    );
+    compiler_env.register_trait_implementation(
+        StructuredType::Simple(core_integer_id.clone()),
+        StructuredType::Simple(integer_trait_id.clone()),
+    );
 
-    // Register implementations
-    context
-        .trait_registry
-        .register_implementation(core_string_id, string_trait_id);
-    context
-        .trait_registry
-        .register_implementation(core_boolean_id, boolean_trait_id);
-    context
-        .trait_registry
-        .register_implementation(core_integer_id, integer_trait_id);
-
-    context
+    (context, compiler_env)
 }
 
 #[test]
 fn test_exact_match_unification() {
-    let context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
 
-    let type1 = StructuredType::simple(string_id);
-    let type2 = StructuredType::simple(string_id);
+    let type1 = StructuredType::Simple(string_id.clone());
+    let type2 = StructuredType::Simple(string_id);
 
-    assert!(unify_structured_types(&type1, &type2, &context).unwrap());
+    assert!(
+        unify_structured_types(&type1, &type2, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
 fn test_trait_concrete_unification() {
-    let context = create_test_context();
-    let string_trait_id = context.type_interner.get_type("String").unwrap();
-    let core_string_id = context
-        .type_interner
-        .get_type("Outrun.Core.String")
-        .unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_trait_id = compiler_env.intern_type_name("String");
+    let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-    let trait_type = StructuredType::simple(string_trait_id);
-    let concrete_type = StructuredType::simple(core_string_id);
+    let trait_type = StructuredType::Simple(string_trait_id);
+    let concrete_type = StructuredType::Simple(core_string_id);
 
     // Trait should unify with implementing concrete type
-    assert!(unify_structured_types(&trait_type, &concrete_type, &context).unwrap());
-    assert!(unify_structured_types(&concrete_type, &trait_type, &context).unwrap());
+    assert!(
+        unify_structured_types(&trait_type, &concrete_type, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        unify_structured_types(&concrete_type, &trait_type, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
 fn test_non_implementing_trait_unification() {
-    let context = create_test_context();
-    let string_trait_id = context.type_interner.get_type("String").unwrap();
-    let core_boolean_id = context
-        .type_interner
-        .get_type("Outrun.Core.Boolean")
-        .unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_trait_id = compiler_env.intern_type_name("String");
+    let core_boolean_id = compiler_env.intern_type_name("Outrun.Core.Boolean");
 
-    let trait_type = StructuredType::simple(string_trait_id);
-    let concrete_type = StructuredType::simple(core_boolean_id);
+    let trait_type = StructuredType::Simple(string_trait_id);
+    let concrete_type = StructuredType::Simple(core_boolean_id);
 
     // String trait should not unify with Boolean concrete type
-    let result = unify_structured_types(&trait_type, &concrete_type, &context);
+    let result = unify_structured_types(&trait_type, &concrete_type, &context, &compiler_env);
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
@@ -86,131 +94,149 @@ fn test_non_implementing_trait_unification() {
 
 #[test]
 fn test_generic_type_unification() {
-    let mut context = create_test_context();
-    let option_id = context.type_interner.intern_type("Option");
-    let string_trait_id = context.type_interner.get_type("String").unwrap();
-    let core_string_id = context
-        .type_interner
-        .get_type("Outrun.Core.String")
-        .unwrap();
+    let (context, compiler_env) = create_test_context();
+    let option_id = compiler_env.intern_type_name("Option");
+    let string_trait_id = compiler_env.intern_type_name("String");
+    let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-    let option_trait =
-        StructuredType::generic(option_id, vec![StructuredType::simple(string_trait_id)]);
+    let option_trait = StructuredType::generic(
+        option_id.clone(),
+        vec![StructuredType::Simple(string_trait_id)],
+    );
     let option_concrete =
-        StructuredType::generic(option_id, vec![StructuredType::simple(core_string_id)]);
+        StructuredType::generic(option_id, vec![StructuredType::Simple(core_string_id)]);
 
     // Option<String> should unify with Option<Outrun.Core.String>
-    assert!(unify_structured_types(&option_trait, &option_concrete, &context).unwrap());
+    assert!(
+        unify_structured_types(&option_trait, &option_concrete, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
 fn test_generic_arity_mismatch() {
-    let mut context = create_test_context();
-    let option_id = context.type_interner.intern_type("Option");
-    let map_id = context.type_interner.intern_type("Map");
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let option_id = compiler_env.intern_type_name("Option");
+    let map_id = compiler_env.intern_type_name("Map");
+    let string_id = compiler_env.intern_type_name("String");
 
-    let option_type = StructuredType::generic(option_id, vec![StructuredType::simple(string_id)]);
+    let option_type = StructuredType::generic(
+        option_id.clone(),
+        vec![StructuredType::Simple(string_id.clone())],
+    );
     let map_type = StructuredType::generic(
         map_id,
         vec![
-            StructuredType::simple(string_id),
-            StructuredType::simple(string_id),
+            StructuredType::Simple(string_id.clone()),
+            StructuredType::Simple(string_id),
         ],
     );
 
     // Option<String> (arity 1) should not unify with Map<String, String> (arity 2)
-    let result = unify_structured_types(&option_type, &map_type, &context);
-    assert!(!result.unwrap()); // Different base types, so should return false
+    let result = unify_structured_types(&option_type, &map_type, &context, &compiler_env);
+    assert!(result.unwrap().is_none()); // Different base types, so should return None
 }
 
 #[test]
 fn test_tuple_unification() {
-    let context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
-    let boolean_id = context.type_interner.get_type("Boolean").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
+    let boolean_id = compiler_env.intern_type_name("Boolean");
 
     let tuple1 = StructuredType::tuple(vec![
-        StructuredType::simple(string_id),
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(string_id.clone()),
+        StructuredType::Simple(boolean_id.clone()),
     ]);
     let tuple2 = StructuredType::tuple(vec![
-        StructuredType::simple(string_id),
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(string_id),
+        StructuredType::Simple(boolean_id),
     ]);
 
-    assert!(unify_structured_types(&tuple1, &tuple2, &context).unwrap());
+    assert!(
+        unify_structured_types(&tuple1, &tuple2, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
 fn test_tuple_arity_mismatch() {
-    let context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
 
-    let tuple1 = StructuredType::tuple(vec![StructuredType::simple(string_id)]);
+    let tuple1 = StructuredType::tuple(vec![StructuredType::Simple(string_id.clone())]);
     let tuple2 = StructuredType::tuple(vec![
-        StructuredType::simple(string_id),
-        StructuredType::simple(string_id),
+        StructuredType::Simple(string_id.clone()),
+        StructuredType::Simple(string_id),
     ]);
 
     // Different tuple arities should not unify
-    assert!(!unify_structured_types(&tuple1, &tuple2, &context).unwrap());
+    assert!(
+        unify_structured_types(&tuple1, &tuple2, &context, &compiler_env)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
 fn test_function_type_unification() {
-    let mut context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
-    let boolean_id = context.type_interner.get_type("Boolean").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
+    let boolean_id = compiler_env.intern_type_name("Boolean");
 
-    let name_atom = context.type_interner.intern_atom("name");
+    let name_atom = compiler_env.intern_atom_name("name");
 
     let func1 = StructuredType::function(
         vec![FunctionParam {
-            name: name_atom,
-            param_type: StructuredType::simple(string_id),
+            name: name_atom.clone(),
+            param_type: StructuredType::Simple(string_id.clone()),
         }],
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(boolean_id.clone()),
     );
 
     let func2 = StructuredType::function(
         vec![FunctionParam {
             name: name_atom,
-            param_type: StructuredType::simple(string_id),
+            param_type: StructuredType::Simple(string_id),
         }],
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(boolean_id),
     );
 
-    assert!(unify_structured_types(&func1, &func2, &context).unwrap());
+    assert!(
+        unify_structured_types(&func1, &func2, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
 fn test_function_parameter_name_mismatch() {
-    let mut context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
-    let boolean_id = context.type_interner.get_type("Boolean").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
+    let boolean_id = compiler_env.intern_type_name("Boolean");
 
-    let name1_atom = context.type_interner.intern_atom("name1");
-    let name2_atom = context.type_interner.intern_atom("name2");
+    let name1_atom = compiler_env.intern_atom_name("name1");
+    let name2_atom = compiler_env.intern_atom_name("name2");
 
     let func1 = StructuredType::function(
         vec![FunctionParam {
             name: name1_atom,
-            param_type: StructuredType::simple(string_id),
+            param_type: StructuredType::Simple(string_id.clone()),
         }],
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(boolean_id.clone()),
     );
 
     let func2 = StructuredType::function(
         vec![FunctionParam {
             name: name2_atom,
-            param_type: StructuredType::simple(string_id),
+            param_type: StructuredType::Simple(string_id),
         }],
-        StructuredType::simple(boolean_id),
+        StructuredType::Simple(boolean_id),
     );
 
     // Different parameter names should cause unification error
-    let result = unify_structured_types(&func1, &func2, &context);
+    let result = unify_structured_types(&func1, &func2, &context, &compiler_env);
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
@@ -220,29 +246,33 @@ fn test_function_parameter_name_mismatch() {
 
 #[test]
 fn test_cross_type_unification_failure() {
-    let context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
 
-    let simple_type = StructuredType::simple(string_id);
-    let tuple_type = StructuredType::tuple(vec![StructuredType::simple(string_id)]);
+    let simple_type = StructuredType::Simple(string_id.clone());
+    let tuple_type = StructuredType::tuple(vec![StructuredType::Simple(string_id)]);
 
     // Simple type should not unify with tuple type
-    assert!(!unify_structured_types(&simple_type, &tuple_type, &context).unwrap());
+    assert!(
+        unify_structured_types(&simple_type, &tuple_type, &context, &compiler_env)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
 fn test_nested_generic_unification() {
-    let mut context = create_test_context();
-    let option_id = context.type_interner.intern_type("Option");
-    let list_id = context.type_interner.intern_type("List");
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let option_id = compiler_env.intern_type_name("Option");
+    let list_id = compiler_env.intern_type_name("List");
+    let string_id = compiler_env.intern_type_name("String");
 
     // Option<List<String>>
     let nested1 = StructuredType::generic(
-        option_id,
+        option_id.clone(),
         vec![StructuredType::generic(
-            list_id,
-            vec![StructuredType::simple(string_id)],
+            list_id.clone(),
+            vec![StructuredType::Simple(string_id.clone())],
         )],
     );
 
@@ -251,11 +281,15 @@ fn test_nested_generic_unification() {
         option_id,
         vec![StructuredType::generic(
             list_id,
-            vec![StructuredType::simple(string_id)],
+            vec![StructuredType::Simple(string_id)],
         )],
     );
 
-    assert!(unify_structured_types(&nested1, &nested2, &context).unwrap());
+    assert!(
+        unify_structured_types(&nested1, &nested2, &context, &compiler_env)
+            .unwrap()
+            .is_some()
+    );
 }
 
 // Self type resolution is now handled by the type parameter system in multi_program_compiler
@@ -263,40 +297,32 @@ fn test_nested_generic_unification() {
 // Self type in generic resolution is now handled by the type parameter system in multi_program_compiler
 #[test]
 fn test_generic_type_resolution() {
-    let mut context = create_test_context();
-    let option_id = context.type_interner.intern_type("Option");
-    let string_id = context.type_interner.get_type("String").unwrap();
+    let (context, compiler_env) = create_test_context();
+    let option_id = compiler_env.intern_type_name("Option");
+    let string_id = compiler_env.intern_type_name("String");
 
     // Test Option<String> resolution (no Self needed)
-    let option_string = StructuredType::generic(option_id, vec![StructuredType::simple(string_id)]);
-    let resolved = context.resolve_type(&option_string).unwrap();
-    assert_eq!(resolved, option_string);
+    let option_string = StructuredType::generic(option_id, vec![StructuredType::Simple(string_id)]);
+    let resolved = context.resolve_type(&option_string, &compiler_env);
+    assert_eq!(resolved, Ok(option_string.clone()));
 }
 
 #[test]
 fn test_string_representation() {
-    let context = create_test_context();
-    let string_id = context.type_interner.get_type("String").unwrap();
-    let option_id = context.type_interner.get_type("Option").unwrap();
+    let (_context, compiler_env) = create_test_context();
+    let string_id = compiler_env.intern_type_name("String");
+    let option_id = compiler_env.intern_type_name("Option");
 
-    let simple_type = StructuredType::simple(string_id);
-    assert_eq!(
-        simple_type.to_string_representation(&context.type_interner),
-        "String"
-    );
+    let simple_type = StructuredType::Simple(string_id.clone());
+    assert_eq!(simple_type.to_string_representation(), "String");
 
-    let generic_type = StructuredType::generic(option_id, vec![StructuredType::simple(string_id)]);
-    assert_eq!(
-        generic_type.to_string_representation(&context.type_interner),
-        "Option<String>"
-    );
+    let generic_type =
+        StructuredType::generic(option_id, vec![StructuredType::Simple(string_id.clone())]);
+    assert_eq!(generic_type.to_string_representation(), "Option<String>");
 
     let tuple_type = StructuredType::tuple(vec![
-        StructuredType::simple(string_id),
-        StructuredType::simple(string_id),
+        StructuredType::Simple(string_id.clone()),
+        StructuredType::Simple(string_id),
     ]);
-    assert_eq!(
-        tuple_type.to_string_representation(&context.type_interner),
-        "(String, String)"
-    );
+    assert_eq!(tuple_type.to_string_representation(), "(String, String)");
 }

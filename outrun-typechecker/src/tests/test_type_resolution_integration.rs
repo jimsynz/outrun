@@ -1,6 +1,7 @@
 //! Tests to verify that type checking results are correctly integrated into TypedASTBuilder
 
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use outrun_parser::parse_program;
 use std::collections::HashMap;
 
@@ -16,9 +17,9 @@ fn test_expression_types_captured_during_type_checking() {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new_with_intrinsics();
-    let result = compiler
-        .compile(&collection)
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Compilation should succeed");
 
     // Verify that expression types were captured
@@ -50,9 +51,9 @@ fn test_typed_ast_builder_uses_resolved_types() {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new_with_intrinsics();
-    let result = compiler
-        .compile(&collection)
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env
+        .compile_collection(collection)
         .expect("Compilation should succeed");
 
     // Verify that typed programs were built using the resolved types
@@ -88,11 +89,11 @@ fn test_fallback_to_literal_inference_when_no_resolved_type() {
 
     // Create a TypedASTBuilder with empty expression types to test fallback
     let context = crate::unification::UnificationContext::new();
-    let function_registry = crate::multi_program_compiler::FunctionRegistry::default();
     let struct_registry = HashMap::new();
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
 
     let mut builder =
-        crate::typed_ast_builder::TypedASTBuilder::new(context, function_registry, struct_registry);
+        crate::typed_ast_builder::TypedASTBuilder::new(context, struct_registry, Some(env));
 
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());

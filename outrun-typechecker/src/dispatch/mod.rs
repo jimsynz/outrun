@@ -5,8 +5,8 @@
 
 pub mod lookup;
 
+use crate::compilation::compiler_environment::TypeNameId;
 use crate::types::traits::FunctionId;
-use crate::types::TypeId;
 use outrun_parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 
@@ -17,15 +17,15 @@ pub struct OpaqueModuleId(pub u32);
 /// Main dispatch table for runtime trait method resolution
 #[derive(Debug, Clone)]
 pub struct DispatchTable {
-    // Core trait dispatch: (TypeId, TypeId) -> OpaqueModuleId
-    trait_dispatch: HashMap<(TypeId, TypeId), OpaqueModuleId>,
+    // Core trait dispatch: (TypeNameId, TypeNameId) -> OpaqueModuleId
+    trait_dispatch: HashMap<(TypeNameId, TypeNameId), OpaqueModuleId>,
 
-    // Static function lookup: TypeId -> function mappings
-    static_functions: HashMap<TypeId, HashMap<String, FunctionId>>,
+    // Static function lookup: TypeNameId -> function mappings
+    static_functions: HashMap<TypeNameId, HashMap<String, FunctionId>>,
 
     // Operator dispatch tables
-    binary_ops: HashMap<(BinaryOperator, TypeId, TypeId), FunctionId>,
-    unary_ops: HashMap<(UnaryOperator, TypeId), FunctionId>,
+    binary_ops: HashMap<(BinaryOperator, TypeNameId, TypeNameId), FunctionId>,
+    unary_ops: HashMap<(UnaryOperator, TypeNameId), FunctionId>,
 
     // Next available opaque module ID
     next_module_id: u32,
@@ -44,21 +44,29 @@ impl DispatchTable {
     }
 
     /// Register a trait implementation for dispatch
-    pub fn register_trait_impl(&mut self, trait_id: TypeId, type_id: TypeId) -> OpaqueModuleId {
+    pub fn register_trait_impl(
+        &mut self,
+        trait_id: TypeNameId,
+        type_id: TypeNameId,
+    ) -> OpaqueModuleId {
         let module_id = self.next_opaque_module_id();
         self.trait_dispatch.insert((trait_id, type_id), module_id);
         module_id
     }
 
     /// Look up trait implementation
-    pub fn lookup_trait_impl(&self, trait_id: TypeId, type_id: TypeId) -> Option<OpaqueModuleId> {
+    pub fn lookup_trait_impl(
+        &self,
+        trait_id: TypeNameId,
+        type_id: TypeNameId,
+    ) -> Option<OpaqueModuleId> {
         self.trait_dispatch.get(&(trait_id, type_id)).copied()
     }
 
     /// Register a static function for a type
     pub fn register_static_function(
         &mut self,
-        type_id: TypeId,
+        type_id: TypeNameId,
         function_name: String,
         function_id: FunctionId,
     ) {
@@ -69,7 +77,7 @@ impl DispatchTable {
     }
 
     /// Look up static function
-    pub fn lookup_static_function(&self, type_id: TypeId, name: &str) -> Option<FunctionId> {
+    pub fn lookup_static_function(&self, type_id: TypeNameId, name: &str) -> Option<FunctionId> {
         self.static_functions.get(&type_id)?.get(name).copied()
     }
 
@@ -77,8 +85,8 @@ impl DispatchTable {
     pub fn register_binary_op(
         &mut self,
         operator: BinaryOperator,
-        left_type: TypeId,
-        right_type: TypeId,
+        left_type: TypeNameId,
+        right_type: TypeNameId,
         function_id: FunctionId,
     ) {
         self.binary_ops
@@ -89,8 +97,8 @@ impl DispatchTable {
     pub fn lookup_binary_op(
         &self,
         operator: BinaryOperator,
-        left_type: TypeId,
-        right_type: TypeId,
+        left_type: TypeNameId,
+        right_type: TypeNameId,
     ) -> Option<FunctionId> {
         self.binary_ops
             .get(&(operator, left_type, right_type))
@@ -101,7 +109,7 @@ impl DispatchTable {
     pub fn register_unary_op(
         &mut self,
         operator: UnaryOperator,
-        operand_type: TypeId,
+        operand_type: TypeNameId,
         function_id: FunctionId,
     ) {
         self.unary_ops.insert((operator, operand_type), function_id);
@@ -111,7 +119,7 @@ impl DispatchTable {
     pub fn lookup_unary_op(
         &self,
         operator: UnaryOperator,
-        operand_type: TypeId,
+        operand_type: TypeNameId,
     ) -> Option<FunctionId> {
         self.unary_ops.get(&(operator, operand_type)).copied()
     }

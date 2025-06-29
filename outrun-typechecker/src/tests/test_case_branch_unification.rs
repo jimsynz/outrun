@@ -1,7 +1,8 @@
 //! Tests for case expression branch type unification
 
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use crate::error::TypeError;
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -26,8 +27,8 @@ def test(): String {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(compilation_result) => {
@@ -80,8 +81,8 @@ def test(): String {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -138,8 +139,8 @@ def format_value(value: Formatter): String {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(compilation_result) => {
@@ -194,8 +195,8 @@ def test(): String {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_compilation_result) => {

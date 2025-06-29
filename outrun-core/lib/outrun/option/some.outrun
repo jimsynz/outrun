@@ -36,3 +36,4 @@ impl<T> Option<T> for Outrun.Option.Some<T> {
         value.value  # Return the contained value
     }
 }
+

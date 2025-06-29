@@ -142,16 +142,14 @@ fn test_debug_info_default() {
 
 #[test]
 fn test_string_interpolation_format_preservation() {
-    use crate::multi_program_compiler::FunctionRegistry;
     use crate::typed_ast_builder::TypedASTBuilder;
     use crate::unification::UnificationContext;
     use outrun_parser::{Span, StringFormat, StringLiteral, StringPart};
 
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let builder = TypedASTBuilder::new(context, std::collections::HashMap::new(), Some(env));
 
     // Test simple string reconstruction
     let simple_string = StringLiteral {
@@ -170,7 +168,6 @@ fn test_string_interpolation_format_preservation() {
 
 #[test]
 fn test_interpolated_string_reconstruction() {
-    use crate::multi_program_compiler::FunctionRegistry;
     use crate::typed_ast_builder::TypedASTBuilder;
     use crate::unification::UnificationContext;
     use outrun_parser::{
@@ -179,9 +176,8 @@ fn test_interpolated_string_reconstruction() {
 
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let builder = TypedASTBuilder::new(context, std::collections::HashMap::new(), Some(env));
 
     // Create an interpolated string: "Hello #{name}!"
     let name_expr = Expression {
@@ -250,7 +246,6 @@ fn test_interpolated_string_reconstruction() {
 
 #[test]
 fn test_expression_to_text_reconstruction() {
-    use crate::multi_program_compiler::FunctionRegistry;
     use crate::typed_ast_builder::TypedASTBuilder;
     use crate::unification::UnificationContext;
     use outrun_parser::{
@@ -260,9 +255,8 @@ fn test_expression_to_text_reconstruction() {
 
     // Create a mock TypedASTBuilder for testing
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let builder = TypedASTBuilder::new(context, std::collections::HashMap::new(), Some(env));
 
     // Test identifier
     let identifier_expr = Expression {

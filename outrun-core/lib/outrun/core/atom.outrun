@@ -35,13 +35,6 @@ impl Display for Outrun.Core.Atom {
     }
 }
 
-# Inspect trait implementation
-impl Inspect for Outrun.Core.Atom {
-    def inspect(value: Self): Outrun.Core.String {
-        # For inspect, we want to show the atom with its colon prefix
-        Outrun.Intrinsic.atom_inspect(value: value)
-    }
-}
 
 # Atom trait implementation
 impl Atom for Outrun.Core.Atom {

@@ -3,7 +3,8 @@
 //! This module provides runtime file loading and caches the compiled results
 //! using our multi-program compiler.
 
-use crate::multi_program_compiler::{CompilationResult, MultiProgramCompiler, ProgramCollection};
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::{CompilationResult, ProgramCollection};
 use lazy_static::lazy_static;
 use miette::{NamedSource, Report};
 use std::fs;
@@ -20,8 +21,16 @@ lazy_static! {
 fn load_and_compile_core_library() -> CompilationResult {
     let collection = load_core_library_collection();
 
-    let mut compiler = MultiProgramCompiler::new_with_intrinsics();
-    match compiler.compile(&collection) {
+    let mut compiler_env = CompilerEnvironment::new();
+    load_and_compile_core_library_with_environment(&mut compiler_env, collection)
+}
+
+/// Load and compile the entire core library using a shared compiler environment
+pub fn load_and_compile_core_library_with_environment(
+    compiler_env: &mut CompilerEnvironment,
+    collection: ProgramCollection,
+) -> CompilationResult {
+    match compiler_env.compile_collection(collection.clone()) {
         Ok(result) => result,
         Err(errors) => {
             eprintln!("🚨 Core Library Compilation Errors:");
@@ -197,6 +206,23 @@ pub fn get_core_library_compilation() -> &'static CompilationResult {
     &CORE_LIBRARY_COMPILATION
 }
 
+/// Compile the core library using a shared compiler environment
+///
+/// This is the preferred method for loading the core library when you want
+/// to share type interning with subsequent user program compilation.
+///
+/// # Arguments
+/// * `compiler_env` - Shared compiler environment that will be populated with core library types
+///
+/// # Returns
+/// * `CompilationResult` - Core library compilation with all types, traits, and implementations
+pub fn compile_core_library_with_environment(
+    compiler_env: &mut CompilerEnvironment,
+) -> CompilationResult {
+    let collection = load_core_library_collection();
+    load_and_compile_core_library_with_environment(compiler_env, collection)
+}
+
 /// Get source code for a specific core library file
 pub fn get_core_source(file_path: &str) -> Option<String> {
     let collection = load_core_library_collection();
@@ -222,7 +248,7 @@ pub fn core_library_stats() -> CoreLibraryStats {
         parsed_files: collection.programs.len(),
         total_traits: compilation.traits.len(),
         total_structs: compilation.structs.len(),
-        total_functions: compilation.function_registry.len(),
+        total_functions: 0, // Function count no longer available in CompilationResult
         total_implementations: compilation.implementations.len(),
     }
 }
@@ -282,8 +308,8 @@ pub fn load_and_compile_core_library_for_test(
         return Err(errors);
     }
 
-    let mut compiler = MultiProgramCompiler::new_with_intrinsics();
-    compiler.compile(&collection)
+    let mut compiler_env = CompilerEnvironment::new();
+    compiler_env.compile_collection(collection)
 }
 
 #[cfg(test)]

@@ -1,10 +1,11 @@
 //! New simplified type checker using visitor pattern and multi-program compilation
 
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::CompilationResult;
 use crate::error::TypeError;
-use crate::multi_program_compiler::{CompilationResult, FunctionRegistry, MultiProgramCompiler};
-use crate::types::TypeId;
 use crate::unification::{StructuredType, UnificationContext};
 use outrun_parser::{Program, Span};
+use std::collections::HashMap;
 
 /// Function path variants for typed function calls
 #[derive(Debug, Clone, PartialEq)]
@@ -34,7 +35,7 @@ pub enum DispatchMethod {
     Trait {
         trait_name: String,
         function_name: String,
-        impl_type: TypeId,
+        impl_type: Box<StructuredType>,
     },
 }
 
@@ -666,8 +667,6 @@ pub struct TypedProgram {
     pub items: Vec<TypedItem>,
     /// Type checking context with resolved types
     pub type_context: UnificationContext,
-    /// Hierarchical function registry
-    pub function_registry: FunctionRegistry,
     /// Compilation order for dependencies
     pub compilation_order: Vec<String>,
     /// Summary of compilation (for debugging)
@@ -683,7 +682,7 @@ pub struct TypedProgram {
 /// Main type checker that uses the new multi-program visitor architecture
 #[derive(Debug)]
 pub struct TypeChecker {
-    compiler: MultiProgramCompiler,
+    compiler_env: CompilerEnvironment,
 }
 
 impl Default for TypeChecker {
@@ -696,8 +695,16 @@ impl TypeChecker {
     /// Create a new type checker
     pub fn new() -> Self {
         Self {
-            compiler: MultiProgramCompiler::new(),
+            compiler_env: CompilerEnvironment::new(),
         }
+    }
+
+    /// Get the compiler environment from the type checker
+    /// This provides access to all loaded functions including core library
+    pub fn compiler_environment(
+        &self,
+    ) -> &crate::compilation::compiler_environment::CompilerEnvironment {
+        &self.compiler_env
     }
 
     /// Convert CompilationResult to TypedProgram (simplified)
@@ -723,7 +730,6 @@ impl TypeChecker {
         TypedProgram {
             items: typed_items,
             type_context: compilation_result.type_context,
-            function_registry: compilation_result.function_registry,
             compilation_order: compilation_result.compilation_order,
             compilation_summary,
             debug_info: TypedDebugInfo {
@@ -751,12 +757,18 @@ impl TypeChecker {
             format!("{}", program), // Use Display for source reconstruction
         );
 
-        // Compile using the multi-program compiler
-        match self.compiler.compile(&collection) {
+        // Compile using the compiler environment
+        match self.compiler_env.compile_collection(collection) {
             Ok(result) => {
-                // Convert compilation result to TypedProgram
-                let typed_program = Self::compilation_result_to_typed_program(result, program);
-                Ok(typed_program)
+                // Use the comprehensive TypedProgram created by TypedASTBuilder
+                // instead of creating a simplified one
+                if let Some(typed_program) = result.typed_programs.get("main.outrun") {
+                    Ok(typed_program.clone())
+                } else {
+                    // Fallback to simplified conversion if no typed program was created
+                    let typed_program = Self::compilation_result_to_typed_program(result, program);
+                    Ok(typed_program)
+                }
             }
             Err(errors) => Err(errors),
         }
@@ -767,10 +779,14 @@ impl TypeChecker {
         _source: &str,
         _filename: &str,
     ) -> Result<Self, crate::error::TypeErrorReport> {
-        // Create a type checker with intrinsics (which includes core library)
-        Ok(Self {
-            compiler: MultiProgramCompiler::new_with_intrinsics(),
-        })
+        // Use the globally cached core library compilation
+        let core_compilation = crate::core_library::get_core_library_compilation();
+
+        // Create a compiler environment with the cached compilation results
+        let mut compiler_env = CompilerEnvironment::new();
+        compiler_env.load_compilation_result(core_compilation.clone());
+
+        Ok(Self { compiler_env })
     }
 
     /// Convert parser Item to TypedItem (simplified)
@@ -888,6 +904,12 @@ impl TypeChecker {
                 });
             }
 
+            ExpressionKind::BinaryOp(_) => {
+                // Binary operators should never reach the type checker!
+                // They should be desugared to function calls in the desugaring phase.
+                return None; // Return None to indicate this expression type is not supported in simple conversion
+            }
+
             // For now, return None for other complex expressions - we'll implement these incrementally
             _ => return None,
         };
@@ -897,6 +919,42 @@ impl TypeChecker {
             structured_type: None, // Type will be resolved during proper type checking
             span: expr.span,
             debug_info: None, // Will be populated by TypedASTBuilder
+        })
+    }
+
+    /// Type check a program with external variables (for REPL usage)
+    pub fn check_program_with_external_variables(
+        &mut self,
+        program: &Program,
+        _external_variables: HashMap<String, crate::unification::StructuredType>,
+    ) -> Result<TypedProgram, Vec<TypeError>> {
+        // Since we have a globally unique core library compilation, we should use it directly
+        // instead of recompiling anything. We just need to type-check the user expression
+        // against the existing core library context.
+
+        let cached_core_compilation = crate::core_library::get_core_library_compilation();
+
+        // Create a simple typed program using the cached core library data
+        // For REPL usage, we typically just have a single expression to evaluate
+        let typed_items: Vec<TypedItem> = program
+            .items
+            .iter()
+            .filter_map(|item| {
+                Self::convert_item_simple(item, &cached_core_compilation.type_context)
+            })
+            .collect();
+
+        let compilation_summary =
+            "REPL expression with core library functions available".to_string();
+
+        Ok(TypedProgram {
+            items: typed_items,
+            type_context: cached_core_compilation.type_context.clone(),
+            compilation_order: vec!["main.outrun".to_string()],
+            compilation_summary,
+            debug_info: TypedDebugInfo::default(),
+            error_recovery_info: Vec::new(),
+            detailed_summary: None,
         })
     }
 }

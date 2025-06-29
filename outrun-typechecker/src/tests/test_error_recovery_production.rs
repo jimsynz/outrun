@@ -5,7 +5,6 @@ use crate::checker::{
     TypedDebugInfo, TypedExpressionKind, TypedProgram,
 };
 use crate::error::{SpanExt, TypeError};
-use crate::multi_program_compiler::FunctionRegistry;
 use crate::typed_ast_builder::TypedASTBuilder;
 use crate::unification::UnificationContext;
 use outrun_parser::{parse_program, Span};
@@ -23,8 +22,8 @@ fn test_error_recovery_info_creation() {
         recovery_span: Span::new(0, 10),
         recovery_strategy: RecoveryStrategy::FallbackType {
             fallback_type: {
-                let mut interner = crate::types::TypeInterner::new();
-                let type_id = interner.intern_type("TestType");
+                let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+                let type_id = env.intern_type_name("TestType");
                 crate::unification::StructuredType::Simple(type_id)
             },
         },
@@ -95,15 +94,15 @@ fn test_recovery_strategy_variants() {
         RecoveryStrategy::Skip,
         RecoveryStrategy::FallbackType {
             fallback_type: {
-                let mut interner = crate::types::TypeInterner::new();
-                let type_id = interner.intern_type("FallbackType");
+                let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+                let type_id = env.intern_type_name("FallbackType");
                 crate::unification::StructuredType::Simple(type_id)
             },
         },
         RecoveryStrategy::PlaceholderExpression {
             placeholder_type: {
-                let mut interner = crate::types::TypeInterner::new();
-                let type_id = interner.intern_type("PlaceholderType");
+                let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+                let type_id = env.intern_type_name("PlaceholderType");
                 crate::unification::StructuredType::Simple(type_id)
             },
         },
@@ -177,12 +176,9 @@ fn test_memory_usage_calculation() {
 #[test]
 fn test_typed_program_with_error_recovery() {
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-
     let typed_program = TypedProgram {
         items: Vec::new(),
         type_context: context,
-        function_registry,
         compilation_order: vec!["test.outrun".to_string()],
         compilation_summary: "Test program with error recovery".to_string(),
         debug_info: TypedDebugInfo::default(),
@@ -228,9 +224,8 @@ fn test_typed_program_with_error_recovery() {
 #[test]
 fn test_typed_ast_builder_error_recovery_init() {
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-    let builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let builder = TypedASTBuilder::new(context, std::collections::HashMap::new(), Some(env));
 
     // Verify builder initializes with empty error recovery info
     // Note: We can't directly access private fields, but we can test through public interfaces
@@ -248,8 +243,8 @@ fn test_type_error_expression_creation() {
             message: "Test error for recovery".to_string(),
         },
         fallback_type: Some({
-            let mut interner = crate::types::TypeInterner::new();
-            let type_id = interner.intern_type("TestType");
+            let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+            let type_id = env.intern_type_name("TestType");
             crate::unification::StructuredType::Simple(type_id)
         }),
         recovery_expression: None,
@@ -282,9 +277,8 @@ fn test_error_recovery_integration_with_simple_program() {
     let program = parse_program(source).expect("Failed to parse test program");
 
     let context = UnificationContext::default();
-    let function_registry = FunctionRegistry::default();
-    let mut builder =
-        TypedASTBuilder::new(context, function_registry, std::collections::HashMap::new());
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let mut builder = TypedASTBuilder::new(context, std::collections::HashMap::new(), Some(env));
 
     // This should succeed without any error recovery needed
     let result = builder.build_typed_program(&program, "test.outrun");
@@ -314,8 +308,8 @@ fn test_structured_type_error_variant() {
             message: "Failed to resolve type".to_string(),
         },
         Some({
-            let mut interner = crate::types::TypeInterner::new();
-            let type_id = interner.intern_type("TestType");
+            let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+            let type_id = env.intern_type_name("TestType");
             StructuredType::Simple(type_id)
         }),
         outrun_parser::Span::new(0, 10),
@@ -349,8 +343,8 @@ fn test_structured_type_error_unification() {
             message: "Type error".to_string(),
         },
         Some({
-            let mut interner = crate::types::TypeInterner::new();
-            let type_id = interner.intern_type("TestType");
+            let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+            let type_id = env.intern_type_name("TestType");
             StructuredType::Simple(type_id)
         }),
         outrun_parser::Span::new(0, 5),
@@ -358,13 +352,14 @@ fn test_structured_type_error_unification() {
 
     // Create a normal type
     let normal_type = {
-        let mut interner = crate::types::TypeInterner::new();
-        let type_id = interner.intern_type("TestType");
+        let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+        let type_id = env.intern_type_name("TestType");
         StructuredType::Simple(type_id)
     };
 
     // Error type with fallback should unify with the fallback type
-    let result = unify_structured_types(&error_type, &normal_type, &context);
+    let compiler_env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let result = unify_structured_types(&error_type, &normal_type, &context, &compiler_env);
     assert!(result.is_ok());
     // Note: The actual unification result depends on whether the fallback types match
     // This is testing that the unification doesn't panic and handles the error type
@@ -372,11 +367,10 @@ fn test_structured_type_error_unification() {
 
 #[test]
 fn test_structured_type_error_string_representation() {
-    use crate::types::TypeInterner;
     use crate::unification::StructuredType;
 
-    let mut interner = TypeInterner::new();
-    let string_type_id = interner.intern_type("String");
+    let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+    let string_type_id = env.intern_type_name("String");
 
     // Create an error type with a fallback
     let error_type = StructuredType::type_error(
@@ -389,7 +383,7 @@ fn test_structured_type_error_string_representation() {
     );
 
     // Error type should display with error marker and fallback type
-    let representation = error_type.to_string_representation(&interner);
+    let representation = error_type.to_string_representation();
     assert_eq!(representation, "<ERROR: String>");
 
     // Error type without fallback
@@ -402,6 +396,6 @@ fn test_structured_type_error_string_representation() {
         outrun_parser::Span::new(0, 5),
     );
 
-    let representation_no_fallback = error_type_no_fallback.to_string_representation(&interner);
+    let representation_no_fallback = error_type_no_fallback.to_string_representation();
     assert_eq!(representation_no_fallback, "<ERROR>");
 }

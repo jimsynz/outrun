@@ -5,24 +5,20 @@
 //! type compatibility, manages variable scopes, and tracks type information
 //! for later use in typed AST generation.
 
-use crate::compilation::function_registry::{FunctionRegistry, FunctionType};
+use crate::compilation::compiler_environment::{AtomId, CompilerEnvironment, TypeNameId};
+use crate::compilation::FunctionType;
 use crate::error::{context, SpanExt, TypeError};
-use crate::types::TypeId;
-use crate::unification::UnificationContext;
+use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{StructDefinition, TraitDefinition};
 use std::collections::HashMap;
 
 /// Visitor for type checking expressions (Phase 5)
 pub struct TypeCheckingVisitor {
-    pub context: UnificationContext,
+    /// Compiler environment with all necessary components
+    pub compiler_environment: CompilerEnvironment,
+    /// Accumulated type checking errors
     pub errors: Vec<TypeError>,
-    /// TypeId-based function registry for validation
-    pub function_registry: FunctionRegistry,
-    /// Struct definitions for constructor validation (struct name TypeId -> definition)
-    pub structs: HashMap<TypeId, StructDefinition>,
-    /// Trait definitions for impl validation (trait name TypeId -> definition)
-    pub traits: HashMap<TypeId, TraitDefinition>,
     /// Variable scope stack for tracking variable types
     variable_scopes: Vec<HashMap<String, crate::unification::StructuredType>>,
     /// Type parameter scope stack for tracking generic type parameters (Self, T, E, K, V, etc.)
@@ -35,7 +31,10 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         match self.check_expression_type(expr) {
             Ok(resolved_type) => {
                 // Store the resolved type for later use by TypedASTBuilder
-                self.context.add_expression_type(expr.span, resolved_type);
+                // We need to get the context, modify it, and put it back since unification_context() returns a clone
+                let mut context = self.compiler_environment.unification_context();
+                context.add_expression_type(expr.span, resolved_type);
+                self.compiler_environment.set_unification_context(context);
                 // Continue traversing child expressions
                 crate::visitor::walk_expression::<Self, ()>(self, expr)
             }
@@ -69,8 +68,9 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         {
             Ok(t) => {
                 // Store the resolved type for later use by TypedASTBuilder
-                self.context
-                    .add_expression_type(let_binding.expression.span, t.clone());
+                let mut context = self.compiler_environment.unification_context();
+                context.add_expression_type(let_binding.expression.span, t.clone());
+                self.compiler_environment.set_unification_context(context);
                 t
             }
             Err(error) => {
@@ -83,12 +83,18 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 
         // If there was a type annotation, validate it matches the expression
         if let Some(expected_type) = &type_hint {
-            if !crate::unification::unify_structured_types(&expr_type, expected_type, &self.context)
-                .unwrap_or(false)
+            if crate::unification::unify_structured_types(
+                &expr_type,
+                expected_type,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )
+            .unwrap_or(None)
+            .is_none()
             {
                 self.errors.push(TypeError::type_mismatch(
-                    expected_type.to_string_representation(&self.context.type_interner),
-                    expr_type.to_string_representation(&self.context.type_interner),
+                    expected_type.to_string_representation(),
+                    expr_type.to_string_representation(),
                     let_binding.expression.span.to_source_span(),
                 ));
             }
@@ -133,13 +139,14 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
             self.register_variable(var_name, var_type);
         }
 
-        // Continue traversing the function body with all variables in scope
-        let result = crate::visitor::walk_function_definition::<Self, ()>(self, func);
+        // Skip traversing the function body since it was already type-checked in check_function_definition_with_variables
+        // The visitor pattern is being used for AST traversal, but function bodies are already type-checked
+        // Traversing them again would create duplicate type checks and expensive redundant work
 
         // Pop the function scope
         self.pop_scope();
 
-        result
+        Ok(())
     }
 
     fn visit_struct_definition(
@@ -152,7 +159,9 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         // Register generic parameters (T, E, K, V, etc.) but NOT Self
         if let Some(ref generic_params) = struct_def.generic_params {
             for param in &generic_params.params {
-                let param_type_id = self.context.type_interner.intern_type(&param.name.name);
+                let param_type_id = self
+                    .compiler_environment
+                    .intern_type_name(&param.name.name.clone());
                 self.register_type_parameter(
                     param.name.name.clone(),
                     crate::unification::StructuredType::Simple(param_type_id),
@@ -180,7 +189,7 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 
         // Register Self parameter
         let trait_name = trait_def.name_as_string();
-        let trait_type_id = self.context.type_interner.intern_type(&trait_name);
+        let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
         self.register_type_parameter(
             "Self".to_string(),
             crate::unification::StructuredType::Simple(trait_type_id),
@@ -189,7 +198,9 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         // Register generic parameters (T, E, K, V, etc.)
         if let Some(ref generic_params) = trait_def.generic_params {
             for param in &generic_params.params {
-                let param_type_id = self.context.type_interner.intern_type(&param.name.name);
+                let param_type_id = self
+                    .compiler_environment
+                    .intern_type_name(&param.name.name.clone());
                 self.register_type_parameter(
                     param.name.name.clone(),
                     crate::unification::StructuredType::Simple(param_type_id),
@@ -264,7 +275,9 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         // Register generic parameters from impl block (e.g., impl<T> Option<T> for Some<T>)
         if let Some(ref generic_params) = impl_block.generic_params {
             for param in &generic_params.params {
-                let param_type_id = self.context.type_interner.intern_type(&param.name.name);
+                let param_type_id = self
+                    .compiler_environment
+                    .intern_type_name(&param.name.name.clone());
                 self.register_type_parameter(
                     param.name.name.clone(),
                     crate::unification::StructuredType::Simple(param_type_id),
@@ -280,21 +293,91 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 
         result
     }
+
+    fn visit_binary_operation(
+        &mut self,
+        binary_op: &outrun_parser::BinaryOperation,
+    ) -> VisitorResult {
+        // Special handling for 'as' operator to avoid type checking the RHS type identifier
+        match binary_op.operator {
+            outrun_parser::BinaryOperator::As => {
+                // For 'as' expressions like "42 as Integer", only visit the LHS expression
+                // The RHS is a type identifier that should not be type-checked as an expression
+                <Self as crate::visitor::Visitor<()>>::visit_expression(self, &binary_op.left)
+            }
+            _ => {
+                // For all other binary operations, use the default visitor behavior
+                crate::visitor::walk_binary_operation::<Self, ()>(self, binary_op)
+            }
+        }
+    }
 }
+
 impl TypeCheckingVisitor {
+    /// Add external variables to the global scope before type checking
+    /// This is used by the REPL to provide previously bound variables
+    pub fn add_external_variables(
+        &mut self,
+        variables: HashMap<String, crate::unification::StructuredType>,
+    ) {
+        // Add variables to the first (global) scope
+        if let Some(global_scope) = self.variable_scopes.first_mut() {
+            global_scope.extend(variables);
+        }
+    }
     /// Create a new TypeCheckingVisitor with the given components
     pub fn new(
         context: UnificationContext,
-        function_registry: FunctionRegistry,
-        structs: HashMap<TypeId, StructDefinition>,
-        traits: HashMap<TypeId, TraitDefinition>,
+        structs: HashMap<TypeNameId, StructDefinition>,
+        traits: HashMap<TypeNameId, TraitDefinition>,
     ) -> Self {
+        let mut compiler_environment = CompilerEnvironment::new();
+        compiler_environment.set_unification_context(context);
+
+        // Load structs and traits into the environment
+        for (type_id, struct_def) in structs {
+            compiler_environment.add_struct(type_id, struct_def);
+        }
+        for (type_id, trait_def) in traits {
+            compiler_environment.add_trait(type_id, trait_def);
+        }
+
         Self {
-            context,
+            compiler_environment,
             errors: Vec::new(),
-            function_registry,
-            structs,
-            traits,
+            variable_scopes: vec![HashMap::new()], // Start with global scope
+            type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+        }
+    }
+
+    /// Create a new TypeCheckingVisitor from a CompilerEnvironment
+    pub fn from_compiler_environment(compiler_environment: CompilerEnvironment) -> Self {
+        Self {
+            compiler_environment,
+            errors: Vec::new(),
+            variable_scopes: vec![HashMap::new()], // Start with global scope
+            type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+        }
+    }
+
+    /// Create a new TypeCheckingVisitor from a TypeCheckingContext (for backward compatibility)
+    /// This method is deprecated - use from_compiler_environment instead
+    #[deprecated(note = "Use from_compiler_environment instead")]
+    pub fn from_context(type_checking_context: crate::context::TypeCheckingContext) -> Self {
+        let mut compiler_environment = CompilerEnvironment::new();
+        compiler_environment.set_unification_context(type_checking_context.unification_context);
+
+        // Load structs and traits from the context
+        for (type_id, struct_def) in type_checking_context.structs {
+            compiler_environment.add_struct(type_id, struct_def);
+        }
+        for (type_id, trait_def) in type_checking_context.traits {
+            compiler_environment.add_trait(type_id, trait_def);
+        }
+
+        Self {
+            compiler_environment,
+            errors: Vec::new(),
             variable_scopes: vec![HashMap::new()], // Start with global scope
             type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
         }
@@ -325,9 +408,13 @@ impl TypeCheckingVisitor {
         pattern: &outrun_parser::Pattern,
         expected_type: &crate::unification::StructuredType,
     ) -> Result<Vec<(String, crate::unification::StructuredType)>, TypeError> {
-        // Use the new PatternChecker instead of the old implementation
-        let mut pattern_checker =
-            crate::patterns::PatternChecker::new(&mut self.context, &self.structs);
+        let mut unification_context = self.compiler_environment.unification_context();
+        let structs = self.compiler_environment.get_all_structs();
+        let mut pattern_checker = crate::patterns::PatternChecker::new(
+            &mut unification_context,
+            &structs,
+            &self.compiler_environment,
+        );
         let typed_pattern = pattern_checker.check_pattern(pattern, &Some(expected_type.clone()))?;
 
         // Extract bound variables from the typed pattern and convert to the format expected by MultiProgramCompiler
@@ -368,6 +455,42 @@ impl TypeCheckingVisitor {
         // Insert into current scope
         if let Some(current_scope) = self.type_parameter_scopes.last_mut() {
             current_scope.insert(name, structured_type);
+        }
+    }
+
+    /// Resolve a type that might contain generic parameters using the current type parameter scope
+    fn resolve_generic_parameter_in_current_scope(
+        &self,
+        structured_type: &crate::unification::StructuredType,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        match structured_type {
+            crate::unification::StructuredType::Simple(type_id) => {
+                // Check if this is a type parameter that can be resolved
+                let type_name = self
+                    .compiler_environment
+                    .resolve_type_name(type_id)
+                    .unwrap_or_default();
+                if let Some(resolved_type) = self.lookup_type_parameter(&type_name) {
+                    Ok(resolved_type.clone())
+                } else {
+                    // Not a type parameter, return as-is
+                    Ok(structured_type.clone())
+                }
+            }
+            crate::unification::StructuredType::Generic { base, args } => {
+                // Recursively resolve generic arguments
+                let mut resolved_args = Vec::new();
+                for arg in args {
+                    resolved_args.push(self.resolve_generic_parameter_in_current_scope(arg)?);
+                }
+                Ok(crate::unification::StructuredType::Generic {
+                    base: base.clone(),
+                    args: resolved_args,
+                })
+            }
+            // For other types (tuples, functions, etc.), return as-is for now
+            // TODO: Add recursive resolution for other structured types if needed
+            _ => Ok(structured_type.clone()),
         }
     }
 
@@ -425,7 +548,7 @@ impl TypeCheckingVisitor {
             ExpressionKind::QualifiedIdentifier(qual_id) => {
                 self.check_qualified_identifier_type(qual_id)
             }
-            ExpressionKind::FunctionCall(call) => self.check_function_call_type(call),
+            ExpressionKind::FunctionCall(call) => self.check_function_call_type(call, type_hint),
             ExpressionKind::IfExpression(if_expr) => self.check_if_expression_type(if_expr),
             ExpressionKind::CaseExpression(case_expr) => self.check_case_expression_type(case_expr),
             ExpressionKind::FieldAccess(field_access) => self.check_field_access_type(field_access),
@@ -441,7 +564,7 @@ impl TypeCheckingVisitor {
                             ExpressionKind::TypeIdentifier(type_id) => {
                                 // Resolve the type annotation
                                 crate::unification::StructuredType::Simple(
-                                    self.context.type_interner.intern_type(&type_id.name),
+                                    self.compiler_environment.intern_type_name(&type_id.name),
                                 )
                             }
                             _ => {
@@ -456,16 +579,19 @@ impl TypeCheckingVisitor {
                         if crate::unification::unify_structured_types(
                             &lhs_type,
                             &rhs_type,
-                            &self.context,
+                            &self.compiler_environment.unification_context(),
+                            &self.compiler_environment,
                         )
-                        .unwrap_or(false)
+                        .unwrap_or(None)
+                        .is_some()
                         {
-                            // Return the explicit type annotation (RHS type)
-                            Ok(rhs_type)
+                            // Return the original LHS type (preserves concrete type for dispatch)
+                            // The `as` operator is a type assertion, not a type conversion
+                            Ok(lhs_type)
                         } else {
                             Err(TypeError::type_mismatch(
-                                rhs_type.to_string_representation(&self.context.type_interner),
-                                lhs_type.to_string_representation(&self.context.type_interner),
+                                rhs_type.to_string_representation(),
+                                lhs_type.to_string_representation(),
                                 binary_op.span.to_source_span(),
                             ))
                         }
@@ -495,7 +621,7 @@ impl TypeCheckingVisitor {
             _ => {
                 // For advanced features not yet implemented (macros, anonymous functions, etc.)
                 Ok(crate::unification::StructuredType::Simple(
-                    self.context.type_interner.intern_type("Unknown"),
+                    self.compiler_environment.intern_type_name("Unknown"),
                 ))
             }
         }
@@ -507,9 +633,8 @@ impl TypeCheckingVisitor {
         _literal: &outrun_parser::BooleanLiteral,
     ) -> Result<crate::unification::StructuredType, TypeError> {
         let type_id = self
-            .context
-            .type_interner
-            .intern_type("Outrun.Core.Boolean");
+            .compiler_environment
+            .intern_type_name("Outrun.Core.Boolean");
         Ok(crate::unification::StructuredType::Simple(type_id))
     }
 
@@ -519,9 +644,8 @@ impl TypeCheckingVisitor {
         _literal: &outrun_parser::IntegerLiteral,
     ) -> Result<crate::unification::StructuredType, TypeError> {
         let type_id = self
-            .context
-            .type_interner
-            .intern_type("Outrun.Core.Integer64");
+            .compiler_environment
+            .intern_type_name("Outrun.Core.Integer64");
         Ok(crate::unification::StructuredType::Simple(type_id))
     }
 
@@ -531,9 +655,8 @@ impl TypeCheckingVisitor {
         _literal: &outrun_parser::FloatLiteral,
     ) -> Result<crate::unification::StructuredType, TypeError> {
         let type_id = self
-            .context
-            .type_interner
-            .intern_type("Outrun.Core.Float64");
+            .compiler_environment
+            .intern_type_name("Outrun.Core.Float64");
         Ok(crate::unification::StructuredType::Simple(type_id))
     }
 
@@ -542,7 +665,9 @@ impl TypeCheckingVisitor {
         &mut self,
         _literal: &outrun_parser::StringLiteral,
     ) -> Result<crate::unification::StructuredType, TypeError> {
-        let type_id = self.context.type_interner.intern_type("Outrun.Core.String");
+        let type_id = self
+            .compiler_environment
+            .intern_type_name("Outrun.Core.String");
         Ok(crate::unification::StructuredType::Simple(type_id))
     }
 
@@ -551,7 +676,9 @@ impl TypeCheckingVisitor {
         &mut self,
         _literal: &outrun_parser::AtomLiteral,
     ) -> Result<crate::unification::StructuredType, TypeError> {
-        let type_id = self.context.type_interner.intern_type("Outrun.Core.Atom");
+        let type_id = self
+            .compiler_environment
+            .intern_type_name("Outrun.Core.Atom");
         Ok(crate::unification::StructuredType::Simple(type_id))
     }
 
@@ -573,16 +700,22 @@ impl TypeCheckingVisitor {
             if let Some(hint) = type_hint {
                 // Extract element type from List<T> hint
                 if let crate::unification::StructuredType::Generic { base, args } = hint {
-                    let list_type_id = self.context.type_interner.intern_type("List");
+                    let list_type_id = self.compiler_environment.intern_type_name("List");
                     if base == &list_type_id && args.len() == 1 {
-                        // Return the hinted List<T> type
-                        return Ok(hint.clone());
+                        // Convert trait hint List<T> to concrete implementation Outrun.Core.List<T>
+                        let concrete_list_type_id = self
+                            .compiler_environment
+                            .intern_type_name("Outrun.Core.List");
+                        return Ok(crate::unification::StructuredType::Generic {
+                            base: concrete_list_type_id,
+                            args: args.clone(),
+                        });
                     }
                 }
                 // If hint is not a List<T>, fall through to error
                 return Err(TypeError::type_mismatch(
                     "List<T>".to_string(),
-                    hint.to_string_representation(&self.context.type_interner),
+                    hint.to_string_representation(),
                     literal.span.to_source_span(),
                 ));
             }
@@ -611,13 +744,13 @@ impl TypeCheckingVisitor {
             // Extract element type from List<T> hint
             let hint_element_type = match hint {
                 crate::unification::StructuredType::Generic { base, args } => {
-                    let list_type_id = self.context.type_interner.intern_type("List");
+                    let list_type_id = self.compiler_environment.intern_type_name("List");
                     if base == &list_type_id && args.len() == 1 {
                         &args[0]
                     } else {
                         return Err(TypeError::type_mismatch(
                             "List<T>".to_string(),
-                            hint.to_string_representation(&self.context.type_interner),
+                            hint.to_string_representation(),
                             literal.span.to_source_span(),
                         ));
                     }
@@ -625,7 +758,7 @@ impl TypeCheckingVisitor {
                 _ => {
                     return Err(TypeError::type_mismatch(
                         "List<T>".to_string(),
-                        hint.to_string_representation(&self.context.type_interner),
+                        hint.to_string_representation(),
                         literal.span.to_source_span(),
                     ));
                 }
@@ -633,52 +766,73 @@ impl TypeCheckingVisitor {
 
             // Validate all elements are compatible with hint
             for (i, element_type) in element_types.iter().enumerate() {
-                if !crate::unification::unify_structured_types(
+                if crate::unification::unify_structured_types(
                     element_type,
                     hint_element_type,
-                    &self.context,
-                )? {
+                    &self.compiler_environment.unification_context(),
+                    &self.compiler_environment,
+                )?
+                .is_none()
+                {
                     let element_expr = match &literal.elements[i] {
                         outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
                         _ => unreachable!(), // We already handled spreads above
                     };
                     return Err(TypeError::type_mismatch(
-                        hint_element_type.to_string_representation(&self.context.type_interner),
-                        element_type.to_string_representation(&self.context.type_interner),
+                        hint_element_type.to_string_representation(),
+                        element_type.to_string_representation(),
                         element_expr.span.to_source_span(),
                     ));
                 }
             }
 
-            // All elements match hint, return the hinted type
+            // All elements match hint, convert trait hint to concrete implementation
+            if let crate::unification::StructuredType::Generic { base, args } = hint {
+                let list_type_id = self.compiler_environment.intern_type_name("List");
+                if base == &list_type_id {
+                    // Convert List<T> hint to Outrun.Core.List<T>
+                    let concrete_list_type_id = self
+                        .compiler_environment
+                        .intern_type_name("Outrun.Core.List");
+                    return Ok(crate::unification::StructuredType::Generic {
+                        base: concrete_list_type_id,
+                        args: args.clone(),
+                    });
+                }
+            }
+            // If hint is not a List<T>, return it as-is (shouldn't happen after validation above)
             return Ok(hint.clone());
         }
 
         // Case 4: No type hint - require homogeneous elements
         let first_element_type = &element_types[0];
         for (i, element_type) in element_types.iter().enumerate().skip(1) {
-            if !crate::unification::unify_structured_types(
+            if crate::unification::unify_structured_types(
                 first_element_type,
                 element_type,
-                &self.context,
-            )? {
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )?
+            .is_none()
+            {
                 let element_expr = match &literal.elements[i] {
                     outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
                     _ => unreachable!(), // We already handled spreads above
                 };
                 return Err(TypeError::MixedListElements {
                     span: element_expr.span.to_source_span(),
-                    expected_type: first_element_type
-                        .to_string_representation(&self.context.type_interner),
-                    found_type: element_type.to_string_representation(&self.context.type_interner),
+                    expected_type: first_element_type.to_string_representation(),
+                    found_type: element_type.to_string_representation(),
                 });
             }
         }
 
-        // All elements are homogeneous, create List<T> with first element type
-        let list_type_id = self.context.type_interner.intern_type("List");
+        // All elements are homogeneous, create concrete Outrun.Core.List<T> type
+        let concrete_list_type_id = self
+            .compiler_environment
+            .intern_type_name("Outrun.Core.List");
         Ok(crate::unification::StructuredType::Generic {
-            base: list_type_id,
+            base: concrete_list_type_id,
             args: vec![first_element_type.clone()],
         })
     }
@@ -694,44 +848,59 @@ impl TypeCheckingVisitor {
             if let Some(hint) = type_hint {
                 match hint {
                     crate::unification::StructuredType::Generic { base, args } => {
-                        let map_type_id = self.context.type_interner.intern_type("Map");
-                        if *base == map_type_id && args.len() == 2 {
-                            // Type hint is Map<K, V>, use it directly
-                            Ok(hint.clone())
-                        } else {
-                            // Type hint is not a valid Map type, fall back to Map<Any, Any>
-                            let any_type_id = self.context.type_interner.intern_type("Any");
+                        let map_type_id = self.compiler_environment.intern_type_name("Map");
+                        let concrete_map_type_id = self
+                            .compiler_environment
+                            .intern_type_name("Outrun.Core.Map");
+                        if (base.clone() == map_type_id || base.clone() == concrete_map_type_id)
+                            && args.len() == 2
+                        {
+                            // Accept both trait hint Map<K, V> and concrete hint Outrun.Core.Map<K, V>
                             Ok(crate::unification::StructuredType::Generic {
-                                base: map_type_id,
+                                base: concrete_map_type_id,
+                                args: args.clone(),
+                            })
+                        } else {
+                            // Type hint is not a valid Map type, fall back to Outrun.Core.Map<Any, Any>
+                            let any_type_id = self.compiler_environment.intern_type_name("Any");
+                            let concrete_map_type_id = self
+                                .compiler_environment
+                                .intern_type_name("Outrun.Core.Map");
+                            Ok(crate::unification::StructuredType::Generic {
+                                base: concrete_map_type_id,
                                 args: vec![
-                                    crate::unification::StructuredType::Simple(any_type_id),
-                                    crate::unification::StructuredType::Simple(any_type_id),
+                                    crate::unification::StructuredType::Simple(any_type_id.clone()),
+                                    crate::unification::StructuredType::Simple(any_type_id.clone()),
                                 ],
                             })
                         }
                     }
                     _ => {
-                        // Type hint is not a generic type, fall back to Map<Any, Any>
-                        let any_type_id = self.context.type_interner.intern_type("Any");
-                        let map_type_id = self.context.type_interner.intern_type("Map");
+                        // Type hint is not a generic type, fall back to Outrun.Core.Map<Any, Any>
+                        let any_type_id = self.compiler_environment.intern_type_name("Any");
+                        let concrete_map_type_id = self
+                            .compiler_environment
+                            .intern_type_name("Outrun.Core.Map");
                         Ok(crate::unification::StructuredType::Generic {
-                            base: map_type_id,
+                            base: concrete_map_type_id,
                             args: vec![
-                                crate::unification::StructuredType::Simple(any_type_id),
-                                crate::unification::StructuredType::Simple(any_type_id),
+                                crate::unification::StructuredType::Simple(any_type_id.clone()),
+                                crate::unification::StructuredType::Simple(any_type_id.clone()),
                             ],
                         })
                     }
                 }
             } else {
-                // No type hint - use Map<Any, Any>
-                let any_type_id = self.context.type_interner.intern_type("Any");
-                let map_type_id = self.context.type_interner.intern_type("Map");
+                // No type hint - use Outrun.Core.Map<Any, Any>
+                let any_type_id = self.compiler_environment.intern_type_name("Any");
+                let concrete_map_type_id = self
+                    .compiler_environment
+                    .intern_type_name("Outrun.Core.Map");
                 Ok(crate::unification::StructuredType::Generic {
-                    base: map_type_id,
+                    base: concrete_map_type_id,
                     args: vec![
-                        crate::unification::StructuredType::Simple(any_type_id),
-                        crate::unification::StructuredType::Simple(any_type_id),
+                        crate::unification::StructuredType::Simple(any_type_id.clone()),
+                        crate::unification::StructuredType::Simple(any_type_id.clone()),
                     ],
                 })
             }
@@ -761,8 +930,8 @@ impl TypeCheckingVisitor {
             let (key_hint, value_hint) = if let Some(hint) = type_hint {
                 match hint {
                     crate::unification::StructuredType::Generic { base, args } => {
-                        let map_type_id = self.context.type_interner.intern_type("Map");
-                        if *base == map_type_id && args.len() == 2 {
+                        let map_type_id = self.compiler_environment.intern_type_name("Map");
+                        if base.clone() == map_type_id && args.len() == 2 {
                             (Some(&args[0]), Some(&args[1]))
                         } else {
                             (None, None)
@@ -805,34 +974,43 @@ impl TypeCheckingVisitor {
                 let entry_value_type =
                     self.check_expression_type_with_hint(entry_value, value_hint)?;
 
-                if !crate::unification::unify_structured_types(
+                if crate::unification::unify_structured_types(
                     &key_type,
                     &entry_key_type,
-                    &self.context,
-                )? {
+                    &self.compiler_environment.unification_context(),
+                    &self.compiler_environment,
+                )?
+                .is_none()
+                {
                     return Err(TypeError::type_mismatch(
-                        key_type.to_string_representation(&self.context.type_interner),
-                        entry_key_type.to_string_representation(&self.context.type_interner),
+                        key_type.to_string_representation(),
+                        entry_key_type.to_string_representation(),
                         entry_key.span.to_source_span(),
                     ));
                 }
 
-                if !crate::unification::unify_structured_types(
+                if crate::unification::unify_structured_types(
                     &value_type,
                     &entry_value_type,
-                    &self.context,
-                )? {
+                    &self.compiler_environment.unification_context(),
+                    &self.compiler_environment,
+                )?
+                .is_none()
+                {
                     return Err(TypeError::type_mismatch(
-                        value_type.to_string_representation(&self.context.type_interner),
-                        entry_value_type.to_string_representation(&self.context.type_interner),
+                        value_type.to_string_representation(),
+                        entry_value_type.to_string_representation(),
                         entry_value.span.to_source_span(),
                     ));
                 }
             }
 
-            let map_type_id = self.context.type_interner.intern_type("Map");
+            // Create concrete implementation type Outrun.Core.Map<K, V>
+            let concrete_map_type_id = self
+                .compiler_environment
+                .intern_type_name("Outrun.Core.Map");
             Ok(crate::unification::StructuredType::Generic {
-                base: map_type_id,
+                base: concrete_map_type_id,
                 args: vec![key_type, value_type],
             })
         }
@@ -870,7 +1048,7 @@ impl TypeCheckingVisitor {
 
         // Get struct TypeId for lookup
         let base_struct_type_id = match &base_struct_type {
-            crate::unification::StructuredType::Simple(type_id) => *type_id,
+            crate::unification::StructuredType::Simple(type_id) => type_id.clone(),
             _ => {
                 return Err(TypeError::internal_with_span(
                     "Expected simple type for struct base".to_string(),
@@ -881,9 +1059,8 @@ impl TypeCheckingVisitor {
 
         // Look up struct definition
         let struct_def = self
-            .structs
-            .get(&base_struct_type_id)
-            .cloned()
+            .compiler_environment
+            .get_struct(&base_struct_type_id)
             .ok_or_else(|| {
                 let struct_name = literal
                     .type_path
@@ -919,32 +1096,39 @@ impl TypeCheckingVisitor {
         struct_def: &outrun_parser::StructDefinition,
         type_hint: &crate::unification::StructuredType,
     ) -> Result<crate::unification::StructuredType, TypeError> {
-        // Extract generic arguments from the hint
-        let generic_args = match type_hint {
+        // Extract and resolve generic arguments from the hint
+        let resolved_args = match type_hint {
             crate::unification::StructuredType::Generic { base, args } => {
                 // Verify the base type matches our struct
                 let struct_name = struct_def.name_as_string();
-                let struct_type_id = self.context.type_interner.intern_type(&struct_name);
+                let struct_type_id = self.compiler_environment.intern_type_name(&struct_name);
                 if base != &struct_type_id {
                     return Err(TypeError::type_mismatch(
                         struct_name,
-                        type_hint.to_string_representation(&self.context.type_interner),
+                        type_hint.to_string_representation(),
                         literal.span.to_source_span(),
                     ));
                 }
-                args
+
+                // Resolve any generic parameters in the args using current type parameter scope
+                let mut resolved_args = Vec::new();
+                for arg in args {
+                    let resolved_arg = self.resolve_generic_parameter_in_current_scope(arg)?;
+                    resolved_args.push(resolved_arg);
+                }
+                resolved_args
             }
             _ => {
                 return Err(TypeError::type_mismatch(
                     format!("{}<...>", struct_def.name_as_string()),
-                    type_hint.to_string_representation(&self.context.type_interner),
+                    type_hint.to_string_representation(),
                     literal.span.to_source_span(),
                 ));
             }
         };
 
         // Validate that field values match the hinted generic types
-        self.validate_struct_fields_with_generic_context(literal, struct_def, generic_args)?;
+        self.validate_struct_fields_with_generic_context(literal, struct_def, &resolved_args)?;
 
         // Return the hinted type
         Ok(type_hint.clone())
@@ -984,7 +1168,7 @@ impl TypeCheckingVisitor {
         // Ensure all generic parameters have been inferred
         let mut inferred_args = Vec::new();
         for param in &generic_params.params {
-            if let Some(inferred_type) = type_bindings.get(&param.name.name) {
+            if let Some(inferred_type) = type_bindings.get(&param.name.name.clone()) {
                 inferred_args.push(inferred_type.clone());
             } else {
                 return Err(TypeError::CannotInferGenericType {
@@ -996,7 +1180,7 @@ impl TypeCheckingVisitor {
 
         // Create the inferred generic type
         let struct_name = struct_def.name_as_string();
-        let struct_type_id = self.context.type_interner.intern_type(&struct_name);
+        let struct_type_id = self.compiler_environment.intern_type_name(&struct_name);
         Ok(crate::unification::StructuredType::Generic {
             base: struct_type_id,
             args: inferred_args,
@@ -1056,15 +1240,17 @@ impl TypeCheckingVisitor {
                         )?;
 
                     // Validate field type matches expected
-                    if !crate::unification::unify_structured_types(
+                    if crate::unification::unify_structured_types(
                         &expected_field_type,
                         &field_value_type,
-                        &self.context,
-                    )? {
+                        &self.compiler_environment.unification_context(),
+                        &self.compiler_environment,
+                    )?
+                    .is_none()
+                    {
                         return Err(TypeError::type_mismatch(
-                            expected_field_type
-                                .to_string_representation(&self.context.type_interner),
-                            field_value_type.to_string_representation(&self.context.type_interner),
+                            expected_field_type.to_string_representation(),
+                            field_value_type.to_string_representation(),
                             value.span.to_source_span(),
                         ));
                     }
@@ -1105,16 +1291,17 @@ impl TypeCheckingVisitor {
                         let expected_field_type =
                             self.resolve_type_annotation(&field_def.type_annotation)?;
 
-                        if !crate::unification::unify_structured_types(
+                        if crate::unification::unify_structured_types(
                             &expected_field_type,
                             &field_value_type,
-                            &self.context,
-                        )? {
+                            &self.compiler_environment.unification_context(),
+                            &self.compiler_environment,
+                        )?
+                        .is_none()
+                        {
                             return Err(TypeError::type_mismatch(
-                                expected_field_type
-                                    .to_string_representation(&self.context.type_interner),
-                                field_value_type
-                                    .to_string_representation(&self.context.type_interner),
+                                expected_field_type.to_string_representation(),
+                                field_value_type.to_string_representation(),
                                 value.span.to_source_span(),
                             ));
                         }
@@ -1138,16 +1325,17 @@ impl TypeCheckingVisitor {
                         // Look up the variable in the current scope
                         if let Some(variable_type) = self.lookup_variable(&name.name) {
                             // Check that the variable type matches the field type
-                            if !crate::unification::unify_structured_types(
+                            if crate::unification::unify_structured_types(
                                 &expected_field_type,
                                 variable_type,
-                                &self.context,
-                            )? {
+                                &self.compiler_environment.unification_context(),
+                                &self.compiler_environment,
+                            )?
+                            .is_none()
+                            {
                                 return Err(TypeError::type_mismatch(
-                                    expected_field_type
-                                        .to_string_representation(&self.context.type_interner),
-                                    variable_type
-                                        .to_string_representation(&self.context.type_interner),
+                                    expected_field_type.to_string_representation(),
+                                    variable_type.to_string_representation(),
                                     name.span.to_source_span(),
                                 ));
                             }
@@ -1202,17 +1390,20 @@ impl TypeCheckingVisitor {
     ) -> Result<crate::unification::StructuredType, TypeError> {
         // Check condition is Boolean
         let condition_type = self.check_expression_type(&if_expr.condition)?;
-        let boolean_type_id = self.context.type_interner.intern_type("Boolean");
+        let boolean_type_id = self.compiler_environment.intern_type_name("Boolean");
         let expected_condition_type = crate::unification::StructuredType::Simple(boolean_type_id);
 
-        if !crate::unification::unify_structured_types(
+        if crate::unification::unify_structured_types(
             &expected_condition_type,
             &condition_type,
-            &self.context,
-        )? {
+            &self.compiler_environment.unification_context(),
+            &self.compiler_environment,
+        )?
+        .is_none()
+        {
             return Err(TypeError::type_mismatch(
-                expected_condition_type.to_string_representation(&self.context.type_interner),
-                condition_type.to_string_representation(&self.context.type_interner),
+                expected_condition_type.to_string_representation(),
+                condition_type.to_string_representation(),
                 if_expr.condition.span.to_source_span(),
             ));
         }
@@ -1225,10 +1416,17 @@ impl TypeCheckingVisitor {
             let else_type = self.check_block_type(else_block)?;
 
             // Both branches must have compatible types
-            if !crate::unification::unify_structured_types(&then_type, &else_type, &self.context)? {
+            if crate::unification::unify_structured_types(
+                &then_type,
+                &else_type,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )?
+            .is_none()
+            {
                 return Err(TypeError::type_mismatch(
-                    then_type.to_string_representation(&self.context.type_interner),
-                    else_type.to_string_representation(&self.context.type_interner),
+                    then_type.to_string_representation(),
+                    else_type.to_string_representation(),
                     else_block.span.to_source_span(),
                 ));
             }
@@ -1236,18 +1434,21 @@ impl TypeCheckingVisitor {
             Ok(then_type)
         } else {
             // If no else branch, the then branch type must implement Default trait
-            let default_trait_id = self.context.type_interner.intern_type("Default");
+            let default_trait_id = self.compiler_environment.intern_type_name("Default");
 
             // Check if then_type implements Default using the trait registry
             match &then_type {
                 crate::unification::StructuredType::Simple(type_id) => {
+                    let type_structured =
+                        crate::unification::StructuredType::Simple(type_id.clone());
+                    let default_trait_structured =
+                        crate::unification::StructuredType::Simple(default_trait_id);
+
                     if !self
-                        .context
-                        .trait_registry
-                        .implements_trait(*type_id, default_trait_id)
+                        .compiler_environment
+                        .implements_trait(&type_structured, &default_trait_structured)
                     {
-                        let type_name =
-                            context::type_name_or_unknown(&self.context.type_interner, *type_id);
+                        let type_name = type_id.to_string();
                         return Err(TypeError::TraitNotImplemented {
                             span: if_expr.then_block.span.to_source_span(),
                             trait_name: "Default".to_string(),
@@ -1261,7 +1462,7 @@ impl TypeCheckingVisitor {
                     return Err(TypeError::TraitNotImplemented {
                         span: if_expr.then_block.span.to_source_span(),
                         trait_name: "Default".to_string(),
-                        type_name: then_type.to_string_representation(&self.context.type_interner),
+                        type_name: then_type.to_string_representation(),
                     });
                 }
             }
@@ -1286,6 +1487,29 @@ impl TypeCheckingVisitor {
             ));
         }
 
+        // Check the guard expression of the first clause if present
+        if let Some(guard) = &case_expr.clauses[0].guard {
+            let guard_type = self.check_expression_type(guard)?;
+            let boolean_type = crate::unification::StructuredType::Simple(
+                self.compiler_environment.intern_type_name("Boolean"),
+            );
+
+            if crate::unification::unify_structured_types(
+                &guard_type,
+                &boolean_type,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )?
+            .is_none()
+            {
+                return Err(TypeError::type_mismatch(
+                    "Boolean".to_string(),
+                    guard_type.to_string_representation(),
+                    guard.span.to_source_span(),
+                ));
+            }
+        }
+
         // Get the result type from the first clause
         let first_result_type = match &case_expr.clauses[0].result {
             outrun_parser::CaseResult::Block(block) => self.check_block_type(block)?,
@@ -1298,19 +1522,20 @@ impl TypeCheckingVisitor {
             if let Some(guard) = &clause.guard {
                 let guard_type = self.check_expression_type(guard)?;
                 let boolean_type = crate::unification::StructuredType::Simple(
-                    self.context.type_interner.intern_type("Boolean"),
+                    self.compiler_environment.intern_type_name("Boolean"),
                 );
 
-                if !crate::unification::unify_structured_types(
+                if crate::unification::unify_structured_types(
                     &guard_type,
                     &boolean_type,
-                    &self.context,
-                )
-                .unwrap_or(false)
+                    &self.compiler_environment.unification_context(),
+                    &self.compiler_environment,
+                )?
+                .is_none()
                 {
                     return Err(TypeError::type_mismatch(
                         "Boolean".to_string(),
-                        guard_type.to_string_representation(&self.context.type_interner),
+                        guard_type.to_string_representation(),
                         guard.span.to_source_span(),
                     ));
                 }
@@ -1322,16 +1547,17 @@ impl TypeCheckingVisitor {
             };
 
             // Unify clause types
-            if !crate::unification::unify_structured_types(
+            if crate::unification::unify_structured_types(
                 &first_result_type,
                 &clause_type,
-                &self.context,
-            )
-            .unwrap_or(false)
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )?
+            .is_none()
             {
                 return Err(TypeError::type_mismatch(
-                    first_result_type.to_string_representation(&self.context.type_interner),
-                    clause_type.to_string_representation(&self.context.type_interner),
+                    first_result_type.to_string_representation(),
+                    clause_type.to_string_representation(),
                     clause.span.to_source_span(),
                 ));
             }
@@ -1350,8 +1576,10 @@ impl TypeCheckingVisitor {
 
         // Get the struct TypeId and generic arguments
         let (struct_type_id, generic_args) = match &object_type {
-            crate::unification::StructuredType::Simple(type_id) => (*type_id, None),
-            crate::unification::StructuredType::Generic { base, args } => (*base, Some(args)),
+            crate::unification::StructuredType::Simple(type_id) => (type_id.clone(), None),
+            crate::unification::StructuredType::Generic { base, args } => {
+                (base.clone(), Some(args))
+            }
             _ => {
                 return Err(TypeError::internal_with_span(
                     "Field access only supported on struct types".to_string(),
@@ -1361,12 +1589,15 @@ impl TypeCheckingVisitor {
         };
 
         // Look up struct definition
-        let struct_def = self.structs.get(&struct_type_id).cloned().ok_or_else(|| {
-            TypeError::internal_with_span(
-                "Object type is not a struct".to_string(),
-                field_access.object.span.to_source_span(),
-            )
-        })?;
+        let struct_def = self
+            .compiler_environment
+            .get_struct(&struct_type_id)
+            .ok_or_else(|| {
+                TypeError::internal_with_span(
+                    "Object type is not a struct".to_string(),
+                    field_access.object.span.to_source_span(),
+                )
+            })?;
 
         // Find the field
         let field_name = &field_access.field.name;
@@ -1377,7 +1608,7 @@ impl TypeCheckingVisitor {
             .ok_or_else(|| {
                 TypeError::undefined_field(
                     field_name.clone(),
-                    context::type_name_or_unknown(&self.context.type_interner, struct_type_id),
+                    struct_type_id.to_string(),
                     field_access.field.span.to_source_span(),
                 )
             })?;
@@ -1410,6 +1641,7 @@ impl TypeCheckingVisitor {
     fn check_function_call_type(
         &mut self,
         call: &outrun_parser::FunctionCall,
+        type_hint: Option<&crate::unification::StructuredType>,
     ) -> Result<crate::unification::StructuredType, TypeError> {
         // Resolve function name to AtomId
         let func_name = match &call.path {
@@ -1424,11 +1656,7 @@ impl TypeCheckingVisitor {
             }
         };
 
-        // Debug: log ALL function calls to see what's happening
-        if cfg!(debug_assertions) {
-            eprintln!("Function call: {} (path: {:?})", func_name, call.path);
-        }
-        let _func_atom = self.context.type_interner.intern_atom(&func_name);
+        let _func_atom = self.compiler_environment.intern_atom_name(&func_name);
 
         // Look up function definition using hierarchical registry
         match &call.path {
@@ -1437,164 +1665,182 @@ impl TypeCheckingVisitor {
                 let module_name = &module.name;
                 let function_name = &name.name;
 
-                // Special handling for intrinsic functions - bypass type checking
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "Qualified call: module='{}', function='{}'",
-                        module_name, function_name
-                    );
-                }
-                if module_name == "Outrun.Intrinsic" {
-                    // Intrinsic functions are compiler-provided and guaranteed correct
-                    let full_intrinsic_name = format!("Outrun.Intrinsic.{}", function_name);
-                    let generic_intrinsics =
-                        crate::intrinsics::IntrinsicRegistry::get_generic_intrinsics();
-
-                    if cfg!(debug_assertions) {
-                        eprintln!(
-                            "Looking up intrinsic: '{}' in registry with {} entries",
-                            full_intrinsic_name,
-                            generic_intrinsics.len()
-                        );
-                    }
-                    if let Some(intrinsic_def) = generic_intrinsics.get(&full_intrinsic_name) {
-                        // Handle generic intrinsic functions with proper type parameter inference
-                        if !intrinsic_def.generic_params.is_empty() {
-                            return self.handle_generic_intrinsic_call(call, intrinsic_def);
-                        } else {
-                            // Non-generic intrinsic - just return the declared return type
-                            return self.resolve_type_annotation(&intrinsic_def.return_type);
-                        }
-                    } else {
-                        // Unknown intrinsic
-                        if cfg!(debug_assertions) {
-                            eprintln!(
-                                "Unknown intrinsic: '{}' - falling through to regular lookup",
-                                full_intrinsic_name
-                            );
-                        }
-                        return Err(TypeError::undefined_function(
-                            full_intrinsic_name,
-                            call.span.to_source_span(),
-                        ));
-                    }
-                }
-
                 // Get module TypeId (base type without generics)
-                let module_type_id = self.context.type_interner.intern_type(module_name);
+                let module_type_id = self.compiler_environment.intern_type_name(module_name);
+                let module_type = StructuredType::Simple(module_type_id.clone());
+                let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
                 // Check if this is a trait that has implementations
-                let is_trait = self.context.trait_registry.is_trait(module_type_id);
+                let module_structured =
+                    crate::unification::StructuredType::Simple(module_type_id.clone());
+                let is_trait = self.compiler_environment.is_trait(&module_structured);
 
                 if is_trait {
                     // For trait calls, first infer the implementing type from arguments
                     let trait_func_entry = self
-                        .function_registry
-                        .lookup_qualified_function(module_type_id, function_name)
-                        .cloned();
+                        .compiler_environment
+                        .lookup_qualified_function(&module_type, function_name_atom.clone());
 
                     if let Some(trait_func) = trait_func_entry {
                         // Check if this is a static function (defs) - static functions don't need Self parameter resolution
-                        if trait_func.function_type == FunctionType::TraitStatic {
+                        if trait_func.function_type() == FunctionType::TraitStatic {
                             // Static functions are called directly on the trait, no implementation dispatch needed
-                            self.validate_function_call_arguments(call, &trait_func.definition)?;
-                            return self
-                                .resolve_type_annotation(&trait_func.definition.return_type);
+
+                            // Store static dispatch strategy
+                            let mut context = self.compiler_environment.unification_context();
+                            context.add_dispatch_strategy(
+                                call.span,
+                                crate::checker::DispatchMethod::Static {
+                                    function_id: trait_func.function_id().to_string(),
+                                },
+                            );
+                            self.compiler_environment.set_unification_context(context);
+
+                            // First, infer generic type parameters from arguments and return type hint for static trait functions
+                            let generic_substitutions = self
+                                .infer_generic_parameters_from_arguments(
+                                    trait_func.definition(),
+                                    call,
+                                    type_hint,
+                                )?;
+
+                            // Then validate arguments using the inferred generic types
+                            self.validate_function_call_arguments_with_generic_substitution(
+                                call,
+                                trait_func.definition(),
+                                &generic_substitutions,
+                            )?;
+
+                            return self.resolve_type_annotation_with_generic_substitution(
+                                &trait_func.definition().return_type,
+                                &generic_substitutions,
+                            );
                         }
+
+                        // Trait functions with default implementations (TraitDefault) should be treated
+                        // as trait dispatch, not static dispatch - they need to find an implementation
+                        // or use the default implementation
 
                         // For non-static trait functions, infer the concrete implementing type from the first Self parameter
                         let implementing_structured_type = self
                             .infer_implementing_type_from_arguments(
-                                module_type_id,
-                                &trait_func.definition,
+                                module_type_id.clone(),
+                                trait_func.definition(),
                                 call,
                             )?;
 
                         // Extract base TypeId for implementation lookup
-                        let implementing_type = match &implementing_structured_type {
-                            crate::unification::StructuredType::Simple(type_id) => *type_id,
-                            crate::unification::StructuredType::Generic { base, args: _ } => *base,
-                            _ => {
-                                return Err(TypeError::internal_with_span(
-                                    "Cannot extract base type for implementation lookup"
-                                        .to_string(),
-                                    call.span.to_source_span(),
-                                ));
-                            }
-                        };
 
                         // Look up the actual implementation function
-                        if cfg!(debug_assertions) {
-                            eprintln!(
-                                "Looking for impl function: trait={:?}, impl={:?}, func={}",
-                                self.context.type_interner.type_name(module_type_id),
-                                self.context.type_interner.type_name(implementing_type),
-                                function_name
+                        if let Some(impl_func_def) = self.compiler_environment.lookup_impl_function(
+                            &module_type,
+                            &implementing_structured_type,
+                            function_name_atom,
+                        ) {
+                            // Store trait dispatch strategy
+                            let mut context = self.compiler_environment.unification_context();
+                            context.add_dispatch_strategy(
+                                call.span,
+                                crate::checker::DispatchMethod::Trait {
+                                    trait_name: module_name.clone(),
+                                    function_name: function_name.clone(),
+                                    impl_type: Box::new(implementing_structured_type.clone()),
+                                },
                             );
-                        }
-                        if let Some(impl_func_def) = self
-                            .function_registry
-                            .lookup_impl_function(module_type_id, implementing_type, function_name)
-                            .cloned()
-                        {
-                            if cfg!(debug_assertions) {
-                                eprintln!(
-                                    "Found impl function: {}",
-                                    impl_func_def.definition.name.name
-                                );
-                            }
+                            self.compiler_environment.set_unification_context(context);
+
                             // Use the full structured type for Self context (preserving generics)
                             let inferred_self_type = implementing_structured_type;
-                            if cfg!(debug_assertions) {
-                                eprintln!(
-                                    "Using impl Self type: {}",
-                                    inferred_self_type
-                                        .to_string_representation(&self.context.type_interner)
-                                );
-                            }
                             self.validate_function_call_arguments_with_self(
                                 call,
-                                &impl_func_def.definition,
+                                impl_func_def.definition(),
                                 &inferred_self_type,
                             )?;
                             self.resolve_type_annotation_with_self(
-                                &impl_func_def.definition.return_type,
+                                &impl_func_def.definition().return_type,
                                 &inferred_self_type,
                             )
                         } else {
-                            // Fall back to trait function if no implementation found
-                            if cfg!(debug_assertions) {
-                                eprintln!("No impl function found, falling back to trait function");
+                            // No implementation found - check if trait function has a default implementation
+                            match trait_func.function_type() {
+                                crate::compilation::FunctionType::TraitSignature => {
+                                    // Trait function signature without implementation - this is an error
+                                    let inferred_self_type = self
+                                        .infer_trait_self_type_from_arguments(
+                                            module_type_id.clone(),
+                                            trait_func.definition(),
+                                            call,
+                                        )?;
+                                    Err(TypeError::TraitNotImplemented {
+                                        span: call.span.to_source_span(),
+                                        trait_name: module_name.clone(),
+                                        type_name: inferred_self_type.to_string_representation(),
+                                    })
+                                }
+                                crate::compilation::FunctionType::TraitDefault => {
+                                    // Trait function with default implementation - use it
+                                    let inferred_self_type = self
+                                        .infer_trait_self_type_from_arguments(
+                                            module_type_id.clone(),
+                                            trait_func.definition(),
+                                            call,
+                                        )?;
+
+                                    // Store trait dispatch strategy for default implementation
+                                    let mut context =
+                                        self.compiler_environment.unification_context();
+                                    context.add_dispatch_strategy(
+                                        call.span,
+                                        crate::checker::DispatchMethod::Trait {
+                                            trait_name: module_name.clone(),
+                                            function_name: function_name.clone(),
+                                            impl_type: Box::new(inferred_self_type.clone()),
+                                        },
+                                    );
+                                    self.compiler_environment.set_unification_context(context);
+
+                                    self.validate_function_call_arguments_with_self(
+                                        call,
+                                        trait_func.definition(),
+                                        &inferred_self_type,
+                                    )?;
+                                    self.resolve_type_annotation_with_self(
+                                        &trait_func.definition().return_type,
+                                        &inferred_self_type,
+                                    )
+                                }
+                                _ => {
+                                    // Other function types shouldn't reach here in trait dispatch
+                                    Err(TypeError::internal_with_span(
+                                        format!(
+                                            "Unexpected function type {:?} in trait dispatch",
+                                            trait_func.function_type()
+                                        ),
+                                        call.span.to_source_span(),
+                                    ))
+                                }
                             }
-                            let inferred_self_type = self.infer_trait_self_type_from_arguments(
-                                module_type_id,
-                                &trait_func.definition,
-                                call,
-                            )?;
-                            self.validate_function_call_arguments_with_self(
-                                call,
-                                &trait_func.definition,
-                                &inferred_self_type,
-                            )?;
-                            self.resolve_type_annotation_with_self(
-                                &trait_func.definition.return_type,
-                                &inferred_self_type,
-                            )
                         }
                     } else {
-                        Err(TypeError::undefined_function(
-                            func_name,
-                            call.span.to_source_span(),
-                        ))
+                        // No static trait function found, try to find impl function
+                        self.try_trait_impl_function_call(module_type_id, function_name_atom, call)
                     }
                 } else if let Some(func_entry) = self
-                    .function_registry
-                    .lookup_qualified_function(module_type_id, function_name)
-                    .cloned()
+                    .compiler_environment
+                    .lookup_qualified_function(&module_type, function_name_atom.clone())
                 {
-                    // Regular module function call
-                    self.validate_function_call_arguments(call, &func_entry.definition)?;
-                    self.resolve_type_annotation(&func_entry.definition.return_type)
+                    // Regular module function call - store static dispatch strategy
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_dispatch_strategy(
+                        call.span,
+                        crate::checker::DispatchMethod::Static {
+                            function_id: func_entry.function_id().to_string(),
+                        },
+                    );
+                    self.compiler_environment.set_unification_context(context);
+
+                    self.validate_function_call_arguments(call, func_entry.definition())?;
+                    self.resolve_type_annotation(&func_entry.definition().return_type)
                 } else {
                     Err(TypeError::undefined_function(
                         func_name,
@@ -1605,16 +1851,26 @@ impl TypeCheckingVisitor {
             outrun_parser::FunctionPath::Simple { name } => {
                 // Simple call like "some_function" - search in function registry
                 let function_name = &name.name;
+                let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
                 if let Some(func_entry) = self
-                    .function_registry
-                    .lookup_local_function(function_name)
-                    .cloned()
+                    .compiler_environment
+                    .lookup_local_function(function_name_atom.clone())
                 {
+                    // Store static dispatch strategy for simple function call
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_dispatch_strategy(
+                        call.span,
+                        crate::checker::DispatchMethod::Static {
+                            function_id: func_entry.function_id().to_string(),
+                        },
+                    );
+                    self.compiler_environment.set_unification_context(context);
+
                     // Validate arguments match parameters
-                    self.validate_function_call_arguments(call, &func_entry.definition)?;
+                    self.validate_function_call_arguments(call, func_entry.definition())?;
                     // Return the declared return type
-                    self.resolve_type_annotation(&func_entry.definition.return_type)
+                    self.resolve_type_annotation(&func_entry.definition().return_type)
                 } else {
                     Err(TypeError::undefined_function(
                         function_name.clone(),
@@ -1628,146 +1884,6 @@ impl TypeCheckingVisitor {
                     "anonymous_function".to_string(),
                     call.span.to_source_span(),
                 ))
-            }
-        }
-    }
-
-    /// Handle generic intrinsic function calls with type parameter inference
-    fn handle_generic_intrinsic_call(
-        &mut self,
-        call: &outrun_parser::FunctionCall,
-        intrinsic_def: &crate::intrinsics::GenericIntrinsicDef,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        use std::collections::HashMap;
-
-        // Build a map of generic parameter substitutions by inferring from arguments
-        let mut substitutions: HashMap<String, crate::unification::StructuredType> = HashMap::new();
-
-        // Type check each argument and infer generic parameters
-        for arg in &call.arguments {
-            if let outrun_parser::Argument::Named {
-                name, expression, ..
-            } = arg
-            {
-                let param_name = &name.name;
-
-                // Find the corresponding parameter definition
-                if let Some(param_def) = intrinsic_def
-                    .parameters
-                    .iter()
-                    .find(|p| p.name.name == *param_name)
-                {
-                    // Type check the argument expression
-                    let arg_type = self.check_expression_type(expression)?;
-
-                    // Infer generic parameters from this argument
-                    self.infer_generic_parameters_from_types(
-                        &param_def.type_annotation,
-                        &arg_type,
-                        &mut substitutions,
-                    )?;
-                }
-            }
-        }
-
-        // Apply substitutions to the return type
-        self.substitute_generic_parameters_in_type_annotation(
-            &intrinsic_def.return_type,
-            &substitutions,
-        )
-    }
-
-    /// Infer generic parameter mappings by comparing expected vs actual types
-    #[allow(clippy::only_used_in_recursion)]
-    fn infer_generic_parameters_from_types(
-        &self,
-        expected_annotation: &outrun_parser::TypeAnnotation,
-        actual_type: &crate::unification::StructuredType,
-        substitutions: &mut std::collections::HashMap<String, crate::unification::StructuredType>,
-    ) -> Result<(), TypeError> {
-        match expected_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path, generic_args, ..
-            } => {
-                let type_name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // If this is a generic parameter (like "T"), record the substitution
-                if path.len() == 1 && path[0].name.chars().all(|c| c.is_uppercase()) {
-                    substitutions.insert(type_name, actual_type.clone());
-                    return Ok(());
-                }
-
-                // If this has generic arguments, recursively infer from them
-                if let Some(args) = generic_args {
-                    if let crate::unification::StructuredType::Generic {
-                        args: actual_args, ..
-                    } = actual_type
-                    {
-                        for (expected_arg, actual_arg) in args.args.iter().zip(actual_args.iter()) {
-                            self.infer_generic_parameters_from_types(
-                                expected_arg,
-                                actual_arg,
-                                substitutions,
-                            )?;
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Handle other type annotation variants as needed
-            }
-        }
-        Ok(())
-    }
-
-    /// Apply generic parameter substitutions to a type annotation
-    fn substitute_generic_parameters_in_type_annotation(
-        &mut self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-        substitutions: &std::collections::HashMap<String, crate::unification::StructuredType>,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        match type_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path, generic_args, ..
-            } => {
-                let type_name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // If this is a generic parameter, substitute it
-                if let Some(substituted_type) = substitutions.get(&type_name) {
-                    return Ok(substituted_type.clone());
-                }
-
-                // If this has generic arguments, recursively substitute them
-                if let Some(args) = generic_args {
-                    let mut substituted_args = Vec::new();
-                    for arg in &args.args {
-                        let substituted_arg = self
-                            .substitute_generic_parameters_in_type_annotation(arg, substitutions)?;
-                        substituted_args.push(substituted_arg);
-                    }
-
-                    let base_type_id = self.context.type_interner.intern_type(&type_name);
-                    Ok(crate::unification::StructuredType::Generic {
-                        base: base_type_id,
-                        args: substituted_args,
-                    })
-                } else {
-                    // Simple non-generic type
-                    let type_id = self.context.type_interner.intern_type(&type_name);
-                    Ok(crate::unification::StructuredType::Simple(type_id))
-                }
-            }
-            _ => {
-                // For now, fall back to regular resolution for other types
-                self.resolve_type_annotation(type_annotation)
             }
         }
     }
@@ -1790,7 +1906,7 @@ impl TypeCheckingVisitor {
                     name,
                     expression,
                     format,
-                    span,
+                    span: _,
                 } => {
                     let param_name = &name.name;
 
@@ -1800,7 +1916,7 @@ impl TypeCheckingVisitor {
                         .iter()
                         .find(|p| p.name.name == *param_name)
                         .ok_or_else(|| TypeError::UnknownParameter {
-                            span: span.to_source_span(),
+                            span: name.span.to_source_span(),
                             function_name: func_def.name.name.clone(),
                             parameter_name: param_name.clone(),
                         })?;
@@ -1808,7 +1924,7 @@ impl TypeCheckingVisitor {
                     // Check for duplicate arguments
                     if provided_params.contains(param_name) {
                         return Err(TypeError::DuplicateArgument {
-                            span: span.to_source_span(),
+                            span: name.span.to_source_span(),
                             function_name: func_def.name.name.clone(),
                             parameter_name: param_name.clone(),
                         });
@@ -1817,6 +1933,11 @@ impl TypeCheckingVisitor {
 
                     // Type check the argument expression
                     let arg_type = self.check_expression_type(expression)?;
+                    // Store the resolved type for later use by TypedASTBuilder
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_expression_type(expression.span, arg_type.clone());
+                    self.compiler_environment.set_unification_context(context);
+
                     let expected_param_type =
                         self.resolve_type_annotation(&param_def.type_annotation)?;
 
@@ -1824,20 +1945,19 @@ impl TypeCheckingVisitor {
                     match crate::unification::unify_structured_types(
                         &arg_type,
                         &expected_param_type,
-                        &self.context,
+                        &self.compiler_environment.unification_context(),
+                        &self.compiler_environment,
                     ) {
-                        Ok(false) | Err(_) => {
+                        Ok(None) | Err(_) => {
                             return Err(TypeError::ArgumentTypeMismatch {
                                 span: expression.span.to_source_span(),
                                 function_name: func_def.name.name.clone(),
                                 parameter_name: param_name.clone(),
-                                expected_type: expected_param_type
-                                    .to_string_representation(&self.context.type_interner),
-                                found_type: arg_type
-                                    .to_string_representation(&self.context.type_interner),
+                                expected_type: expected_param_type.to_string_representation(),
+                                found_type: arg_type.to_string_representation(),
                             });
                         }
-                        Ok(true) => {} // Types unify successfully
+                        Ok(Some(_)) => {} // Types unify successfully
                     }
 
                     // For shorthand format, validate that argument name matches parameter name
@@ -1862,18 +1982,18 @@ impl TypeCheckingVisitor {
 
         // Check that all required parameters have been provided
         for param in &func_def.parameters {
-            if !provided_params.contains(&param.name.name) {
+            if !provided_params.contains(&param.name.name.clone()) {
                 // Check if parameter type implements Default trait (making it optional)
                 let param_type = self.resolve_type_annotation(&param.type_annotation)?;
-                let default_trait_id = self.context.type_interner.intern_type("Default");
+                let default_trait_id = self.compiler_environment.intern_type_name("Default");
 
-                // Convert StructuredType to TypeId for trait checking
-                // For now, only handle simple types; complex generic types would need more sophisticated checking
+                // Check if param_type implements Default using CompilerEnvironment
+                let default_trait_structured =
+                    crate::unification::StructuredType::Simple(default_trait_id);
                 let implements_default = match &param_type {
-                    crate::unification::StructuredType::Simple(type_id) => self
-                        .context
-                        .trait_registry
-                        .implements_trait(*type_id, default_trait_id),
+                    crate::unification::StructuredType::Simple(_type_id) => self
+                        .compiler_environment
+                        .implements_trait(&param_type, &default_trait_structured),
                     _ => {
                         // For complex types (generics, functions, tuples), assume they don't implement Default
                         // This is a simplification - in a full implementation, we'd need to check recursively
@@ -1916,7 +2036,7 @@ impl TypeCheckingVisitor {
                     name,
                     expression,
                     format: _,
-                    span,
+                    span: _,
                 } => {
                     let param_name = &name.name;
 
@@ -1926,7 +2046,7 @@ impl TypeCheckingVisitor {
                         .iter()
                         .find(|p| p.name.name == *param_name)
                         .ok_or_else(|| TypeError::UnknownParameter {
-                            span: span.to_source_span(),
+                            span: name.span.to_source_span(),
                             function_name: func_def.name.name.clone(),
                             parameter_name: param_name.clone(),
                         })?;
@@ -1934,7 +2054,7 @@ impl TypeCheckingVisitor {
                     // Check for duplicate arguments
                     if provided_params.contains(param_name) {
                         return Err(TypeError::DuplicateArgument {
-                            span: span.to_source_span(),
+                            span: name.span.to_source_span(),
                             function_name: func_def.name.name.clone(),
                             parameter_name: param_name.clone(),
                         });
@@ -1943,6 +2063,10 @@ impl TypeCheckingVisitor {
 
                     // Type check the argument expression
                     let arg_type = self.check_expression_type(expression)?;
+                    // Store the resolved type for later use by TypedASTBuilder
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_expression_type(expression.span, arg_type.clone());
+                    self.compiler_environment.set_unification_context(context);
 
                     // Resolve parameter type with Self context
                     let expected_param_type = self
@@ -1952,20 +2076,19 @@ impl TypeCheckingVisitor {
                     match crate::unification::unify_structured_types(
                         &arg_type,
                         &expected_param_type,
-                        &self.context,
+                        &self.compiler_environment.unification_context(),
+                        &self.compiler_environment,
                     ) {
-                        Ok(false) | Err(_) => {
+                        Ok(None) | Err(_) => {
                             return Err(TypeError::ArgumentTypeMismatch {
                                 span: expression.span.to_source_span(),
                                 function_name: func_def.name.name.clone(),
                                 parameter_name: param_name.clone(),
-                                expected_type: expected_param_type
-                                    .to_string_representation(&self.context.type_interner),
-                                found_type: arg_type
-                                    .to_string_representation(&self.context.type_interner),
+                                expected_type: expected_param_type.to_string_representation(),
+                                found_type: arg_type.to_string_representation(),
                             });
                         }
-                        Ok(true) => {} // Types unify successfully
+                        Ok(Some(_)) => {} // Types unify successfully
                     }
                 }
                 outrun_parser::Argument::Spread { .. } => {
@@ -1980,18 +2103,147 @@ impl TypeCheckingVisitor {
 
         // Check that all required parameters have been provided
         for param in &func_def.parameters {
-            if !provided_params.contains(&param.name.name) {
+            if !provided_params.contains(&param.name.name.clone()) {
                 // Check if parameter type implements Default trait (making it optional)
                 let param_type =
                     self.resolve_type_annotation_with_self(&param.type_annotation, self_type)?;
-                let default_trait_id = self.context.type_interner.intern_type("Default");
+                let default_trait_id = self.compiler_environment.intern_type_name("Default");
 
-                // Convert StructuredType to TypeId for trait checking
+                // Check if param_type implements Default using CompilerEnvironment
+                let default_trait_structured =
+                    crate::unification::StructuredType::Simple(default_trait_id);
                 let implements_default = match &param_type {
-                    crate::unification::StructuredType::Simple(type_id) => self
-                        .context
-                        .trait_registry
-                        .implements_trait(*type_id, default_trait_id),
+                    crate::unification::StructuredType::Simple(_type_id) => self
+                        .compiler_environment
+                        .implements_trait(&param_type, &default_trait_structured),
+                    _ => {
+                        // For complex types (generics, tuples, functions), conservatively assume they don't implement Default
+                        false
+                    }
+                };
+
+                // If the parameter type doesn't implement Default, it's required
+                if !implements_default {
+                    return Err(TypeError::MissingArgument {
+                        span: call.span.to_source_span(),
+                        function_name: func_def.name.name.clone(),
+                        parameter_name: param.name.name.clone(),
+                    });
+                }
+                // If it implements Default, the parameter is optional and can be skipped
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate function call arguments with generic type substitution
+    fn validate_function_call_arguments_with_generic_substitution(
+        &mut self,
+        call: &outrun_parser::FunctionCall,
+        func_def: &outrun_parser::FunctionDefinition,
+        generic_substitutions: &std::collections::HashMap<
+            String,
+            crate::unification::StructuredType,
+        >,
+    ) -> Result<(), TypeError> {
+        use std::collections::HashSet;
+
+        // Track which parameters have been provided
+        let mut provided_params: HashSet<String> = HashSet::new();
+
+        // Validate each argument
+        for arg in &call.arguments {
+            match arg {
+                outrun_parser::Argument::Named {
+                    name,
+                    expression,
+                    format: _,
+                    span: _,
+                } => {
+                    let param_name = &name.name;
+
+                    // Check if parameter exists in function definition
+                    let param_def = func_def
+                        .parameters
+                        .iter()
+                        .find(|p| p.name.name == *param_name)
+                        .ok_or_else(|| TypeError::UnknownParameter {
+                            span: name.span.to_source_span(),
+                            function_name: func_def.name.name.clone(),
+                            parameter_name: param_name.clone(),
+                        })?;
+
+                    // Check for duplicate arguments
+                    if provided_params.contains(param_name) {
+                        return Err(TypeError::DuplicateArgument {
+                            span: name.span.to_source_span(),
+                            function_name: func_def.name.name.clone(),
+                            parameter_name: param_name.clone(),
+                        });
+                    }
+                    provided_params.insert(param_name.clone());
+
+                    // Type check the argument expression
+                    let arg_type = self.check_expression_type(expression)?;
+                    // Store the resolved type for later use by TypedASTBuilder
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_expression_type(expression.span, arg_type.clone());
+                    self.compiler_environment.set_unification_context(context);
+
+                    // Resolve parameter type with generic substitution
+                    let expected_param_type = self
+                        .resolve_type_annotation_with_generic_substitution(
+                            &param_def.type_annotation,
+                            generic_substitutions,
+                        )?;
+
+                    // Validate argument type matches parameter type
+                    match crate::unification::unify_structured_types(
+                        &arg_type,
+                        &expected_param_type,
+                        &self.compiler_environment.unification_context(),
+                        &self.compiler_environment,
+                    ) {
+                        Ok(None) | Err(_) => {
+                            return Err(TypeError::ArgumentTypeMismatch {
+                                span: expression.span.to_source_span(),
+                                function_name: func_def.name.name.clone(),
+                                parameter_name: param_name.clone(),
+                                expected_type: expected_param_type.to_string_representation(),
+                                found_type: arg_type.to_string_representation(),
+                            });
+                        }
+                        Ok(Some(_)) => {} // Types unify successfully
+                    }
+                }
+                outrun_parser::Argument::Spread { .. } => {
+                    // Spread arguments not yet implemented
+                    return Err(TypeError::internal_with_span(
+                        context::messages::not_yet_supported("Spread arguments in function calls"),
+                        call.span.to_source_span(),
+                    ));
+                }
+            }
+        }
+
+        // Check that all required parameters have been provided
+        for param in &func_def.parameters {
+            if !provided_params.contains(&param.name.name.clone()) {
+                // Check if parameter type implements Default trait (making it optional)
+                let param_type = self.resolve_type_annotation_with_generic_substitution(
+                    &param.type_annotation,
+                    generic_substitutions,
+                )?;
+                let default_trait_id = self.compiler_environment.intern_type_name("Default");
+
+                // Check if param_type implements Default using CompilerEnvironment
+                let default_trait_structured =
+                    crate::unification::StructuredType::Simple(default_trait_id);
+                let implements_default = match &param_type {
+                    crate::unification::StructuredType::Simple(_type_id) => self
+                        .compiler_environment
+                        .implements_trait(&param_type, &default_trait_structured),
                     _ => {
                         // For complex types (generics, tuples, functions), conservatively assume they don't implement Default
                         false
@@ -2073,16 +2325,17 @@ impl TypeCheckingVisitor {
 
                     // If there was a type annotation, validate it matches the expression
                     if let Some(expected_type) = &type_hint {
-                        if !crate::unification::unify_structured_types(
+                        if crate::unification::unify_structured_types(
                             &expr_type,
                             expected_type,
-                            &self.context,
-                        )
-                        .unwrap_or(false)
+                            &self.compiler_environment.unification_context(),
+                            &self.compiler_environment,
+                        )?
+                        .is_none()
                         {
                             return Err(TypeError::type_mismatch(
-                                expected_type.to_string_representation(&self.context.type_interner),
-                                expr_type.to_string_representation(&self.context.type_interner),
+                                expected_type.to_string_representation(),
+                                expr_type.to_string_representation(),
                                 let_binding.expression.span.to_source_span(),
                             ));
                         }
@@ -2109,7 +2362,7 @@ impl TypeCheckingVisitor {
 
         // Return the type of the last expression, or Unit if empty block
         Ok(last_type.unwrap_or_else(|| {
-            let unit_type_id = self.context.type_interner.intern_type("Unit");
+            let unit_type_id = self.compiler_environment.intern_type_name("Unit");
             crate::unification::StructuredType::Simple(unit_type_id)
         }))
     }
@@ -2132,6 +2385,29 @@ impl TypeCheckingVisitor {
             self.register_variable(param.name.name.clone(), param_type);
         }
 
+        // Type check guard expression if present (after parameters are in scope)
+        if let Some(guard_clause) = &func.guard {
+            let guard_type = self.check_expression_type(&guard_clause.condition)?;
+            let boolean_type = crate::unification::StructuredType::Simple(
+                self.compiler_environment.intern_type_name("Boolean"),
+            );
+
+            if crate::unification::unify_structured_types(
+                &guard_type,
+                &boolean_type,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            )?
+            .is_none()
+            {
+                return Err(TypeError::type_mismatch(
+                    "Boolean".to_string(),
+                    guard_type.to_string_representation(),
+                    guard_clause.condition.span.to_source_span(),
+                ));
+            }
+        }
+
         // Type check function body with expected return type as hint (this will register let-bound variables)
         let body_type = self.check_block_type_with_hint(&func.body, Some(&expected_return_type))?;
 
@@ -2139,16 +2415,17 @@ impl TypeCheckingVisitor {
         match crate::unification::unify_structured_types(
             &body_type,
             &expected_return_type,
-            &self.context,
+            &self.compiler_environment.unification_context(),
+            &self.compiler_environment,
         ) {
-            Ok(false) | Err(_) => {
+            Ok(None) | Err(_) => {
                 self.errors.push(TypeError::type_mismatch(
-                    expected_return_type.to_string_representation(&self.context.type_interner),
-                    body_type.to_string_representation(&self.context.type_interner),
+                    expected_return_type.to_string_representation(),
+                    body_type.to_string_representation(),
                     func.body.span.to_source_span(),
                 ));
             }
-            Ok(true) => {} // Types unify successfully
+            Ok(Some(_)) => {} // Types unify successfully
         }
 
         // Capture let-bound variables from the current scope (excluding parameters)
@@ -2243,19 +2520,22 @@ impl TypeCheckingVisitor {
         };
 
         // Look up trait definition (clone to avoid borrowing issues)
-        let trait_def = self.traits.get(&trait_id).cloned().ok_or_else(|| {
-            let trait_name = impl_block
-                .trait_spec
-                .path
-                .iter()
-                .map(|id| id.name.as_str())
-                .collect::<Vec<_>>()
-                .join(".");
-            TypeError::UndefinedTrait {
-                span: impl_block.trait_spec.span.to_source_span(),
-                trait_name,
-            }
-        })?;
+        let trait_def = self
+            .compiler_environment
+            .get_trait(&trait_id)
+            .ok_or_else(|| {
+                let trait_name = impl_block
+                    .trait_spec
+                    .path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                TypeError::UndefinedTrait {
+                    span: impl_block.trait_spec.span.to_source_span(),
+                    trait_name,
+                }
+            })?;
 
         // Validate impl functions match trait signatures
         self.validate_impl_functions(impl_block, &trait_def, trait_id, impl_type)?;
@@ -2268,7 +2548,7 @@ impl TypeCheckingVisitor {
         &mut self,
         impl_block: &outrun_parser::ImplBlock,
         trait_def: &outrun_parser::TraitDefinition,
-        trait_id: TypeId,
+        trait_id: TypeNameId,
         impl_type: crate::unification::StructuredType,
     ) -> Result<(), TypeError> {
         use std::collections::{HashMap, HashSet};
@@ -2300,10 +2580,7 @@ impl TypeCheckingVisitor {
                     .get(func_name)
                     .ok_or_else(|| TypeError::ExtraImplementation {
                         span: impl_func.span.to_source_span(),
-                        trait_name: context::type_name_or_unknown(
-                            &self.context.type_interner,
-                            trait_id,
-                        ),
+                        trait_name: trait_id.to_string(),
                         function_name: func_name.clone(),
                     })?;
 
@@ -2322,11 +2599,8 @@ impl TypeCheckingVisitor {
                 if requires_implementation {
                     return Err(TypeError::MissingImplementation {
                         span: impl_block.span.to_source_span(),
-                        trait_name: context::type_name_or_unknown(
-                            &self.context.type_interner,
-                            trait_id,
-                        ),
-                        type_name: impl_type.to_string_representation(&self.context.type_interner),
+                        trait_name: trait_id.to_string(),
+                        type_name: impl_type.to_string_representation(),
                         function_name: trait_func_name.clone(),
                     });
                 }
@@ -2386,12 +2660,12 @@ impl TypeCheckingVisitor {
         // Check each parameter matches (name and type)
         for (impl_param, trait_param) in impl_func.parameters.iter().zip(trait_params.iter()) {
             // Check parameter names match
-            if impl_param.name.name != trait_param.name.name {
+            if impl_param.name.name.clone() != trait_param.name.name.clone() {
                 return Err(TypeError::SignatureMismatch {
                     span: impl_param.span.to_source_span(),
                     function_name: impl_func.name.name.clone(),
-                    expected: format!("Parameter name: {}", trait_param.name.name),
-                    found: format!("Parameter name: {}", impl_param.name.name),
+                    expected: format!("Parameter name: {}", trait_param.name.name.clone()),
+                    found: format!("Parameter name: {}", impl_param.name.name.clone()),
                 });
             }
 
@@ -2404,25 +2678,26 @@ impl TypeCheckingVisitor {
             match crate::unification::unify_structured_types(
                 &impl_param_type,
                 &trait_param_type,
-                &self.context,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
             ) {
-                Ok(false) | Err(_) => {
+                Ok(None) | Err(_) => {
                     return Err(TypeError::SignatureMismatch {
                         span: impl_param.span.to_source_span(),
                         function_name: impl_func.name.name.clone(),
                         expected: format!(
                             "Parameter {}: {}",
-                            trait_param.name.name,
-                            trait_param_type.to_string_representation(&self.context.type_interner)
+                            trait_param.name.name.clone(),
+                            trait_param_type.to_string_representation()
                         ),
                         found: format!(
                             "Parameter {}: {}",
-                            impl_param.name.name,
-                            impl_param_type.to_string_representation(&self.context.type_interner)
+                            impl_param.name.name.clone(),
+                            impl_param_type.to_string_representation()
                         ),
                     });
                 }
-                Ok(true) => {} // Types unify successfully
+                Ok(Some(_)) => {} // Types unify successfully
             }
         }
 
@@ -2435,23 +2710,24 @@ impl TypeCheckingVisitor {
         match crate::unification::unify_structured_types(
             &impl_return_type,
             &trait_return_type,
-            &self.context,
+            &self.compiler_environment.unification_context(),
+            &self.compiler_environment,
         ) {
-            Ok(false) | Err(_) => {
+            Ok(None) | Err(_) => {
                 return Err(TypeError::SignatureMismatch {
                     span: impl_func.span.to_source_span(),
                     function_name: impl_func.name.name.clone(),
                     expected: format!(
                         "Return type: {}",
-                        trait_return_type.to_string_representation(&self.context.type_interner)
+                        trait_return_type.to_string_representation()
                     ),
                     found: format!(
                         "Return type: {}",
-                        impl_return_type.to_string_representation(&self.context.type_interner)
+                        impl_return_type.to_string_representation()
                     ),
                 });
             }
-            Ok(true) => {} // Types unify successfully
+            Ok(Some(_)) => {} // Types unify successfully
         }
 
         Ok(())
@@ -2477,7 +2753,7 @@ impl TypeCheckingVisitor {
             outrun_parser::TypeAnnotation::Simple {
                 path,
                 generic_args,
-                span,
+                span: _,
             } => {
                 let type_name = path
                     .iter()
@@ -2495,9 +2771,9 @@ impl TypeCheckingVisitor {
                     return Ok(type_param_type.clone());
                 }
 
-                // Check if type exists in the type interner
-                if self.context.type_interner.get_type(&type_name).is_some() {
-                    let type_id = self.context.type_interner.intern_type(&type_name);
+                // Intern the type name using CompilerEnvironment
+                {
+                    let type_id = self.compiler_environment.intern_type_name(&type_name);
 
                     // Handle generic arguments with Self substitution
                     if let Some(ref args) = generic_args {
@@ -2515,8 +2791,6 @@ impl TypeCheckingVisitor {
                     } else {
                         Ok(crate::unification::StructuredType::Simple(type_id))
                     }
-                } else {
-                    Err(TypeError::undefined_type(type_name, span.to_source_span()))
                 }
             }
             outrun_parser::TypeAnnotation::Tuple { types, .. } => {
@@ -2540,7 +2814,9 @@ impl TypeCheckingVisitor {
                         self_type,
                     )?;
                     param_types.push(crate::unification::FunctionParam {
-                        name: self.context.type_interner.intern_atom(&param.name.name),
+                        name: self
+                            .compiler_environment
+                            .intern_atom_name(&param.name.name.clone()),
                         param_type: param_struct_type,
                     });
                 }
@@ -2560,7 +2836,7 @@ impl TypeCheckingVisitor {
     /// This solves the "generic vs self" issue by inferring Self type from arguments
     fn infer_trait_self_type_from_arguments(
         &mut self,
-        trait_type_id: crate::types::TypeId,
+        trait_type_id: TypeNameId,
         func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
@@ -2572,30 +2848,84 @@ impl TypeCheckingVisitor {
             } = arg
             {
                 let arg_type = self.check_expression_type(expression)?;
+                // Store the resolved type for later use by TypedASTBuilder
+                let mut context = self.compiler_environment.unification_context();
+                context.add_expression_type(expression.span, arg_type.clone());
+                self.compiler_environment.set_unification_context(context);
+
                 arg_type_map.insert(name.name.clone(), arg_type);
             }
         }
 
-        // Look for parameters with Self type annotation and infer Self from their argument types
+        // Collect ALL Self types from function parameters and arguments
+        let mut self_types = Vec::new();
         for param in &func_def.parameters {
-            let param_name = &param.name.name;
+            let param_name = &param.name.name.clone();
             if let Some(arg_type) = arg_type_map.get(param_name) {
                 // Check if this parameter is typed as Self
                 if self.is_self_type_annotation(&param.type_annotation) {
-                    // The argument type should be the Self type we're looking for
-                    // For Option.some?(value: Self), if argument is Option<Integer>, then Self = Option<Integer>
-                    return Ok(arg_type.clone());
+                    self_types.push(arg_type.clone());
                 }
             }
         }
 
+        // Also check the return type for Self (needed for complete unification)
+        let return_type_has_self = self.type_annotation_contains_self(&func_def.return_type);
+
+        if !self_types.is_empty() {
+            // If we only have one Self type, return it (optimization for common case)
+            if self_types.len() == 1 && !return_type_has_self {
+                return Ok(self_types[0].clone());
+            }
+
+            // Unify all Self types to find the most concrete compatible type
+            let mut unified_type = self_types[0].clone();
+            for self_type in self_types.iter().skip(1) {
+                match crate::unification::unify_structured_types(
+                    &unified_type,
+                    self_type,
+                    &self.compiler_environment.unification_context(),
+                    &self.compiler_environment,
+                ) {
+                    Ok(Some(concrete_type)) => {
+                        // Types unify - use the returned concrete type
+                        unified_type = concrete_type;
+                    }
+                    Ok(None) => {
+                        return Err(TypeError::internal_with_span(
+                            format!(
+                                "Incompatible Self types in trait function call: {} vs {}",
+                                unified_type.to_string_representation(),
+                                self_type.to_string_representation()
+                            ),
+                            call.span.to_source_span(),
+                        ));
+                    }
+                    Err(unification_error) => {
+                        return Err(TypeError::internal_with_span(
+                            format!(
+                                "Unification error during Self type inference: {:?}",
+                                unification_error
+                            ),
+                            call.span.to_source_span(),
+                        ));
+                    }
+                }
+            }
+
+            return Ok(unified_type);
+        }
+
         // If no Self parameter found, try to infer from generic trait structure
-        let trait_def = self.traits.get(&trait_type_id).cloned().ok_or_else(|| {
-            TypeError::internal_with_span(
-                format!("Trait not found: {:?}", trait_type_id),
-                call.span.to_source_span(),
-            )
-        })?;
+        let trait_def = self
+            .compiler_environment
+            .get_trait(&trait_type_id)
+            .ok_or_else(|| {
+                TypeError::internal_with_span(
+                    format!("Trait not found: {:?}", trait_type_id),
+                    call.span.to_source_span(),
+                )
+            })?;
 
         // Extract generic parameter names from trait definition (e.g., ["T"] for Option<T>)
         let generic_param_names: Vec<String> = trait_def
@@ -2613,7 +2943,7 @@ impl TypeCheckingVisitor {
         let mut inferred_generic_types = std::collections::HashMap::new();
 
         for param in &func_def.parameters {
-            let param_name = &param.name.name;
+            let param_name = &param.name.name.clone();
             if let Some(arg_type) = arg_type_map.get(param_name) {
                 // Try to match parameter type annotation with argument type to infer generics
                 Self::infer_generic_types_from_parameter(
@@ -2637,8 +2967,10 @@ impl TypeCheckingVisitor {
                     generic_args.push(inferred_type.clone());
                 } else {
                     // Use Any for unresolved generic parameters
-                    let any_type_id = self.context.type_interner.intern_type("Any");
-                    generic_args.push(crate::unification::StructuredType::Simple(any_type_id));
+                    let any_type_id = self.compiler_environment.intern_type_name("Any");
+                    generic_args.push(crate::unification::StructuredType::Simple(
+                        any_type_id.clone(),
+                    ));
                 }
             }
 
@@ -2653,7 +2985,7 @@ impl TypeCheckingVisitor {
     /// This is used for trait dispatch to find the specific implementation to use
     fn infer_implementing_type_from_arguments(
         &mut self,
-        _trait_type_id: crate::types::TypeId,
+        _trait_type_id: TypeNameId,
         trait_func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
@@ -2669,26 +3001,71 @@ impl TypeCheckingVisitor {
             }
         }
 
-        // Look for the first parameter with Self type annotation to infer implementing type
+        // Collect ALL Self types from function parameters and arguments
+        let mut self_types = Vec::new();
         for param in &trait_func_def.parameters {
-            let param_name = &param.name.name;
+            let param_name = &param.name.name.clone();
             if let Some(arg_type) = arg_type_map.get(param_name) {
                 // Check if this parameter is typed as Self
                 if self.is_self_type_annotation(&param.type_annotation) {
-                    // Return the full structured type (preserving generics)
-                    return Ok(arg_type.clone());
+                    self_types.push(arg_type.clone());
                 }
             }
         }
 
-        // If no Self parameter found, this is an error - trait functions should have Self parameters
-        Err(TypeError::internal_with_span(
-            format!(
-                "Trait function {} has no Self parameter for implementation dispatch",
-                trait_func_def.name.name
-            ),
-            call.span.to_source_span(),
-        ))
+        // Also check the return type for Self (needed for complete unification)
+        let return_type_has_self = self.type_annotation_contains_self(&trait_func_def.return_type);
+
+        if self_types.is_empty() {
+            // If no Self parameter found, this is an error - trait functions should have Self parameters
+            return Err(TypeError::internal_with_span(
+                format!(
+                    "Trait function {} has no Self parameter for implementation dispatch",
+                    trait_func_def.name.name
+                ),
+                call.span.to_source_span(),
+            ));
+        }
+
+        // If we only have one Self type, return it (optimization for common case)
+        if self_types.len() == 1 && !return_type_has_self {
+            return Ok(self_types[0].clone());
+        }
+
+        // Unify all Self types to find the most concrete compatible type
+        let mut unified_type = self_types[0].clone();
+        for self_type in self_types.iter().skip(1) {
+            match crate::unification::unify_structured_types(
+                &unified_type,
+                self_type,
+                &self.compiler_environment.unification_context(),
+                &self.compiler_environment,
+            ) {
+                Ok(Some(concrete_type)) => {
+                    // Types unify - use the returned concrete type
+                    unified_type = concrete_type;
+                }
+                Ok(None) => {
+                    // Types don't unify - this is a type mismatch error
+                    return Err(TypeError::type_mismatch(
+                        unified_type.to_string_representation(),
+                        self_type.to_string_representation(),
+                        call.span.to_source_span(),
+                    ));
+                }
+                Err(unification_error) => {
+                    return Err(TypeError::internal_with_span(
+                        format!(
+                            "Unification error during Self type inference: {:?}",
+                            unification_error
+                        ),
+                        call.span.to_source_span(),
+                    ));
+                }
+            }
+        }
+
+        Ok(unified_type)
     }
 
     /// Check if a type annotation is Self
@@ -2698,6 +3075,48 @@ impl TypeCheckingVisitor {
                 path.len() == 1 && path[0].name == "Self"
             }
             _ => false,
+        }
+    }
+
+    /// Check if a type annotation contains Self anywhere (recursively)
+    #[allow(clippy::only_used_in_recursion)]
+    fn type_annotation_contains_self(
+        &self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> bool {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
+                // Check if this is Self
+                if path.len() == 1 && path[0].name == "Self" {
+                    return true;
+                }
+                // Check generic arguments recursively
+                if let Some(args) = generic_args {
+                    for arg in &args.args {
+                        if self.type_annotation_contains_self(arg) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
+                // Check all tuple elements
+                types.iter().any(|t| self.type_annotation_contains_self(t))
+            }
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                // Check parameter types and return type
+                params
+                    .iter()
+                    .any(|p| self.type_annotation_contains_self(&p.type_annotation))
+                    || self.type_annotation_contains_self(return_type)
+            }
         }
     }
 
@@ -2728,22 +3147,8 @@ impl TypeCheckingVisitor {
                 }
 
                 // Resolve base type
-                let base_type_id =
-                    self.context
-                        .type_interner
-                        .get_type(&type_name)
-                        .ok_or_else(|| {
-                            TypeError::undefined_type(
-                                type_name.clone(),
-                                outrun_parser::Span {
-                                    start: 0,
-                                    end: 0,
-                                    start_line_col: None,
-                                    end_line_col: None,
-                                }
-                                .to_source_span(),
-                            )
-                        })?;
+                let base_type_id = self.compiler_environment.intern_type_name(&type_name);
+                // Type is interned through CompilerEnvironment
 
                 // Handle generic arguments
                 if let Some(args) = generic_args {
@@ -2786,7 +3191,9 @@ impl TypeCheckingVisitor {
                             &param.type_annotation,
                             generic_substitutions,
                         )?;
-                    let param_name = self.context.type_interner.intern_atom(&param.name.name);
+                    let param_name = self
+                        .compiler_environment
+                        .intern_atom_name(&param.name.name.clone());
                     resolved_params.push(crate::unification::FunctionParam {
                         name: param_name,
                         param_type: resolved_param_type,
@@ -2855,6 +3262,128 @@ impl TypeCheckingVisitor {
         Ok(())
     }
 
+    /// Infer generic type parameters from static trait function arguments and return type hint
+    fn infer_generic_parameters_from_arguments(
+        &mut self,
+        func_def: &outrun_parser::FunctionDefinition,
+        call: &outrun_parser::FunctionCall,
+        type_hint: Option<&crate::unification::StructuredType>,
+    ) -> Result<std::collections::HashMap<String, crate::unification::StructuredType>, TypeError>
+    {
+        let mut generic_substitutions = std::collections::HashMap::new();
+
+        // Build argument type mapping
+        let mut arg_type_map = std::collections::HashMap::new();
+        for arg in &call.arguments {
+            if let outrun_parser::Argument::Named {
+                name, expression, ..
+            } = arg
+            {
+                let arg_type = self.check_expression_type(expression)?;
+                arg_type_map.insert(name.name.clone(), arg_type);
+            }
+        }
+
+        // For each parameter, check if its type annotation contains generic parameters
+        // and infer them from the corresponding argument type
+        for param in &func_def.parameters {
+            let param_name = &param.name.name;
+            if let Some(arg_type) = arg_type_map.get(param_name) {
+                Self::infer_generic_parameters_from_type_annotation(
+                    &param.type_annotation,
+                    arg_type,
+                    &mut generic_substitutions,
+                )?;
+            }
+        }
+
+        // If we have a type hint for the expected return type, use it to infer generic parameters
+        // This is crucial for functions like Option.none() that have no parameters
+        if let Some(hint) = type_hint {
+            Self::infer_generic_parameters_from_type_annotation(
+                &func_def.return_type,
+                hint,
+                &mut generic_substitutions,
+            )?;
+        }
+
+        Ok(generic_substitutions)
+    }
+
+    /// Recursively infer generic parameters from a type annotation and actual type
+    fn infer_generic_parameters_from_type_annotation(
+        type_annotation: &outrun_parser::TypeAnnotation,
+        actual_type: &crate::unification::StructuredType,
+        generic_substitutions: &mut std::collections::HashMap<
+            String,
+            crate::unification::StructuredType,
+        >,
+    ) -> Result<(), TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
+                let _type_name = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                // Check if this is a single generic parameter like "T"
+                if path.len() == 1 {
+                    let param_name = &path[0].name;
+                    // Generic parameters are typically single uppercase letters or start with uppercase
+                    if param_name.chars().all(|c| c.is_uppercase() || c == '_') {
+                        // This looks like a generic parameter - infer it from the actual type
+                        generic_substitutions.insert(param_name.clone(), actual_type.clone());
+                        return Ok(());
+                    }
+                }
+
+                // If this type annotation has generic arguments, recursively infer from them
+                if let (
+                    Some(generic_args),
+                    crate::unification::StructuredType::Generic {
+                        args: actual_args, ..
+                    },
+                ) = (generic_args, actual_type)
+                {
+                    if generic_args.args.len() == actual_args.len() {
+                        for (generic_arg, actual_arg) in
+                            generic_args.args.iter().zip(actual_args.iter())
+                        {
+                            Self::infer_generic_parameters_from_type_annotation(
+                                generic_arg,
+                                actual_arg,
+                                generic_substitutions,
+                            )?;
+                        }
+                    }
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
+                if let crate::unification::StructuredType::Tuple(actual_elements) = actual_type {
+                    if types.len() == actual_elements.len() {
+                        for (type_annotation, actual_element) in
+                            types.iter().zip(actual_elements.iter())
+                        {
+                            Self::infer_generic_parameters_from_type_annotation(
+                                type_annotation,
+                                actual_element,
+                                generic_substitutions,
+                            )?;
+                        }
+                    }
+                }
+            }
+            outrun_parser::TypeAnnotation::Function { .. } => {
+                // Function type inference would be more complex, skip for now
+            }
+        }
+
+        Ok(())
+    }
+
     /// Resolve type annotation to StructuredType
     fn resolve_type_annotation(
         &mut self,
@@ -2864,7 +3393,7 @@ impl TypeCheckingVisitor {
             outrun_parser::TypeAnnotation::Simple {
                 path,
                 generic_args,
-                span,
+                span: _,
             } => {
                 // Convert type path to string
                 let type_name = path
@@ -2879,8 +3408,9 @@ impl TypeCheckingVisitor {
                 }
 
                 // Check if type exists
-                if self.context.type_interner.get_type(&type_name).is_some() {
-                    let type_id = self.context.type_interner.intern_type(&type_name);
+                {
+                    // Type interning always succeeds with CompilerEnvironment
+                    let type_id = self.compiler_environment.intern_type_name(&type_name);
 
                     // Handle generic arguments if present
                     if let Some(ref args) = generic_args {
@@ -2897,8 +3427,6 @@ impl TypeCheckingVisitor {
                     } else {
                         Ok(crate::unification::StructuredType::Simple(type_id))
                     }
-                } else {
-                    Err(TypeError::undefined_type(type_name, span.to_source_span()))
                 }
             }
             outrun_parser::TypeAnnotation::Tuple { types, span: _ } => {
@@ -2921,7 +3449,9 @@ impl TypeCheckingVisitor {
                 for param in params {
                     let param_struct_type = self.resolve_type_annotation(&param.type_annotation)?;
                     param_types.push(crate::unification::FunctionParam {
-                        name: self.context.type_interner.intern_atom(&param.name.name),
+                        name: self
+                            .compiler_environment
+                            .intern_atom_name(&param.name.name.clone()),
                         param_type: param_struct_type,
                     });
                 }
@@ -2949,8 +3479,9 @@ impl TypeCheckingVisitor {
             .collect::<Vec<_>>()
             .join(".");
 
-        if self.context.type_interner.get_type(&type_name).is_some() {
-            let type_id = self.context.type_interner.intern_type(&type_name);
+        {
+            // Type interning always succeeds with CompilerEnvironment
+            let type_id = self.compiler_environment.intern_type_name(&type_name);
 
             // Handle generic arguments if present
             if let Some(ref generic_args) = type_spec.generic_args {
@@ -2967,10 +3498,87 @@ impl TypeCheckingVisitor {
             } else {
                 Ok(crate::unification::StructuredType::Simple(type_id))
             }
+        }
+    }
+
+    /// Try to resolve a trait function call as an impl function when no static trait function exists
+    /// This implements the trait dispatch lookup: static function -> impl function -> default implementation
+    fn try_trait_impl_function_call(
+        &mut self,
+        trait_type_id: TypeNameId,
+        function_name_atom: AtomId,
+        call: &outrun_parser::FunctionCall,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        use crate::unification::StructuredType;
+
+        // For impl function lookup, we need to infer the implementing type from the arguments
+        // For functions like `Comparison.greater?(left: T, right: T)`, the type T is the impl type
+
+        // First, try to infer the implementing type from the first argument
+        let impl_type = if let Some(first_arg) = call.arguments.first() {
+            // Extract expression from argument and type check it
+            let expression = match first_arg {
+                outrun_parser::Argument::Named { expression, .. } => expression,
+                outrun_parser::Argument::Spread { expression, .. } => expression,
+            };
+            {
+                let arg_type = self.check_expression_type(expression)?;
+                // Store the resolved type for later use by TypedASTBuilder
+                let mut context = self.compiler_environment.unification_context();
+                context.add_expression_type(expression.span, arg_type.clone());
+                self.compiler_environment.set_unification_context(context);
+                arg_type
+            }
         } else {
-            Err(TypeError::undefined_type(
-                type_name,
-                type_spec.span.to_source_span(),
+            return Err(TypeError::undefined_function(
+                format!("{}:{}", trait_type_id, function_name_atom.clone()),
+                call.span.to_source_span(),
+            ));
+        };
+
+        // Create StructuredType for the trait
+        let trait_type = StructuredType::Simple(trait_type_id.clone());
+
+        // Look up the impl function in the registry
+        if let Some(func_entry) = self.compiler_environment.lookup_impl_function(
+            &trait_type,
+            &impl_type,
+            function_name_atom.clone(),
+        ) {
+            // Store trait dispatch strategy
+            let trait_name = self
+                .compiler_environment
+                .resolve_type(trait_type_id.clone())
+                .unwrap_or_default();
+            let function_name = self
+                .compiler_environment
+                .resolve_atom(function_name_atom.clone())
+                .unwrap_or_default();
+            let mut context = self.compiler_environment.unification_context();
+            context.add_dispatch_strategy(
+                call.span,
+                crate::checker::DispatchMethod::Trait {
+                    trait_name,
+                    function_name,
+                    impl_type: Box::new(impl_type.clone()),
+                },
+            );
+            self.compiler_environment.set_unification_context(context);
+
+            // Found an impl function - validate the call and return its type
+            self.validate_function_call_arguments(call, func_entry.definition())?;
+
+            // For impl functions, we may need to substitute Self type
+            // For now, just return the declared return type
+            self.resolve_type_annotation(&func_entry.definition().return_type)
+        } else {
+            // No impl function found either - this is a true undefined function error
+            let trait_name = trait_type_id.to_string();
+            let function_name = function_name_atom.to_string();
+
+            Err(TypeError::undefined_function(
+                format!("{}.{}", trait_name, function_name),
+                call.span.to_source_span(),
             ))
         }
     }

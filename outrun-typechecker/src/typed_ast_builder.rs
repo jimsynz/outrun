@@ -14,20 +14,20 @@ use crate::checker::{
     TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
     TypedTraitFunction, TypedTypeAnnotation, TypedTypeAnnotationKind, TypedWhenClause,
 };
-use crate::error::{SpanExt, TypeError};
-use crate::multi_program_compiler::{FunctionRegistry, ProgramCollection};
-use crate::patterns::{PatternChecker, TypedPattern};
 #[allow(unused_imports)]
-use crate::types::TypeId;
+use crate::compilation::compiler_environment::{AtomId, TypeNameId};
+use crate::compilation::program_collection::ProgramCollection;
+use crate::error::{SpanExt, TypeError};
+use crate::patterns::{PatternChecker, TypedPattern};
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{
-    AnonymousClause, AnonymousFunction, Argument, Block, CaseExpression, ConstDefinition,
-    Expression, ExpressionKind, FunctionCall, FunctionDefinition, FunctionPath, GenericParam,
-    GenericParams, IfExpression, ImplBlock, Item, ItemKind, LetBinding, ListElement, ListLiteral,
-    MapEntry, MapLiteral, Parameter, Program, Span, Statement, StatementKind, StructDefinition,
-    StructField, StructLiteral, StructLiteralField, TraitDefinition, TraitFunction, TupleLiteral,
-    TypeSpec,
+    AnonymousClause, AnonymousFunction, Argument, BinaryOperator, Block, CaseExpression,
+    ConstDefinition, Expression, ExpressionKind, FunctionCall, FunctionDefinition, FunctionPath,
+    GenericParam, GenericParams, IfExpression, ImplBlock, Item, ItemKind, LetBinding, ListElement,
+    ListLiteral, MapEntry, MapLiteral, Parameter, Program, Span, Statement, StatementKind,
+    StructDefinition, StructField, StructLiteral, StructLiteralField, TraitDefinition,
+    TraitFunction, TupleLiteral, TypeSpec,
 };
 use std::collections::HashMap;
 
@@ -126,16 +126,18 @@ impl CommentAttacher {
 pub struct TypedASTBuilder {
     /// Type checking context with resolved types
     pub context: UnificationContext,
-    /// Function registry for dispatch resolution
-    pub function_registry: FunctionRegistry,
-    /// Struct definitions for pattern validation (struct name TypeId -> definition)
-    pub struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
+    /// Compiler environment for dispatch resolution
+    pub compiler_environment: Option<crate::compilation::compiler_environment::CompilerEnvironment>,
+    /// Struct definitions for pattern validation (struct name TypeNameId -> definition)
+    pub struct_registry: HashMap<TypeNameId, outrun_parser::StructDefinition>,
     /// Collection of errors encountered during AST building
     pub errors: Vec<crate::error::TypeError>,
     /// Built typed programs (filename -> typed program)
     typed_programs: HashMap<String, TypedProgram>,
     /// Current generic context for type resolution
     generic_context: Option<TypedGenericContext>,
+    /// Current module context for function updates
+    current_module_key: Option<crate::compilation::compiler_environment::ModuleKey>,
     /// Comment attachment state
     comment_attacher: CommentAttacher,
     /// Error recovery information collected during AST building
@@ -149,16 +151,17 @@ impl TypedASTBuilder {
     /// Create a new TypedASTBuilder with type checking results
     pub fn new(
         context: UnificationContext,
-        function_registry: FunctionRegistry,
-        struct_registry: HashMap<TypeId, outrun_parser::StructDefinition>,
+        struct_registry: HashMap<TypeNameId, outrun_parser::StructDefinition>,
+        compiler_environment: Option<crate::compilation::compiler_environment::CompilerEnvironment>,
     ) -> Self {
         Self {
             context,
-            function_registry,
+            compiler_environment,
             struct_registry,
             errors: Vec::new(),
             typed_programs: HashMap::new(),
             generic_context: None,
+            current_module_key: None,
             comment_attacher: CommentAttacher::new(Vec::new()), // Will be initialized per program
             error_recovery_info: Vec::new(),
             compilation_start_time: std::time::Instant::now(),
@@ -191,6 +194,21 @@ impl TypedASTBuilder {
         }
 
         Ok(self.typed_programs.clone())
+    }
+
+    /// Get the current module key
+    pub fn get_current_module_key(
+        &self,
+    ) -> Option<crate::compilation::compiler_environment::ModuleKey> {
+        self.current_module_key.clone()
+    }
+
+    /// Set the current module key
+    pub fn set_current_module_key(
+        &mut self,
+        module_key: Option<crate::compilation::compiler_environment::ModuleKey>,
+    ) {
+        self.current_module_key = module_key;
     }
 
     /// Build typed AST for a single program with error recovery
@@ -249,14 +267,16 @@ impl TypedASTBuilder {
             "TypedAST for {}: {} items, {} functions, {} errors recovered",
             filename,
             typed_items.len(),
-            self.function_registry.len(),
+            self.compiler_environment
+                .as_ref()
+                .map(|ce| ce.function_count())
+                .unwrap_or(0),
             self.error_recovery_info.len()
         );
 
         Ok(TypedProgram {
             items: typed_items,
             type_context: self.context.clone(),
-            function_registry: self.function_registry.clone(),
             compilation_order: vec![filename.to_string()], // This program only
             compilation_summary: summary,
             debug_info: TypedDebugInfo {
@@ -290,9 +310,10 @@ impl TypedASTBuilder {
 
         // Create placeholder type first to avoid borrow conflicts
         let placeholder_type_id = self
-            .context
-            .type_interner
-            .intern_type("Outrun.Core.PlaceholderType");
+            .compiler_environment
+            .as_ref()
+            .unwrap()
+            .intern_type_name("Outrun.Core.PlaceholderType");
         let placeholder_type = StructuredType::Simple(placeholder_type_id);
 
         // Record the error recovery attempt
@@ -790,14 +811,36 @@ impl TypedASTBuilder {
                 }
             }
 
-            // Parenthesized expressions - just unwrap the inner expression
-            ExpressionKind::Parenthesized(inner_expr) => {
-                if let Some(inner_typed) = self.convert_expression(inner_expr) {
-                    inner_typed.kind
-                } else {
-                    TypedExpressionKind::Placeholder(
-                        "Failed to convert parenthesized expression".to_string(),
-                    )
+            // Parenthesized expressions should have been eliminated during desugaring
+            ExpressionKind::Parenthesized(_) => {
+                TypedExpressionKind::Placeholder(
+                    "Parenthesized expression found in TypedASTBuilder - this indicates a desugaring bug".to_string(),
+                )
+            }
+
+            // Binary operations (only for operations not desugared, like type casting)
+            ExpressionKind::BinaryOp(binary_op) => {
+                match binary_op.operator {
+                    BinaryOperator::As => {
+                        // Type casting: convert left operand and return it directly
+                        // The type checking phase validates the cast is valid
+                        if let Some(typed_left) = self.convert_expression(&binary_op.left) {
+                            // Type casting is a no-op in the interpreter - just return the left operand
+                            // The type system has already validated the cast during type checking
+                            typed_left.kind
+                        } else {
+                            TypedExpressionKind::Placeholder(
+                                "Failed to convert type cast operand".to_string(),
+                            )
+                        }
+                    }
+                    _ => {
+                        // This shouldn't happen - all other binary operators should be desugared
+                        TypedExpressionKind::Placeholder(format!(
+                            "Unexpected non-desugared binary operator: {:?}",
+                            binary_op.operator
+                        ))
+                    }
                 }
             }
 
@@ -867,7 +910,8 @@ impl TypedASTBuilder {
         }
 
         // Resolve dispatch strategy
-        let dispatch_strategy = self.resolve_dispatch_strategy(&function_path, &typed_arguments);
+        let dispatch_strategy =
+            self.resolve_dispatch_strategy(&function_path, &typed_arguments, call.span);
 
         Some(TypedExpressionKind::FunctionCall {
             function_path,
@@ -876,161 +920,43 @@ impl TypedASTBuilder {
         })
     }
 
-    /// Resolve dispatch strategy for a function call using FunctionRegistry
+    /// Resolve dispatch strategy for a function call using CompilerEnvironment
     fn resolve_dispatch_strategy(
         &self,
         function_path: &TypedFunctionPath,
         arguments: &[TypedArgument],
+        call_span: outrun_parser::Span,
     ) -> DispatchMethod {
-        match function_path {
-            TypedFunctionPath::Simple { name } => {
-                // Simple function calls - look up in function registry
-                if let Some(func_entry) = self.function_registry.lookup_local_function(name) {
-                    DispatchMethod::Static {
-                        function_id: func_entry.function_id.clone(),
-                    }
-                } else {
-                    // Fallback for unknown functions
-                    DispatchMethod::Static {
-                        function_id: name.clone(),
-                    }
-                }
-            }
-            TypedFunctionPath::Qualified { module, name } => {
-                // Qualified function calls - Module.function()
-                if let Some(module_type_id) = self.context.type_interner.get_type(module) {
-                    if let Some(func_entry) = self
-                        .function_registry
-                        .lookup_qualified_function(module_type_id, name)
-                    {
-                        match func_entry.function_type {
-                            // Rule 1: defs (static trait function) -> dispatch to trait
-                            crate::multi_program_compiler::FunctionType::TraitStatic => {
-                                DispatchMethod::Static {
-                                    function_id: func_entry.function_id.clone(),
-                                }
-                            }
+        // First, try to retrieve the dispatch strategy computed and stored by the type checker
+        if let Some(stored_strategy) = self.context.get_dispatch_strategy(&call_span) {
+            return stored_strategy.clone();
+        }
 
-                            // Rule 2: def without body -> dispatch to impl
-                            crate::multi_program_compiler::FunctionType::TraitSignature => {
-                                if let Some(impl_type) =
-                                    self.get_implementing_type_from_arguments(arguments)
-                                {
-                                    DispatchMethod::Trait {
-                                        trait_name: module.clone(),
-                                        function_name: name.clone(),
-                                        impl_type,
-                                    }
-                                } else {
-                                    // Fallback - this should be caught by type checker
-                                    DispatchMethod::Static {
-                                        function_id: func_entry.function_id.clone(),
-                                    }
-                                }
-                            }
-
-                            // Rule 3: def with body -> check for impl override
-                            crate::multi_program_compiler::FunctionType::TraitDefault => {
-                                if let Some(impl_type) =
-                                    self.get_implementing_type_from_arguments(arguments)
-                                {
-                                    // Check if impl has override
-                                    let trait_type_id = module_type_id;
-                                    if self.function_registry.has_impl_override(
-                                        trait_type_id,
-                                        impl_type,
-                                        name,
-                                    ) {
-                                        // Use impl override
-                                        DispatchMethod::Trait {
-                                            trait_name: module.clone(),
-                                            function_name: name.clone(),
-                                            impl_type,
-                                        }
-                                    } else {
-                                        // Use trait default
-                                        DispatchMethod::Static {
-                                            function_id: func_entry.function_id.clone(),
-                                        }
-                                    }
-                                } else {
-                                    // No Self type found - use trait default
-                                    DispatchMethod::Static {
-                                        function_id: func_entry.function_id.clone(),
-                                    }
-                                }
-                            }
-
-                            // Static function on a type
-                            crate::multi_program_compiler::FunctionType::TypeStatic => {
-                                DispatchMethod::Static {
-                                    function_id: func_entry.function_id.clone(),
-                                }
-                            }
-
-                            // Implementation function
-                            crate::multi_program_compiler::FunctionType::ImplFunction => {
-                                if let Some(impl_type) =
-                                    self.get_implementing_type_from_arguments(arguments)
-                                {
-                                    DispatchMethod::Trait {
-                                        trait_name: module.clone(),
-                                        function_name: name.clone(),
-                                        impl_type,
-                                    }
-                                } else {
-                                    // Fallback
-                                    DispatchMethod::Static {
-                                        function_id: func_entry.function_id.clone(),
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Function not found in registry - fallback
-                        DispatchMethod::Static {
-                            function_id: format!("{}.{}", module, name),
-                        }
-                    }
-                } else {
-                    // Module type not found - fallback
-                    DispatchMethod::Static {
-                        function_id: format!("{}.{}", module, name),
-                    }
-                }
-            }
-            TypedFunctionPath::Expression { .. } => {
-                // Dynamic function expressions
-                DispatchMethod::Static {
-                    function_id: "dynamic_function_expression".to_string(),
-                }
+        // Check if this is a desugared expression - try to get the original span
+        if let Some(original_span) = self.context.get_original_span(call_span) {
+            if let Some(stored_strategy) = self.context.get_dispatch_strategy(&original_span) {
+                return stored_strategy.clone();
             }
         }
-    }
 
-    /// Get implementing type from arguments for trait dispatch
-    fn get_implementing_type_from_arguments(
-        &self,
-        arguments: &[TypedArgument],
-    ) -> Option<crate::types::TypeId> {
-        // Find the first argument and use its type as the implementing type
-        // This works for trait functions where the first parameter is typically `self: Self`
-        arguments
-            .first()
-            .and_then(|arg| arg.argument_type.as_ref())
-            .and_then(|structured_type| self.extract_base_type_id(structured_type))
-    }
+        // If no stored strategy found, this indicates a bug in the type checking process
+        let function_name = match function_path {
+            TypedFunctionPath::Simple { name } => name.clone(),
+            TypedFunctionPath::Qualified { module, name } => format!("{}.{}", module, name),
+            TypedFunctionPath::Expression { .. } => "dynamic_function_expression".to_string(),
+        };
 
-    /// Extract the base TypeId from a StructuredType
-    fn extract_base_type_id(
-        &self,
-        structured_type: &crate::unification::StructuredType,
-    ) -> Option<crate::types::TypeId> {
-        match structured_type {
-            crate::unification::StructuredType::Simple(type_id) => Some(*type_id),
-            crate::unification::StructuredType::Generic { base, .. } => Some(*base),
-            _ => None, // For now, only handle simple and generic types
-        }
+        panic!(
+            "CRITICAL BUG: TypedASTBuilder found no dispatch strategy for function call '{}'.\n\
+             This indicates that either:\n\
+             1. The type checker failed to process this function call, or\n\
+             2. There's a bug in storing/retrieving dispatch strategies.\n\
+             \n\
+             All function calls should have dispatch strategies computed during type checking.\n\
+             Call span: {:?}\n\
+             Arguments passed: {:?}",
+            function_name, call_span, arguments
+        );
     }
 
     /// Get resolved type for an expression using type checking results
@@ -1040,66 +966,53 @@ impl TypedASTBuilder {
             return Some(resolved_type.clone());
         }
 
+        // Check if this is a desugared expression - try to get the original span
+        if let Some(original_span) = self.context.get_original_span(expr.span) {
+            if let Some(resolved_type) = self.context.get_expression_type(&original_span) {
+                return Some(resolved_type.clone());
+            }
+        }
+
         // Fallback to basic type inference for literals and simple cases
         match &expr.kind {
             ExpressionKind::Integer(_) => {
                 let integer_type_id = self
-                    .context
-                    .type_interner
-                    .get_type("Outrun.Core.Integer64")
-                    .or_else(|| self.context.type_interner.get_type("Integer"))
-                    .unwrap_or_else(|| {
-                        // Create the type if it doesn't exist
-                        self.context
-                            .type_interner
-                            .intern_type("Outrun.Core.Integer64")
-                    });
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Integer64");
                 Some(StructuredType::Simple(integer_type_id))
             }
             ExpressionKind::Float(_) => {
                 let float_type_id = self
-                    .context
-                    .type_interner
-                    .get_type("Outrun.Core.Float64")
-                    .or_else(|| self.context.type_interner.get_type("Float"))
-                    .unwrap_or_else(|| {
-                        self.context
-                            .type_interner
-                            .intern_type("Outrun.Core.Float64")
-                    });
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Float64");
                 Some(StructuredType::Simple(float_type_id))
             }
             ExpressionKind::String(_) => {
                 let string_type_id = self
-                    .context
-                    .type_interner
-                    .get_type("Outrun.Core.String")
-                    .or_else(|| self.context.type_interner.get_type("String"))
-                    .unwrap_or_else(|| {
-                        self.context.type_interner.intern_type("Outrun.Core.String")
-                    });
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.String");
                 Some(StructuredType::Simple(string_type_id))
             }
             ExpressionKind::Boolean(_) => {
                 let boolean_type_id = self
-                    .context
-                    .type_interner
-                    .get_type("Outrun.Core.Boolean")
-                    .or_else(|| self.context.type_interner.get_type("Boolean"))
-                    .unwrap_or_else(|| {
-                        self.context
-                            .type_interner
-                            .intern_type("Outrun.Core.Boolean")
-                    });
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Boolean");
                 Some(StructuredType::Simple(boolean_type_id))
             }
             ExpressionKind::Atom(_) => {
                 let atom_type_id = self
-                    .context
-                    .type_interner
-                    .get_type("Outrun.Core.Atom")
-                    .or_else(|| self.context.type_interner.get_type("Atom"))
-                    .unwrap_or_else(|| self.context.type_interner.intern_type("Outrun.Core.Atom"));
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Atom");
                 Some(StructuredType::Simple(atom_type_id))
             }
             // For other expression types, return None for now
@@ -1345,7 +1258,11 @@ impl TypedASTBuilder {
         pattern: &outrun_parser::Pattern,
         target_type: &Option<StructuredType>,
     ) -> Option<TypedPattern> {
-        let mut pattern_checker = PatternChecker::new(&mut self.context, &self.struct_registry);
+        let mut pattern_checker = PatternChecker::new(
+            &mut self.context,
+            &self.struct_registry,
+            self.compiler_environment.as_ref().unwrap(),
+        );
 
         match pattern_checker.check_pattern(pattern, target_type) {
             Ok(typed_pattern) => Some(typed_pattern),
@@ -1441,9 +1358,10 @@ impl TypedASTBuilder {
                     } else {
                         // Create a default "true" guard for pattern-only clauses
                         let boolean_type_id = self
-                            .context
-                            .type_interner
-                            .intern_type("Outrun.Core.Boolean");
+                            .compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name("Outrun.Core.Boolean");
                         TypedExpression {
                             kind: TypedExpressionKind::Boolean(true),
                             structured_type: Some(StructuredType::Simple(boolean_type_id)),
@@ -1508,7 +1426,7 @@ impl TypedASTBuilder {
     }
 
     /// Convert function definition with parameter and body validation
-    fn convert_function_definition(
+    pub fn convert_function_definition(
         &mut self,
         func_def: &FunctionDefinition,
     ) -> Option<TypedFunctionDefinition> {
@@ -1542,7 +1460,7 @@ impl TypedASTBuilder {
         // Generate function ID
         let function_id = func_def.name.name.clone();
 
-        Some(TypedFunctionDefinition {
+        let typed_function = TypedFunctionDefinition {
             name: func_def.name.name.clone(),
             parameters: typed_parameters,
             return_type,
@@ -1550,7 +1468,27 @@ impl TypedASTBuilder {
             body,
             function_id,
             span: func_def.span,
-        })
+        };
+
+        // Update the compiler environment with the typed definition
+        if let Some(compiler_env) = &self.compiler_environment {
+            if let Some(module_key) = &self.current_module_key {
+                // Use module-specific update for precise targeting
+                compiler_env.update_function_with_typed_definition_in_module(
+                    module_key,
+                    &func_def.name.name,
+                    typed_function.clone(),
+                )
+            } else {
+                // Fall back to legacy behavior for standalone functions
+                compiler_env.update_function_with_typed_definition(
+                    &func_def.name.name,
+                    typed_function.clone(),
+                )
+            };
+        }
+
+        Some(typed_function)
     }
 
     /// Convert function parameter with type validation
@@ -1574,7 +1512,11 @@ impl TypedASTBuilder {
         match type_annotation {
             outrun_parser::TypeAnnotation::Simple { path, .. } => {
                 if let Some(first_type) = path.first() {
-                    let type_id = self.context.type_interner.intern_type(&first_type.name);
+                    let type_id = self
+                        .compiler_environment
+                        .as_ref()
+                        .unwrap()
+                        .intern_type_name(&first_type.name);
                     Some(StructuredType::simple(type_id))
                 } else {
                     None
@@ -1813,18 +1755,30 @@ impl TypedASTBuilder {
         // Create struct type for Self resolution
         let struct_type = if generic_params.is_empty() {
             Some(StructuredType::Simple(
-                self.context.type_interner.intern_type(&name.join(".")),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name(&name.join(".")),
             ))
         } else {
             // Generic struct - create generic type with parameter placeholders
             let param_types: Vec<StructuredType> = generic_params
                 .iter()
                 .map(|param| {
-                    StructuredType::Simple(self.context.type_interner.intern_type(&param.name))
+                    StructuredType::Simple(
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name(&param.name.clone()),
+                    )
                 })
                 .collect();
             Some(StructuredType::Generic {
-                base: self.context.type_interner.intern_type(&name.join(".")),
+                base: self
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name(&name.join(".")),
                 args: param_types,
             })
         };
@@ -1911,15 +1865,30 @@ impl TypedASTBuilder {
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
+        // Set module context for trait static functions
+        let previous_module_key = self.current_module_key.clone();
+        if let Some(compiler_env) = &self.compiler_environment {
+            let trait_name = name.join(".");
+            let trait_type_id = compiler_env.intern_type_name(&trait_name);
+            self.current_module_key = Some(
+                crate::compilation::compiler_environment::ModuleKey::Module(trait_type_id.hash),
+            );
+        }
+
         // Convert trait functions
         let mut typed_functions = Vec::new();
         for func in &trait_def.functions {
             if let Some(typed_func) = self.convert_trait_function(func) {
                 typed_functions.push(typed_func);
             } else {
+                // Restore previous module context on failure
+                self.current_module_key = previous_module_key;
                 return None; // Failed to convert function
             }
         }
+
+        // Restore previous module context
+        self.current_module_key = previous_module_key;
 
         // Generate trait ID from name path
         let trait_id = name.join(".");
@@ -1961,13 +1930,59 @@ impl TypedASTBuilder {
                     None
                 };
 
-                Some(TypedTraitFunction::Signature {
+                let typed_trait_function = TypedTraitFunction::Signature {
                     name: sig.name.name.clone(),
-                    parameters: typed_parameters,
-                    return_type,
-                    guard,
+                    parameters: typed_parameters.clone(),
+                    return_type: return_type.clone(),
+                    guard: guard.clone(),
                     span: sig.span,
-                })
+                };
+
+                // Create a typed function definition for trait signatures to register their types
+                // BUT mark them as non-executable to prevent interpreter from trying to run them
+                let empty_body = crate::checker::TypedBlock {
+                    statements: Vec::new(),
+                    result_type: None,
+                    span: sig.span,
+                };
+
+                let typed_function_def = crate::checker::TypedFunctionDefinition {
+                    name: sig.name.name.clone(),
+                    parameters: typed_parameters
+                        .iter()
+                        .map(|p| crate::checker::TypedParameter {
+                            name: p.name.clone(),
+                            param_type: None, // TODO: Convert properly
+                            span: p.span,
+                        })
+                        .collect(),
+                    return_type: None, // TODO: Convert return type properly
+                    guard: guard.clone(),
+                    body: empty_body,
+                    function_id: format!("trait_signature::{}", sig.name.name),
+                    span: sig.span,
+                };
+
+                // Update the compiler environment with the typed definition for trait signatures
+                // These are needed for the type system but should not be executed
+                if let Some(compiler_env) = &self.compiler_environment {
+                    if let Some(module_key) = &self.current_module_key {
+                        // Use module-specific update for precise targeting
+                        compiler_env.update_function_with_typed_definition_in_module(
+                            module_key,
+                            &sig.name.name,
+                            typed_function_def,
+                        )
+                    } else {
+                        // Fall back to legacy behavior for trait signatures
+                        compiler_env.update_function_with_typed_definition(
+                            &sig.name.name,
+                            typed_function_def,
+                        )
+                    };
+                }
+
+                Some(typed_trait_function)
             }
             TraitFunction::Definition(def) => {
                 // Convert function definition
@@ -1988,6 +2003,37 @@ impl TypedASTBuilder {
                 let return_type = self.convert_type_annotation(&static_def.return_type);
 
                 let body = self.convert_block_to_typed_block(&static_def.body)?;
+
+                // Create typed function definition for static functions
+                let typed_function_def = crate::checker::TypedFunctionDefinition {
+                    name: static_def.name.name.clone(),
+                    parameters: typed_parameters.clone(),
+                    return_type: return_type.clone(),
+                    guard: None,
+                    body: body.clone(),
+                    function_id: format!("static_trait::{}", static_def.name.name),
+                    span: static_def.span,
+                };
+
+                // Update the compiler environment with the typed definition for static functions
+                if let Some(compiler_env) = &self.compiler_environment {
+                    let function_name = &static_def.name.name;
+
+                    let _updated = if let Some(module_key) = &self.current_module_key {
+                        // Use module-specific update for precise targeting
+                        compiler_env.update_function_with_typed_definition_in_module(
+                            module_key,
+                            function_name,
+                            typed_function_def,
+                        )
+                    } else {
+                        // Fall back to global update
+                        compiler_env.update_function_with_typed_definition(
+                            function_name,
+                            typed_function_def,
+                        )
+                    };
+                }
 
                 Some(TypedTraitFunction::StaticDefinition {
                     name: static_def.name.name.clone(),
@@ -2015,48 +2061,50 @@ impl TypedASTBuilder {
         // Convert type path
         let type_path = self.convert_type_spec(&impl_block.type_spec);
 
-        // Resolve implementation type for Self resolution
+        // Resolve implementation type using the same method as trait registration
         let impl_type = if type_path.is_empty() {
             None
-        } else if let Some(generic_args) = &impl_block.type_spec.generic_args {
-            // Generic implementation type
-            let mut resolved_args = Vec::new();
-            for arg in &generic_args.args {
-                if let Some(typed_annotation) = self.convert_type_annotation_comprehensive(arg) {
-                    if let Some(resolved_type) = typed_annotation.resolved_type {
-                        resolved_args.push(resolved_type);
-                    }
+        } else {
+            match self
+                .compiler_environment
+                .as_ref()
+                .unwrap()
+                .convert_type_spec_to_structured_type(&impl_block.type_spec)
+            {
+                Ok(structured_type) => Some(structured_type),
+                Err(_) => {
+                    // Fallback to simple type if conversion fails
+                    Some(StructuredType::Simple(
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name(&type_path.join(".")),
+                    ))
                 }
             }
-
-            if resolved_args.is_empty() {
-                // Simple type
-                Some(StructuredType::Simple(
-                    self.context.type_interner.intern_type(&type_path.join(".")),
-                ))
-            } else {
-                // Generic type with arguments
-                Some(StructuredType::Generic {
-                    base: self.context.type_interner.intern_type(&type_path.join(".")),
-                    args: resolved_args,
-                })
-            }
-        } else {
-            // Simple implementation type
-            Some(StructuredType::Simple(
-                self.context.type_interner.intern_type(&type_path.join(".")),
-            ))
         };
 
-        // Resolve trait type
+        // Resolve trait type using the same method as trait registration
         let trait_type = if trait_path.is_empty() {
             None
         } else {
-            Some(StructuredType::Simple(
-                self.context
-                    .type_interner
-                    .intern_type(&trait_path.join(".")),
-            ))
+            match self
+                .compiler_environment
+                .as_ref()
+                .unwrap()
+                .convert_type_spec_to_structured_type(&impl_block.trait_spec)
+            {
+                Ok(structured_type) => Some(structured_type),
+                Err(_) => {
+                    // Fallback to simple type if conversion fails
+                    Some(StructuredType::Simple(
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name(&trait_path.join(".")),
+                    ))
+                }
+            }
         };
 
         // Create generic context for method resolution with Self type
@@ -2066,16 +2114,40 @@ impl TypedASTBuilder {
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
+        // Set module context for trait implementation functions
+        let previous_module_key = self.current_module_key.clone();
+        if let (Some(trait_type), Some(impl_type)) = (&trait_type, &impl_type) {
+            // IMPORTANT: Use the base trait type for module key consistency
+            // During registration, traits are stored with Simple types (e.g., Simple(Option))
+            // but resolved type specs create Generic types (e.g., Generic { base: Option, args: [T] })
+            // We need to extract the base type to match the registration module key
+            let module_trait_type = match trait_type {
+                StructuredType::Generic { base, .. } => StructuredType::Simple(base.clone()),
+                other => other.clone(),
+            };
+
+            self.current_module_key = Some(
+                crate::compilation::compiler_environment::ModuleKey::TraitImpl(
+                    Box::new(module_trait_type),
+                    Box::new(impl_type.clone()),
+                ),
+            );
+        }
+
         // Convert functions with Self type resolution
         let mut typed_functions = Vec::new();
         for function in &impl_block.methods {
             if let Some(typed_function) = self.convert_function_definition(function) {
                 typed_functions.push(typed_function);
             } else {
+                self.current_module_key = previous_module_key; // Restore on failure
                 self.pop_generic_context(); // Clean up on failure
                 return None; // Failed to convert function
             }
         }
+
+        // Restore previous module context
+        self.current_module_key = previous_module_key;
 
         // Pop generic context
         self.pop_generic_context();
@@ -2288,13 +2360,20 @@ impl TypedASTBuilder {
 
                     // Create generic type with resolved arguments
                     Some(StructuredType::Generic {
-                        base: self.context.type_interner.intern_type(&path.join(".")),
+                        base: self
+                            .compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name(&path.join(".")),
                         args: resolved_args,
                     })
                 } else {
                     // Simple type without generics
                     Some(StructuredType::Simple(
-                        self.context.type_interner.intern_type(&path.join(".")),
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name(&path.join(".")),
                     ))
                 }
             }
@@ -2320,7 +2399,11 @@ impl TypedASTBuilder {
                 for param in params {
                     if let Some(resolved_param_type) = param.param_type.resolved_type.as_ref() {
                         resolved_params.push(crate::unification::FunctionParam {
-                            name: self.context.type_interner.intern_atom(&param.name),
+                            name: self
+                                .compiler_environment
+                                .as_ref()
+                                .unwrap()
+                                .intern_atom_name(&param.name.clone()),
                             param_type: resolved_param_type.clone(),
                         });
                     } else {
@@ -2429,9 +2512,10 @@ impl TypedASTBuilder {
     ) -> TypedExpression {
         // Precompute placeholder type to avoid borrow conflicts
         let placeholder_type_id = self
-            .context
-            .type_interner
-            .intern_type("Outrun.Core.PlaceholderType");
+            .compiler_environment
+            .as_ref()
+            .unwrap()
+            .intern_type_name("Outrun.Core.PlaceholderType");
         let default_placeholder_type = StructuredType::Simple(placeholder_type_id);
 
         // Record the error recovery attempt
@@ -2481,61 +2565,83 @@ impl TypedASTBuilder {
         use outrun_parser::ExpressionKind;
         match &expr.kind {
             ExpressionKind::Integer(_) => Some(StructuredType::Simple(
-                self.context
-                    .type_interner
-                    .intern_type("Outrun.Core.Integer64"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Integer64"),
             )),
             ExpressionKind::Float(_) => Some(StructuredType::Simple(
-                self.context
-                    .type_interner
-                    .intern_type("Outrun.Core.Float64"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Float64"),
             )),
             ExpressionKind::String(_) => Some(StructuredType::Simple(
-                self.context.type_interner.intern_type("Outrun.Core.String"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.String"),
             )),
             ExpressionKind::Boolean(_) => Some(StructuredType::Simple(
-                self.context
-                    .type_interner
-                    .intern_type("Outrun.Core.Boolean"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Boolean"),
             )),
             ExpressionKind::Atom(_) => Some(StructuredType::Simple(
-                self.context.type_interner.intern_type("Outrun.Core.Atom"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.Atom"),
             )),
             ExpressionKind::List(_) => Some(StructuredType::Generic {
-                base: self.context.type_interner.intern_type("List"),
+                base: self
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("List"),
                 args: vec![StructuredType::Simple(
-                    self.context
-                        .type_interner
-                        .intern_type("Outrun.Core.PlaceholderType"),
+                    self.compiler_environment
+                        .as_ref()
+                        .unwrap()
+                        .intern_type_name("Outrun.Core.PlaceholderType"),
                 )],
             }),
             ExpressionKind::Map(_) => Some(StructuredType::Generic {
-                base: self.context.type_interner.intern_type("Map"),
+                base: self
+                    .compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Map"),
                 args: vec![
                     StructuredType::Simple(
-                        self.context
-                            .type_interner
-                            .intern_type("Outrun.Core.PlaceholderType"),
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name("Outrun.Core.PlaceholderType"),
                     ),
                     StructuredType::Simple(
-                        self.context
-                            .type_interner
-                            .intern_type("Outrun.Core.PlaceholderType"),
+                        self.compiler_environment
+                            .as_ref()
+                            .unwrap()
+                            .intern_type_name("Outrun.Core.PlaceholderType"),
                     ),
                 ],
             }),
             ExpressionKind::Tuple(_) => {
                 // For tuples, we can't easily determine the element types, so use a generic placeholder
                 Some(StructuredType::Simple(
-                    self.context
-                        .type_interner
-                        .intern_type("Outrun.Core.PlaceholderType"),
+                    self.compiler_environment
+                        .as_ref()
+                        .unwrap()
+                        .intern_type_name("Outrun.Core.PlaceholderType"),
                 ))
             }
             _ => Some(StructuredType::Simple(
-                self.context
-                    .type_interner
-                    .intern_type("Outrun.Core.PlaceholderType"),
+                self.compiler_environment
+                    .as_ref()
+                    .unwrap()
+                    .intern_type_name("Outrun.Core.PlaceholderType"),
             )),
         }
     }
@@ -2558,8 +2664,13 @@ impl TypedASTBuilder {
 
         // Estimate memory usage (simplified)
         let estimated_ast_memory = total_items * 1024; // Rough estimate: 1KB per item
-        let estimated_context_memory = self.context.type_interner.len() * 256; // 256 bytes per interned type/atom
-        let estimated_registry_memory = self.function_registry.len() * 512; // 512 bytes per function
+        let estimated_context_memory = 1024; // FIXME: no equivalent method on CompilerEnvironment
+        let estimated_registry_memory = self
+            .compiler_environment
+            .as_ref()
+            .map(|ce| ce.function_count())
+            .unwrap_or(0)
+            * 512; // 512 bytes per function
 
         crate::checker::CompilationSummary {
             total_items,

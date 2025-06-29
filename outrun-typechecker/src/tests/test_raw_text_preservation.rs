@@ -4,7 +4,8 @@
 //! through the parsing and type checking pipeline, enabling perfect source reconstruction.
 
 use crate::checker::LiteralFormatDetails;
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -30,9 +31,9 @@ fn test_integer_raw_text_preservation() {
         let mut collection = ProgramCollection::from_core_library();
         collection.add_program("test.outrun".to_string(), program, source.clone());
 
-        let mut compiler = MultiProgramCompiler::new();
-        let result = compiler
-            .compile(&collection)
+        let mut compiler_env = CompilerEnvironment::new();
+        let result = compiler_env
+            .compile_collection(collection)
             .expect("Compilation should succeed");
 
         let typed_program = result
@@ -98,9 +99,9 @@ fn test_float_raw_text_preservation() {
         let mut collection = ProgramCollection::from_core_library();
         collection.add_program("test.outrun".to_string(), program, source.clone());
 
-        let mut compiler = MultiProgramCompiler::new();
-        let result = compiler
-            .compile(&collection)
+        let mut compiler_env = CompilerEnvironment::new();
+        let result = compiler_env
+            .compile_collection(collection)
             .expect("Compilation should succeed");
 
         let typed_program = result
@@ -186,8 +187,8 @@ def test_formats(): String {
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(compilation_result) => {

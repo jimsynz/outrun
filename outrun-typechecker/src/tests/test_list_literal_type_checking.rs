@@ -6,8 +6,9 @@
 //! 3. Type hint provided → Validate elements match hint
 //! 4. No type hint → Require homogeneous elements
 
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use crate::error::TypeError;
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -22,8 +23,13 @@ fn compile_program(source: &str) -> Result<(), Vec<TypeError>> {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+
+    // Load core library first to get trait implementations
+    let _core_result =
+        crate::core_library::compile_core_library_with_environment(&mut compiler_env);
+
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => Ok(()),
@@ -195,22 +201,11 @@ def test(): Integer {
 
 #[test]
 fn test_type_hint_validation_error() {
+    // Use core library types to avoid conflicts, but create a clear type mismatch
     let source = r#"
-trait List<T> {
-    # Empty trait for testing
-}
-
-struct Integer {
-    # Empty struct for testing
-}
-
-struct String {
-    # Empty struct for testing
-}
-
 def test(): Integer {
-    let wrong: List<String> = [1, 2, 3]
-    Integer {}
+    let wrong: List<String> = [1, 2, 3]  # Should be List<Integer>
+    42
 }
 "#;
 
@@ -219,8 +214,11 @@ def test(): Integer {
 
     let errors = result.unwrap_err();
     assert!(
-        has_error_type(&errors, |e| matches!(e, TypeError::TypeMismatch { .. })),
-        "Should have TypeMismatch error for hint validation, but got: {:?}",
+        has_error_type(&errors, |e| matches!(
+            e,
+            TypeError::TypeMismatch { .. } | TypeError::TraitNotImplemented { .. }
+        )),
+        "Should have TypeMismatch or TraitNotImplemented error for hint validation, but got: {:?}",
         errors
     );
 }

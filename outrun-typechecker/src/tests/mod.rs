@@ -10,7 +10,6 @@ mod test_core_library_runtime;
 mod test_detailed_errors;
 
 // LSP integration tests
-mod test_completion_suggestions;
 
 // Span mapping tests
 mod test_span_mapping;
@@ -89,6 +88,9 @@ mod test_control_flow_typed_ast;
 // Function definition typed AST tests (Week 5 functionality)
 mod test_function_definitions_typed_ast;
 
+// Function call type inference tests
+mod test_function_call_type_inference;
+
 // Type system item typed AST tests (Week 6 functionality)
 mod test_type_system_typed_ast;
 
@@ -118,6 +120,9 @@ mod test_sigil_desugaring;
 
 // Type resolution integration tests
 mod test_type_resolution_integration;
+
+// Bug reproduction tests
+mod test_integer_equality_dispatch_bug;
 
 // Performance and edge case tests
 // TODO: Create these test files

@@ -31,7 +31,7 @@ Outrun distinguishes between **concrete types** (actual runtime values) and **tr
 For performance and memory efficiency, atoms and types use interning:
 
 - **AtomId**: Interned atom names like `:hello` - any two atoms with same name are identical objects
-- **TypeId**: Interned type names like `Outrun.Core.Integer64`, `Outrun.Core.List<Outrun.Core.String>`
+- **TypeNameId**: Interned type names like `Outrun.Core.Integer64`, `Outrun.Core.List<Outrun.Core.String>`
 - **Fast equality**: Atoms and types compared by ID, not string comparison
 - **Collections store types**: `List { element_type: TypeId, ... }`, `Tuple { element_types: Vec<TypeId>, ... }`
 
@@ -87,9 +87,9 @@ Outrun's module system is based on types, with clear separation between static f
 
 ### Trait Implementation Dispatch
 
-- **Type checker responsibility**: Builds `(TraitId, TypeId) -> OpaqueModule` lookup table
+- **Type checker responsibility**: Builds module lookup table.
 - **Runtime dispatch**: `Display.to_string(value: int)` becomes module lookup + function call within module
-- **Opaque trait modules**: Named like "TypeName as TraitName", separate from type's own module
+- **Opaque trait modules**: Separate from type's own module
 - **No naming conflicts**: Static functions in type module vs trait functions in separate impl modules
 
 ### Module Resolution
@@ -97,8 +97,8 @@ Outrun's module system is based on types, with clear separation between static f
 - **No dynamic module lookup**: All calls are either static module functions or trait dispatch
 - **No implicit imports**: `String.length()` is trait function dispatch, not implicit `Outrun.Core.String`
 - **Alias resolution**: All aliases expanded to fully qualified names before runtime
-- **No type inference initially**: Trait calls require explicit type annotations during early development
-- **Clean separation**: Parser handles aliases, interpreter does module dispatch with qualified names
+- **Very simple type inference initially**: Manually implemented inference for common idioms.
+- **Clean separation**: Typechecker desugars aliases, interpreter does module dispatch with qualified names
 
 ### Function Types and Named Parameters
 
@@ -114,7 +114,7 @@ Value::Function {
 
 - **Parameter names as AtomId**: Consistent with atom interning system
 - **Unique parameter validation**: At load/compile time, not runtime (set-like semantics)
-- **Type annotations required**: No type inference initially - trait calls always require explicit type annotations
+- **Very simple type inference initially**: Manually implemented inference for common idioms.
 
 ### Function Call Semantics
 

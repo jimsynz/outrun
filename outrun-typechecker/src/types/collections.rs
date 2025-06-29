@@ -3,20 +3,21 @@
 //! This module provides utilities for working with collection types (List, Tuple, Map)
 //! and validating their type constraints.
 
-use super::{ConcreteType, TypeId};
+use super::ConcreteType;
+use crate::compilation::compiler_environment::TypeNameId;
 
 /// Specialized collection type for cleaner handling
 #[derive(Debug, Clone, PartialEq)]
 pub enum CollectionType {
     List {
-        element_type: TypeId,
+        element_type: TypeNameId,
     },
     Tuple {
-        element_types: Vec<TypeId>,
+        element_types: Vec<TypeNameId>,
     },
     Map {
-        key_type: TypeId,
-        value_type: TypeId,
+        key_type: TypeNameId,
+        value_type: TypeNameId,
     },
 }
 
@@ -25,7 +26,7 @@ impl CollectionType {
     pub fn to_concrete_type(&self) -> ConcreteType {
         match self {
             CollectionType::List { element_type } => ConcreteType::List {
-                element_type: *element_type,
+                element_type: element_type.clone(),
             },
             CollectionType::Tuple { element_types } => ConcreteType::Tuple {
                 element_types: element_types.clone(),
@@ -34,8 +35,8 @@ impl CollectionType {
                 key_type,
                 value_type,
             } => ConcreteType::Map {
-                key_type: *key_type,
-                value_type: *value_type,
+                key_type: key_type.clone(),
+                value_type: value_type.clone(),
             },
         }
     }
@@ -44,7 +45,7 @@ impl CollectionType {
     pub fn from_concrete_type(concrete: &ConcreteType) -> Option<Self> {
         match concrete {
             ConcreteType::List { element_type } => Some(CollectionType::List {
-                element_type: *element_type,
+                element_type: element_type.clone(),
             }),
             ConcreteType::Tuple { element_types } => Some(CollectionType::Tuple {
                 element_types: element_types.clone(),
@@ -53,22 +54,22 @@ impl CollectionType {
                 key_type,
                 value_type,
             } => Some(CollectionType::Map {
-                key_type: *key_type,
-                value_type: *value_type,
+                key_type: key_type.clone(),
+                value_type: value_type.clone(),
             }),
             _ => None,
         }
     }
 
     /// Get all type dependencies for this collection
-    pub fn type_dependencies(&self) -> Vec<TypeId> {
+    pub fn type_dependencies(&self) -> Vec<TypeNameId> {
         match self {
-            CollectionType::List { element_type } => vec![*element_type],
+            CollectionType::List { element_type } => vec![element_type.clone()],
             CollectionType::Tuple { element_types } => element_types.clone(),
             CollectionType::Map {
                 key_type,
                 value_type,
-            } => vec![*key_type, *value_type],
+            } => vec![key_type.clone(), value_type.clone()],
         }
     }
 
@@ -114,9 +115,16 @@ pub fn validate_collection_type(collection: &CollectionType) -> Result<(), Colle
 #[derive(Debug, Clone, PartialEq)]
 pub enum CollectionError {
     EmptyTuple,
-    InvalidKeyType { type_id: TypeId },
-    InvalidValueType { type_id: TypeId },
-    IncompatibleElementTypes { expected: TypeId, found: TypeId },
+    InvalidKeyType {
+        type_id: TypeNameId,
+    },
+    InvalidValueType {
+        type_id: TypeNameId,
+    },
+    IncompatibleElementTypes {
+        expected: TypeNameId,
+        found: TypeNameId,
+    },
 }
 
 impl std::fmt::Display for CollectionError {

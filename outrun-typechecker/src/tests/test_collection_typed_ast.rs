@@ -4,7 +4,7 @@
 //! parser collection literals into typed AST structures.
 
 use crate::checker::{TypedExpressionKind, TypedMapEntry, TypedStructField};
-use crate::multi_program_compiler::MultiProgramCompiler;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
 #[test]
@@ -12,11 +12,13 @@ fn test_list_literal_typed_ast_conversion() {
     let source = "[1, 2, 3]";
     let program = parse_program(source).expect("Failed to parse list literal");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler.compile(&collection).expect("Failed to compile");
+    let result = compiler_env
+        .compile_collection(collection)
+        .expect("Failed to compile");
 
     // Check that we have typed programs
     assert!(
@@ -60,11 +62,13 @@ fn test_map_literal_typed_ast_conversion() {
     let source = r#"{:name => "Alice", :role => "admin"}"#;
     let program = parse_program(source).expect("Failed to parse map literal");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler.compile(&collection).expect("Failed to compile");
+    let result = compiler_env
+        .compile_collection(collection)
+        .expect("Failed to compile");
 
     let typed_program = result
         .typed_programs
@@ -108,11 +112,13 @@ fn test_tuple_literal_typed_ast_conversion() {
     let source = r#"("hello", 42, true)"#;
     let program = parse_program(source).expect("Failed to parse tuple literal");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler.compile(&collection).expect("Failed to compile");
+    let result = compiler_env
+        .compile_collection(collection)
+        .expect("Failed to compile");
 
     let typed_program = result
         .typed_programs
@@ -152,13 +158,13 @@ fn test_struct_literal_typed_ast_conversion() {
     let source = r#"User { name: "Bob", age: 25 }"#;
     let program = parse_program(source).expect("Failed to parse struct literal");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Note: This may fail compilation due to missing User struct definition
     // but should still create a typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     match result {
         Ok(compilation_result) => {
             let typed_program = compilation_result
@@ -217,12 +223,12 @@ fn test_empty_tuple_error() {
     let source = "()";
     let program = parse_program(source).expect("Failed to parse tuple");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Empty tuples should cause compilation to fail
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     assert!(
         result.is_err(),
         "Empty tuples should cause compilation errors"
@@ -249,12 +255,12 @@ fn test_non_empty_tuple_typed_ast() {
     let source = "(42, \"hello\")";
     let program = parse_program(source).expect("Failed to parse tuple");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // Non-empty tuples should compile successfully
-    match compiler.compile(&collection) {
+    match compiler_env.compile_collection(collection) {
         Ok(result) => {
             let typed_program = result
                 .typed_programs
@@ -291,11 +297,13 @@ fn test_nested_collections_typed_ast() {
     let source = r#"[[1, 2], [3, 4]]"#;
     let program = parse_program(source).expect("Failed to parse nested list");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let result = compiler.compile(&collection).expect("Failed to compile");
+    let result = compiler_env
+        .compile_collection(collection)
+        .expect("Failed to compile");
     let typed_program = result
         .typed_programs
         .get("test.outrun")

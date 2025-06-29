@@ -1,19 +1,19 @@
 //! Tests for control flow expression support in typed AST (if and case expressions)
 
 use crate::checker::{TypedCaseVariant, TypedExpressionKind};
-use crate::multi_program_compiler::MultiProgramCompiler;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
 /// Helper function to compile a source snippet and get the first expression
 fn compile_and_get_first_expression(source: &str) -> Option<crate::checker::TypedExpression> {
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");

@@ -4,9 +4,9 @@
 //! with additional type information and variable binding tracking for the
 //! type checker and typed AST.
 
+use crate::compilation::compiler_environment::{CompilerEnvironment, TypeNameId};
 use crate::error::{SpanExt, TypeError};
-use crate::types::TypeId;
-use crate::unification::{unify_structured_types, StructuredType, UnificationContext};
+use crate::unification::{StructuredType, UnificationContext};
 use outrun_parser::{
     ListPattern, Literal, LiteralPattern, Pattern, Span, StructDefinition, StructFieldPattern,
     StructPattern, TuplePattern, TypeAnnotation,
@@ -218,19 +218,20 @@ impl BoundVariable {
 
 /// Pattern checker for converting parser patterns to typed patterns with validation
 pub struct PatternChecker<'a> {
-    context: &'a mut UnificationContext,
-    struct_registry: &'a HashMap<TypeId, StructDefinition>,
+    struct_registry: &'a HashMap<TypeNameId, StructDefinition>,
+    compiler_environment: &'a CompilerEnvironment,
 }
 
 impl<'a> PatternChecker<'a> {
     /// Create a new pattern checker with the given type context and struct registry
     pub fn new(
-        context: &'a mut UnificationContext,
-        struct_registry: &'a HashMap<TypeId, StructDefinition>,
+        _context: &'a mut UnificationContext,
+        struct_registry: &'a HashMap<TypeNameId, StructDefinition>,
+        compiler_environment: &'a CompilerEnvironment,
     ) -> Self {
         Self {
-            context,
             struct_registry,
+            compiler_environment,
         }
     }
 
@@ -298,11 +299,13 @@ impl<'a> PatternChecker<'a> {
 
         // Check if literal_type unifies with target_type
         if let (Some(literal_type), Some(target_type)) = (&literal_type, target_type) {
-            if !unify_structured_types(literal_type, target_type, self.context).unwrap_or(false) {
+            // TODO: Update to use new CompilerEnvironment pattern
+            // For now, do basic type equality check
+            if literal_type != target_type {
                 return Err(TypeError::internal(format!(
                     "Literal pattern type {} does not match target type {}",
-                    literal_type.to_string_representation(&self.context.type_interner),
-                    target_type.to_string_representation(&self.context.type_interner)
+                    literal_type.to_string_representation(),
+                    target_type.to_string_representation()
                 )));
             }
         }
@@ -347,7 +350,7 @@ impl<'a> PatternChecker<'a> {
 
         // Look up struct definition to get field types
         let struct_name = type_path.join(".");
-        let struct_type_id = self.context.type_interner.get_type(&struct_name);
+        let struct_type_id = Some(self.compiler_environment.intern_type_name(&struct_name));
         let struct_definition = struct_type_id.and_then(|id| self.struct_registry.get(&id));
 
         let mut typed_fields = Vec::new();
@@ -455,7 +458,7 @@ impl<'a> PatternChecker<'a> {
                     .join(".");
 
                 // Intern the type name
-                let type_id = self.context.type_interner.intern_type(&type_name);
+                let type_id = self.compiler_environment.intern_type_name(&type_name);
 
                 // Handle generic arguments if present
                 if let Some(args) = generic_args {
@@ -487,7 +490,9 @@ impl<'a> PatternChecker<'a> {
             } => {
                 let mut param_types = Vec::new();
                 for param in params {
-                    let param_name = self.context.type_interner.intern_atom(&param.name.name);
+                    let param_name = self
+                        .compiler_environment
+                        .intern_atom_name(&param.name.name.clone());
                     let param_type = self.resolve_type_annotation(&param.type_annotation)?;
                     param_types.push(crate::unification::FunctionParam {
                         name: param_name,
@@ -534,23 +539,23 @@ impl<'a> PatternChecker<'a> {
     fn infer_literal_type(&mut self, literal: &Literal) -> Option<StructuredType> {
         match literal {
             Literal::Boolean(_) => {
-                let boolean_type = self.context.type_interner.intern_type("Boolean");
+                let boolean_type = self.compiler_environment.intern_type_name("Boolean");
                 Some(StructuredType::Simple(boolean_type))
             }
             Literal::Integer(_) => {
-                let integer_type = self.context.type_interner.intern_type("Integer");
+                let integer_type = self.compiler_environment.intern_type_name("Integer");
                 Some(StructuredType::Simple(integer_type))
             }
             Literal::Float(_) => {
-                let float_type = self.context.type_interner.intern_type("Float");
+                let float_type = self.compiler_environment.intern_type_name("Float");
                 Some(StructuredType::Simple(float_type))
             }
             Literal::String(_) => {
-                let string_type = self.context.type_interner.intern_type("String");
+                let string_type = self.compiler_environment.intern_type_name("String");
                 Some(StructuredType::Simple(string_type))
             }
             Literal::Atom(_) => {
-                let atom_type = self.context.type_interner.intern_type("Atom");
+                let atom_type = self.compiler_environment.intern_type_name("Atom");
                 Some(StructuredType::Simple(atom_type))
             }
         }
@@ -564,27 +569,26 @@ impl<'a> PatternChecker<'a> {
 
 /// Exhaustiveness checking utilities for pattern matching
 pub struct ExhaustivenessChecker {
-    context: UnificationContext,
-    trait_registry: Option<crate::types::traits::TraitRegistry>,
+    compiler_environment: Option<crate::compilation::compiler_environment::CompilerEnvironment>,
 }
 
 impl ExhaustivenessChecker {
     /// Create a new exhaustiveness checker
-    pub fn new(context: UnificationContext) -> Self {
+    pub fn new(
+        compiler_environment: Option<crate::compilation::compiler_environment::CompilerEnvironment>,
+    ) -> Self {
         Self {
-            context,
-            trait_registry: None,
+            compiler_environment,
         }
     }
 
-    /// Create a new exhaustiveness checker with trait registry for trait case checking
-    pub fn with_trait_registry(
-        context: UnificationContext,
-        trait_registry: crate::types::traits::TraitRegistry,
+    /// Create a new exhaustiveness checker with compiler environment for trait case checking
+    pub fn with_compiler_environment(
+        _context: UnificationContext,
+        compiler_environment: crate::compilation::compiler_environment::CompilerEnvironment,
     ) -> Self {
         Self {
-            context,
-            trait_registry: Some(trait_registry),
+            compiler_environment: Some(compiler_environment),
         }
     }
 
@@ -697,23 +701,28 @@ impl ExhaustivenessChecker {
             // Simple types: check if it's a known type with limited constructors or a trait
             StructuredType::Simple(type_id) => {
                 // Check if this is a trait type for trait case exhaustiveness
-                if let Some(trait_registry) = &self.trait_registry {
-                    if trait_registry.has_trait(*type_id) {
+                if let Some(compiler_env) = &self.compiler_environment {
+                    if compiler_env.is_trait(&StructuredType::Simple(type_id.clone())) {
                         // This is a trait - return all implementor types as constructors
-                        let implementors = trait_registry.get_trait_implementors(*type_id);
+                        let implementors = compiler_env
+                            .get_trait_implementations(&StructuredType::Simple(type_id.clone()));
                         return Ok(implementors
                             .into_iter()
-                            .map(PatternConstructor::TraitImplementor)
+                            .map(|impl_type| {
+                                PatternConstructor::TraitImplementor(
+                                    if let StructuredType::Simple(id) = impl_type {
+                                        id
+                                    } else {
+                                        type_id.clone()
+                                    },
+                                )
+                            })
                             .collect());
                     }
                 }
 
-                let type_name = self
-                    .context
-                    .type_interner
-                    .resolve_type(*type_id)
-                    .unwrap_or("UnknownType");
-                match type_name {
+                let type_name = type_id.to_string();
+                match type_name.as_str() {
                     "Boolean" | "Outrun.Core.Boolean" => Ok(vec![
                         PatternConstructor::Literal(Literal::Boolean(
                             outrun_parser::BooleanLiteral {
@@ -749,13 +758,9 @@ impl ExhaustivenessChecker {
 
             // Generic types: analyze base type and args for algebraic data types
             StructuredType::Generic { base, args: _ } => {
-                let base_type_name = self
-                    .context
-                    .type_interner
-                    .resolve_type(*base)
-                    .unwrap_or("UnknownType");
+                let base_type_name = base.to_string();
 
-                match base_type_name {
+                match base_type_name.as_str() {
                     "Option" | "Outrun.Core.Option" => {
                         // Option<T> has Some and None constructors
                         Ok(vec![
@@ -892,13 +897,12 @@ impl ExhaustivenessChecker {
             // Trait implementor matches struct pattern by type name
             (PatternConstructor::TraitImplementor(type_id), PatternConstructor::Struct(path))
             | (PatternConstructor::Struct(path), PatternConstructor::TraitImplementor(type_id)) => {
-                if let Some(type_name) = self.context.type_interner.resolve_type(*type_id) {
+                {
+                    let type_name = type_id.to_string();
                     // Check if the type name matches the struct path
                     let type_path: Vec<String> =
                         type_name.split('.').map(|s| s.to_string()).collect();
                     &type_path == path || path.len() == 1 && path[0] == type_name
-                } else {
-                    false
                 }
             }
 
@@ -1001,7 +1005,8 @@ impl ExhaustivenessChecker {
 
             PatternConstructor::TraitImplementor(type_id) => {
                 // Generate a struct pattern for the trait implementor type
-                if let Some(type_name) = self.context.type_interner.resolve_type(*type_id) {
+                {
+                    let type_name = type_id.to_string();
                     // Split type name into path components (e.g., "Outrun.Core.String" -> ["Outrun", "Core", "String"])
                     let type_path: Vec<String> =
                         type_name.split('.').map(|s| s.to_string()).collect();
@@ -1014,11 +1019,6 @@ impl ExhaustivenessChecker {
                         Some(target_type.clone()),
                         span,
                     ))
-                } else {
-                    Err(TypeError::internal(format!(
-                        "Unknown trait implementor type ID: {:?}",
-                        type_id
-                    )))
                 }
             }
         }
@@ -1139,12 +1139,22 @@ pub enum PatternConstructor {
     Struct(Vec<String>), // Type path
     Tuple(usize),        // Number of elements
     List { min_length: usize, has_rest: bool },
-    TraitImplementor(TypeId), // Trait implementor type for trait case exhaustiveness
+    TraitImplementor(TypeNameId), // Trait implementor type for trait case exhaustiveness
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Helper function to create a test context
+    fn create_test_context() -> UnificationContext {
+        UnificationContext::new()
+    }
+
+    /// Helper function to create a test CompilerEnvironment
+    fn create_test_compiler_env() -> crate::compilation::compiler_environment::CompilerEnvironment {
+        crate::compilation::compiler_environment::CompilerEnvironment::new()
+    }
 
     #[test]
     fn test_identifier_pattern_binds_variable() {
@@ -1602,8 +1612,8 @@ mod tests {
     fn test_exhaustiveness_checker_placeholder() {
         // Test the exhaustiveness checker infrastructure
 
-        let context = UnificationContext::new();
-        let checker = ExhaustivenessChecker::new(context);
+        let _context = create_test_context();
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         let patterns = vec![TypedPattern::new(
             TypedPatternKind::Identifier {
@@ -1613,8 +1623,8 @@ mod tests {
             Span::new(0, 0),
         )];
 
-        let string_type =
-            StructuredType::Simple(crate::types::TypeInterner::new().intern_type("String"));
+        let env = crate::compilation::compiler_environment::CompilerEnvironment::new();
+        let string_type = StructuredType::Simple(env.intern_type_name("String"));
 
         // Placeholder implementation always returns true for now
         assert!(checker.is_exhaustive(&patterns, &string_type).unwrap());
@@ -1682,11 +1692,12 @@ mod tests {
 
     #[test]
     fn test_boolean_exhaustiveness_complete() {
-        let mut context = UnificationContext::new();
-        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let boolean_type_id = compiler_env.intern_type_name("Boolean");
         let boolean_type = StructuredType::Simple(boolean_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Create patterns for true and false
         let true_pattern = TypedPattern::new(
@@ -1733,11 +1744,12 @@ mod tests {
 
     #[test]
     fn test_boolean_exhaustiveness_incomplete() {
-        let mut context = UnificationContext::new();
-        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let boolean_type_id = compiler_env.intern_type_name("Boolean");
         let boolean_type = StructuredType::Simple(boolean_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Only true pattern
         let true_pattern = TypedPattern::new(
@@ -1780,11 +1792,12 @@ mod tests {
 
     #[test]
     fn test_wildcard_makes_exhaustive() {
-        let mut context = UnificationContext::new();
-        let boolean_type_id = context.type_interner.intern_type("Boolean");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let boolean_type_id = compiler_env.intern_type_name("Boolean");
         let boolean_type = StructuredType::Simple(boolean_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Wildcard pattern (identifier)
         let wildcard_pattern = TypedPattern::new(
@@ -1809,15 +1822,16 @@ mod tests {
 
     #[test]
     fn test_option_exhaustiveness() {
-        let mut context = UnificationContext::new();
-        let option_type_id = context.type_interner.intern_type("Option");
-        let string_type_id = context.type_interner.intern_type("String");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let option_type_id = compiler_env.intern_type_name("Option");
+        let string_type_id = compiler_env.intern_type_name("String");
         let option_type = StructuredType::Generic {
             base: option_type_id,
             args: vec![StructuredType::Simple(string_type_id)],
         };
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Some pattern
         let some_pattern = TypedPattern::new(
@@ -1847,15 +1861,16 @@ mod tests {
 
     #[test]
     fn test_option_exhaustiveness_incomplete() {
-        let mut context = UnificationContext::new();
-        let option_type_id = context.type_interner.intern_type("Option");
-        let string_type_id = context.type_interner.intern_type("String");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let option_type_id = compiler_env.intern_type_name("Option");
+        let string_type_id = compiler_env.intern_type_name("String");
         let option_type = StructuredType::Generic {
             base: option_type_id,
             args: vec![StructuredType::Simple(string_type_id)],
         };
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Only Some pattern
         let some_pattern = TypedPattern::new(
@@ -1888,15 +1903,16 @@ mod tests {
 
     #[test]
     fn test_tuple_exhaustiveness() {
-        let mut context = UnificationContext::new();
-        let string_type_id = context.type_interner.intern_type("String");
-        let int_type_id = context.type_interner.intern_type("Integer");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let string_type_id = compiler_env.intern_type_name("String");
+        let int_type_id = compiler_env.intern_type_name("Integer");
         let tuple_type = StructuredType::Tuple(vec![
             StructuredType::Simple(string_type_id),
             StructuredType::Simple(int_type_id),
         ]);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Tuple pattern with correct arity
         let tuple_pattern = TypedPattern::new(
@@ -1930,11 +1946,12 @@ mod tests {
 
     #[test]
     fn test_integer_requires_wildcard_for_exhaustiveness() {
-        let mut context = UnificationContext::new();
-        let int_type_id = context.type_interner.intern_type("Integer");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let int_type_id = compiler_env.intern_type_name("Integer");
         let int_type = StructuredType::Simple(int_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Integer literal pattern
         let int_pattern = TypedPattern::new(
@@ -1973,11 +1990,12 @@ mod tests {
 
     #[test]
     fn test_literal_with_wildcard_is_exhaustive() {
-        let mut context = UnificationContext::new();
-        let int_type_id = context.type_interner.intern_type("Integer");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let int_type_id = compiler_env.intern_type_name("Integer");
         let int_type = StructuredType::Simple(int_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Integer literal pattern + wildcard
         let int_pattern = TypedPattern::new(
@@ -2013,38 +2031,26 @@ mod tests {
 
     #[test]
     fn test_trait_exhaustiveness_complete() {
-        let mut context = UnificationContext::new();
-        let mut trait_registry = crate::types::traits::TraitRegistry::new();
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
 
         // Set up trait and implementors
-        let display_trait_id = context.type_interner.intern_type("Display");
-        let string_type_id = context.type_interner.intern_type("String");
-        let integer_type_id = context.type_interner.intern_type("Integer");
+        let display_trait_id = compiler_env.intern_type_name("Display");
+        let string_type_id = compiler_env.intern_type_name("String");
+        let integer_type_id = compiler_env.intern_type_name("Integer");
 
-        // Register trait
-        trait_registry.register_trait(crate::types::traits::TraitDefinition::new(
-            display_trait_id,
-            "Display".to_string(),
-            vec![],
-            Span::new(0, 0),
-        ));
-
-        // Register implementations
-        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
-            display_trait_id,
-            string_type_id,
-            HashMap::new(),
-            Span::new(0, 0),
-        ));
-        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
-            display_trait_id,
-            integer_type_id,
-            HashMap::new(),
-            Span::new(0, 0),
-        ));
+        // Register trait implementations using CompilerEnvironment
+        compiler_env.register_trait_implementation(
+            StructuredType::Simple(string_type_id.clone()),
+            StructuredType::Simple(display_trait_id.clone()),
+        );
+        compiler_env.register_trait_implementation(
+            StructuredType::Simple(integer_type_id.clone()),
+            StructuredType::Simple(display_trait_id.clone()),
+        );
 
         let display_trait_type = StructuredType::Simple(display_trait_id);
-        let checker = ExhaustivenessChecker::with_trait_registry(context, trait_registry);
+        let checker = ExhaustivenessChecker::new(Some(compiler_env));
 
         // Create patterns for both implementors
         let string_pattern = TypedPattern::new(
@@ -2081,38 +2087,26 @@ mod tests {
 
     #[test]
     fn test_trait_exhaustiveness_incomplete() {
-        let mut context = UnificationContext::new();
-        let mut trait_registry = crate::types::traits::TraitRegistry::new();
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
 
         // Set up trait and implementors
-        let display_trait_id = context.type_interner.intern_type("Display");
-        let string_type_id = context.type_interner.intern_type("String");
-        let integer_type_id = context.type_interner.intern_type("Integer");
+        let display_trait_id = compiler_env.intern_type_name("Display");
+        let string_type_id = compiler_env.intern_type_name("String");
+        let integer_type_id = compiler_env.intern_type_name("Integer");
 
-        // Register trait
-        trait_registry.register_trait(crate::types::traits::TraitDefinition::new(
-            display_trait_id,
-            "Display".to_string(),
-            vec![],
-            Span::new(0, 0),
-        ));
-
-        // Register implementations
-        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
-            display_trait_id,
-            string_type_id,
-            HashMap::new(),
-            Span::new(0, 0),
-        ));
-        trait_registry.register_implementation(crate::types::traits::TraitImplementation::new(
-            display_trait_id,
-            integer_type_id,
-            HashMap::new(),
-            Span::new(0, 0),
-        ));
+        // Register trait implementations using CompilerEnvironment
+        compiler_env.register_trait_implementation(
+            StructuredType::Simple(string_type_id.clone()),
+            StructuredType::Simple(display_trait_id.clone()),
+        );
+        compiler_env.register_trait_implementation(
+            StructuredType::Simple(integer_type_id.clone()),
+            StructuredType::Simple(display_trait_id.clone()),
+        );
 
         let display_trait_type = StructuredType::Simple(display_trait_id);
-        let checker = ExhaustivenessChecker::with_trait_registry(context, trait_registry);
+        let checker = ExhaustivenessChecker::new(Some(compiler_env));
 
         // Only String pattern (missing Integer)
         let string_pattern = TypedPattern::new(
@@ -2147,15 +2141,16 @@ mod tests {
 
     #[test]
     fn test_list_exhaustiveness_complete() {
-        let mut context = UnificationContext::new();
-        let list_type_id = context.type_interner.intern_type("List");
-        let string_type_id = context.type_interner.intern_type("String");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let list_type_id = compiler_env.intern_type_name("List");
+        let string_type_id = compiler_env.intern_type_name("String");
         let list_type = StructuredType::Generic {
             base: list_type_id,
             args: vec![StructuredType::Simple(string_type_id)],
         };
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Create patterns for all three list constructors
         // Empty list: []
@@ -2218,15 +2213,16 @@ mod tests {
 
     #[test]
     fn test_list_exhaustiveness_incomplete() {
-        let mut context = UnificationContext::new();
-        let list_type_id = context.type_interner.intern_type("List");
-        let string_type_id = context.type_interner.intern_type("String");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let list_type_id = compiler_env.intern_type_name("List");
+        let string_type_id = compiler_env.intern_type_name("String");
         let list_type = StructuredType::Generic {
             base: list_type_id,
             args: vec![StructuredType::Simple(string_type_id)],
         };
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Only empty list pattern (missing single element and rest patterns)
         let empty_pattern = TypedPattern::new(
@@ -2252,15 +2248,16 @@ mod tests {
 
     #[test]
     fn test_list_with_rest_covers_multiple_lengths() {
-        let mut context = UnificationContext::new();
-        let list_type_id = context.type_interner.intern_type("List");
-        let string_type_id = context.type_interner.intern_type("String");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let list_type_id = compiler_env.intern_type_name("List");
+        let string_type_id = compiler_env.intern_type_name("String");
         let list_type = StructuredType::Generic {
             base: list_type_id,
             args: vec![StructuredType::Simple(string_type_id)],
         };
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Empty list: []
         let empty_pattern = TypedPattern::new(
@@ -2300,11 +2297,12 @@ mod tests {
 
     #[test]
     fn test_struct_pattern_with_literals_non_exhaustive() {
-        let mut context = UnificationContext::new();
-        let user_type_id = context.type_interner.intern_type("User");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let user_type_id = compiler_env.intern_type_name("User");
         let user_type = StructuredType::Simple(user_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Struct pattern with literal constraint: User { id: 1, name: name }
         let literal_struct_pattern = TypedPattern::new(
@@ -2371,11 +2369,12 @@ mod tests {
 
     #[test]
     fn test_struct_pattern_with_wildcards_exhaustive() {
-        let mut context = UnificationContext::new();
-        let user_type_id = context.type_interner.intern_type("User");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let user_type_id = compiler_env.intern_type_name("User");
         let user_type = StructuredType::Simple(user_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Struct pattern with wildcard fields: User { id: id, name: name }
         let wildcard_struct_pattern = TypedPattern::new(
@@ -2426,11 +2425,12 @@ mod tests {
 
     #[test]
     fn test_struct_pattern_shorthand_exhaustive() {
-        let mut context = UnificationContext::new();
-        let user_type_id = context.type_interner.intern_type("User");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let user_type_id = compiler_env.intern_type_name("User");
         let user_type = StructuredType::Simple(user_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Struct pattern with shorthand fields: User { id, name }
         let shorthand_struct_pattern = TypedPattern::new(
@@ -2469,11 +2469,12 @@ mod tests {
 
     #[test]
     fn test_nested_struct_pattern_literal_constraints() {
-        let mut context = UnificationContext::new();
-        let user_type_id = context.type_interner.intern_type("User");
+        let _context = create_test_context();
+        let compiler_env = create_test_compiler_env();
+        let user_type_id = compiler_env.intern_type_name("User");
         let user_type = StructuredType::Simple(user_type_id);
 
-        let checker = ExhaustivenessChecker::new(context);
+        let checker = ExhaustivenessChecker::new(None); // TODO: Update to pass CompilerEnvironment
 
         // Nested struct pattern with literal: User { address: Address { city: "NYC" } }
         let nested_literal_pattern = TypedPattern::new(

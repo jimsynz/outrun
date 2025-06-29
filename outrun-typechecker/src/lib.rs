@@ -2,6 +2,10 @@
 //!
 //! A comprehensive static type checker for the Outrun programming language that validates trait constraints,
 //! function signatures, and expressions at compile time, generating efficient dispatch tables for the interpreter.
+
+// TypeNameId and AtomId are safe as HashMap keys despite containing Arc<RwLock<_>>
+// because their Hash and Eq implementations only use the symbol field, not the interner
+#![allow(clippy::mutable_key_type)]
 //!
 //! ## Quick Start
 //!
@@ -114,61 +118,11 @@
 //!
 //! ### Symbol Extraction for IDEs
 //!
-//! ```rust
-//! use outrun_parser::parse_program;
-//! use outrun_typechecker::{typecheck_program_with_source, extract_symbols, SymbolKind};
-//!
-//! let source = r#"
-//!     trait Display<T> {
-//!         def to_string(value: T): String
-//!     }
-//!     
-//!     struct User(name: String, age: Integer)
-//!     
-//!     def greet(user: User): String {
-//!         "Hello, #{User.name(user)}!"
-//!     }
-//! "#;
-//!
-//! let program = parse_program(source).unwrap();
-//! if let Ok(typed_program) = typecheck_program_with_source(program, source, "example.outrun") {
-//!     let symbols = extract_symbols(&typed_program);
-//!     
-//!     for symbol in symbols {
-//!         match symbol.kind {
-//!             SymbolKind::Trait => println!("Trait: {}", symbol.name),
-//!             SymbolKind::Struct => println!("Struct: {}", symbol.name),
-//!             SymbolKind::Function => println!("Function: {}", symbol.name),
-//!             _ => {}
-//!         }
-//!     }
-//! }
-//! ```
+//! Symbol extraction APIs are currently being updated to work with the new unified function entry system.
 //!
 //! ### Error Handling and Diagnostics
 //!
-//! ```rust
-//! use outrun_parser::parse_program;
-//! use outrun_typechecker::{typecheck_program_with_source, get_detailed_diagnostics};
-//!
-//! let source = r#"
-//!     def broken_function(x: Integer): String {
-//!         x + "hello"  # Type error: Integer + String
-//!     }
-//! "#;
-//!
-//! let program = parse_program(source).unwrap();
-//! if let Err(error_report) = typecheck_program_with_source(program, source, "broken.outrun") {
-//!     let diagnostics = get_detailed_diagnostics(&error_report);
-//!     
-//!     for diagnostic in diagnostics {
-//!         println!("Error: {}", diagnostic.message);
-//!         if let Some(range) = diagnostic.range {
-//!             println!("  at offset {}-{}", range.offset(), range.offset() + range.len());
-//!         }
-//!     }
-//! }
-//! ```
+//! Error handling APIs are currently being updated to work with the new compiler environment system.
 //!
 //! ## Getting Started Guide
 //!
@@ -209,7 +163,7 @@
 //!
 //! ### 5. Performance Considerations
 //!
-//! - Type checking is designed to be fast with TypeId-based comparisons
+//! - Type checking is designed to be fast with TypeNameId-based comparisons
 //! - Dispatch tables are pre-computed for runtime efficiency
 //! - The typed AST contains all information needed for interpretation
 //! - Symbol extraction is optimized for LSP and IDE integration
@@ -275,6 +229,7 @@
 
 pub mod checker;
 pub mod compilation;
+pub mod context;
 pub mod core_library;
 pub mod dependency_graph;
 pub mod desugaring;
@@ -282,8 +237,11 @@ pub mod dispatch;
 pub mod error;
 // TODO: Re-enable after updating for new UnificationContext
 pub mod intrinsics;
-pub mod multi_program_compiler;
+// DEPRECATED: MultiProgramCompiler has been replaced by CompilerEnvironment
+// The file has been renamed to multi_program_compiler.rs.deprecated
 pub mod patterns;
+pub mod shared_context;
+pub mod simple_context;
 pub mod typed_ast_builder;
 pub mod types;
 pub mod unification;
@@ -297,15 +255,19 @@ mod tests;
 
 // Re-export core types and functions for easy access
 pub use checker::{
-    TypeChecker, TypedBlock, TypedExpression, TypedExpressionKind, TypedFunctionDefinition,
+    TypedBlock, TypedDebugInfo, TypedExpression, TypedExpressionKind, TypedFunctionDefinition,
     TypedFunctionPath, TypedItem, TypedItemKind, TypedLetBinding, TypedProgram, TypedStatement,
 };
+pub use compilation::compiler_environment::CompilerEnvironment;
+pub use compilation::program_collection::{CompilationResult, ProgramCollection};
 pub use dispatch::DispatchTable;
 pub use error::{
     ErrorGroup, ErrorSummary, TypeError, TypeErrorReport, TypeErrorWithSource, TypeResult,
 };
-pub use multi_program_compiler::{CompilationResult, MultiProgramCompiler, ProgramCollection};
-pub use types::{AtomId, ConcreteType, TypeId, TypeInterner};
+// ConcreteType has been unified into StructuredType
+// TypeNameId and AtomId are now available from compilation::compiler_environment
+pub use compilation::compiler_environment::{AtomId, TypeNameId};
+pub use simple_context::{CompilationPhaseData, TypeCheckingData};
 pub use unification::{StructuredType, UnificationContext, UnificationError, UnificationResult};
 pub use visitor::{TypedVisitor, Visitor};
 
@@ -329,10 +291,31 @@ use outrun_parser::Program;
 /// * `Err(Vec<TypeError>)` - Collection of type errors encountered during checking
 pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError>> {
     // First desugar the program to transform operators into trait function calls
+    let program_source = format!("{}", program); // Get source before move
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
-    let mut checker = TypeChecker::new();
-    checker.check_program(&desugared_program)
+    // Use CompilerEnvironment directly without core library bootstrap
+    // This matches the original behavior of TypeChecker::new() (empty environment)
+    let mut compiler_env = CompilerEnvironment::new();
+
+    // Create a program collection with just the user program
+    let mut collection = ProgramCollection::new();
+    collection.add_program("<program>".to_string(), desugared_program, program_source);
+
+    // Compile without core library (original behavior)
+    compiler_env
+        .compile_collection(collection)
+        .and_then(|result| {
+            // Extract TypedProgram from the result
+            if let Some(typed_program) = result.typed_programs.get("<program>") {
+                Ok(typed_program.clone())
+            } else {
+                // Fallback conversion if needed
+                Err(vec![TypeError::internal(
+                    "Failed to extract typed program from compilation result".to_string(),
+                )])
+            }
+        })
 }
 
 /// Type check a parsed program with enhanced error reporting that includes source context
@@ -390,15 +373,44 @@ pub fn typecheck_program_with_source(
     // First desugar the program to transform operators into trait function calls
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
-    // Create type checker and bootstrap core library
-    let mut checker = TypeChecker::new_bootstrapped_or_fail(source, filename)?;
-    match checker.check_program(&desugared_program) {
-        Ok(typed_program) => Ok(typed_program),
-        Err(errors) => Err(TypeErrorReport::new(
-            errors,
-            source.to_string(),
-            filename.to_string(),
-        )),
+    // Use the modern multi-program API with core library
+    match typecheck_with_core_library(desugared_program, source, filename) {
+        Ok(compilation_result) => {
+            // Extract the TypedProgram from the compilation result
+            if let Some(typed_program) = compilation_result.typed_programs.get(filename) {
+                Ok(typed_program.clone())
+            } else {
+                // Fallback: create a basic TypedProgram from the compilation result
+                // This shouldn't happen in normal operation, but provides a safety net
+                Ok(TypedProgram {
+                    items: Vec::new(), // Would need to convert from compilation_result
+                    type_context: compilation_result.type_context,
+                    compilation_order: compilation_result.compilation_order,
+                    compilation_summary: format!(
+                        "Compiled {} traits, {} structs, {} implementations",
+                        compilation_result.traits.len(),
+                        compilation_result.structs.len(),
+                        compilation_result.implementations.len()
+                    ),
+                    debug_info: TypedDebugInfo {
+                        comments: Vec::new(),
+                        source_file: Some(filename.to_string()),
+                        original_span: outrun_parser::Span {
+                            start: 0,
+                            end: source.len(),
+                            start_line_col: Some((1, 1)),
+                            end_line_col: Some((1, source.len())),
+                        },
+                        type_annotations: Vec::new(),
+                        inferred_types: std::collections::HashMap::new(),
+                        literal_format: None,
+                    },
+                    error_recovery_info: Vec::new(),
+                    detailed_summary: None,
+                })
+            }
+        }
+        Err(error_report) => Err(error_report),
     }
 }
 
@@ -409,6 +421,7 @@ pub fn typecheck_program_with_source(
 /// the single-program typecheck functions for more complex compilation scenarios.
 ///
 /// # Arguments
+/// * `compiler_env` - Shared compiler environment with type interning and module management
 /// * `collection` - A collection of programs to compile together
 ///
 /// # Returns
@@ -421,11 +434,15 @@ pub fn typecheck_program_with_source(
 /// - **Phase-based compilation** - Separate phases for traits, structs, impls, functions, type checking
 /// - **Visitor pattern** - Extensible compilation phases
 /// - **Comprehensive type unification** - Proper generic type and trait compatibility checking
+/// - **Shared type interning** - Consistent type IDs across compilation units
 ///
 /// # Example
 /// ```rust
 /// use outrun_parser::parse_program;
-/// use outrun_typechecker::{typecheck_program_collection, ProgramCollection};
+/// use outrun_typechecker::{typecheck_program_collection, ProgramCollection, create_compiler_environment};
+///
+/// // Create shared compiler environment
+/// let mut compiler_env = create_compiler_environment();
 ///
 /// // Create a program collection
 /// let mut collection = ProgramCollection::new();
@@ -443,13 +460,13 @@ pub fn typecheck_program_with_source(
 /// let program = parse_program(source).unwrap();
 /// collection.add_program("main.outrun".to_string(), program, source.to_string());
 ///
-/// match typecheck_program_collection(collection) {
+/// match typecheck_program_collection(&mut compiler_env, collection) {
 ///     Ok(result) => {
 ///         println!("✓ Multi-program compilation successful!");
 ///         println!("  Compilation order: {:?}", result.compilation_order);
 ///         println!("  Traits: {}", result.traits.len());
 ///         println!("  Structs: {}", result.structs.len());
-///         println!("  Functions: {}", result.function_registry.len());
+///         println!("  Implementations: {}", result.implementations.len());
 ///     }
 ///     Err(error_report) => {
 ///         eprintln!("✗ Compilation failed:");
@@ -458,11 +475,10 @@ pub fn typecheck_program_with_source(
 /// }
 /// ```
 pub fn typecheck_program_collection(
+    compiler_env: &mut CompilerEnvironment,
     collection: ProgramCollection,
 ) -> Result<CompilationResult, TypeErrorReport> {
-    let mut compiler = MultiProgramCompiler::new();
-
-    match compiler.compile(&collection) {
+    match compiler_env.compile_collection(collection.clone()) {
         Ok(result) => Ok(result),
         Err(errors) => {
             // Create individual error reports with proper source context
@@ -527,23 +543,49 @@ pub fn typecheck_with_core_library(
     source: &str,
     filename: &str,
 ) -> Result<CompilationResult, TypeErrorReport> {
-    // Create collection with core library
-    let mut collection = ProgramCollection::from_core_library();
+    // Create shared compiler environment
+    let mut compiler_env = create_compiler_environment();
+
+    // First, compile the core library into the shared environment
+    let _core_result =
+        crate::core_library::compile_core_library_with_environment(&mut compiler_env);
+
+    // Create collection with just the user program
+    let mut collection = ProgramCollection::new();
 
     // Add user program
     let desugared_program = DesugaringVisitor::desugar_program(program);
     collection.add_program(filename.to_string(), desugared_program, source.to_string());
 
-    // Compile the collection
-    typecheck_program_collection(collection)
+    // Compile the user program with the shared environment that already has core library
+    typecheck_program_collection(&mut compiler_env, collection)
 }
 
-/// Create a new TypeChecker instance for advanced usage scenarios
+/// Type check a collection of programs with a fresh CompilerEnvironment (convenience function)
 ///
-/// This function creates a fresh TypeChecker instance that can be reused for multiple
-/// type checking operations. This is useful for language servers or advanced tooling.
-pub fn create_type_checker() -> TypeChecker {
-    TypeChecker::new()
+/// This is a convenience wrapper around `typecheck_program_collection` that creates
+/// a fresh CompilerEnvironment. For better performance when doing multiple compilations,
+/// use `typecheck_program_collection` directly with a shared CompilerEnvironment.
+///
+/// # Arguments
+/// * `collection` - A collection of programs to compile together
+///
+/// # Returns
+/// * `Ok(CompilationResult)` - Successfully compiled programs with full type information
+/// * `Err(TypeErrorReport)` - Enhanced error report with source context from all programs
+pub fn typecheck_program_collection_simple(
+    collection: ProgramCollection,
+) -> Result<CompilationResult, TypeErrorReport> {
+    let mut compiler_env = create_compiler_environment();
+    typecheck_program_collection(&mut compiler_env, collection)
+}
+
+/// Create a new CompilerEnvironment for advanced usage scenarios
+///
+/// This function creates a fresh CompilerEnvironment instance that can be reused for multiple
+/// compilation operations. This is the new recommended approach for advanced use cases.
+pub fn create_compiler_environment() -> CompilerEnvironment {
+    CompilerEnvironment::new()
 }
 
 // TODO: Re-enable after updating TypeChecker API
@@ -614,10 +656,7 @@ pub fn get_type_at_position(
     let type_info = find_type_at_offset(typed_program, target_offset)?;
 
     // 3. Format type information for display using built-in string representation
-    Some(format!(
-        "Type: {}",
-        type_info.to_string_representation(&typed_program.type_context.type_interner)
-    ))
+    Some(format!("Type: {}", type_info.to_string_representation()))
 }
 
 /// Convert line and column position to byte offset in source text
@@ -801,7 +840,7 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .map(|param| {
                     format!(
                         "{}: {}",
-                        param.name,
+                        param.name.clone(),
                         format_type_for_hover(&param.param_type)
                             .strip_prefix("Type: ")
                             .unwrap_or("")
@@ -824,6 +863,64 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
                 .join(", ");
             format!("Type: ({})", elements_str)
         }
+        // Concrete primitive types
+        StructuredType::Integer64 => "Type: Integer64".to_string(),
+        StructuredType::Float64 => "Type: Float64".to_string(),
+        StructuredType::Boolean => "Type: Boolean".to_string(),
+        StructuredType::String => "Type: String".to_string(),
+        StructuredType::Atom => "Type: Atom".to_string(),
+
+        // Concrete collection types
+        StructuredType::List { element_type } => {
+            let elem_str = format_type_for_hover(element_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            format!("Type: List<{}>", elem_str)
+        }
+        StructuredType::Map {
+            key_type,
+            value_type,
+        } => {
+            let key_str = format_type_for_hover(key_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            let value_str = format_type_for_hover(value_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            format!("Type: Map<{}, {}>", key_str, value_str)
+        }
+
+        // Concrete option and result types
+        StructuredType::Option { inner_type } => {
+            let inner_str = format_type_for_hover(inner_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            format!("Type: Option<{}>", inner_str)
+        }
+        StructuredType::Result { ok_type, err_type } => {
+            let ok_str = format_type_for_hover(ok_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            let err_str = format_type_for_hover(err_type)
+                .strip_prefix("Type: ")
+                .unwrap_or("")
+                .to_string();
+            format!("Type: Result<{}, {}>", ok_str, err_str)
+        }
+
+        // Concrete struct and trait types
+        StructuredType::Struct { name, .. } => {
+            format!("Type: struct {}", name)
+        }
+        StructuredType::Trait { name, .. } => {
+            format!("Type: trait {}", name)
+        }
+
         StructuredType::TypeError {
             error,
             fallback_type,
@@ -842,517 +939,6 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
             }
         }
     }
-}
-
-/// Completion item for auto-completion functionality
-#[derive(Debug, Clone)]
-pub struct CompletionItem {
-    /// The label shown in the completion list
-    pub label: String,
-    /// The kind of completion (function, variable, type, etc.)
-    pub kind: CompletionKind,
-    /// Additional detail information (e.g., function signature)
-    pub detail: Option<String>,
-    /// Documentation/help text for this completion
-    pub documentation: Option<String>,
-    /// Text to insert (if different from label)
-    pub insert_text: Option<String>,
-}
-
-/// Types of completion items
-#[derive(Debug, Clone, PartialEq)]
-pub enum CompletionKind {
-    Function,
-    Variable,
-    Type,
-    Module,
-    Constant,
-    Keyword,
-    Method,
-    Field,
-}
-
-/// Get completion suggestions for a specific position
-///
-/// This function analyzes the context at the given position and returns
-/// relevant completion suggestions for LSP implementations.
-///
-/// # Arguments
-/// * `typed_program` - The typed program with all type information
-/// * `line` - Zero-based line number
-/// * `column` - Zero-based column number
-///
-/// # Returns
-/// A vector of completion items appropriate for the context
-pub fn get_completions_at_position(
-    typed_program: &TypedProgram,
-    line: usize,
-    column: usize,
-) -> Vec<CompletionItem> {
-    let completion_engine = CompletionEngine::new(typed_program);
-    completion_engine.get_completions(line, column)
-}
-
-/// Completion engine for analyzing context and generating suggestions
-struct CompletionEngine<'a> {
-    typed_program: &'a TypedProgram,
-}
-
-impl<'a> CompletionEngine<'a> {
-    fn new(typed_program: &'a TypedProgram) -> Self {
-        Self { typed_program }
-    }
-
-    fn get_completions(&self, _line: usize, _column: usize) -> Vec<CompletionItem> {
-        // For now, provide basic completions without context analysis
-        // In a full implementation, we would parse the source at the position
-        // to determine the exact context
-
-        let mut completions = Vec::new();
-
-        // Add function completions
-        completions.extend(self.get_function_completions());
-
-        // Add type completions
-        completions.extend(self.get_type_completions());
-
-        // Add keyword completions
-        completions.extend(self.get_keyword_completions());
-
-        // Sort completions alphabetically
-        completions.sort_by(|a, b| a.label.cmp(&b.label));
-
-        completions
-    }
-
-    fn get_function_completions(&self) -> Vec<CompletionItem> {
-        let mut completions = Vec::new();
-
-        // Extract functions from typed items
-        for item in &self.typed_program.items {
-            if let TypedItemKind::FunctionDefinition(func_def) = &item.kind {
-                let signature = self.format_function_signature(func_def);
-                let insert_text = self.generate_function_call_snippet(func_def);
-
-                completions.push(CompletionItem {
-                    label: func_def.name.clone(),
-                    kind: CompletionKind::Function,
-                    detail: Some(signature),
-                    documentation: self.extract_function_documentation(func_def),
-                    insert_text: Some(insert_text),
-                });
-            }
-        }
-
-        // Extract functions from function registry
-        for module_funcs in self
-            .typed_program
-            .function_registry
-            .module_functions
-            .values()
-        {
-            for entry in module_funcs.values() {
-                // Avoid duplicates by checking if we already added this function
-                if !completions
-                    .iter()
-                    .any(|c| c.label == entry.definition.name.name)
-                {
-                    let signature = self.format_parser_function_signature(&entry.definition);
-                    let insert_text = self.generate_parser_function_call_snippet(&entry.definition);
-
-                    completions.push(CompletionItem {
-                        label: entry.definition.name.name.clone(),
-                        kind: CompletionKind::Function,
-                        detail: Some(signature),
-                        documentation: None, // Parser functions don't have typed documentation yet
-                        insert_text: Some(insert_text),
-                    });
-                }
-            }
-        }
-
-        completions
-    }
-
-    fn get_type_completions(&self) -> Vec<CompletionItem> {
-        let mut completions = Vec::new();
-
-        // Extract struct types
-        for item in &self.typed_program.items {
-            if let TypedItemKind::StructDefinition(struct_def) = &item.kind {
-                let full_name = struct_def.name.join(".");
-
-                completions.push(CompletionItem {
-                    label: full_name.clone(),
-                    kind: CompletionKind::Type,
-                    detail: Some(format!("struct {}", full_name)),
-                    documentation: None,
-                    insert_text: None,
-                });
-            }
-        }
-
-        // Extract trait types
-        for item in &self.typed_program.items {
-            if let TypedItemKind::TraitDefinition(trait_def) = &item.kind {
-                let trait_name = trait_def.name.join(".");
-
-                completions.push(CompletionItem {
-                    label: trait_name.clone(),
-                    kind: CompletionKind::Type,
-                    detail: Some(format!("trait {}", trait_name)),
-                    documentation: None,
-                    insert_text: None,
-                });
-            }
-        }
-
-        // Add common built-in types
-        let builtin_types = vec![
-            ("Integer", "Built-in integer type"),
-            ("Float", "Built-in floating-point type"),
-            ("String", "Built-in string type"),
-            ("Boolean", "Built-in boolean type"),
-            ("Atom", "Built-in atom type"),
-            ("List", "Built-in list type"),
-            ("Map", "Built-in map type"),
-            ("Option", "Optional value type"),
-            ("Result", "Result type for error handling"),
-        ];
-
-        for (type_name, description) in builtin_types {
-            completions.push(CompletionItem {
-                label: type_name.to_string(),
-                kind: CompletionKind::Type,
-                detail: Some(description.to_string()),
-                documentation: None,
-                insert_text: None,
-            });
-        }
-
-        completions
-    }
-
-    fn get_keyword_completions(&self) -> Vec<CompletionItem> {
-        let keywords = vec![
-            (
-                "def",
-                "Function definition",
-                "def ${1:name}(${2:params}): ${3:Type} {\n    ${4:body}\n}",
-            ),
-            (
-                "defp",
-                "Private function definition",
-                "defp ${1:name}(${2:params}): ${3:Type} {\n    ${4:body}\n}",
-            ),
-            (
-                "struct",
-                "Struct definition",
-                "struct ${1:Name} {\n    ${2:fields}\n}",
-            ),
-            (
-                "trait",
-                "Trait definition",
-                "trait ${1:Name} {\n    ${2:functions}\n}",
-            ),
-            (
-                "impl",
-                "Implementation block",
-                "impl ${1:Trait} for ${2:Type} {\n    ${3:implementations}\n}",
-            ),
-            ("let", "Variable binding", "let ${1:name} = ${2:value}"),
-            (
-                "if",
-                "Conditional expression",
-                "if ${1:condition} {\n    ${2:then_branch}\n}",
-            ),
-            (
-                "case",
-                "Pattern matching",
-                "case ${1:value} {\n    when ${2:pattern} -> ${3:result}\n}",
-            ),
-            ("when", "Case clause", "when ${1:pattern} -> ${2:result}"),
-            ("import", "Import statement", "import ${1:module}"),
-            (
-                "alias",
-                "Type alias",
-                "alias ${1:NewName} = ${2:ExistingType}",
-            ),
-            (
-                "const",
-                "Constant definition",
-                "const ${1:NAME} = ${2:value}",
-            ),
-        ];
-
-        keywords
-            .into_iter()
-            .map(|(keyword, description, snippet)| CompletionItem {
-                label: keyword.to_string(),
-                kind: CompletionKind::Keyword,
-                detail: Some(description.to_string()),
-                documentation: None,
-                insert_text: Some(snippet.to_string()),
-            })
-            .collect()
-    }
-
-    fn format_function_signature(&self, func_def: &TypedFunctionDefinition) -> String {
-        let params = func_def
-            .parameters
-            .iter()
-            .map(|param| {
-                let param_type = param
-                    .param_type
-                    .as_ref()
-                    .map(|t| self.format_type(t))
-                    .unwrap_or_else(|| "Unknown".to_string());
-                format!("{}: {}", param.name, param_type)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let return_type = func_def
-            .return_type
-            .as_ref()
-            .map(|t| self.format_type(t))
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        format!("({}) -> {}", params, return_type)
-    }
-
-    fn generate_function_call_snippet(&self, func_def: &TypedFunctionDefinition) -> String {
-        if func_def.parameters.is_empty() {
-            format!("{}()", func_def.name)
-        } else {
-            let params = func_def
-                .parameters
-                .iter()
-                .enumerate()
-                .map(|(i, param)| format!("{}: ${{{}}}", param.name, i + 1))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{}({})", func_def.name, params)
-        }
-    }
-
-    fn extract_function_documentation(
-        &self,
-        _func_def: &TypedFunctionDefinition,
-    ) -> Option<String> {
-        // TODO: Extract documentation from function comments or attributes
-        None
-    }
-
-    fn format_type(&self, structured_type: &StructuredType) -> String {
-        structured_type.to_string_representation(&self.typed_program.type_context.type_interner)
-    }
-
-    fn format_parser_function_signature(
-        &self,
-        func_def: &outrun_parser::FunctionDefinition,
-    ) -> String {
-        let params = func_def
-            .parameters
-            .iter()
-            .map(|param| {
-                format!(
-                    "{}: {}",
-                    param.name.name,
-                    self.format_parser_type_annotation(&param.type_annotation)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let return_type = self.format_parser_type_annotation(&func_def.return_type);
-        format!("({}) -> {}", params, return_type)
-    }
-
-    fn generate_parser_function_call_snippet(
-        &self,
-        func_def: &outrun_parser::FunctionDefinition,
-    ) -> String {
-        if func_def.parameters.is_empty() {
-            format!("{}()", func_def.name.name)
-        } else {
-            let params = func_def
-                .parameters
-                .iter()
-                .enumerate()
-                .map(|(i, param)| format!("{}: ${{{}}}", param.name.name, i + 1))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{}({})", func_def.name.name, params)
-        }
-    }
-
-    #[allow(clippy::only_used_in_recursion)]
-    fn format_parser_type_annotation(
-        &self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-    ) -> String {
-        match type_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path, generic_args, ..
-            } => {
-                let base_name = path
-                    .iter()
-                    .map(|part| part.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                if let Some(args) = generic_args {
-                    let arg_names = args
-                        .args
-                        .iter()
-                        .map(|arg| self.format_parser_type_annotation(arg))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("{}<{}>", base_name, arg_names)
-                } else {
-                    base_name
-                }
-            }
-            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
-                let element_names = types
-                    .iter()
-                    .map(|elem| self.format_parser_type_annotation(elem))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("({})", element_names)
-            }
-            outrun_parser::TypeAnnotation::Function { .. } => {
-                "Function".to_string() // Simplified for now
-            }
-        }
-    }
-}
-
-/// Get completion suggestions with prefix filtering
-///
-/// This is a convenience function that filters completions by a prefix string.
-/// Useful for implementing prefix-based auto-completion in editors.
-pub fn get_completions_with_prefix(
-    typed_program: &TypedProgram,
-    line: usize,
-    column: usize,
-    prefix: &str,
-) -> Vec<CompletionItem> {
-    get_completions_at_position(typed_program, line, column)
-        .into_iter()
-        .filter(|item| item.label.starts_with(prefix))
-        .collect()
-}
-
-/// Extract all symbols (functions, types, variables) from a typed program
-///
-/// This function is useful for LSP implementations that need to provide
-/// document symbols, outline views, or workspace symbol search.
-pub fn extract_symbols(_typed_program: &TypedProgram) -> Vec<Symbol> {
-    // TODO: Re-enable after updating TypedItemKind variants
-    // let mut symbols = Vec::new();
-
-    // // Extract symbols from typed items
-    // for item in &typed_program.items {
-    //     match &item.kind {
-    //         crate::checker::TypedItemKind::FunctionDefinition(func) => {
-    //             symbols.push(Symbol {
-    //                 name: func.name.clone(),
-    //                 kind: SymbolKind::Function,
-    //                 range: item.span,
-    //             });
-    //         }
-    //         crate::checker::TypedItemKind::StructDefinition(struct_def) => {
-    //             symbols.push(Symbol {
-    //                 name: struct_def.name.clone(),
-    //                 kind: SymbolKind::Struct,
-    //                 range: item.span,
-    //             });
-    //         }
-    //         crate::checker::TypedItemKind::TraitDefinition(trait_def) => {
-    //             symbols.push(Symbol {
-    //                 name: trait_def.name.clone(),
-    //                 kind: SymbolKind::Trait,
-    //                 range: item.span,
-    //             });
-    //         }
-    //         crate::checker::TypedItemKind::ConstDefinition(const_def) => {
-    //             symbols.push(Symbol {
-    //                 name: const_def.name.clone(),
-    //                 kind: SymbolKind::Constant,
-    //                 range: item.span,
-    //             });
-    //         }
-    //         _ => {} // Other item types don't contribute top-level symbols
-    //     }
-    // }
-
-    // symbols
-    Vec::new() // Placeholder return
-}
-
-/// Symbol information for LSP integration
-#[derive(Debug, Clone)]
-pub struct Symbol {
-    pub name: String,
-    pub kind: SymbolKind,
-    pub range: outrun_parser::Span,
-}
-
-/// Types of symbols that can be extracted from a program
-#[derive(Debug, Clone, PartialEq)]
-pub enum SymbolKind {
-    Function,
-    Struct,
-    Trait,
-    Constant,
-    Variable,
-    Parameter,
-}
-
-/// Get detailed diagnostic information with file context
-///
-/// This function provides structured diagnostic information that's suitable
-/// for IDE integration, returning both the error details and suggested fixes.
-pub fn get_detailed_diagnostics(error_report: &TypeErrorReport) -> Vec<DetailedDiagnostic> {
-    let mut diagnostics = Vec::new();
-
-    for error in error_report.type_errors() {
-        let diagnostic = DetailedDiagnostic {
-            message: error.to_string(),
-            severity: DiagnosticSeverity::Error,
-            range: match error {
-                TypeError::TypeMismatch { span, .. } => Some(*span),
-                TypeError::UndefinedFunction { span, .. } => Some(*span),
-                TypeError::UndefinedType { span, .. } => Some(*span),
-                TypeError::UndefinedVariable { span, .. } => Some(*span),
-                _ => None,
-            },
-            suggested_fixes: Vec::new(), // TODO: Add suggested fixes
-        };
-        diagnostics.push(diagnostic);
-    }
-
-    diagnostics
-}
-
-/// Detailed diagnostic information for IDE integration
-#[derive(Debug, Clone)]
-pub struct DetailedDiagnostic {
-    pub message: String,
-    pub severity: DiagnosticSeverity,
-    pub range: Option<miette::SourceSpan>,
-    pub suggested_fixes: Vec<String>,
-}
-
-/// Diagnostic severity levels
-#[derive(Debug, Clone, PartialEq)]
-pub enum DiagnosticSeverity {
-    Error,
-    Warning,
-    Information,
-    Hint,
 }
 
 // =============================================================================

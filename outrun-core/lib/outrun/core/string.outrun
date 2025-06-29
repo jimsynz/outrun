@@ -25,12 +25,6 @@ impl Display for Outrun.Core.String {
     }
 }
 
-# Inspect trait implementation
-impl Inspect for Outrun.Core.String {
-    def inspect(value: Self): Outrun.Core.String {
-        Outrun.Intrinsic.string_inspect(value: value)
-    }
-}
 
 # String trait implementation
 impl String for Outrun.Core.String {

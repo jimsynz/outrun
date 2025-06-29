@@ -1,5 +1,6 @@
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use crate::error::TypeError;
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
 use outrun_parser::{parse_program, Program};
 
 fn create_program_from_source(source: &str) -> Program {
@@ -46,8 +47,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {
@@ -114,8 +115,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     assert!(
         result.is_err(),
@@ -189,8 +190,8 @@ impl TestTrait for MyType {
         impl_source.to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection);
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection);
 
     match result {
         Ok(_) => {

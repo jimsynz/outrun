@@ -2,6 +2,7 @@
 
 members = [
   "outrun",
+  "outrun-interpreter",
   "outrun-parser",
   "outrun-typechecker",
 ]

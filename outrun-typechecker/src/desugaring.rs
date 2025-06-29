@@ -111,6 +111,12 @@ impl DesugaringVisitor {
                 span: impl_block.span,
             }),
             ItemKind::Expression(expr) => ItemKind::Expression(Self::desugar_expression(expr)),
+            ItemKind::LetBinding(let_binding) => ItemKind::LetBinding(outrun_parser::LetBinding {
+                pattern: let_binding.pattern,
+                type_annotation: let_binding.type_annotation,
+                expression: Self::desugar_expression(let_binding.expression),
+                span: let_binding.span,
+            }),
             // Other item kinds don't contain expressions that need desugaring
             other => other,
         }
@@ -382,13 +388,8 @@ impl DesugaringVisitor {
                 span: expr.span,
             },
             ExpressionKind::Parenthesized(inner_expr) => {
-                // Desugar the inner expression and wrap it back in parentheses
-                Expression {
-                    kind: ExpressionKind::Parenthesized(Box::new(Self::desugar_expression(
-                        *inner_expr,
-                    ))),
-                    span: expr.span,
-                }
+                // Parentheses are purely syntactic - eliminate them completely
+                Self::desugar_expression(*inner_expr)
             }
             // Simple literal types and identifiers don't need desugaring
             _ => expr,
@@ -690,6 +691,15 @@ impl DesugaringVisitor {
             ItemKind::Expression(expr) => {
                 ItemKind::Expression(Self::desugar_expression_with_mapping(expr, span_mapping))
             }
+            ItemKind::LetBinding(let_binding) => ItemKind::LetBinding(outrun_parser::LetBinding {
+                pattern: let_binding.pattern,
+                type_annotation: let_binding.type_annotation,
+                expression: Self::desugar_expression_with_mapping(
+                    let_binding.expression,
+                    span_mapping,
+                ),
+                span: let_binding.span,
+            }),
             // Other item kinds don't contain expressions that need desugaring
             other => other,
         }
@@ -900,6 +910,10 @@ impl DesugaringVisitor {
             }
             ExpressionKind::Sigil(sigil_lit) => {
                 Self::desugar_sigil_literal_with_mapping(sigil_lit, expr.span, span_mapping)
+            }
+            // Parentheses are purely syntactic - eliminate them completely
+            ExpressionKind::Parenthesized(inner_expr) => {
+                Self::desugar_expression_with_mapping(*inner_expr, span_mapping)
             }
             // Other expression kinds don't need desugaring
             _ => expr,

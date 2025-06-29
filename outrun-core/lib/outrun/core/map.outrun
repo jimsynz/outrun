@@ -20,12 +20,6 @@ Maps store key-value pairs with support for literal syntax and spread operations
 """)
 struct Outrun.Core.Map<K, V>() {}
 
-# Inspect trait implementation  
-impl<K, V> Inspect for Outrun.Core.Map<K, V> when K: Inspect && V: Inspect {
-    def inspect(value: Self): String {
-        Outrun.Intrinsic.map_inspect(map: value)
-    }
-}
 
 # Equality trait implementation - structural equality
 impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {

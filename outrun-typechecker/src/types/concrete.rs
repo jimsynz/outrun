@@ -3,9 +3,8 @@
 //! This module defines all concrete types that exist at runtime in Outrun,
 //! including primitives, collections, and user-defined types.
 
-use super::{AtomId, TypeId};
+use crate::compilation::compiler_environment::{AtomId, TypeNameId};
 use outrun_parser::Span;
-// use std::collections::HashMap; // TODO: Use when needed
 
 /// All concrete types that can exist at runtime in Outrun
 #[derive(Debug, Clone, PartialEq)]
@@ -19,39 +18,39 @@ pub enum ConcreteType {
 
     // Collection types with element type information
     List {
-        element_type: TypeId,
+        element_type: TypeNameId,
     },
     Tuple {
-        element_types: Vec<TypeId>,
+        element_types: Vec<TypeNameId>,
     },
     Map {
-        key_type: TypeId,
-        value_type: TypeId,
+        key_type: TypeNameId,
+        value_type: TypeNameId,
     },
 
     // Option and Result types for error handling
     Option {
-        inner_type: TypeId,
+        inner_type: TypeNameId,
     },
     Result {
-        ok_type: TypeId,
-        err_type: TypeId,
+        ok_type: TypeNameId,
+        err_type: TypeNameId,
     },
 
     // User-defined types
     Struct {
-        name: TypeId,
+        name: TypeNameId,
         fields: Vec<StructField>,
     },
     Trait {
-        name: TypeId,
+        name: TypeNameId,
         functions: Vec<TraitFunction>,
     },
 
     // Function types
     Function {
-        params: Vec<(AtomId, TypeId)>, // (param_name, param_type)
-        return_type: TypeId,
+        params: Vec<(AtomId, TypeNameId)>, // (param_name, param_type)
+        return_type: TypeNameId,
     },
 }
 
@@ -59,7 +58,7 @@ pub enum ConcreteType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructField {
     pub name: AtomId,
-    pub type_id: TypeId,
+    pub type_id: TypeNameId,
     pub span: Span,
 }
 
@@ -74,8 +73,8 @@ pub struct TraitFunction {
 /// Function signature with parameter and return type information
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionSignature {
-    pub params: Vec<(AtomId, TypeId)>, // (param_name, param_type)
-    pub return_type: TypeId,
+    pub params: Vec<(AtomId, TypeNameId)>, // (param_name, param_type)
+    pub return_type: TypeNameId,
     pub is_guard: bool, // True if function name ends with '?'
 }
 
@@ -113,31 +112,31 @@ impl ConcreteType {
     }
 
     /// Get the inner type for Option types
-    pub fn option_inner_type(&self) -> Option<TypeId> {
+    pub fn option_inner_type(&self) -> Option<TypeNameId> {
         match self {
-            ConcreteType::Option { inner_type } => Some(*inner_type),
+            ConcreteType::Option { inner_type } => Some(inner_type.clone()),
             _ => None,
         }
     }
 
     /// Get the ok and error types for Result types
-    pub fn result_types(&self) -> Option<(TypeId, TypeId)> {
+    pub fn result_types(&self) -> Option<(TypeNameId, TypeNameId)> {
         match self {
-            ConcreteType::Result { ok_type, err_type } => Some((*ok_type, *err_type)),
+            ConcreteType::Result { ok_type, err_type } => Some((ok_type.clone(), err_type.clone())),
             _ => None,
         }
     }
 
     /// Get element type for List
-    pub fn list_element_type(&self) -> Option<TypeId> {
+    pub fn list_element_type(&self) -> Option<TypeNameId> {
         match self {
-            ConcreteType::List { element_type } => Some(*element_type),
+            ConcreteType::List { element_type } => Some(element_type.clone()),
             _ => None,
         }
     }
 
     /// Get element types for Tuple
-    pub fn tuple_element_types(&self) -> Option<&[TypeId]> {
+    pub fn tuple_element_types(&self) -> Option<&[TypeNameId]> {
         match self {
             ConcreteType::Tuple { element_types } => Some(element_types),
             _ => None,
@@ -145,12 +144,12 @@ impl ConcreteType {
     }
 
     /// Get key and value types for Map
-    pub fn map_types(&self) -> Option<(TypeId, TypeId)> {
+    pub fn map_types(&self) -> Option<(TypeNameId, TypeNameId)> {
         match self {
             ConcreteType::Map {
                 key_type,
                 value_type,
-            } => Some((*key_type, *value_type)),
+            } => Some((key_type.clone(), value_type.clone())),
             _ => None,
         }
     }
@@ -158,7 +157,7 @@ impl ConcreteType {
 
 impl FunctionSignature {
     /// Create a new function signature
-    pub fn new(params: Vec<(AtomId, TypeId)>, return_type: TypeId, is_guard: bool) -> Self {
+    pub fn new(params: Vec<(AtomId, TypeNameId)>, return_type: TypeNameId, is_guard: bool) -> Self {
         Self {
             params,
             return_type,
@@ -169,20 +168,22 @@ impl FunctionSignature {
     /// Check if parameter names are unique (required by Outrun)
     pub fn has_unique_params(&self) -> bool {
         let mut seen = std::collections::HashSet::new();
-        self.params.iter().all(|(name, _)| seen.insert(*name))
+        self.params
+            .iter()
+            .all(|(name, _)| seen.insert(name.clone()))
     }
 
     /// Get parameter type by name
-    pub fn get_param_type(&self, name: AtomId) -> Option<TypeId> {
+    pub fn get_param_type(&self, name: AtomId) -> Option<TypeNameId> {
         self.params
             .iter()
             .find(|(param_name, _)| *param_name == name)
-            .map(|(_, type_id)| *type_id)
+            .map(|(_, type_id)| type_id.clone())
     }
 
     /// Get all parameter names
     pub fn param_names(&self) -> Vec<AtomId> {
-        self.params.iter().map(|(name, _)| *name).collect()
+        self.params.iter().map(|(name, _)| name.clone()).collect()
     }
 }
 

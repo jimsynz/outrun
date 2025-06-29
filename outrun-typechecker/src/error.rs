@@ -10,7 +10,7 @@ use thiserror::Error;
 pub type TypeResult<T> = Result<T, TypeError>;
 
 /// All possible type checking errors
-#[derive(Error, Diagnostic, Debug, Clone, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeError {
     #[error("Type mismatch")]
     #[diagnostic(
@@ -801,20 +801,18 @@ impl SpanExt for outrun_parser::Span {
 
 /// Standardized error context utilities
 pub mod context {
-    use crate::types::{TypeId, TypeInterner};
+    use crate::compilation::compiler_environment::{AtomId, TypeNameId};
 
-    /// Get a type name with fallback for unknown types
-    pub fn type_name_or_unknown(interner: &TypeInterner, type_id: TypeId) -> String {
-        interner
-            .type_name(type_id)
-            .unwrap_or_else(|| format!("Unknown({:?})", type_id))
+    /// Get a type name with fallback for unknown types (using TypeNameId directly)
+    pub fn type_name_or_unknown(_type_id: TypeNameId) -> String {
+        // TypeNameId has its own Display implementation now
+        format!("{}", _type_id)
     }
 
-    /// Get an atom name with fallback for unknown atoms
-    pub fn atom_name_or_fallback(interner: &TypeInterner, atom_id: crate::types::AtomId) -> String {
-        interner
-            .atom_name(atom_id)
-            .unwrap_or_else(|| format!("atom_{:?}", atom_id))
+    /// Get an atom name with fallback for unknown atoms (using AtomId directly)
+    pub fn atom_name_or_fallback(_atom_id: AtomId) -> String {
+        // AtomId has its own Display implementation now
+        format!("{}", _atom_id)
     }
 
     /// Common error message constants and builders

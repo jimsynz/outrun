@@ -1,6 +1,7 @@
 //! Tests for the multi-program compiler with visitor-based type checking
 
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
+use crate::compilation::program_collection::ProgramCollection;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::{
     BooleanLiteral, DebugInfo, Expression, ExpressionKind, FunctionDefinition, FunctionVisibility,
     Identifier, IntegerFormat, IntegerLiteral, Item, ItemKind, Parameter, Program, Span,
@@ -61,15 +62,15 @@ fn create_simple_function(name: &str, return_value: i64) -> Item {
 #[test]
 fn test_empty_program_collection() {
     let collection = ProgramCollection::new();
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
 
-    let result = compiler.compile(&collection).unwrap();
+    let result = compiler_env.compile_collection(collection).unwrap();
     
     assert!(result.compilation_order.is_empty());
     assert!(result.traits.is_empty());
     assert!(result.structs.is_empty());
     assert!(result.implementations.is_empty());
-    assert!(result.functions.is_empty());
+    // Note: Functions are now stored in the CompilerEnvironment's module system
 }
 
 #[test]
@@ -85,12 +86,12 @@ fn test_single_program_compilation() {
         "def test_func(): Integer { 42 }".to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection).unwrap();
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection).unwrap();
 
     assert_eq!(result.compilation_order, vec!["test.outrun"]);
-    assert_eq!(result.functions.len(), 1);
-    assert!(result.functions.contains_key("test_func"));
+    // Functions are now stored in the CompilerEnvironment's module system
+    assert!(result.typed_programs.contains_key("test.outrun"));
 }
 
 #[test]
@@ -113,15 +114,16 @@ fn test_multiple_program_compilation() {
         "def func2(): Integer { 2 }".to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection).unwrap();
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection).unwrap();
 
     assert_eq!(result.compilation_order.len(), 2);
     assert!(result.compilation_order.contains(&"program1.outrun".to_string()));
     assert!(result.compilation_order.contains(&"program2.outrun".to_string()));
-    assert_eq!(result.functions.len(), 2);
-    assert!(result.functions.contains_key("func1"));
-    assert!(result.functions.contains_key("func2"));
+    // Functions are now stored in the module system via CompilerEnvironment
+    assert_eq!(result.typed_programs.len(), 2);
+    assert!(result.typed_programs.contains_key("program1.outrun"));
+    assert!(result.typed_programs.contains_key("program2.outrun"));
 }
 
 #[test]
@@ -184,8 +186,8 @@ fn test_compilation_phases() {
         "trait TestTrait {}".to_string(),
     );
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection).unwrap();
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection).unwrap();
 
     // Verify that the trait was extracted in phase 1
     assert_eq!(result.traits.len(), 1);
@@ -201,10 +203,10 @@ fn test_compiler_error_accumulation() {
     let empty_program = create_simple_program(vec![]);
     collection.add_program("empty.outrun".to_string(), empty_program, "".to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     
     // This should succeed with an empty program
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     assert!(result.is_ok());
 }
 
@@ -250,8 +252,8 @@ fn test_context_preservation_across_phases() {
     collection.add_program("traits.outrun".to_string(), trait_program, "trait Addable {}".to_string());
     collection.add_program("structs.outrun".to_string(), struct_program, "struct Number()".to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
-    let result = compiler.compile(&collection).unwrap();
+    let mut compiler_env = CompilerEnvironment::new();
+    let result = compiler_env.compile_collection(collection).unwrap();
 
     // Verify that context is preserved across phases
     assert_eq!(result.traits.len(), 1);

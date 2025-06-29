@@ -3,8 +3,9 @@
 //! These tests verify that span mapping correctly tracks the relationship between
 //! original source spans and their desugared equivalents throughout the compilation pipeline.
 
+use crate::compilation::compiler_environment::CompilerEnvironment;
+use crate::compilation::program_collection::ProgramCollection;
 use crate::desugaring::{DesugaringVisitor, SpanMapping};
-use crate::multi_program_compiler::{MultiProgramCompiler, ProgramCollection};
 use crate::unification::UnificationContext;
 use outrun_parser::{parse_program, Span};
 
@@ -325,10 +326,10 @@ fn test_multi_program_compiler_span_mapping_integration() {
     let mut collection = ProgramCollection::new();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
 
     // The compilation should succeed and integrate span mapping
-    match compiler.compile(&collection) {
+    match compiler_env.compile_collection(collection) {
         Ok(result) => {
             // The context should have span mappings from desugaring
             let has_mappings = !result

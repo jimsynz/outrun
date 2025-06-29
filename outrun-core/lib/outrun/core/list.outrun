@@ -20,12 +20,6 @@ All elements must be of the same type T.
 """)
 struct Outrun.Core.List<T>() {}
 
-# Inspect trait implementation  
-impl<T> Inspect for Outrun.Core.List<T> when T: Inspect {
-    def inspect(value: Self): String {
-        Outrun.Intrinsic.list_inspect(value: value)
-    }
-}
 
 # Equality trait implementation - recursive equality check
 impl<T> Equality for Outrun.Core.List<T> when T: Equality {

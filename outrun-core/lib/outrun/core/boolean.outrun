@@ -24,16 +24,6 @@ impl Display for Outrun.Core.Boolean {
     }
 }
 
-# Inspect trait implementation
-impl Inspect for Outrun.Core.Boolean {
-    def inspect(value: Self): Outrun.Core.String {
-        if value {
-            "true"
-        } else {
-            "false"
-        }
-    }
-}
 
 # Equality trait implementation
 impl Equality for Outrun.Core.Boolean {

@@ -1,19 +1,19 @@
 //! Tests for generics and type annotations in typed AST (Phase 4, Week 7)
 
 use crate::checker::TypedItemKind;
-use crate::multi_program_compiler::MultiProgramCompiler;
+use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
 /// Helper function to compile a source snippet and get the first item
 fn compile_and_get_first_item(source: &str) -> Option<crate::checker::TypedItem> {
     let program = parse_program(source).expect("Failed to parse program");
 
-    let mut compiler = MultiProgramCompiler::new();
+    let mut compiler_env = CompilerEnvironment::new();
     let mut collection = crate::core_library::load_core_library_collection();
     collection.add_program("test.outrun".to_string(), program, source.to_string());
 
     // This may fail type checking, but should still produce typed AST structure
-    let result = compiler.compile(&collection);
+    let result = compiler_env.compile_collection(collection);
     let compilation_succeeded = result.is_ok();
     if !compilation_succeeded {
         println!("Compilation failed as expected (may have undefined functions/variables)");
@@ -405,7 +405,7 @@ fn test_self_type_in_different_contexts() {
 #[test]
 fn test_type_annotation_comprehensive_conversion() {
     let source = r#"
-        const COMPLEX_TYPE: Map<String, (Integer, Option<Float>)> = Map.empty()
+        const COMPLEX_TYPE: Map<String, (Integer, Option<Float>)> = {}
     "#;
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
