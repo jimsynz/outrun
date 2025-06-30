@@ -79,6 +79,13 @@ impl String for Outrun.Core.String {
     }
 }
 
+# Equality trait implementation
+impl Equality for Outrun.Core.String {
+    def equal?(lhs: Self, rhs: Self): Boolean {
+        Outrun.Intrinsic.string_eq(lhs: lhs, rhs: rhs)
+    }
+}
+
 # Binary trait implementation
 impl Binary for Outrun.Core.String {
     def byte_size(value: Self): Integer {

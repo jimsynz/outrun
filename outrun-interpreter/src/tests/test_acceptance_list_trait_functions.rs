@@ -545,22 +545,22 @@ fn test_list_type_consistency() {
     let result5 = harness.evaluate("List.empty?(value: [])").unwrap();
 
     // Check result types
-    assert!(matches!(result1, crate::Value::Some(_)));  // Option<Integer>
-    assert!(matches!(result2, crate::Value::List(_)));  // List<Integer>
-    assert!(matches!(result3, crate::Value::List(_)));  // List<Integer>
+    assert!(matches!(result1, crate::Value::Struct { .. }));  // Option<Integer>
+    assert!(matches!(result2, crate::Value::List { .. }));  // List<Integer>
+    assert!(matches!(result3, crate::Value::List { .. }));  // List<Integer>
     assert!(matches!(result4, crate::Value::Integer64(_)));  // Integer
     assert!(matches!(result5, crate::Value::Boolean(_)));  // Boolean
 
     // Test empty list head returns None
     let empty_head = harness.evaluate("List.head(value: [])").unwrap();
-    assert!(matches!(empty_head, crate::Value::None));
+    assert!(matches!(empty_head, crate::Value::Struct { .. }));  // Option.None
 
     // Test list creation and usage
     let list_result = harness.evaluate("[1, 2, 3]").unwrap();
-    assert!(matches!(list_result, crate::Value::List(_)));
+    assert!(matches!(list_result, crate::Value::List { .. }));
 
     // Test lists can be used in all contexts where values are expected
     harness.execute_let_binding("let my_list = [42, 43, 44]").unwrap();
     let variable_result = harness.evaluate("my_list").unwrap();
-    assert!(matches!(variable_result, crate::Value::List(_)));
+    assert!(matches!(variable_result, crate::Value::List { .. }));
 }

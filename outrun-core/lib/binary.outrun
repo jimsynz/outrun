@@ -175,6 +175,7 @@ trait Binary {
     ```
     """)
     def empty?(value: Self): Boolean {
-        byte_size(value: value) == 0
+        let size = byte_size(value: value)
+        Equality.equal?(lhs: size, rhs: 0)
     }
 }

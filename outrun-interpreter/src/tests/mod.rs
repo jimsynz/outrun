@@ -1,12 +1,15 @@
 //! Integration tests for the Outrun interpreter
 
 mod test_acceptance_atom_trait_functions;
+mod test_acceptance_binary_trait_functions;
 mod test_acceptance_float_binary_ops;
 mod test_acceptance_float_trait_functions;
 mod test_acceptance_float_unary_ops;
 mod test_acceptance_integer_binary_ops;
 mod test_acceptance_integer_trait_functions;
 mod test_acceptance_integer_unary_ops;
+mod test_acceptance_list_trait_functions;
+mod test_acceptance_string_trait_functions;
 mod test_core_library_function_body_investigation;
 mod test_harness_examples;
 mod test_integer_equality_runtime_bug;
