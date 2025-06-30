@@ -46,8 +46,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/outrun_icon.png",
-          "dark": "./images/outrun_icon.png"
+          "light": "./images/outrun_icon_simple.svg",
+          "dark": "./images/outrun_icon_simple.svg"
         }
       }
     ],
