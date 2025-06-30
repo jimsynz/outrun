@@ -1,0 +1,1 @@
+../../../tree-sitter-outrun/queries/indents.scm

@@ -1,0 +1,12 @@
+id = "outrun"
+name = "Outrun"
+description = "Outrun programming language support for Zed"
+version = "0.1.0"
+schema_version = 1
+authors = ["James Harton <james@harton.nz>"]
+repository = "https://harton.dev/outrun/outrun"
+
+[grammars.outrun]
+repository = "https://harton.dev/outrun/outrun"
+commit = "main"
+path = "editor-support/tree-sitter-outrun"

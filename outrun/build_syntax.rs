@@ -204,7 +204,8 @@ contexts:
 "#;
 
     // Write the syntax file temporarily
-    fs::write("outrun.sublime-syntax", outrun_syntax).expect("Failed to write syntax file");
+    fs::write("editor-support/outrun.sublime-syntax", outrun_syntax)
+        .expect("Failed to write syntax file");
 
     // Build syntax set with defaults + Outrun
     let syntax_set = SyntaxSet::load_defaults_newlines();

@@ -35,14 +35,14 @@
 
 ; Function definitions with bodies
 (function_definition 
-  body: (function_body) @indent)
+  (function_body) @indent)
 
 (static_function_definition
-  body: (function_body) @indent)
+  (function_body) @indent)
 
 ; Struct fields and implementations
 (struct_definition
-  fields: (struct_fields) @indent)
+  (struct_fields) @indent)
 
 ; Multi-line expressions that should be indented
 (pipe_expression) @indent
@@ -57,7 +57,6 @@
 [
   (list_literal)
   (map_literal) 
-  (struct_literal)
   (tuple_literal)
 ] @indent
 

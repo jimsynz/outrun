@@ -1,0 +1,26 @@
+# Test file for Outrun language support in Zed
+struct Person {
+    name: String,
+    age: Integer
+}
+
+trait Greetable<T> {
+    def greet(person: T): String when T.has_name?()
+}
+
+impl Greetable<Person> for String {
+    def greet(person: Person): String {
+        let greeting = "Hello, #{person.name}!"
+        greeting
+    }
+}
+
+def main(): Boolean {
+    let person = Person { name: "Alice", age: 30 }
+    let message = String.greet(person: person)
+    
+    case message {
+        ~r"Hello, .+!" => true,
+        _ => false
+    }
+}

@@ -1,24 +1,24 @@
 ; Functions
 (function_definition) @function.around
 (function_definition 
-  body: (function_body) @function.inside)
+  (function_body) @function.inside)
 
 (static_function_definition) @function.around
 (static_function_definition
-  body: (function_body) @function.inside)
+  (function_body) @function.inside)
 
 ; Types (structs, traits)
 (struct_definition) @class.around
 (struct_definition 
-  fields: (struct_fields) @class.inside)
+  (struct_fields) @class.inside)
 
 (trait_definition) @class.around
 (trait_definition
-  body: (_) @class.inside)
+  (_) @class.inside)
 
 (impl_block) @class.around
 (impl_block
-  body: (_) @class.inside)
+  (_) @class.inside)
 
 ; Parameters
 (parameter_list) @parameter.around
@@ -41,25 +41,21 @@
 (block_comment) @comment.inside
 
 ; Conditional blocks
-(if_expression 
-  consequence: (function_body) @conditional.inside) @conditional.around
-
-(if_expression 
-  alternative: (function_body) @conditional.inside)
+(if_expression) @conditional.around
 
 ; Case expressions
 (case_expression) @conditional.around
 (case_clause 
-  body: (_) @conditional.inside)
+  (_) @conditional.inside)
 
 (trait_case_clause
-  body: (_) @conditional.inside)
+  (_) @conditional.inside)
 
 ; Loop constructs (for when they're added)
 ; For now, anonymous functions can serve as iteration blocks
 (anonymous_function) @loop.around
 (anonymous_function
-  body: (_) @loop.inside)
+  (_) @loop.inside)
 
 ; Test - not applicable to Outrun currently, but reserved for future use
 

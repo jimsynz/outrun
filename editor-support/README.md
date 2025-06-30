@@ -8,98 +8,40 @@ This directory contains editor support files for the Outrun programming language
 
 Complete Tree-sitter based syntax highlighting, code navigation, and indentation support.
 
-#### Installation
+**📁 [See helix/README.md for detailed installation instructions](helix/README.md)**
 
-**Important**: Helix requires Tree-sitter language version 13-14, but newer Tree-sitter CLI versions (0.21+) generate version 15+ grammars. You must use Tree-sitter CLI version 0.20.8 or earlier.
+#### Quick Start
 
-1. **Install Compatible Tree-sitter Version**
-
-   ```bash
-   # Install Tree-sitter 0.20.8 (compatible with Helix)
-   asdf install tree-sitter 0.20.8
-   asdf set tree-sitter 0.20.8
-   
-   # Verify version
-   tree-sitter --version  # Should show 0.20.8
-   ```
-
-2. **Build the Tree-sitter Grammar**
-
-   ```bash
-   # Navigate to grammar directory
-   cd editor-support/tree-sitter-outrun
-   
-   # Generate and build with compatible version
-   tree-sitter generate
-   ```
-
-3. **Configure Helix**
-
-   Copy the language configuration to your Helix config directory:
-
-   ```bash
-   # Copy language configuration
-   cp editor-support/helix/languages.toml ~/.config/helix/languages.toml
-   ```
-
-   Or if you already have a `languages.toml`, append the contents to your existing file.
-
-4. **Install Query Files**
-
-   Copy the query files to the appropriate location:
-
-   ```bash
-   # Create queries directory
-   mkdir -p ~/.config/helix/runtime/queries/outrun
-
-   # Copy query files
-   cp editor-support/tree-sitter-outrun/queries/* ~/.config/helix/runtime/queries/outrun/
-   ```
-
-5. **Build Grammar in Helix**
-
-   ```bash
-   # Tell Helix to build the grammar
-   hx --grammar build
-   ```
-
-   This should show "1 grammars built now: ["outrun"]"
-
-6. **Verify Installation**
-
-   ```bash
-   # Check if Outrun is recognised
-   hx --health | grep outrun
-   ```
-
-   You should see ✓ for Highlight, Textobject, and Indent columns.
-
-7. **Test Syntax Highlighting**
-
-   Create a test file and open it in Helix:
-
-   ```bash
-   echo 'def test(): Boolean { true }' > test.outrun
-   hx test.outrun
-   ```
-
-   You should now see proper syntax highlighting with keywords, types, and literals colored correctly.
+1. Copy `helix/languages.toml` to your Helix config directory
+2. Run `hx --grammar build` to build the grammar
+3. Open any `.outrun` file and enjoy syntax highlighting
 
 #### Features
 
 - **Syntax Highlighting**: Complete highlighting for all Outrun language constructs
-- **Code Navigation**: Textobjects for functions, types, parameters, and comments
+- **Code Navigation**: Textobjects for functions, types, parameters, and comments  
 - **Smart Indentation**: Automatic indentation based on language structure
 - **Comment Support**: Line (`#`) and block (`###`) comment support
 
-#### Usage
+### Zed Editor
 
-Open any `.outrun` file with Helix and enjoy syntax highlighting and code navigation features:
+Complete Tree-sitter based syntax highlighting, code navigation, and intelligent editing features.
 
-- `]f` / `[f` - Navigate between functions
-- `]c` / `[c` - Navigate between classes (structs/traits)
-- `]t` / `[t` - Navigate between types
-- `]p` / `[p` - Navigate between parameters
+**📁 [See zed/README.md for detailed installation instructions](zed/README.md)**
+
+#### Quick Start
+
+1. Clone this repository and navigate to `editor-support/zed`
+2. In Zed: `Cmd+Shift+P` → "Extensions: Install Dev Extension" → Select the zed directory
+3. Open any `.outrun` file and enjoy syntax highlighting
+
+#### Features
+
+- **Syntax Highlighting**: Complete highlighting for all Outrun language constructs
+- **Code Navigation**: Smart text objects and navigation
+- **Auto-Indentation**: Automatic indentation based on language structure  
+- **Bracket Matching**: Auto-completion and matching of brackets, quotes, and sigils
+- **Comment Support**: Line (`#`) and block (`###`) comment support
 
 ### Sublime Text
 
@@ -133,25 +75,11 @@ Basic syntax highlighting support via TextMate-style grammar.
 
 ### Helix
 
-**Tree-sitter version incompatibility:**
-- Error: "Incompatible language version 15. Expected minimum 13, maximum 14"
-- Solution: Use Tree-sitter 0.20.8: `asdf set tree-sitter 0.20.8` then regenerate grammar
+**📁 [See helix/README.md for detailed troubleshooting](helix/README.md#troubleshooting)**
 
-**Grammar not found:**
-- Ensure the grammar was built successfully with `hx --grammar build`
-- Check that `languages.toml` contains the correct path to the grammar
-- Verify query files are in the correct location
+### Zed
 
-**No syntax highlighting:**
-- Run `hx --health` to check grammar status (should show ✓ for outrun)
-- Check Helix logs with `:log-open` for error messages
-- Ensure `highlights.scm` exists in the queries directory
-- Try rebuilding with `hx --grammar build`
-- Verify Tree-sitter version compatibility (must be 0.20.8 or earlier)
-
-**Textobjects not working:**
-- Verify `textobjects.scm` exists in the queries directory
-- Check that the grammar built successfully
+**📁 [See zed/README.md for detailed troubleshooting](zed/README.md#troubleshooting)**
 
 ### General
 
@@ -182,6 +110,7 @@ This ensures the grammar stays in sync with language changes and catches parsing
 ## Files
 
 - `tree-sitter-outrun/` - Complete Tree-sitter grammar and query files
-- `helix/` - Helix editor configuration files  
+- `helix/` - Helix editor configuration files
+- `zed/` - Zed editor extension files
 - `outrun.sublime-syntax` - Sublime Text syntax highlighting
 - `README.md` - This documentation
