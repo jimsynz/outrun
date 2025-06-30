@@ -22,10 +22,6 @@ impl Equality for Outrun.Core.Atom {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.atom_eq(lhs: lhs, rhs: rhs)
     }
-    
-    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        !Outrun.Intrinsic.atom_eq(lhs: lhs, rhs: rhs)
-    }
 }
 
 # Display trait implementation

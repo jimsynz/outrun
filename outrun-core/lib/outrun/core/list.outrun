@@ -26,18 +26,14 @@ impl<T> Equality for Outrun.Core.List<T> when T: Equality {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         let lhs_head = List.head(value: lhs)
         let rhs_head = List.head(value: rhs)
-        
+
         case (lhs_head, rhs_head) {
             (lhs, rhs) when Option.none?(value: lhs) && Option.none?(value: rhs) -> true
-            (lhs, rhs) when Option.some?(value: lhs) && Option.some?(value: rhs) -> 
-                Equality.equal?(lhs: Option.unwrap(value: lhs), rhs: Option.unwrap(value: rhs)) && 
+            (lhs, rhs) when Option.some?(value: lhs) && Option.some?(value: rhs) ->
+                Equality.equal?(lhs: Option.unwrap(value: lhs), rhs: Option.unwrap(value: rhs)) &&
                 Equality.equal?(lhs: List.tail(value: lhs), rhs: List.tail(value: rhs))
             _ -> false
         }
-    }
-    
-    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        !Equality.equal?(lhs: lhs, rhs: rhs)
     }
 }
 
@@ -46,15 +42,15 @@ impl<T> List<T> for Outrun.Core.List<T> {
     def head(value: Self): Option<T> {
         Outrun.Intrinsic.list_head(value: value)
     }
-    
+
     def tail(value: Self): Self {
         Outrun.Intrinsic.list_tail(value: value)
     }
-    
+
     def prepend(list: Self, elem: T): Self {
         Outrun.Intrinsic.list_prepend(list: list, elem: elem)
     }
-    
+
     def length(value: Self): Integer {
         Outrun.Intrinsic.list_length(value: value)
     }

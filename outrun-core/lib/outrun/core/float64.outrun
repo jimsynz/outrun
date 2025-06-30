@@ -70,25 +70,21 @@ impl Equality for Outrun.Core.Float64 {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_eq(lhs: lhs, rhs: rhs)
     }
-    
-    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        !Outrun.Intrinsic.f64_eq(lhs: lhs, rhs: rhs)
-    }
 }
 
 impl Comparison for Outrun.Core.Float64 {
     def greater?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_gt(lhs: lhs, rhs: rhs)
     }
-    
+
     def greater_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_ge(lhs: lhs, rhs: rhs)
     }
-    
+
     def less?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_lt(lhs: lhs, rhs: rhs)
     }
-    
+
     def less_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_le(lhs: lhs, rhs: rhs)
     }

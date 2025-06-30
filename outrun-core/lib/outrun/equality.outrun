@@ -32,5 +32,7 @@ trait Equality {
     def equal?(lhs: Self, rhs: Self): Boolean
 
     @Doc(content: "Test if two values are not equal")
-    def not_equal?(lhs: Self, rhs: Self): Boolean
+    def not_equal?(lhs: Self, rhs: Self): Boolean {
+      !equal?(lhs: lhs, rhs: rhs)
+    }
 }

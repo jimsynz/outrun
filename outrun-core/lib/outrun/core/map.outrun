@@ -31,10 +31,6 @@ impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
             false
         }
     }
-    
-    def not_equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        !Equality.equal?(lhs: lhs, rhs: rhs)
-    }
 }
 
 # Map trait implementation
@@ -42,15 +38,15 @@ impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
     def get(map: Self, key: K): Option<V> {
         Outrun.Intrinsic.map_get(map: map, key: key)
     }
-    
+
     def put(map: Self, key: K, value: V): Self {
         Outrun.Intrinsic.map_put(map: map, key: key, value: value)
     }
-    
+
     def remove(map: Self, key: K): Self {
         Outrun.Intrinsic.map_remove(map: map, key: key)
     }
-    
+
     def size(map: Self): Integer {
         Outrun.Intrinsic.map_size(map: map)
     }
