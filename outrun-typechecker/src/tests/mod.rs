@@ -124,6 +124,9 @@ mod test_type_resolution_integration;
 // Bug reproduction tests
 mod test_integer_equality_dispatch_bug;
 
+// SMT integration tests
+mod test_smt_integration;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

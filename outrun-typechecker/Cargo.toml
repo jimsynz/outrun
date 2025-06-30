@@ -22,6 +22,9 @@ petgraph = "0.8"
 rustsat = "0.7.2"
 rustsat-cadical = "0.7.2"
 
+# SMT solver for type constraint solving
+z3 = "0.12"
+
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"

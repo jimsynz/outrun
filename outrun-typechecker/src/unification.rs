@@ -7,6 +7,7 @@
 use crate::compilation::compiler_environment::{
     AtomId as CompilerAtomId, CompilerEnvironment, TypeNameId,
 };
+use crate::smt::constraints::SMTConstraint;
 use std::collections::HashMap;
 
 // Forward declaration for TypeContextSummary (defined in program_collection.rs)
@@ -148,6 +149,47 @@ pub struct UnificationContext {
     pub dispatch_strategies: HashMap<outrun_parser::Span, crate::checker::DispatchMethod>,
     /// Span mapping from desugaring phase for tracking original to desugared spans
     pub span_mapping: crate::desugaring::SpanMapping,
+
+    // =============================================================================
+    // SMT Integration Fields (Phase 4)
+    // =============================================================================
+    /// SMT constraints collected during type checking
+    pub smt_constraints: Vec<SMTConstraint>,
+    /// Constraint collector for complex constraint scenarios
+    pub constraint_collector: Option<ConstraintCollector>,
+    /// Cache for constraint solving results
+    pub solver_cache: HashMap<ConstraintSetHash, crate::smt::solver::SolverResult>,
+}
+
+/// Constraint collector for building complex SMT constraint sets
+#[derive(Debug, Clone)]
+pub struct ConstraintCollector {
+    constraints: Vec<SMTConstraint>,
+    scope_stack: Vec<ConstraintScope>,
+    deferred_constraints: Vec<DeferredConstraint>,
+}
+
+/// Constraint scope for managing constraint lifecycles
+#[derive(Debug, Clone)]
+pub struct ConstraintScope {
+    pub scope_id: usize,
+    pub constraint_count: usize,
+    pub is_function_scope: bool,
+}
+
+/// Deferred constraint for complex resolution scenarios
+#[derive(Debug, Clone)]
+pub struct DeferredConstraint {
+    pub constraint: SMTConstraint,
+    pub dependency_types: Vec<TypeNameId>,
+    pub resolution_priority: u8,
+}
+
+/// Hash for constraint set caching
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConstraintSetHash {
+    pub content_hash: u64,
+    pub constraint_count: usize,
 }
 
 impl Default for UnificationContext {
@@ -533,15 +575,12 @@ impl StructuredType {
     }
 }
 
-/// Main unification algorithm
+/// DEPRECATED: Traditional unification algorithm
 ///
-/// This implements the comprehensive unification rules described in CLAUDE.md:
-/// 1. Exact match (fast path)
-/// 2. Generic type unification with recursive argument checking
-/// 3. Tuple type unification with positional matching
-/// 4. Function type unification with named parameter matching
-/// 5. Simple type unification with trait-based compatibility
-/// 6. Cross-type unification (always fails)
+/// This function will be replaced by SMT constraint generation + solving.
+/// New code should use SMTConstraint::TypeUnification instead.
+///
+/// TODO: Replace all calls with SMT constraint generation
 pub fn unify_structured_types(
     type1: &StructuredType,
     type2: &StructuredType,
@@ -1050,8 +1089,14 @@ fn unify_resolved_simple_types_new(
     let type2_is_trait = compiler_env.is_trait(&type2_structured);
 
     match (type1_is_trait, type2_is_trait) {
-        // Both traits: must be exactly equal (already checked above)
-        (true, true) => Ok(None),
+        // Both traits: if they're the same trait, they unify
+        (true, true) => {
+            if type1 == type2 {
+                Ok(Some(type1_structured)) // Same trait unifies with itself
+            } else {
+                Ok(None) // Different traits don't unify
+            }
+        }
 
         // Type1 is trait, type2 is concrete: type2 must implement type1
         (true, false) => {
@@ -1202,6 +1247,10 @@ impl UnificationContext {
             expression_types: HashMap::new(),
             dispatch_strategies: HashMap::new(),
             span_mapping: crate::desugaring::SpanMapping::new(),
+            // SMT integration fields
+            smt_constraints: Vec::new(),
+            constraint_collector: None,
+            solver_cache: HashMap::new(),
         }
     }
 
@@ -1495,6 +1544,302 @@ impl UnificationContext {
             type_definitions,
             trait_implementations,
         }
+    }
+
+    // =============================================================================
+    // SMT Constraint Methods (Phase 4)
+    // =============================================================================
+
+    /// Add an SMT constraint to the context
+    pub fn add_smt_constraint(&mut self, constraint: SMTConstraint) {
+        self.smt_constraints.push(constraint);
+    }
+
+    /// NEW: SMT-based type checking - check if two types are compatible
+    pub fn smt_types_compatible(
+        &mut self,
+        type1: &StructuredType,
+        type2: &StructuredType,
+        context: String,
+        compiler_env: &CompilerEnvironment,
+    ) -> Result<bool, crate::smt::solver::SMTError> {
+        // Create a unification constraint
+        let constraint = SMTConstraint::TypeUnification {
+            type1: type1.clone(),
+            type2: type2.clone(),
+            context,
+        };
+
+        // Solve with a temporary solver
+        let system = crate::smt::SMTConstraintSystem::new();
+        let mut solver = system.create_solver();
+        solver.add_constraints(&[constraint], compiler_env)?;
+
+        match solver.solve() {
+            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
+            crate::smt::solver::SolverResult::Unsatisfiable(_) => Ok(false),
+            crate::smt::solver::SolverResult::Unknown(_) => Ok(false), // Conservative: assume incompatible
+        }
+    }
+
+    /// NEW: SMT-based trait implementation checking
+    pub fn smt_implements_trait(
+        &mut self,
+        impl_type: &StructuredType,
+        trait_type: &StructuredType,
+        compiler_env: &CompilerEnvironment,
+    ) -> Result<bool, crate::smt::solver::SMTError> {
+        // Create a trait implementation constraint
+        let constraint = SMTConstraint::TraitImplemented {
+            impl_type: impl_type.clone(),
+            trait_type: trait_type.clone(),
+        };
+
+        // Solve with a temporary solver
+        let system = crate::smt::SMTConstraintSystem::new();
+        let mut solver = system.create_solver();
+        solver.add_constraints(&[constraint], compiler_env)?;
+
+        match solver.solve() {
+            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
+            crate::smt::solver::SolverResult::Unsatisfiable(_) => Ok(false),
+            crate::smt::solver::SolverResult::Unknown(_) => Ok(false), // Conservative: assume not implemented
+        }
+    }
+
+    /// NEW: SMT-based function dispatch resolution
+    pub fn smt_resolve_function_call(
+        &mut self,
+        candidates: &[crate::smt::constraints::FunctionSignature],
+        call_signature: &crate::smt::constraints::FunctionSignature,
+        call_site: outrun_parser::Span,
+        compiler_env: &CompilerEnvironment,
+    ) -> Result<Option<usize>, crate::smt::solver::SMTError> {
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        if candidates.len() == 1 {
+            // Single candidate - just check if it matches
+            let constraint = SMTConstraint::FunctionSignatureMatch {
+                expected: candidates[0].clone(),
+                actual: call_signature.clone(),
+                call_site,
+            };
+
+            let system = crate::smt::SMTConstraintSystem::new();
+            let mut solver = system.create_solver();
+            solver.add_constraints(&[constraint], compiler_env)?;
+
+            match solver.solve() {
+                crate::smt::solver::SolverResult::Satisfiable(_) => Ok(Some(0)),
+                _ => Ok(None),
+            }
+        } else {
+            // Multiple candidates - create constraints for each and solve
+            let mut constraints = Vec::new();
+            for (i, candidate) in candidates.iter().enumerate() {
+                let constraint = SMTConstraint::FunctionSignatureMatch {
+                    expected: candidate.clone(),
+                    actual: call_signature.clone(),
+                    call_site,
+                };
+                constraints.push((i, constraint));
+            }
+
+            // Try each constraint individually to find the first satisfiable one
+            for (index, constraint) in constraints {
+                let system = crate::smt::SMTConstraintSystem::new();
+                let mut solver = system.create_solver();
+                solver.add_constraints(&[constraint], compiler_env)?;
+
+                if let crate::smt::solver::SolverResult::Satisfiable(_) = solver.solve() {
+                    return Ok(Some(index));
+                }
+            }
+
+            Ok(None) // No candidates matched
+        }
+    }
+
+    /// Solve accumulated SMT constraints using the provided solver
+    pub fn solve_accumulated_constraints(
+        &mut self,
+        compiler_env: &CompilerEnvironment,
+    ) -> Result<crate::smt::solver::ConstraintModel, crate::smt::solver::SMTError> {
+        if self.smt_constraints.is_empty() {
+            return Ok(crate::smt::solver::ConstraintModel::empty());
+        }
+
+        let system = crate::smt::SMTConstraintSystem::new();
+        let mut solver = system.create_solver();
+
+        // Add all constraints to the solver
+        solver.add_constraints(&self.smt_constraints, compiler_env)?;
+
+        // Solve constraints
+        match solver.solve() {
+            crate::smt::solver::SolverResult::Satisfiable(model) => Ok(model),
+            crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
+                Err(crate::smt::solver::SMTError::SolverError(format!(
+                    "Unsatisfiable constraints: {} conflicts",
+                    conflicting.len()
+                )))
+            }
+            crate::smt::solver::SolverResult::Unknown(reason) => {
+                Err(crate::smt::solver::SMTError::SolverError(reason))
+            }
+        }
+    }
+
+    /// Check if there are pending SMT constraints to solve
+    pub fn has_pending_constraints(&self) -> bool {
+        !self.smt_constraints.is_empty()
+            || self
+                .constraint_collector
+                .as_ref()
+                .map_or(false, |collector| !collector.constraints.is_empty())
+    }
+
+    /// Initialize constraint collector for complex constraint scenarios
+    pub fn start_constraint_collection(&mut self) {
+        self.constraint_collector = Some(ConstraintCollector::new());
+    }
+
+    /// Finalize constraint collection and add to main constraint list
+    pub fn finalize_constraint_collection(&mut self) {
+        if let Some(collector) = self.constraint_collector.take() {
+            self.smt_constraints.extend(collector.constraints);
+        }
+    }
+
+    /// Get current constraint count for debugging
+    pub fn constraint_count(&self) -> usize {
+        self.smt_constraints.len()
+            + self
+                .constraint_collector
+                .as_ref()
+                .map_or(0, |collector| collector.constraints.len())
+    }
+
+    /// Clear all SMT constraints (for testing/reset scenarios)
+    pub fn clear_smt_constraints(&mut self) {
+        self.smt_constraints.clear();
+        self.constraint_collector = None;
+        self.solver_cache.clear();
+    }
+}
+
+impl ConstraintCollector {
+    /// Create a new constraint collector
+    pub fn new() -> Self {
+        Self {
+            constraints: Vec::new(),
+            scope_stack: Vec::new(),
+            deferred_constraints: Vec::new(),
+        }
+    }
+
+    /// Collect a trait constraint
+    pub fn collect_trait_constraint(
+        &mut self,
+        trait_type: &StructuredType,
+        impl_type: &StructuredType,
+    ) {
+        let constraint = SMTConstraint::TraitImplemented {
+            impl_type: impl_type.clone(),
+            trait_type: trait_type.clone(),
+        };
+        self.constraints.push(constraint);
+    }
+
+    /// Collect a unification constraint
+    pub fn collect_unification_constraint(
+        &mut self,
+        type1: &StructuredType,
+        type2: &StructuredType,
+        context: String,
+    ) {
+        let constraint = SMTConstraint::TypeUnification {
+            type1: type1.clone(),
+            type2: type2.clone(),
+            context,
+        };
+        self.constraints.push(constraint);
+    }
+
+    /// Collect a function constraint from a function call
+    pub fn collect_function_constraint(
+        &mut self,
+        expected_signature: &crate::smt::constraints::FunctionSignature,
+        actual_signature: &crate::smt::constraints::FunctionSignature,
+        call_site: outrun_parser::Span,
+    ) {
+        let constraint = SMTConstraint::FunctionSignatureMatch {
+            expected: expected_signature.clone(),
+            actual: actual_signature.clone(),
+            call_site,
+        };
+        self.constraints.push(constraint);
+    }
+
+    /// Defer a complex constraint for later resolution
+    pub fn defer_complex_constraint(
+        &mut self,
+        constraint: SMTConstraint,
+        dependency_types: Vec<TypeNameId>,
+        priority: u8,
+    ) {
+        let deferred = DeferredConstraint {
+            constraint,
+            dependency_types,
+            resolution_priority: priority,
+        };
+        self.deferred_constraints.push(deferred);
+    }
+
+    /// Push a new constraint scope
+    pub fn push_scope(&mut self, is_function_scope: bool) {
+        let scope = ConstraintScope {
+            scope_id: self.scope_stack.len(),
+            constraint_count: self.constraints.len(),
+            is_function_scope,
+        };
+        self.scope_stack.push(scope);
+    }
+
+    /// Pop the most recent constraint scope
+    pub fn pop_scope(&mut self) {
+        if let Some(scope) = self.scope_stack.pop() {
+            // Truncate constraints to the count when this scope was created
+            self.constraints.truncate(scope.constraint_count);
+        }
+    }
+
+    /// Get all collected constraints (including deferred ones)
+    pub fn get_all_constraints(&self) -> Vec<SMTConstraint> {
+        let mut all_constraints = self.constraints.clone();
+
+        // Add deferred constraints sorted by priority
+        let mut deferred_sorted = self.deferred_constraints.clone();
+        deferred_sorted.sort_by_key(|d| d.resolution_priority);
+
+        for deferred in deferred_sorted {
+            all_constraints.push(deferred.constraint);
+        }
+
+        all_constraints
+    }
+
+    /// Check if collector is empty
+    pub fn is_empty(&self) -> bool {
+        self.constraints.is_empty() && self.deferred_constraints.is_empty()
+    }
+}
+
+impl Default for ConstraintCollector {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

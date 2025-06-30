@@ -242,6 +242,7 @@ pub mod intrinsics;
 pub mod patterns;
 pub mod shared_context;
 pub mod simple_context;
+pub mod smt;
 pub mod typed_ast_builder;
 pub mod types;
 pub mod unification;

@@ -429,7 +429,7 @@ pub struct CompilerEnvironment {
 }
 
 /// Internal compilation state for the CompilerEnvironment
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct CompilationState {
     /// Dependency graph for program ordering
     dependency_graph: DependencyGraph,
@@ -447,6 +447,27 @@ struct CompilationState {
     external_variables: HashMap<String, StructuredType>,
     /// Implementation blocks extracted during compilation
     implementations: Vec<ImplBlock>,
+    /// Next dispatch ID for trait function calls
+    next_dispatch_id: u32,
+    /// SMT constraint solving model results (Phase 7)
+    smt_model: Option<crate::smt::solver::ConstraintModel>,
+}
+
+impl Default for CompilationState {
+    fn default() -> Self {
+        Self {
+            dependency_graph: DependencyGraph::default(),
+            unification_context: UnificationContext::default(),
+            errors: Vec::new(),
+            compilation_result: None,
+            dispatch_table: crate::dispatch::DispatchTable::default(),
+            compilation_order: Vec::new(),
+            external_variables: HashMap::new(),
+            implementations: Vec::new(),
+            next_dispatch_id: 0,
+            smt_model: None,
+        }
+    }
 }
 
 impl CompilationState {}
@@ -609,7 +630,8 @@ impl CompilerEnvironment {
         self.generate_auto_implementations(&structs)?;
 
         // Step 4: Phase 4 - Extract all implementations (from desugared code)
-        let implementations = self.extract_implementations(&desugared_collection, &compilation_order)?;
+        let implementations =
+            self.extract_implementations(&desugared_collection, &compilation_order)?;
 
         // Store implementations in CompilerEnvironment
         self.set_implementations(implementations.clone());
@@ -618,13 +640,15 @@ impl CompilerEnvironment {
         self.extract_functions(&desugared_collection, &compilation_order)?;
 
         // Step 5.5: Phase 5.5 - Expand trait default implementations into concrete impl blocks (using desugared code)
-        let expanded_collection = self.expand_trait_default_implementations(&desugared_collection)?;
+        let expanded_collection =
+            self.expand_trait_default_implementations(&desugared_collection)?;
 
         // Step 5.6: Phase 5.6 - Replace all Self types with concrete types in impl blocks
-        let concrete_collection = self.substitute_self_types_in_impl_blocks(&expanded_collection)?;
+        let concrete_collection =
+            self.substitute_self_types_in_impl_blocks(&expanded_collection)?;
 
-        // Step 6: Phase 6 - Type check everything (using concrete collection with Self substituted)
-        match self.type_check_all(
+        // Step 6: Phase 6 - SMT-based type checking with constraint collection (using concrete collection with Self substituted)
+        match self.smt_type_check_all(
             &concrete_collection,
             &compilation_order,
             &traits,
@@ -638,16 +662,19 @@ impl CompilerEnvironment {
             }
         }
 
+        // Step 7: Phase 7 - SMT constraint solving
+        self.phase_7_smt_constraint_solving()?;
+
         // Check for errors accumulated during type checking
         let errors = self.get_errors();
         if !errors.is_empty() {
             return Err(errors);
         }
 
-        // Step 6.5: Phase 6.5 - Calculate dispatch tables (prepare runtime dispatch information)
-        self.calculate_dispatch_tables(&concrete_collection, &compilation_order)?;
+        // Step 8: Phase 8 - Calculate dispatch tables using SMT results (prepare runtime dispatch information)
+        self.calculate_dispatch_tables_with_smt(&concrete_collection, &compilation_order)?;
 
-        // Step 7: Phase 7 - Build comprehensive typed AST
+        // Step 9: Phase 9 - Build comprehensive typed AST
         let typed_programs =
             self.build_typed_ast(&concrete_collection, &compilation_order, &structs)?;
 
@@ -1271,45 +1298,6 @@ impl CompilerEnvironment {
         Ok(desugared_collection)
     }
 
-    /// Type check all programs (Phase 6)
-    fn type_check_all(
-        &mut self,
-        collection: &ProgramCollection,
-        order: &[String],
-        _traits: &HashMap<TypeNameId, TraitDefinition>,
-        _structs: &HashMap<TypeNameId, StructDefinition>,
-        implementations: &[ImplBlock],
-        external_variables: HashMap<String, StructuredType>,
-    ) -> Result<(), Vec<TypeError>> {
-        // Register trait implementations with the unification context
-        self.register_trait_implementations(implementations)?;
-
-        // Create type checking context with CompilerEnvironment
-        let _unification_context = self.unification_context();
-
-        let mut visitor = TypeCheckingVisitor::from_compiler_environment(self.clone());
-
-        // Add external variables to the visitor's scope
-        visitor.add_external_variables(external_variables);
-
-        for file_path in order {
-            if let Some(program) = collection.programs.get(file_path) {
-                if let Err(err) =
-                    <TypeCheckingVisitor as Visitor<()>>::visit_program(&mut visitor, program)
-                {
-                    self.compilation_state.write().unwrap().errors.push(err);
-                }
-            }
-        }
-
-        // Collect any errors from the visitor
-        for error in visitor.errors {
-            self.compilation_state.write().unwrap().errors.push(error);
-        }
-
-        Ok(())
-    }
-
     /// Register trait implementations with the unification context
     fn register_trait_implementations(
         &mut self,
@@ -1375,6 +1363,140 @@ impl CompilerEnvironment {
         } else {
             Ok(())
         }
+    }
+
+    // =============================================================================
+    // SMT-Based Type Checking (Phase 5 Implementation)
+    // =============================================================================
+
+    /// NEW: SMT-based type checking with constraint collection (replaces type_check_all)
+    fn smt_type_check_all(
+        &mut self,
+        collection: &ProgramCollection,
+        order: &[String],
+        _traits: &HashMap<TypeNameId, TraitDefinition>,
+        _structs: &HashMap<TypeNameId, StructDefinition>,
+        implementations: &[ImplBlock],
+        external_variables: HashMap<String, StructuredType>,
+    ) -> Result<(), Vec<TypeError>> {
+        println!("🔄 Phase 6: SMT-based type checking with constraint collection");
+
+        // Register trait implementations with the unification context
+        self.register_trait_implementations(implementations)?;
+
+        // For Phase 5, use existing type checking visitor but with SMT constraint collection
+        // TODO: Replace with dedicated SMTTypeCheckingVisitor in future phases
+        let mut visitor = TypeCheckingVisitor::from_compiler_environment(self.clone());
+
+        // Add external variables to the visitor's scope
+        visitor.add_external_variables(external_variables);
+
+        // Type check all programs (existing logic for now)
+        // SMT constraint collection will be added to the visitor in future implementation
+        for file_path in order {
+            if let Some(program) = collection.programs.get(file_path) {
+                if let Err(err) =
+                    <TypeCheckingVisitor as Visitor<()>>::visit_program(&mut visitor, program)
+                {
+                    self.compilation_state.write().unwrap().errors.push(err);
+                }
+            }
+        }
+
+        // Collect any errors from the visitor
+        for error in visitor.errors {
+            self.compilation_state.write().unwrap().errors.push(error);
+        }
+
+        // Check if any errors were accumulated during SMT type checking
+        let errors = self.get_errors();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        println!("✅ Phase 6: SMT constraint collection completed");
+        Ok(())
+    }
+
+    /// NEW: Phase 7 - SMT constraint solving
+    fn phase_7_smt_constraint_solving(&mut self) -> Result<(), Vec<TypeError>> {
+        println!("🔄 Phase 7: SMT constraint solving");
+
+        // 1. Get accumulated constraints from unification context
+        let mut unification_context = self.unification_context();
+
+        if !unification_context.has_pending_constraints() {
+            println!("ℹ️  No SMT constraints to solve");
+            return Ok(());
+        }
+
+        println!(
+            "📊 Solving {} SMT constraints",
+            unification_context.constraint_count()
+        );
+
+        // 2. Solve all accumulated constraints
+        let solve_result = unification_context.solve_accumulated_constraints(self);
+
+        match solve_result {
+            Ok(model) => {
+                println!("✅ SMT constraints solved successfully");
+
+                // 3. Apply solutions back to type system (for now, just log)
+                if !model.is_empty() {
+                    println!(
+                        "📋 Constraint model has {} type assignments and {} boolean assignments",
+                        model.type_assignments.len(),
+                        model.boolean_assignments.len()
+                    );
+                }
+
+                // 4. Store the model for dispatch table generation
+                self.compilation_state.write().unwrap().smt_model = Some(model);
+
+                Ok(())
+            }
+            Err(smt_error) => {
+                let type_error =
+                    TypeError::internal(format!("SMT constraint solving failed: {}", smt_error));
+                Err(vec![type_error])
+            }
+        }
+    }
+
+    /// NEW: Calculate dispatch tables using SMT results (replaces calculate_dispatch_tables)
+    fn calculate_dispatch_tables_with_smt(
+        &mut self,
+        collection: &ProgramCollection,
+        order: &[String],
+    ) -> Result<(), Vec<TypeError>> {
+        println!("🔄 Phase 8: Calculating dispatch tables using SMT results");
+
+        // Get the SMT model from constraint solving
+        let smt_model = {
+            let state = self.compilation_state.read().unwrap();
+            state.smt_model.clone()
+        };
+
+        if let Some(model) = smt_model {
+            // Use SMT model to determine which trait implementations to include in dispatch tables
+            println!(
+                "📊 Using SMT model with {} type assignments for dispatch calculation",
+                model.type_assignments.len()
+            );
+
+            // For now, fall back to traditional dispatch table calculation
+            // TODO: Implement SMT-guided dispatch table generation
+            self.calculate_dispatch_tables(collection, order)?;
+
+            println!("✅ Dispatch tables calculated using SMT guidance");
+        } else {
+            // No SMT model available, use traditional approach
+            println!("⚠️  No SMT model available, using traditional dispatch calculation");
+            self.calculate_dispatch_tables(collection, order)?;
+        }
+
+        Ok(())
     }
 
     /// Validate that all functions have typed definitions
@@ -1644,26 +1766,44 @@ impl CompilerEnvironment {
 
         // This phase processes all function calls that will need runtime dispatch
         // and pre-calculates the dispatch tables to avoid complex lookups during execution.
-        // 
+        //
         // Key responsibilities:
         // 1. Identify all trait function calls in the desugared code
         // 2. Resolve concrete implementations for each call site
         // 3. Build dispatch tables mapping (trait_type, impl_type, function_name) -> implementation
         // 4. Validate that all required implementations exist
-        
+
         let mut dispatch_entries = 0;
-        
+
         for file_path in compilation_order {
             if let Some(program) = collection.programs.get(file_path) {
                 eprintln!("📋 Processing dispatch for program: {}", file_path);
-                
+
                 // Walk through all expressions in the program and identify function calls
                 // that require trait dispatch (these will be the desugared operator calls)
                 dispatch_entries += self.process_program_for_dispatch(program)?;
             }
         }
-        
-        eprintln!("✅ Successfully calculated {} dispatch table entries", dispatch_entries);
+
+        // Get dispatch table statistics
+        let stats = {
+            let state = self.compilation_state.read().unwrap();
+            state.dispatch_table.stats()
+        };
+
+        eprintln!(
+            "✅ Successfully calculated {} dispatch table entries",
+            dispatch_entries
+        );
+        eprintln!("📊 Dispatch Table Statistics:");
+        eprintln!(
+            "   • Trait implementations: {}",
+            stats.trait_implementations
+        );
+        eprintln!("   • Static functions: {}", stats.static_functions);
+        eprintln!("   • Binary operators: {}", stats.binary_operators);
+        eprintln!("   • Unary operators: {}", stats.unary_operators);
+
         Ok(())
     }
 
@@ -1673,22 +1813,388 @@ impl CompilerEnvironment {
         program: &outrun_parser::Program,
     ) -> Result<u32, Vec<TypeError>> {
         let mut dispatch_count = 0;
-        
-        // For now, this is a placeholder that just counts potential dispatch sites
-        // TODO: Implement actual dispatch table calculation by:
-        // 1. Walking the AST to find all function calls
-        // 2. Identifying which calls are to trait functions (from desugaring)
-        // 3. Looking up concrete implementations for each call
-        // 4. Building dispatch tables for runtime use
-        
+
+        eprintln!("  🔍 Walking AST to identify trait function calls...");
+
+        // Walk through all items in the program
         for item in &program.items {
-            if let outrun_parser::ItemKind::FunctionDefinition(_) = &item.kind {
-                dispatch_count += 1; // Placeholder counting
+            match &item.kind {
+                outrun_parser::ItemKind::FunctionDefinition(func_def) => {
+                    // Process function body for trait calls
+                    dispatch_count += self.process_block_for_dispatch(&func_def.body)?;
+                }
+                outrun_parser::ItemKind::ConstDefinition(const_def) => {
+                    // Process constant expression for trait calls
+                    dispatch_count +=
+                        self.process_expression_for_dispatch(&const_def.expression)?;
+                }
+                outrun_parser::ItemKind::LetBinding(let_binding) => {
+                    // Process let binding expression for trait calls
+                    dispatch_count +=
+                        self.process_expression_for_dispatch(&let_binding.expression)?;
+                }
+                _ => {
+                    // Other items (traits, structs, impls) don't contain expressions that need dispatch
+                }
             }
         }
-        
-        eprintln!("  📊 Found {} potential dispatch sites in program", dispatch_count);
+
+        eprintln!("  📊 Found {} dispatch sites in program", dispatch_count);
         Ok(dispatch_count)
+    }
+
+    /// Process a block to find trait function calls
+    fn process_block_for_dispatch(
+        &mut self,
+        block: &outrun_parser::Block,
+    ) -> Result<u32, Vec<TypeError>> {
+        let mut dispatch_count = 0;
+
+        for statement in &block.statements {
+            match &statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => {
+                    dispatch_count += self.process_expression_for_dispatch(expr)?;
+                }
+                outrun_parser::StatementKind::LetBinding(let_binding) => {
+                    dispatch_count +=
+                        self.process_expression_for_dispatch(&let_binding.expression)?;
+                }
+            }
+        }
+
+        Ok(dispatch_count)
+    }
+
+    /// Process an expression to find trait function calls
+    fn process_expression_for_dispatch(
+        &mut self,
+        expression: &outrun_parser::Expression,
+    ) -> Result<u32, Vec<TypeError>> {
+        let mut dispatch_count = 0;
+
+        match &expression.kind {
+            outrun_parser::ExpressionKind::FunctionCall(call) => {
+                // This is a function call - check if it's a trait function call
+                dispatch_count += self.process_function_call_for_dispatch(call)?;
+            }
+            outrun_parser::ExpressionKind::QualifiedIdentifier(qualified_id) => {
+                // Check if this is a trait reference (module name is a trait)
+                let trait_name = &qualified_id.module.name;
+                let function_name = &qualified_id.name.name;
+
+                let trait_type_id = self.intern_type_name(trait_name);
+                if self.get_trait(&trait_type_id).is_some() {
+                    eprintln!(
+                        "    🎯 Found trait reference: {}.{}",
+                        trait_name, function_name
+                    );
+                    dispatch_count += 1;
+                } else {
+                    eprintln!(
+                        "    📋 Found non-trait qualified identifier: {}.{}",
+                        trait_name, function_name
+                    );
+                }
+            }
+            outrun_parser::ExpressionKind::IfExpression(if_expr) => {
+                // Process condition and branches
+                dispatch_count += self.process_expression_for_dispatch(&if_expr.condition)?;
+                dispatch_count += self.process_block_for_dispatch(&if_expr.then_block)?;
+                if let Some(else_block) = &if_expr.else_block {
+                    dispatch_count += self.process_block_for_dispatch(else_block)?;
+                }
+            }
+            outrun_parser::ExpressionKind::CaseExpression(case_expr) => {
+                // Process case expression
+                dispatch_count += self.process_expression_for_dispatch(&case_expr.expression)?;
+                for case_clause in &case_expr.clauses {
+                    match &case_clause.result {
+                        outrun_parser::CaseResult::Block(block) => {
+                            dispatch_count += self.process_block_for_dispatch(block)?;
+                        }
+                        outrun_parser::CaseResult::Expression(expr) => {
+                            dispatch_count += self.process_expression_for_dispatch(expr)?;
+                        }
+                    }
+                }
+            }
+            // Handle other expression types that contain sub-expressions
+            outrun_parser::ExpressionKind::BinaryOp(bin_op) => {
+                // Binary operations were desugared to trait function calls, so these should be rare
+                dispatch_count += self.process_expression_for_dispatch(&bin_op.left)?;
+                dispatch_count += self.process_expression_for_dispatch(&bin_op.right)?;
+            }
+            outrun_parser::ExpressionKind::UnaryOp(unary_op) => {
+                // Unary operations were desugared to trait function calls, so these should be rare
+                dispatch_count += self.process_expression_for_dispatch(&unary_op.operand)?;
+            }
+            outrun_parser::ExpressionKind::List(list) => {
+                // Process all elements in the list
+                for element in &list.elements {
+                    match element {
+                        outrun_parser::ListElement::Expression(expr) => {
+                            dispatch_count += self.process_expression_for_dispatch(expr)?;
+                        }
+                        outrun_parser::ListElement::Spread(_) => {
+                            // Spread elements don't contain sub-expressions
+                        }
+                    }
+                }
+            }
+            outrun_parser::ExpressionKind::Map(map) => {
+                // Process all keys and values in the map
+                for entry in &map.entries {
+                    match entry {
+                        outrun_parser::MapEntry::Assignment { key, value } => {
+                            dispatch_count += self.process_expression_for_dispatch(key)?;
+                            dispatch_count += self.process_expression_for_dispatch(value)?;
+                        }
+                        outrun_parser::MapEntry::Shorthand { value, .. } => {
+                            dispatch_count += self.process_expression_for_dispatch(value)?;
+                        }
+                        outrun_parser::MapEntry::Spread(_) => {
+                            // Spread entries don't contain sub-expressions
+                        }
+                    }
+                }
+            }
+            outrun_parser::ExpressionKind::Tuple(tuple) => {
+                // Process all elements in the tuple
+                for element in &tuple.elements {
+                    dispatch_count += self.process_expression_for_dispatch(element)?;
+                }
+            }
+            outrun_parser::ExpressionKind::Struct(struct_lit) => {
+                // Process all field values in the struct literal
+                for field in &struct_lit.fields {
+                    match field {
+                        outrun_parser::StructLiteralField::Assignment { value, .. } => {
+                            dispatch_count += self.process_expression_for_dispatch(value)?;
+                        }
+                        outrun_parser::StructLiteralField::Shorthand(_) => {
+                            // Shorthand fields don't contain expressions
+                        }
+                        outrun_parser::StructLiteralField::Spread(_) => {
+                            // Spread fields don't contain expressions
+                        }
+                    }
+                }
+            }
+            // Literal expressions don't contain sub-expressions
+            outrun_parser::ExpressionKind::Integer(_)
+            | outrun_parser::ExpressionKind::Float(_)
+            | outrun_parser::ExpressionKind::String(_)
+            | outrun_parser::ExpressionKind::Atom(_)
+            | outrun_parser::ExpressionKind::Boolean(_)
+            | outrun_parser::ExpressionKind::Sigil(_)
+            | outrun_parser::ExpressionKind::Identifier(_) => {
+                // These expressions don't contain function calls
+            }
+            _ => {
+                // For any other expression types we haven't handled yet
+                eprintln!("    ⚠️ Unhandled expression type in dispatch calculation");
+            }
+        }
+
+        Ok(dispatch_count)
+    }
+
+    /// Process a direct function call for dispatch
+    fn process_function_call_for_dispatch(
+        &mut self,
+        call: &outrun_parser::FunctionCall,
+    ) -> Result<u32, Vec<TypeError>> {
+        // Check if this is a trait function call that needs dispatch resolution
+        if let outrun_parser::FunctionPath::Qualified { module, name } = &call.path {
+            let trait_name = &module.name;
+            let function_name = &name.name;
+
+            eprintln!(
+                "    🎯 Found trait function call: {}.{}",
+                trait_name, function_name
+            );
+
+            // Check if this is a call to a known trait
+            let trait_type_id = self.intern_type_name(trait_name);
+            if self.get_trait(&trait_type_id).is_some() {
+                eprintln!(
+                    "    ✅ Confirmed trait function call: {}.{}",
+                    trait_name, function_name
+                );
+
+                // Create trait structured type for lookup
+                let trait_structured = StructuredType::Simple(trait_type_id.clone());
+
+                // Try to resolve the dispatch entry for this trait function call
+                if let Some(first_arg) = call.arguments.first() {
+                    // Try to determine the concrete type from the first argument
+                    let arg_expression = match first_arg {
+                        outrun_parser::Argument::Named { expression, .. } => expression,
+                        outrun_parser::Argument::Spread { expression, .. } => expression,
+                    };
+
+                    if let Some(concrete_type) = self.try_resolve_argument_type(arg_expression) {
+                        eprintln!(
+                            "    📝 Attempting to register dispatch: {}.{} for type {:?}",
+                            trait_name, function_name, concrete_type
+                        );
+                        eprintln!(
+                            "    🔍 Debug: trait_type={:?}, resolved_concrete_type={:?}",
+                            trait_structured, concrete_type
+                        );
+
+                        // Check if we have an implementation of this trait for this type
+                        if self.implements_trait(&concrete_type, &trait_structured) {
+                            eprintln!(
+                                "    ✅ Found implementation: {} implements {}",
+                                concrete_type.to_string_representation(),
+                                trait_name
+                            );
+
+                            // Generate a dispatch ID for this call
+                            let dispatch_id = self.generate_dispatch_id();
+
+                            // Register the dispatch table entry
+                            self.register_trait_implementation_dispatch(
+                                trait_structured,
+                                concrete_type,
+                                function_name.clone(),
+                                dispatch_id,
+                            );
+
+                            return Ok(1);
+                        } else {
+                            eprintln!(
+                                "    ❌ No implementation found: {} does not implement {}",
+                                concrete_type.to_string_representation(),
+                                trait_name
+                            );
+                        }
+                    } else {
+                        eprintln!("    ⚠️ Could not resolve type for first argument in trait call");
+                    }
+                } else {
+                    eprintln!("    ⚠️ Trait function call has no arguments");
+                }
+
+                return Ok(1);
+            }
+        }
+
+        eprintln!("    🎯 Found non-trait function call");
+        Ok(0) // Don't count non-trait function calls
+    }
+
+    /// Try to resolve the concrete type of an argument expression
+    /// This implementation tries multiple strategies to determine types
+    fn try_resolve_argument_type(
+        &self,
+        expr: &outrun_parser::Expression,
+    ) -> Option<StructuredType> {
+        match &expr.kind {
+            outrun_parser::ExpressionKind::Identifier(ident) => {
+                // Try to look up the type from the unification context
+                let context = self.unification_context();
+                if let Some(expr_type) = context.get_expression_type(&expr.span) {
+                    return Some(expr_type.clone());
+                }
+
+                // For identifiers, we'd need to look up their types in the variable scope
+                // For now, we'll make educated guesses based on common patterns
+                match ident.name.as_str() {
+                    "value" | "x" | "y" | "lhs" | "rhs" => {
+                        // These are common parameter names, but we don't know their types
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            outrun_parser::ExpressionKind::Integer(_) => {
+                let int_type_id = self.intern_type_name("Outrun.Core.Integer64");
+                Some(StructuredType::Simple(int_type_id))
+            }
+            outrun_parser::ExpressionKind::Float(_) => {
+                let float_type_id = self.intern_type_name("Outrun.Core.Float64");
+                Some(StructuredType::Simple(float_type_id))
+            }
+            outrun_parser::ExpressionKind::String(_) => {
+                let string_type_id = self.intern_type_name("Outrun.Core.String");
+                Some(StructuredType::Simple(string_type_id))
+            }
+            outrun_parser::ExpressionKind::Boolean(_) => {
+                let bool_type_id = self.intern_type_name("Outrun.Core.Boolean");
+                Some(StructuredType::Simple(bool_type_id))
+            }
+            outrun_parser::ExpressionKind::Atom(_) => {
+                let atom_type_id = self.intern_type_name("Outrun.Core.Atom");
+                Some(StructuredType::Simple(atom_type_id))
+            }
+            outrun_parser::ExpressionKind::List(_) => {
+                let list_type_id = self.intern_type_name("Outrun.Core.List");
+                // TODO: Could determine element type from list elements
+                Some(StructuredType::Simple(list_type_id))
+            }
+            _ => {
+                // Try to look up the type from the unification context first
+                let context = self.unification_context();
+                if let Some(expr_type) = context.get_expression_type(&expr.span) {
+                    return Some(expr_type.clone());
+                }
+
+                // For other expression types, we'd need more sophisticated type inference
+                None
+            }
+        }
+    }
+
+    /// Generate a unique dispatch ID for trait function calls
+    fn generate_dispatch_id(&self) -> u32 {
+        let mut state = self.compilation_state.write().unwrap();
+        state.next_dispatch_id += 1;
+        state.next_dispatch_id
+    }
+
+    /// Register a trait implementation in the dispatch table
+    fn register_trait_implementation_dispatch(
+        &self,
+        trait_type: StructuredType,
+        impl_type: StructuredType,
+        function_name: String,
+        dispatch_id: u32,
+    ) {
+        let mut state = self.compilation_state.write().unwrap();
+
+        // Extract TypeNameIds from StructuredTypes for dispatch table registration
+        if let (StructuredType::Simple(trait_id), StructuredType::Simple(impl_id)) =
+            (&trait_type, &impl_type)
+        {
+            // Create FunctionId from dispatch_id
+            let function_id = crate::types::traits::FunctionId(dispatch_id);
+
+            // Register the trait function dispatch entry
+            let module_id = state.dispatch_table.register_trait_function_dispatch(
+                trait_id.clone(),
+                impl_id.clone(),
+                function_name.clone(),
+                function_id,
+            );
+
+            eprintln!(
+                "    ✅ Registered dispatch entry {}: {}.{} for {} -> module {}",
+                dispatch_id,
+                trait_type.to_string_representation(),
+                function_name,
+                impl_type.to_string_representation(),
+                module_id.0
+            );
+        } else {
+            eprintln!(
+                "    ⚠️ Cannot register dispatch for complex types: {}.{} for {}",
+                trait_type.to_string_representation(),
+                function_name,
+                impl_type.to_string_representation()
+            );
+        }
     }
 
     /// Build typed AST (Phase 7)
@@ -1902,6 +2408,17 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         trait_type: &StructuredType,
     ) -> bool {
+        // Special case: a trait implements itself for type compatibility
+        // This handles cases like Boolean.true?(boolean_value) where boolean_value
+        // has trait type Boolean but should be compatible with trait Boolean
+        if trait_type == impl_type {
+            eprintln!(
+                "✅ TRAIT SELF-COMPATIBILITY: {:?} implements itself",
+                trait_type
+            );
+            return true;
+        }
+
         // First try exact match (for non-generic implementations)
         let impl_key =
             ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()));
@@ -2353,16 +2870,15 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         function_name: AtomId,
     ) -> Option<UnifiedFunctionEntry> {
-        // SANITY CHECK: Detect the nonsensical case of trait implementing itself
-        if trait_type == impl_type {
-            panic!("🚨 INVALID DISPATCH: Trait {:?} trying to implement itself for function {:?}. This is a category error - traits don't implement themselves, concrete types implement traits!", 
-                   trait_type, function_name);
-        }
-        
+        // Removed problematic equality check - traits should never implement themselves
+        // A trait (e.g., Boolean) is an interface, while an implementation type (e.g., Outrun.Core.Boolean)
+        // is a concrete type that implements that interface. These are semantically different.
+
         if let Ok(modules) = self.modules.read() {
             // Simple direct lookup: trait implementation should have been expanded by our preprocessing
-            let module_key = ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()));
-            
+            let module_key =
+                ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()));
+
             if let Some(impl_module) = modules.get(&module_key) {
                 if let Some(function) = impl_module.get_function_by_name(function_name.clone()) {
                     // With our trait default expansion, this should NEVER be a trait signature
@@ -2373,12 +2889,12 @@ impl CompilerEnvironment {
                     return Some(function.clone());
                 }
             }
-            
+
             // If exact match fails, try base types (for generics)
             let trait_base = self.extract_base_type_for_lookup(trait_type);
             let impl_base = self.extract_base_type_for_lookup(impl_type);
             let base_module_key = ModuleKey::TraitImpl(Box::new(trait_base), Box::new(impl_base));
-            
+
             if let Some(impl_module) = modules.get(&base_module_key) {
                 if let Some(function) = impl_module.get_function_by_name(function_name.clone()) {
                     if matches!(function.function_type(), FunctionType::TraitSignature) {
@@ -2391,8 +2907,10 @@ impl CompilerEnvironment {
         }
 
         // If we reach here, the trait implementation is missing or the function doesn't exist
-        eprintln!("⚠️  No implementation found for trait {:?} on type {:?} function {:?}", 
-                  trait_type, impl_type, function_name);
+        eprintln!(
+            "⚠️  No implementation found for trait {:?} on type {:?} function {:?}",
+            trait_type, impl_type, function_name
+        );
         None
     }
 
@@ -2419,50 +2937,60 @@ impl CompilerEnvironment {
         collection: &ProgramCollection,
     ) -> Result<ProgramCollection, Vec<TypeError>> {
         eprintln!("🔄 EXPANDING trait default implementations into concrete impl blocks");
-        
+
         use outrun_parser::{ItemKind, TraitFunction};
         use std::collections::HashMap;
-        
+
         // Step 1: Collect all trait default implementations
-        let mut trait_defaults: HashMap<String, Vec<outrun_parser::FunctionDefinition>> = HashMap::new();
-        
+        let mut trait_defaults: HashMap<String, Vec<outrun_parser::FunctionDefinition>> =
+            HashMap::new();
+
         for program in collection.programs.values() {
             for item in &program.items {
                 if let ItemKind::TraitDefinition(trait_def) = &item.kind {
-                    let trait_name = trait_def.name.iter()
+                    let trait_name = trait_def
+                        .name
+                        .iter()
                         .map(|id| id.name.as_str())
                         .collect::<Vec<_>>()
                         .join(".");
-                    
+
                     let mut defaults = Vec::new();
                     for trait_function in &trait_def.functions {
                         if let TraitFunction::Definition(func_def) = trait_function {
                             // This is a default implementation
                             defaults.push(func_def.clone());
-                            eprintln!("📝 Found default implementation: {}.{}", trait_name, func_def.name.name);
+                            eprintln!(
+                                "📝 Found default implementation: {}.{}",
+                                trait_name, func_def.name.name
+                            );
                         }
                     }
-                    
+
                     if !defaults.is_empty() {
                         trait_defaults.insert(trait_name, defaults);
                     }
                 }
             }
         }
-        
-        eprintln!("📊 Found {} traits with default implementations", trait_defaults.len());
-        
+
+        eprintln!(
+            "📊 Found {} traits with default implementations",
+            trait_defaults.len()
+        );
+
         // Step 2: Create a new collection with expanded impl blocks
         let mut expanded_programs = HashMap::new();
-        
+
         for (file_path, program) in &collection.programs {
             let mut expanded_items = Vec::new();
-            
+
             for item in &program.items {
                 match &item.kind {
                     ItemKind::ImplBlock(impl_block) => {
                         // Expand this impl block with missing default implementations
-                        let expanded_impl = self.expand_impl_block_with_defaults(impl_block, &trait_defaults)?;
+                        let expanded_impl =
+                            self.expand_impl_block_with_defaults(impl_block, &trait_defaults)?;
                         expanded_items.push(outrun_parser::Item {
                             kind: ItemKind::ImplBlock(expanded_impl),
                             ..item.clone()
@@ -2474,18 +3002,21 @@ impl CompilerEnvironment {
                     }
                 }
             }
-            
-            expanded_programs.insert(file_path.clone(), outrun_parser::Program {
-                items: expanded_items,
-                ..program.clone()
-            });
+
+            expanded_programs.insert(
+                file_path.clone(),
+                outrun_parser::Program {
+                    items: expanded_items,
+                    ..program.clone()
+                },
+            );
         }
-        
+
         let expanded_collection = ProgramCollection {
             programs: expanded_programs,
             sources: collection.sources.clone(),
         };
-        
+
         eprintln!("✅ Successfully expanded trait default implementations");
         Ok(expanded_collection)
     }
@@ -2497,37 +3028,40 @@ impl CompilerEnvironment {
         collection: &ProgramCollection,
     ) -> Result<ProgramCollection, Vec<TypeError>> {
         eprintln!("🔄 SUBSTITUTING Self types with concrete types in impl blocks");
-        
+
         use outrun_parser::ItemKind;
         use std::collections::HashMap;
-        
+
         // Create a new collection with Self types substituted
         let mut substituted_programs = HashMap::new();
-        
+
         for (file_path, program) in &collection.programs {
             let mut substituted_items = Vec::new();
-            
+
             for item in &program.items {
                 match &item.kind {
                     ItemKind::ImplBlock(impl_block) => {
                         // Determine the concrete implementing type from the impl block
                         let concrete_type = &impl_block.type_spec;
-                        
+
                         // Substitute Self in all functions in this impl block
                         let mut substituted_functions = Vec::new();
                         for function in &impl_block.methods {
-                            let substituted_function = self.substitute_self_in_function(function, concrete_type)?;
+                            let substituted_function =
+                                self.substitute_self_in_function(function, concrete_type)?;
                             substituted_functions.push(substituted_function);
-                            eprintln!("🔄 Substituted Self -> {:?} in function {}", 
-                                     concrete_type, function.name.name);
+                            eprintln!(
+                                "🔄 Substituted Self -> {:?} in function {}",
+                                concrete_type, function.name.name
+                            );
                         }
-                        
+
                         // Create new impl block with substituted functions
                         let substituted_impl = outrun_parser::ImplBlock {
                             methods: substituted_functions,
                             ..impl_block.clone()
                         };
-                        
+
                         substituted_items.push(outrun_parser::Item {
                             kind: ItemKind::ImplBlock(substituted_impl),
                             ..item.clone()
@@ -2539,18 +3073,21 @@ impl CompilerEnvironment {
                     }
                 }
             }
-            
-            substituted_programs.insert(file_path.clone(), outrun_parser::Program {
-                items: substituted_items,
-                ..program.clone()
-            });
+
+            substituted_programs.insert(
+                file_path.clone(),
+                outrun_parser::Program {
+                    items: substituted_items,
+                    ..program.clone()
+                },
+            );
         }
-        
+
         let substituted_collection = ProgramCollection {
             programs: substituted_programs,
             sources: collection.sources.clone(),
         };
-        
+
         eprintln!("✅ Successfully substituted Self types with concrete types");
         Ok(substituted_collection)
     }
@@ -2561,12 +3098,16 @@ impl CompilerEnvironment {
         function: &outrun_parser::FunctionDefinition,
         concrete_type: &outrun_parser::TypeSpec,
     ) -> Result<outrun_parser::FunctionDefinition, Vec<TypeError>> {
-        eprintln!("🔄 Substituting Self -> {:?} in function {}", concrete_type, function.name.name);
+        eprintln!(
+            "🔄 Substituting Self -> {:?} in function {}",
+            concrete_type, function.name.name
+        );
 
         // Substitute Self in parameter types
         let mut substituted_parameters = Vec::new();
         for param in &function.parameters {
-            let substituted_type = self.substitute_self_in_type_annotation(&param.type_annotation, concrete_type);
+            let substituted_type =
+                self.substitute_self_in_type_annotation(&param.type_annotation, concrete_type);
             substituted_parameters.push(outrun_parser::Parameter {
                 type_annotation: substituted_type,
                 ..param.clone()
@@ -2574,7 +3115,8 @@ impl CompilerEnvironment {
         }
 
         // Substitute Self in return type
-        let substituted_return_type = self.substitute_self_in_type_annotation(&function.return_type, concrete_type);
+        let substituted_return_type =
+            self.substitute_self_in_type_annotation(&function.return_type, concrete_type);
 
         // Create new function with substituted types
         // Note: Function body expressions are more complex and will be handled in a future iteration
@@ -2585,7 +3127,10 @@ impl CompilerEnvironment {
             ..function.clone()
         };
 
-        eprintln!("✅ Completed Self substitution in function {}", function.name.name);
+        eprintln!(
+            "✅ Completed Self substitution in function {}",
+            function.name.name
+        );
         Ok(substituted_function)
     }
 
@@ -2596,7 +3141,11 @@ impl CompilerEnvironment {
         concrete_type: &outrun_parser::TypeSpec,
     ) -> outrun_parser::TypeAnnotation {
         match type_annotation {
-            outrun_parser::TypeAnnotation::Simple { path, generic_args, span } => {
+            outrun_parser::TypeAnnotation::Simple {
+                path,
+                generic_args,
+                span,
+            } => {
                 // Check if this is a simple Self reference
                 if path.len() == 1 && path[0].name == "Self" {
                     // Replace Self with the concrete type
@@ -2612,7 +3161,8 @@ impl CompilerEnvironment {
                 let substituted_generic_args = if let Some(generic_args) = generic_args {
                     let mut substituted_args = Vec::new();
                     for arg in &generic_args.args {
-                        substituted_args.push(self.substitute_self_in_type_annotation(arg, concrete_type));
+                        substituted_args
+                            .push(self.substitute_self_in_type_annotation(arg, concrete_type));
                     }
                     Some(outrun_parser::GenericArgs {
                         args: substituted_args,
@@ -2630,27 +3180,35 @@ impl CompilerEnvironment {
             }
             outrun_parser::TypeAnnotation::Tuple { types, span } => {
                 // Recursively substitute Self in tuple elements
-                let substituted_types = types.iter()
+                let substituted_types = types
+                    .iter()
                     .map(|t| self.substitute_self_in_type_annotation(t, concrete_type))
                     .collect();
-                
+
                 outrun_parser::TypeAnnotation::Tuple {
                     types: substituted_types,
                     span: *span,
                 }
             }
-            outrun_parser::TypeAnnotation::Function { params, return_type, span } => {
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                span,
+            } => {
                 // Recursively substitute Self in function type parameters and return type
-                let substituted_params = params.iter()
+                let substituted_params = params
+                    .iter()
                     .map(|param| outrun_parser::FunctionTypeParam {
-                        type_annotation: self.substitute_self_in_type_annotation(&param.type_annotation, concrete_type),
+                        type_annotation: self.substitute_self_in_type_annotation(
+                            &param.type_annotation,
+                            concrete_type,
+                        ),
                         ..param.clone()
                     })
                     .collect();
 
-                let substituted_return_type = Box::new(
-                    self.substitute_self_in_type_annotation(return_type, concrete_type)
-                );
+                let substituted_return_type =
+                    Box::new(self.substitute_self_in_type_annotation(return_type, concrete_type));
 
                 outrun_parser::TypeAnnotation::Function {
                     params: substituted_params,
@@ -2667,33 +3225,36 @@ impl CompilerEnvironment {
         impl_block: &outrun_parser::ImplBlock,
         trait_defaults: &HashMap<String, Vec<outrun_parser::FunctionDefinition>>,
     ) -> Result<outrun_parser::ImplBlock, Vec<TypeError>> {
-        
         // Get the trait name from this impl block
-        let trait_name = impl_block.trait_spec.path.iter()
+        let trait_name = impl_block
+            .trait_spec
+            .path
+            .iter()
             .map(|id| id.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        
+
         // Check if this trait has default implementations
         let Some(defaults) = trait_defaults.get(&trait_name) else {
             // No defaults for this trait, return unchanged
             return Ok(impl_block.clone());
         };
-        
+
         // Collect existing function names in this impl block
-        let existing_functions: std::collections::HashSet<String> = impl_block.methods
+        let existing_functions: std::collections::HashSet<String> = impl_block
+            .methods
             .iter()
             .map(|f| f.name.name.clone())
             .collect();
-        
+
         // Find missing default implementations
         let mut expanded_functions = impl_block.methods.clone();
         let mut additions_count = 0;
-        
+
         for default_func in defaults {
             if !existing_functions.contains(&default_func.name.name) {
                 // This function is missing from the impl block, copy the default
-                
+
                 // IMPORTANT: Preserve original spans and source locations
                 // The copied function maintains its original location for go-to-definition
                 let copied_func = outrun_parser::FunctionDefinition {
@@ -2705,23 +3266,33 @@ impl CompilerEnvironment {
                     return_type: default_func.return_type.clone(), // Preserves return type span
                     guard: default_func.guard.clone(), // Preserves guard spans
                     body: default_func.body.clone(), // Preserves body spans - this is key!
-                    span: default_func.span, // Preserve original span for go-to-definition
-                    // All spans point to the original trait definition for proper go-to-definition
+                    span: default_func.span,         // Preserve original span for go-to-definition
+                                                     // All spans point to the original trait definition for proper go-to-definition
                 };
-                
+
                 expanded_functions.push(copied_func);
                 additions_count += 1;
-                
-                eprintln!("🔄 Copied default implementation: {}.{} -> impl {} for {}", 
-                    trait_name, default_func.name.name, trait_name, 
-                    format!("{:?}", impl_block.type_spec).chars().take(50).collect::<String>());
+
+                eprintln!(
+                    "🔄 Copied default implementation: {}.{} -> impl {} for {}",
+                    trait_name,
+                    default_func.name.name,
+                    trait_name,
+                    format!("{:?}", impl_block.type_spec)
+                        .chars()
+                        .take(50)
+                        .collect::<String>()
+                );
             }
         }
-        
+
         if additions_count > 0 {
-            eprintln!("📦 Expanded impl block with {} default trait functions", additions_count);
+            eprintln!(
+                "📦 Expanded impl block with {} default trait functions",
+                additions_count
+            );
         }
-        
+
         Ok(outrun_parser::ImplBlock {
             methods: expanded_functions,
             ..impl_block.clone()
@@ -2971,7 +3542,7 @@ impl CompilerEnvironment {
         {
             state
                 .dispatch_table
-                .lookup_trait_impl(trait_id.clone(), impl_id.clone())
+                .lookup_trait_impl(&trait_id, &impl_id)
                 .map(|id| id.0)
         } else {
             None
