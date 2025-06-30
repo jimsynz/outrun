@@ -20,8 +20,8 @@ pub mod value;
 #[cfg(test)]
 mod tests;
 
-pub use call_stack::{CallFrame as CallStackFrame, CallStack, CallStackError, StackTraceEntry};
-pub use context::{CallFrame, ContextError, InterpreterContext, ScopeType};
+pub use call_stack::{CallFrame, CallStack, CallStackError, StackTraceEntry};
+pub use context::{ContextError, InterpreterContext, ScopeType};
 pub use evaluator::{EvaluationError, ExpressionEvaluator};
 pub use function_call_context::{FunctionCallContext, IntrinsicExecutionContext};
 pub use function_dispatch::{DispatchError, FunctionDispatcher};

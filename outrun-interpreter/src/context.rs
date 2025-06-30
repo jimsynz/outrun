@@ -3,6 +3,7 @@
 //! This module provides the core runtime context that manages interpreter state,
 //! integrates with the typechecker, and handles variable bindings and function calls.
 
+use crate::call_stack::{CallStack, CallStackError};
 use crate::types::TypeIntegration;
 use crate::value::Value;
 use outrun_parser::Span;
@@ -22,11 +23,11 @@ pub enum ContextError {
     #[error("Variable '{name}' already defined in current scope")]
     VariableAlreadyDefined { name: String },
 
-    #[error("Function call stack overflow (max depth: {max_depth})")]
-    StackOverflow { max_depth: usize },
-
-    #[error("Cannot pop from empty call stack")]
-    EmptyCallStack,
+    #[error("Call stack error: {source}")]
+    CallStack {
+        #[from]
+        source: CallStackError,
+    },
 
     #[error("Type integration error: {source}")]
     TypeIntegration {
@@ -47,16 +48,13 @@ pub struct InterpreterContext {
     variable_environment: VariableEnvironment,
 
     /// Call stack for function calls and error reporting
-    call_stack: Vec<CallFrame>,
+    call_stack: CallStack,
 
     /// Global constants and module-level bindings
     global_environment: HashMap<String, Value>,
 
     /// Type integration utilities for Value ↔ StructuredType conversion
     type_integration: TypeIntegration,
-
-    /// Maximum call stack depth to prevent infinite recursion
-    max_stack_depth: usize,
 }
 
 impl InterpreterContext {
@@ -76,10 +74,9 @@ impl InterpreterContext {
         Self {
             type_context,
             variable_environment: VariableEnvironment::new(),
-            call_stack: Vec::new(),
+            call_stack: CallStack::with_max_depth(max_stack_depth.unwrap_or(1000)),
             global_environment: HashMap::new(),
             type_integration,
-            max_stack_depth: max_stack_depth.unwrap_or(1000),
         }
     }
 
@@ -124,29 +121,33 @@ impl InterpreterContext {
     // Call Stack Management
 
     /// Push a new call frame onto the stack
-    pub fn push_call_frame(&mut self, frame: CallFrame) -> Result<(), ContextError> {
-        if self.call_stack.len() >= self.max_stack_depth {
-            return Err(ContextError::StackOverflow {
-                max_depth: self.max_stack_depth,
-            });
-        }
-        self.call_stack.push(frame);
-        Ok(())
+    pub fn push_call_frame(&mut self, frame: crate::call_stack::CallFrame) -> Result<(), ContextError> {
+        Ok(self.call_stack.push_frame(frame)?)
     }
 
     /// Pop the current call frame from the stack
-    pub fn pop_call_frame(&mut self) -> Result<CallFrame, ContextError> {
-        self.call_stack.pop().ok_or(ContextError::EmptyCallStack)
+    pub fn pop_call_frame(&mut self, span: Span) -> Result<crate::call_stack::CallFrame, ContextError> {
+        Ok(self.call_stack.pop_frame(span)?)
     }
 
     /// Get the current call stack depth
     pub fn call_stack_depth(&self) -> usize {
-        self.call_stack.len()
+        self.call_stack.depth()
     }
 
     /// Get a reference to the current call frame (top of stack)
-    pub fn current_call_frame(&self) -> Option<&CallFrame> {
-        self.call_stack.last()
+    pub fn current_call_frame(&self) -> Option<&crate::call_stack::CallFrame> {
+        self.call_stack.current_frame()
+    }
+
+    /// Get the current Self type context from the call stack
+    pub fn current_self_type(&self) -> Option<&outrun_typechecker::unification::StructuredType> {
+        self.call_stack.current_self_type()
+    }
+
+    /// Clear the call stack (for test isolation and REPL reset)
+    pub fn clear_call_stack(&mut self) {
+        self.call_stack.clear();
     }
 
     // Type System Integration
@@ -190,7 +191,7 @@ impl InterpreterContext {
     pub fn debug_state(&self) -> String {
         format!(
             "InterpreterContext {{\n  call_stack_depth: {},\n  variable_scopes: {},\n  global_bindings: {},\n}}",
-            self.call_stack.len(),
+            self.call_stack.depth(),
             self.variable_environment.scope_count(),
             self.global_environment.len()
         )
@@ -319,50 +320,6 @@ pub enum ScopeType {
     Repl,
 }
 
-/// A call frame representing a function call on the stack
-#[derive(Debug, Clone)]
-pub struct CallFrame {
-    /// Name of the function being called
-    pub function_name: String,
-    /// Call site location for error reporting
-    pub call_span: Span,
-    /// Arguments passed to the function
-    pub arguments: HashMap<String, Value>,
-    /// Return type expected from this function call
-    pub return_type: Option<StructuredType>,
-}
-
-impl CallFrame {
-    /// Create a new call frame
-    pub fn new(
-        function_name: String,
-        call_span: Span,
-        arguments: HashMap<String, Value>,
-        return_type: Option<StructuredType>,
-    ) -> Self {
-        Self {
-            function_name,
-            call_span,
-            arguments,
-            return_type,
-        }
-    }
-
-    /// Get an argument value by name
-    pub fn get_argument(&self, name: &str) -> Option<&Value> {
-        self.arguments.get(name)
-    }
-
-    /// Get debug information for this call frame
-    pub fn debug_info(&self) -> String {
-        format!(
-            "{}({} args) at {:?}",
-            self.function_name,
-            self.arguments.len(),
-            self.call_span
-        )
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -428,30 +385,37 @@ mod tests {
 
     #[test]
     fn test_call_stack_management() {
+        use outrun_typechecker::checker::TypedFunctionPath;
+        
         let mut ctx = InterpreterContext::new_repl();
 
         assert_eq!(ctx.call_stack_depth(), 0);
         assert!(ctx.current_call_frame().is_none());
 
         // Push a call frame
-        let frame = CallFrame::new(
-            "test_function".to_string(),
-            Span::new(0, 0),
+        let function_path = TypedFunctionPath::Simple {
+            name: "test_function".to_string(),
+        };
+        let frame = crate::call_stack::CallFrame::new(
+            function_path,
             HashMap::new(),
             None,
+            Span::new(0, 0),
+            None,
+            None,
         );
-        ctx.push_call_frame(frame.clone()).unwrap();
+        ctx.push_call_frame(frame).unwrap();
 
         assert_eq!(ctx.call_stack_depth(), 1);
         assert!(ctx.current_call_frame().is_some());
         assert_eq!(
-            ctx.current_call_frame().unwrap().function_name,
+            ctx.current_call_frame().unwrap().function_name(),
             "test_function"
         );
 
         // Pop the frame
-        let popped = ctx.pop_call_frame().unwrap();
-        assert_eq!(popped.function_name, "test_function");
+        let popped = ctx.pop_call_frame(Span::new(0, 0)).unwrap();
+        assert_eq!(popped.function_name(), "test_function");
         assert_eq!(ctx.call_stack_depth(), 0);
     }
 
@@ -526,13 +490,15 @@ mod tests {
 
         // Cannot pop empty call stack
         assert!(matches!(
-            ctx.pop_call_frame(),
-            Err(ContextError::EmptyCallStack)
+            ctx.pop_call_frame(Span::new(0, 0)),
+            Err(ContextError::CallStack { .. })
         ));
     }
 
     #[test]
     fn test_stack_overflow_protection() {
+        use outrun_typechecker::checker::TypedFunctionPath;
+        
         let compiler_env =
             outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
         let mut ctx = InterpreterContext::new(
@@ -542,17 +508,38 @@ mod tests {
         );
 
         // Push frames up to the limit
-        let frame1 = CallFrame::new("func1".to_string(), Span::new(0, 0), HashMap::new(), None);
-        let frame2 = CallFrame::new("func2".to_string(), Span::new(0, 0), HashMap::new(), None);
+        let frame1 = crate::call_stack::CallFrame::new(
+            TypedFunctionPath::Simple { name: "func1".to_string() },
+            HashMap::new(),
+            None,
+            Span::new(0, 0),
+            None,
+            None,
+        );
+        let frame2 = crate::call_stack::CallFrame::new(
+            TypedFunctionPath::Simple { name: "func2".to_string() },
+            HashMap::new(),
+            None,
+            Span::new(0, 0),
+            None,
+            None,
+        );
 
         ctx.push_call_frame(frame1).unwrap();
         ctx.push_call_frame(frame2).unwrap();
 
         // Next push should fail
-        let frame3 = CallFrame::new("func3".to_string(), Span::new(0, 0), HashMap::new(), None);
+        let frame3 = crate::call_stack::CallFrame::new(
+            TypedFunctionPath::Simple { name: "func3".to_string() },
+            HashMap::new(),
+            None,
+            Span::new(0, 0),
+            None,
+            None,
+        );
         assert!(matches!(
             ctx.push_call_frame(frame3),
-            Err(ContextError::StackOverflow { .. })
+            Err(ContextError::CallStack { .. })
         ));
     }
 }

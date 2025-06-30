@@ -55,6 +55,26 @@ impl FunctionExecutor {
         arguments: HashMap<String, Value>,
         span: Span,
     ) -> Result<Value, FunctionExecutionError> {
+        self.execute_typed_function_with_self_type(
+            context,
+            evaluator,
+            typed_function,
+            arguments,
+            span,
+            None,
+        )
+    }
+
+    /// Execute a typed function with an optional Self type context for trait default implementations
+    pub fn execute_typed_function_with_self_type(
+        &self,
+        context: &mut InterpreterContext,
+        evaluator: &mut ExpressionEvaluator,
+        typed_function: &TypedFunctionDefinition,
+        arguments: HashMap<String, Value>,
+        span: Span,
+        self_type: Option<&outrun_typechecker::unification::StructuredType>,
+    ) -> Result<Value, FunctionExecutionError> {
         // Check that the function body is not empty
         if typed_function.body.statements.is_empty() {
             // Check if this is a trait signature being incorrectly dispatched
@@ -70,6 +90,23 @@ impl FunctionExecutor {
             return Err(FunctionExecutionError::EmptyFunctionBody { span });
         }
 
+        // Create a call frame for the function execution
+        let function_path = outrun_typechecker::checker::TypedFunctionPath::Simple {
+            name: typed_function.name.clone(),
+        };
+        let call_frame = crate::call_stack::CallFrame::new(
+            function_path,
+            arguments.clone(),
+            None, // TODO: Add return type information
+            span,
+            Some(typed_function.span),
+            self_type.cloned(),
+        );
+        context.push_call_frame(call_frame).map_err(|e| FunctionExecutionError::Internal {
+            message: format!("Failed to push call frame: {e:?}"),
+            span,
+        })?;
+
         // Push a new function scope
         context.push_scope(crate::context::ScopeType::Function {
             name: typed_function.name.clone(),
@@ -78,16 +115,42 @@ impl FunctionExecutor {
         // Bind arguments to parameters
         self.bind_typed_parameters(context, &typed_function.parameters, arguments, span)?;
 
+        // Self type context is now managed through the call stack
+        // No need to set it in evaluator as it will be retrieved from context.current_self_type()
+
         // Execute the function body (typed AST version)
         let result = self.execute_typed_function_body(context, evaluator, &typed_function.body);
 
+        // Self type context is managed through call stack - no need to clear manually
+
+        // Always pop scope and call frame, even if function execution failed
+        // This ensures proper cleanup and prevents test isolation issues
+        
         // Pop the function scope
-        context
-            .pop_scope()
-            .map_err(|e| FunctionExecutionError::Internal {
-                message: format!("Failed to pop function scope: {e:?}"),
-                span,
-            })?;
+        if let Err(scope_err) = context.pop_scope() {
+            // If function execution succeeded but scope cleanup failed, return scope error
+            if result.is_ok() {
+                return Err(FunctionExecutionError::Internal {
+                    message: format!("Failed to pop function scope: {scope_err:?}"),
+                    span,
+                });
+            }
+            // If function execution already failed, log scope cleanup failure but return original error
+            eprintln!("Warning: Failed to pop function scope during error cleanup: {scope_err:?}");
+        }
+
+        // Pop the call frame
+        if let Err(frame_err) = context.pop_call_frame(span) {
+            // If function execution succeeded but frame cleanup failed, return frame error
+            if result.is_ok() {
+                return Err(FunctionExecutionError::Internal {
+                    message: format!("Failed to pop call frame: {frame_err:?}"),
+                    span,
+                });
+            }
+            // If function execution already failed, log frame cleanup failure but return original error
+            eprintln!("Warning: Failed to pop call frame during error cleanup: {frame_err:?}");
+        }
 
         result
     }

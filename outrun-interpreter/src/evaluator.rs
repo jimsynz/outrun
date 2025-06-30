@@ -112,6 +112,8 @@ impl ExpressionEvaluator {
             dispatch_context,
         }
     }
+
+
     /// Create a mock StructuredType for development
     /// TODO: Replace with proper type integration
     fn mock_structured_type() -> outrun_typechecker::unification::StructuredType {
@@ -244,6 +246,16 @@ impl ExpressionEvaluator {
             evaluated_args.insert(arg.name.clone(), arg_value);
         }
 
+        // Check if we need to override the dispatch strategy for trait default implementations
+        let effective_dispatch_strategy = self.resolve_dispatch_strategy_with_self_context(
+            context,
+            function_path,
+            dispatch_strategy,
+            expression.span,
+        )?;
+
+
+
         // Use the function dispatcher to handle the call
         // We need to work around the borrow checker issue by temporarily taking ownership
         let mut temp_dispatcher = std::mem::replace(
@@ -262,7 +274,7 @@ impl ExpressionEvaluator {
             self,
             function_path,
             evaluated_args,
-            dispatch_strategy,
+            &effective_dispatch_strategy,
             expression,
         );
 
@@ -270,6 +282,70 @@ impl ExpressionEvaluator {
         self.function_dispatcher = temp_dispatcher;
 
         Ok(result?)
+    }
+
+    /// Resolve dispatch strategy with Self type context for trait default implementations
+    fn resolve_dispatch_strategy_with_self_context(
+        &self,
+        context: &InterpreterContext,
+        function_path: &TypedFunctionPath,
+        original_dispatch_strategy: &DispatchMethod,
+        _span: Span,
+    ) -> Result<DispatchMethod, EvaluationError> {
+        // If we have a self type context from the call stack, check if we need to override the dispatch strategy
+        if let Some(self_type) = context.current_self_type() {
+            match original_dispatch_strategy {
+                // Handle static function calls that should be trait calls in default implementations
+                DispatchMethod::Static { function_id } => {
+                    // Check if this static function ID represents a trait implementation
+                    // Format: "impl::TraitName::for::TypeName::function_name"
+                    if function_id.starts_with("impl::") {
+                        let parts: Vec<&str> = function_id.split("::").collect();
+                        if parts.len() >= 5 && parts[0] == "impl" && parts[2] == "for" {
+                            let trait_name = parts[1];
+                            let function_name = parts[parts.len() - 1];
+                            
+                            // Only override if this is likely a Self-related trait function
+                            // Don't override operators like LogicalNot that operate on result types
+                            if trait_name != "LogicalNot" && trait_name != "UnaryMinus" && trait_name != "UnaryPlus" {
+                                // Override with trait dispatch using the current self type
+                                return Ok(DispatchMethod::Trait {
+                                    trait_name: trait_name.to_string(),
+                                    function_name: function_name.to_string(),
+                                    impl_type: Box::new(self_type.clone()),
+                                });
+                            }
+                        }
+                    }
+                }
+                // Handle qualified function calls that might be trait calls
+                _ => {
+                    if let TypedFunctionPath::Qualified { module, name } = function_path {
+                        // Only override trait calls that are likely to involve Self
+                        // Don't override unary operators that operate on results
+                        if module != "LogicalNot" && module != "UnaryMinus" && module != "UnaryPlus" {
+                            // Check if this looks like a trait function call (like "Equality.equal?")
+                            if let Some(compiler_env) = self.dispatch_context.compiler_environment.as_ref() {
+                                let trait_type_id = compiler_env.intern_type_name(module);
+                                
+                                // Check if this module name corresponds to a trait
+                                if compiler_env.get_trait(&trait_type_id).is_some() {
+                                    // This is a trait function call - use the self type as impl_type
+                                    return Ok(DispatchMethod::Trait {
+                                        trait_name: module.clone(),
+                                        function_name: name.clone(),
+                                        impl_type: Box::new(self_type.clone()),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Otherwise, use the original dispatch strategy
+        Ok(original_dispatch_strategy.clone())
     }
 
     /// Evaluate field access on a value

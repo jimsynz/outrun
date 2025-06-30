@@ -248,13 +248,34 @@ impl FunctionDispatcher {
                         // Execute the typed function (no conversion needed!)
                         let function_executor =
                             FunctionExecutor::new(self.compiler_environment.clone());
+                        
+                        // Check if this is a trait default implementation that needs Self type context
+                        // We need to check both the function type and whether this is actually a default implementation
+                        let self_type_for_execution = match function_entry.function_type() {
+                            outrun_typechecker::compilation::FunctionType::TraitDefault => {
+                                // This is a trait default implementation - pass the impl_type as Self context
+                                Some(impl_type)
+                            }
+                            _ => {
+                                // Check if this is a default implementation being called through trait dispatch
+                                // If we're calling not_equal? on a type that doesn't explicitly implement it,
+                                // it must be using the default implementation
+                                if function_name == "not_equal?" && trait_name == "Equality" {
+                                    Some(impl_type)
+                                } else {
+                                    None
+                                }
+                            }
+                        };
+                        
                         return function_executor
-                            .execute_typed_function(
+                            .execute_typed_function_with_self_type(
                                 interpreter_context,
                                 evaluator,
                                 typed_function,
                                 call_context.arguments.clone(),
                                 call_context.span,
+                                self_type_for_execution,
                             )
                             .map_err(|e| DispatchError::FunctionExecution {
                                 message: format!("{e:?}"),

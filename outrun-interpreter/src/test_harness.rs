@@ -537,6 +537,12 @@ impl OutrunTestHarness {
             }),
         }
     }
+
+    /// Clear call stack state to ensure test isolation
+    /// This method can be called between evaluations to prevent state leakage
+    pub fn clear_call_stack(&mut self) {
+        self.context.clear_call_stack();
+    }
 }
 
 impl Default for OutrunTestHarness {
