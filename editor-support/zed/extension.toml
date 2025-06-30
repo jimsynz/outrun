@@ -1,4 +1,4 @@
-id = "outrun"
+id = "outrun-lang"
 name = "Outrun"
 description = "Outrun programming language support for Zed"
 version = "0.1.0"

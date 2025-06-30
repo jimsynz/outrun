@@ -1,0 +1,291 @@
+{
+  "Function Definition": {
+    "prefix": "def",
+    "body": [
+      "def ${1:function_name}(${2:param}: ${3:Type}): ${4:ReturnType} {",
+      "\t${5:// function body}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a function"
+  },
+  "Guard Function": {
+    "prefix": "defwhen",
+    "body": [
+      "def ${1:function_name}(${2:param}: ${3:Type}): ${4:ReturnType}",
+      "when ${5:guard_condition} {",
+      "\t${6:// function body}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a function with a guard condition"
+  },
+  "Struct Definition": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:StructName}(${2:field}: ${3:Type})"
+    ],
+    "description": "Define a struct"
+  },
+  "Struct with Multiple Fields": {
+    "prefix": "structmulti",
+    "body": [
+      "struct ${1:StructName}(",
+      "\t${2:field1}: ${3:Type1},",
+      "\t${4:field2}: ${5:Type2}",
+      ")"
+    ],
+    "description": "Define a struct with multiple fields"
+  },
+  "Trait Definition": {
+    "prefix": "trait",
+    "body": [
+      "trait ${1:TraitName}<${2:T}> {",
+      "\tdef ${3:method_name}(${4:param}: ${5:Type}): ${6:ReturnType}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a trait"
+  },
+  "Implementation Block": {
+    "prefix": "impl",
+    "body": [
+      "impl ${1:TraitName}<${2:T}> for ${3:Type} {",
+      "\tdef ${4:method_name}(${5:param}: ${6:Type}): ${7:ReturnType} {",
+      "\t\t${8:// implementation}",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Implement a trait for a type"
+  },
+  "Case Expression": {
+    "prefix": "case",
+    "body": [
+      "case ${1:value} {",
+      "\t${2:pattern} -> ${3:result}",
+      "\t_ -> ${4:default}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Case expression for pattern matching"
+  },
+  "Case with Guard": {
+    "prefix": "casewhen",
+    "body": [
+      "case ${1:value} {",
+      "\t${2:pattern} when ${3:condition} -> ${4:result}",
+      "\t_ -> ${5:default}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Case expression with guard condition"
+  },
+  "Let Binding": {
+    "prefix": "let",
+    "body": [
+      "let ${1:variable_name} = ${2:value}"
+    ],
+    "description": "Let binding"
+  },
+  "Const Definition": {
+    "prefix": "const",
+    "body": [
+      "const ${1:CONSTANT_NAME}: ${2:Type} = ${3:value}"
+    ],
+    "description": "Constant definition"
+  },
+  "Import Statement": {
+    "prefix": "import",
+    "body": [
+      "import ${1:Module.Path}"
+    ],
+    "description": "Import a module"
+  },
+  "Import with Alias": {
+    "prefix": "importas",
+    "body": [
+      "import ${1:Module.Path} as ${2:Alias}"
+    ],
+    "description": "Import a module with alias"
+  },
+  "Import Specific": {
+    "prefix": "importonly",
+    "body": [
+      "import ${1:Module.Path} only ${2:specific_items}"
+    ],
+    "description": "Import specific items from a module"
+  },
+  "Import Except": {
+    "prefix": "importexcept",
+    "body": [
+      "import ${1:Module.Path} except ${2:excluded_items}"
+    ],
+    "description": "Import module except specific items"
+  },
+  "Alias Definition": {
+    "prefix": "alias",
+    "body": [
+      "alias ${1:Original.Type} as ${2:NewName}"
+    ],
+    "description": "Create a type alias"
+  },
+  "Option Some": {
+    "prefix": "some",
+    "body": [
+      "Option.some(value: ${1:value})"
+    ],
+    "description": "Create an Option.Some value"
+  },
+  "Option None": {
+    "prefix": "none",
+    "body": [
+      "Option.none()"
+    ],
+    "description": "Create an Option.None value"
+  },
+  "Result Ok": {
+    "prefix": "ok",
+    "body": [
+      "Result.ok(value: ${1:value})"
+    ],
+    "description": "Create a Result.Ok value"
+  },
+  "Result Error": {
+    "prefix": "error",
+    "body": [
+      "Result.error(value: ${1:error})"
+    ],
+    "description": "Create a Result.Error value"
+  },
+  "Pipe Operator": {
+    "prefix": "pipe",
+    "body": [
+      "${1:value} |> ${2:function}"
+    ],
+    "description": "Pipe operator for function composition"
+  },
+  "Maybe Pipe": {
+    "prefix": "maybepipe",
+    "body": [
+      "${1:maybe_value} |? ${2:function}"
+    ],
+    "description": "Maybe pipe operator for optional chaining"
+  },
+  "String Interpolation": {
+    "prefix": "interp",
+    "body": [
+      "\"${1:text} #{${2:expression}} ${3:more_text}\""
+    ],
+    "description": "String with interpolation"
+  },
+  "Multiline String": {
+    "prefix": "multistr",
+    "body": [
+      "\"\"\"",
+      "${1:multiline}",
+      "${2:string content}",
+      "\"\"\""
+    ],
+    "description": "Multiline string literal"
+  },
+  "Sigil": {
+    "prefix": "sigil",
+    "body": [
+      "~${1:Type}\"${2:content}\""
+    ],
+    "description": "Sigil literal"
+  },
+  "Atom": {
+    "prefix": "atom",
+    "body": [
+      ":${1:atom_name}"
+    ],
+    "description": "Atom literal"
+  },
+  "List Literal": {
+    "prefix": "list",
+    "body": [
+      "[${1:item1}, ${2:item2}]"
+    ],
+    "description": "List literal"
+  },
+  "Map Literal": {
+    "prefix": "map",
+    "body": [
+      "{",
+      "\t\"${1:key1}\" => ${2:value1},",
+      "\t\"${3:key2}\" => ${4:value2}",
+      "}"
+    ],
+    "description": "Map literal"
+  },
+  "If Expression": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "\t${2:true_branch}",
+      "} else {",
+      "\t${3:false_branch}",
+      "}"
+    ],
+    "description": "If-else expression"
+  },
+  "Block Comment": {
+    "prefix": "comment",
+    "body": [
+      "###",
+      "${1:Block comment}",
+      "###"
+    ],
+    "description": "Block comment"
+  },
+  "Function Documentation": {
+    "prefix": "docfn",
+    "body": [
+      "###",
+      "${1:Function description}",
+      "",
+      "Parameters:",
+      "- ${2:param}: ${3:description}",
+      "",
+      "Returns: ${4:return_description}",
+      "###",
+      "def ${5:function_name}(${6:param}: ${7:Type}): ${8:ReturnType} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Documented function definition"
+  },
+  "Macro Definition": {
+    "prefix": "macro",
+    "body": [
+      "macro ${1:macro_name}(${2:param}) {",
+      "\t${3:// macro body with ^param injection}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a macro"
+  },
+  "Guard Condition": {
+    "prefix": "when",
+    "body": [
+      "when ${1:condition}"
+    ],
+    "description": "Guard condition"
+  },
+  "Function Call with Named Args": {
+    "prefix": "call",
+    "body": [
+      "${1:Function.name}(${2:param}: ${3:value})"
+    ],
+    "description": "Function call with named arguments"
+  },
+  "Module Path": {
+    "prefix": "modpath",
+    "body": [
+      "${1:Module}.${2:Submodule}.${3:function}"
+    ],
+    "description": "Module path for function calls"
+  }
+}

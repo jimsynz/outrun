@@ -1,0 +1,93 @@
+{
+  "name": "outrun-language",
+  "displayName": "Outrun Language Support",
+  "description": "Language support for the Outrun programming language - syntax highlighting, snippets, and smart editing features",
+  "version": "0.1.0",
+  "publisher": "outrun-lang",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Syntax Highlighters",
+    "Snippets"
+  ],
+  "keywords": [
+    "outrun",
+    "functional",
+    "traits",
+    "static-typing",
+    "actor-model"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://harton.dev/outrun/outrun"
+  },
+  "bugs": {
+    "url": "https://harton.dev/outrun/outrun/issues"
+  },
+  "homepage": "https://harton.dev/outrun/outrun/",
+  "license": "MIT",
+  "icon": "images/outrun_logo.png",
+  "activationEvents": [
+    "onLanguage:outrun"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "outrun",
+        "aliases": [
+          "Outrun",
+          "outrun"
+        ],
+        "extensions": [
+          ".outrun"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/outrun_icon.png",
+          "dark": "./images/outrun_icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "outrun",
+        "scopeName": "source.outrun",
+        "path": "./syntaxes/outrun.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "outrun",
+        "path": "./snippets/outrun.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[outrun]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4,
+        "editor.indentSize": 4,
+        "editor.detectIndentation": false,
+        "editor.trimAutoWhitespace": true,
+        "files.trimTrailingWhitespace": true,
+        "editor.wordSeparators": "`~!@#%^&*()-=+[{]}\\|;:'\",.<>/?",
+        "editor.rulers": [
+          80,
+          120
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  }
+}

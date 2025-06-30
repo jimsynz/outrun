@@ -1,10 +1,8 @@
 # Outrun
 
 <div align="center">
-  <img src="logo.svg" alt="Outrun Logo" width="600">
+  <img src="images/outrun_logo.png" alt="Outrun Logo" width="600">
 </div>
-
-> *A statically-typed, functional programming language where everything is a trait*
 
 ## 🎵 About Outrun
 
@@ -29,7 +27,7 @@ struct NeonCar(model: String, speed: Integer) {}
 ```outrun
 # Crystal clear function calls
 user = User.create(
-    name: "Neo", 
+    name: "Neo",
     email: "neo@matrix.io"
 )
 

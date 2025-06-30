@@ -1,0 +1,189 @@
+# Outrun Language Example
+# This file demonstrates various Outrun language features for VS Code extension testing
+
+###
+Block comment example
+Showcasing multi-line comment syntax
+###
+
+import Http.Client
+import Json.Parser only parse, stringify
+import Option except none
+alias Result<T, E> as Res<T, E>
+
+# Constants
+const MAX_RETRIES: Integer = 3
+const API_BASE_URL: String = "https://api.example.com"
+
+# Simple struct definition
+struct User(id: Integer, name: String, email: String)
+
+# Struct with optional fields using Option type
+struct Config(
+    debug: Boolean,
+    timeout: Integer,
+    api_key: Option<String>
+)
+
+# Trait definition with generic parameter
+trait Serializable<T> {
+    def to_json(value: T): String
+    def from_json(json: String): Result<T, String>
+}
+
+# Implementation block
+impl Serializable<User> for User {
+    def to_json(user: User): String {
+        let json_obj = {
+            "id" => user.id,
+            "name" => user.name,
+            "email" => user.email
+        }
+        Json.stringify(obj: json_obj)
+    }
+
+    def from_json(json: String): Result<User, String> {
+        case Json.parse(input: json) {
+            parsed when Map.has_keys?(parsed, ["id", "name", "email"]) -> {
+                let user = User {
+                    id: Map.get(map: parsed, key: "id"),
+                    name: Map.get(map: parsed, key: "name"),
+                    email: Map.get(map: parsed, key: "email")
+                }
+                Result.ok(value: user)
+            }
+            _ -> Result.error(value: "Invalid JSON structure")
+        }
+    }
+}
+
+# Function with guard condition
+def divide(a: Float, b: Float): Float
+when Float.not_zero?(b) {
+    a / b
+}
+
+# Function with string interpolation
+def greet(user: User): String {
+    let greeting = "Hello, #{user.name}!"
+    let full_message = """
+    #{greeting}
+
+    Your email is: #{user.email}
+    User ID: #{user.id}
+    """
+    full_message
+}
+
+# Pattern matching with multiple guards
+def categorize_user(user: User): String {
+    case user.id {
+        id when Integer.less_than?(id, 100) -> "New user"
+        id when Integer.between?(id, 100, 1000) -> "Regular user"
+        id when Integer.greater_than?(id, 1000) -> "Premium user"
+        _ -> "Unknown category"
+    }
+}
+
+# Working with Option and Result types
+def fetch_user(id: Integer): Result<Option<User>, String> {
+    let api_url = "#{API_BASE_URL}/users/#{id}"
+
+    Http.Client.get(url: api_url)
+        |> Http.Response.body
+        |> Json.parse
+        |> Result.and_then(fn: User.from_json)
+        |> Result.map(fn: Option.some)
+}
+
+# Sigil literals for different data types
+def parse_data(): List<String> {
+    let regex_pattern = ~Regex"user_(\d+)@(.+\.com)"
+    let html_content = ~Html"<div class='user'>#{user.name}</div>"
+    let sql_query = ~Sql"SELECT * FROM users WHERE id = #{user.id}"
+
+    [regex_pattern, html_content, sql_query]
+        |> List.map(fn: String.from_sigil)
+}
+
+# Macro definition
+macro unless(condition, do_block) {
+    if !^condition {
+        ^do_block
+    }
+}
+
+# Using atoms for configuration
+def get_log_level(): :debug | :info | :warn | :error {
+    let config = Config.load()
+    case config.environment {
+        :development -> :debug
+        :testing -> :info
+        :staging -> :warn
+        :production -> :error
+        _ -> :info
+    }
+}
+
+# Complex data structures
+let sample_users = [
+    User { id: 1, name: "Alice Johnson", email: "alice@example.com" },
+    User { id: 2, name: "Bob Smith", email: "bob@example.com" },
+    User { id: 3, name: "Carol Wilson", email: "carol@example.com" }
+]
+
+let user_lookup = {
+    1 => "alice@example.com",
+    2 => "bob@example.com",
+    3 => "carol@example.com"
+}
+
+# Numeric literals showcase
+const HEX_VALUE: Integer = 0xFF
+const BINARY_VALUE: Integer = 0b1010
+const OCTAL_VALUE: Integer = 0o755
+const FLOAT_VALUE: Float = 3.14159
+const SCIENTIFIC: Float = 1.23e-4
+
+# Function composition with pipes
+def process_users(): Result<List<String>, String> {
+    sample_users
+        |> List.filter(fn: user -> Integer.greater_than?(user.id, 1))
+        |> List.map(fn: greet)
+        |> List.filter(fn: msg -> String.contains?(msg, "Bob"))
+        |> Result.ok
+}
+
+# Error handling with maybe pipe
+def safe_divide(a: Float, b: Float): Option<Float> {
+    Option.some(value: b)
+        |? Float.non_zero?
+        |? (_ -> a / b)
+}
+
+# Main function demonstrating the language
+def main(): Boolean {
+    let result = fetch_user(id: 1)
+        |> Result.and_then(fn: maybe_user -> {
+            case maybe_user {
+                Option.Some(user) -> {
+                    let message = greet(user: user)
+                    let category = categorize_user(user: user)
+                    IO.println(text: "#{message} - #{category}")
+                    Result.ok(value: true)
+                }
+                Option.None -> {
+                    IO.println(text: "User not found")
+                    Result.ok(value: false)
+                }
+            }
+        })
+
+    case result {
+        Result.Ok(success) -> success
+        Result.Error(error) -> {
+            IO.println(text: "Error: #{error}")
+            false
+        }
+    }
+}
