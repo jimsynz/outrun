@@ -187,6 +187,22 @@ impl ErrorSuggestionGenerator {
                                     self.type_to_string(concrete_type)
                                 )
                             }
+                            SMTConstraint::TypeVariableConstraint {
+                                variable_id,
+                                bound_type,
+                                ..
+                            } => {
+                                let var_name = if let Some(name) = compiler_env.resolve_type(variable_id.clone()) {
+                                    name
+                                } else {
+                                    format!("TypeVar_{}", variable_id.hash)
+                                };
+                                format!(
+                                    "Remove type variable constraint: {} = {}",
+                                    var_name,
+                                    self.type_to_string(bound_type)
+                                )
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

@@ -195,6 +195,30 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let equality = param_var._eq(&concrete_var);
                     self.solver.assert(&equality);
                 }
+                SMTConstraint::TypeVariableConstraint {
+                    variable_id,
+                    bound_type,
+                    ..
+                } => {
+                    // Assert that the TypeVariable equals the bound type
+                    let bound_sort = self
+                        .translator
+                        .translate_structured_type(bound_type, compiler_env);
+                    
+                    let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
+                        format!("TypeVar_{}", type_name)
+                    } else {
+                        format!("TypeVar_unknown_{}", variable_id.hash)
+                    };
+                    
+                    // Create variables for the TypeVariable and bound type
+                    let type_var = Bool::new_const(self.context, var_name);
+                    let bound_var = Bool::new_const(self.context, format!("type_{}", bound_sort));
+                    
+                    // Assert they are equal
+                    let equality = type_var._eq(&bound_var);
+                    self.solver.assert(&equality);
+                }
             }
         }
 

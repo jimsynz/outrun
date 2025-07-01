@@ -48,6 +48,11 @@ pub enum StructuredType {
     /// Simple type without generics (e.g., "String", "Boolean", "Integer64")
     Simple(TypeNameId),
 
+    /// Type variable for generic parameters and Self references
+    /// Used for constraining both generic parameters (T, K, V) and Self in trait/impl contexts
+    /// Reuses TypeNameId infrastructure for consistent handling
+    TypeVariable(TypeNameId),
+
     /// Generic type with structured arguments (e.g., Option<T>, Map<K, V>)
     Generic {
         base: TypeNameId,
@@ -202,6 +207,11 @@ impl StructuredType {
     /// Create a simple type from a type name ID
     pub fn simple(type_name_id: TypeNameId) -> Self {
         StructuredType::Simple(type_name_id)
+    }
+
+    /// Create a type variable from a type name ID
+    pub fn type_variable(type_name_id: TypeNameId) -> Self {
+        StructuredType::TypeVariable(type_name_id)
     }
 
     /// Create a generic type with arguments
@@ -373,6 +383,11 @@ impl StructuredType {
                     deps.push(type_id.clone());
                 }
             }
+            StructuredType::TypeVariable(type_id) => {
+                if !deps.contains(type_id) {
+                    deps.push(type_id.clone());
+                }
+            }
             StructuredType::Generic { base, args } => {
                 if !deps.contains(base) {
                     deps.push(base.clone());
@@ -497,6 +512,7 @@ impl StructuredType {
     pub fn to_string_representation(&self) -> String {
         match self {
             StructuredType::Simple(type_name_id) => type_name_id.to_string(),
+            StructuredType::TypeVariable(type_name_id) => format!("${}", type_name_id.to_string()),
             StructuredType::Generic { base, args } => {
                 let arg_names: Vec<String> = args
                     .iter()
@@ -575,12 +591,13 @@ impl StructuredType {
     }
 }
 
-/// DEPRECATED: Traditional unification algorithm
+/// REMOVED: Traditional unification algorithm replaced by SMT constraint system
 ///
-/// This function will be replaced by SMT constraint generation + solving.
-/// New code should use SMTConstraint::TypeUnification instead.
+/// All type compatibility checking now goes through the SMT constraint system.
+/// Use UnificationContext::smt_types_compatible() instead.
 ///
-/// TODO: Replace all calls with SMT constraint generation
+/// This function is kept only for legacy compatibility during transition.
+#[deprecated(note = "Use SMT constraint system instead")]
 pub fn unify_structured_types(
     type1: &StructuredType,
     type2: &StructuredType,
@@ -759,6 +776,16 @@ pub fn unify_structured_types(
         // 5. Simple Type Unification (handle trait compatibility)
         (StructuredType::Simple(type1), StructuredType::Simple(type2)) => {
             unify_simple_types(type1.clone(), type2.clone(), context, compiler_env)
+        }
+
+        // 5b. Type Variable Unification - variables can unify with any compatible type
+        (StructuredType::TypeVariable(var_id), other_type) => {
+            // Type variable can unify with any type - store the binding
+            Ok(Some(other_type.clone()))
+        }
+        (other_type, StructuredType::TypeVariable(var_id)) => {
+            // Type variable can unify with any type - store the binding
+            Ok(Some(other_type.clone()))
         }
 
         // 6. Trait-to-Generic Implementation Unification
@@ -1280,6 +1307,11 @@ impl UnificationContext {
                         Ok(type_ref.clone())
                     }
                 }
+            }
+            StructuredType::TypeVariable(type_id) => {
+                // TypeVariable resolution is handled by SMT constraints
+                // Return the TypeVariable as-is for SMT solver to handle
+                Ok(type_ref.clone())
             }
             StructuredType::Generic { base, args } => {
                 let resolved_args: Result<Vec<_>, _> = args
@@ -2002,6 +2034,10 @@ pub mod self_substitution {
                 } else {
                     Ok(structured_type.clone())
                 }
+            }
+            StructuredType::TypeVariable(_type_id) => {
+                // TypeVariable is handled by SMT constraints, don't substitute
+                Ok(structured_type.clone())
             }
             StructuredType::Generic { base, args } => {
                 // Check if base is Self

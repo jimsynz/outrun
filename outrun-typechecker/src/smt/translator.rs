@@ -43,6 +43,14 @@ impl SMTTranslator {
                     self.get_or_create_type_variable(&format!("unknown_type_{}", type_name_id.hash))
                 }
             }
+            StructuredType::TypeVariable(type_name_id) => {
+                // TypeVariable gets converted to an SMT variable
+                if let Some(type_name) = compiler_env.resolve_type(type_name_id.clone()) {
+                    self.get_or_create_type_variable(&format!("TypeVar_{}", type_name))
+                } else {
+                    self.get_or_create_type_variable(&format!("TypeVar_unknown_{}", type_name_id.hash))
+                }
+            }
             StructuredType::Generic { base, args } => {
                 // Create parameterized SMT sort: Option_Int64, Map_String_Int64, etc.
                 if let Some(base_name) = compiler_env.resolve_type(base.clone()) {
@@ -215,6 +223,20 @@ impl SMTTranslator {
                 // Create an equality constraint between the parameter and concrete type
                 let concrete_sort = self.translate_structured_type(concrete_type, compiler_env);
                 format!("(= {} {})", parameter_name, concrete_sort)
+            }
+            SMTConstraint::TypeVariableConstraint {
+                variable_id,
+                bound_type,
+                ..
+            } => {
+                // TypeVariable = concrete type constraint
+                let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
+                    format!("TypeVar_{}", type_name)
+                } else {
+                    format!("TypeVar_unknown_{}", variable_id.hash)
+                };
+                let bound_sort = self.translate_structured_type(bound_type, compiler_env);
+                format!("(= {} {})", var_name, bound_sort)
             }
         }
     }

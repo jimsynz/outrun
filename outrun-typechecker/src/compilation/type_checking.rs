@@ -2750,8 +2750,96 @@ impl TypeCheckingVisitor {
         type_annotation: &outrun_parser::TypeAnnotation,
         self_type: &crate::unification::StructuredType,
     ) -> Result<crate::unification::StructuredType, TypeError> {
-        // Special handling for Self type resolution with structured types
-        self.resolve_type_annotation_with_self_substitution(type_annotation, self_type)
+        // NEW APPROACH: Generate TypeVariable constraints instead of manual substitution
+        self.resolve_type_annotation_with_self_as_type_variable(type_annotation, self_type)
+    }
+
+    /// NEW: Resolve type annotation with Self as TypeVariable, generating SMT constraints
+    /// This replaces manual Self substitution with constraint-based approach
+    fn resolve_type_annotation_with_self_as_type_variable(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        self_type: &crate::unification::StructuredType,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple {
+                path,
+                generic_args,
+                span: _,
+            } => {
+                // Check if this is a Self reference
+                if path.len() == 1 && path[0].name == "Self" {
+                    // Create a TypeVariable for Self and generate constraint
+                    let self_var_id = self.compiler_environment.intern_type_name("Self");
+                    let self_type_variable = crate::unification::StructuredType::TypeVariable(self_var_id.clone());
+
+                    // Generate SMT constraint: Self TypeVariable = concrete implementation type
+                    let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
+                        variable_id: self_var_id,
+                        bound_type: self_type.clone(),
+                        context: "Self type in impl block".to_string(),
+                    };
+
+                    // Add constraint to unification context
+                    self.compiler_environment.unification_context_mut().add_smt_constraint(constraint);
+
+                    return Ok(self_type_variable);
+                }
+
+                // For non-Self types, resolve normally but recursively check args for Self
+                if let Some(args) = generic_args {
+                    // Create a modified type annotation with Self resolved in args
+                    let mut resolved_args = Vec::new();
+                    for arg in &args.args {
+                        let resolved_arg = self.resolve_type_annotation_with_self_as_type_variable(arg, self_type)?;
+                        resolved_args.push(resolved_arg);
+                    }
+                    
+                    // Get the base type name
+                    let type_name_str = path.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(".");
+                    let type_name_id = self.compiler_environment.intern_type_name(&type_name_str);
+                    
+                    Ok(crate::unification::StructuredType::Generic {
+                        base: type_name_id,
+                        args: resolved_args,
+                    })
+                } else {
+                    // No generic args, use normal resolution
+                    self.resolve_type_annotation(type_annotation)
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, span: _ } => {
+                // Recursively resolve tuple elements, checking for Self in each
+                let mut resolved_types = Vec::new();
+                for element_type in types {
+                    let resolved_element = self.resolve_type_annotation_with_self_as_type_variable(element_type, self_type)?;
+                    resolved_types.push(resolved_element);
+                }
+                Ok(crate::unification::StructuredType::Tuple(resolved_types))
+            }
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                span: _,
+            } => {
+                // Recursively resolve function parameters and return type, checking for Self
+                let mut resolved_params = Vec::new();
+                for param in params {
+                    let resolved_param_type = self.resolve_type_annotation_with_self_as_type_variable(&param.type_annotation, self_type)?;
+                    resolved_params.push(crate::unification::FunctionParam {
+                        name: self.compiler_environment.intern_atom_name(&param.name.name),
+                        param_type: resolved_param_type,
+                    });
+                }
+
+                let resolved_return_type = self.resolve_type_annotation_with_self_as_type_variable(return_type, self_type)?;
+
+                Ok(crate::unification::StructuredType::Function {
+                    params: resolved_params,
+                    return_type: Box::new(resolved_return_type),
+                })
+            }
+        }
     }
 
     /// Recursively resolve type annotation with Self substitution
@@ -3130,7 +3218,127 @@ impl TypeCheckingVisitor {
     }
 
     /// Resolve type annotation with generic parameter substitutions
+    /// DEPRECATED: Manual generic substitution replaced by SMT TypeVariable constraints
+    #[deprecated(note = "Use SMT TypeVariable constraints instead")]
     fn resolve_type_annotation_with_generic_substitution(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        generic_substitutions: &std::collections::HashMap<
+            String,
+            crate::unification::StructuredType,
+        >,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        // Forward to new TypeVariable-based approach
+        self.resolve_type_annotation_with_generic_type_variables(type_annotation, generic_substitutions)
+    }
+
+    /// NEW: Resolve type annotation with generic parameters as TypeVariables, generating SMT constraints
+    /// This replaces manual generic substitution with constraint-based approach
+    fn resolve_type_annotation_with_generic_type_variables(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        generic_substitutions: &std::collections::HashMap<
+            String,
+            crate::unification::StructuredType,
+        >,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
+                let type_name = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                // Check if this is a generic parameter to substitute (T, K, V, etc.)
+                if path.len() == 1 {
+                    if let Some(substitution) = generic_substitutions.get(&type_name) {
+                        // Create a TypeVariable for this generic parameter and generate constraint
+                        let generic_var_id = self.compiler_environment.intern_type_name(&type_name);
+                        let generic_type_variable = crate::unification::StructuredType::TypeVariable(generic_var_id.clone());
+
+                        // Generate SMT constraint: Generic TypeVariable = concrete type from substitution
+                        let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
+                            variable_id: generic_var_id,
+                            bound_type: substitution.clone(),
+                            context: format!("Generic parameter {} in function call", type_name),
+                        };
+
+                        // Add constraint to unification context
+                        self.compiler_environment.unification_context_mut().add_smt_constraint(constraint);
+
+                        return Ok(generic_type_variable);
+                    }
+                }
+
+                // Resolve base type
+                let base_type_id = self.compiler_environment.intern_type_name(&type_name);
+
+                // Handle generic arguments recursively
+                if let Some(args) = generic_args {
+                    let mut resolved_args = Vec::new();
+                    for arg in &args.args {
+                        let resolved_arg = self.resolve_type_annotation_with_generic_type_variables(
+                            arg,
+                            generic_substitutions,
+                        )?;
+                        resolved_args.push(resolved_arg);
+                    }
+                    Ok(crate::unification::StructuredType::Generic {
+                        base: base_type_id,
+                        args: resolved_args,
+                    })
+                } else {
+                    Ok(crate::unification::StructuredType::Simple(base_type_id))
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
+                let mut resolved_types = Vec::new();
+                for t in types {
+                    let resolved_type = self.resolve_type_annotation_with_generic_type_variables(
+                        t,
+                        generic_substitutions,
+                    )?;
+                    resolved_types.push(resolved_type);
+                }
+                Ok(crate::unification::StructuredType::Tuple(resolved_types))
+            }
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                let mut resolved_params = Vec::new();
+                for param in params {
+                    let resolved_param_type = self
+                        .resolve_type_annotation_with_generic_type_variables(
+                            &param.type_annotation,
+                            generic_substitutions,
+                        )?;
+                    let param_name = self
+                        .compiler_environment
+                        .intern_atom_name(&param.name.name.clone());
+                    resolved_params.push(crate::unification::FunctionParam {
+                        name: param_name,
+                        param_type: resolved_param_type,
+                    });
+                }
+                let resolved_return_type = self.resolve_type_annotation_with_generic_type_variables(
+                    return_type,
+                    generic_substitutions,
+                )?;
+                Ok(crate::unification::StructuredType::Function {
+                    params: resolved_params,
+                    return_type: Box::new(resolved_return_type),
+                })
+            }
+        }
+    }
+
+    /// OLD: Keep the original method temporarily for compatibility
+    fn resolve_type_annotation_with_generic_substitution_original(
         &mut self,
         type_annotation: &outrun_parser::TypeAnnotation,
         generic_substitutions: &std::collections::HashMap<

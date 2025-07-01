@@ -51,6 +51,14 @@ pub enum SMTConstraint {
         concrete_type: StructuredType,    // e.g., Integer
         context: String,                  // For error reporting
     },
+
+    /// Type variable constraint for generic parameters and Self types
+    /// This replaces manual Self substitution with SMT-based constraint solving
+    TypeVariableConstraint {
+        variable_id: crate::compilation::compiler_environment::TypeNameId,
+        bound_type: StructuredType,
+        context: String,                  // For error reporting
+    },
 }
 
 /// Function signature with named parameters (Outrun requirement)
@@ -159,6 +167,16 @@ impl Hash for SMTConstraint {
                 5u8.hash(state);
                 parameter_name.hash(state);
                 concrete_type.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::TypeVariableConstraint {
+                variable_id,
+                bound_type,
+                context,
+            } => {
+                6u8.hash(state);
+                variable_id.hash(state);
+                bound_type.hash(state);
                 context.hash(state);
             }
         }

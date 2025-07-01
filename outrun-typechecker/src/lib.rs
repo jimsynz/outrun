@@ -823,6 +823,9 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
         StructuredType::Simple(type_name) => {
             format!("Type: {type_name}")
         }
+        StructuredType::TypeVariable(type_name) => {
+            format!("TypeVariable: {type_name}")
+        }
         StructuredType::Generic { base, args } => {
             let args_str = args
                 .iter()
