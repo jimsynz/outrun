@@ -3379,17 +3379,40 @@ impl CompilerEnvironment {
         module_type: &StructuredType,
         function_name: AtomId,
     ) -> Option<UnifiedFunctionEntry> {
-        if let StructuredType::Simple(type_id) = module_type {
-            if let Some(_type_name) = self.resolve_type(type_id.clone()) {
-                let module_key = ModuleKey::Module(type_id.hash);
+        // Extract the base type from both Simple and Generic types
+        let base_type_id = match module_type {
+            StructuredType::Simple(type_id) => type_id.clone(),
+            StructuredType::Generic { base, .. } => base.clone(),
+            _ => {
+                eprintln!("❌ Qualified function lookup failed: unsupported module type {:?}.{:?}", module_type, function_name);
+                return None;
+            }
+        };
 
-                if let Ok(modules) = self.modules.read() {
-                    if let Some(module) = modules.get(&module_key) {
-                        return module.get_function_by_name(function_name).cloned();
+        if let Some(type_name) = self.resolve_type(base_type_id.clone()) {
+            let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
+            eprintln!("🔍 Looking up qualified function: {}.{} (base type: {})", type_name, function_name_str, type_name);
+            
+            let module_key = ModuleKey::Module(base_type_id.hash);
+
+            if let Ok(modules) = self.modules.read() {
+                if let Some(module) = modules.get(&module_key) {
+                    eprintln!("✅ Found module for {}, checking for function {}", type_name, function_name_str);
+                    let function_entry = module.get_function_by_name(function_name).cloned();
+                    if let Some(ref entry) = function_entry {
+                        eprintln!("✅ Found function {}.{} with type {:?}", type_name, function_name_str, entry.function_type());
+                    } else {
+                        eprintln!("❌ Function {}.{} not found in module", type_name, function_name_str);
+                        eprintln!("📋 Function count in module: {}", module.functions_by_name.len());
                     }
+                    return function_entry;
+                } else {
+                    eprintln!("❌ Module {} not found in registry", type_name);
+                    eprintln!("📋 Available modules: {:?}", modules.keys().collect::<Vec<_>>());
                 }
             }
         }
+        eprintln!("❌ Qualified function lookup failed for {:?}.{:?}", module_type, function_name);
         None
     }
 
@@ -5082,6 +5105,55 @@ impl CompilerEnvironment {
             }
             // For concrete types (Simple, primitives, etc.), no resolution needed
             _ => structured_type.clone(),
+        }
+    }
+
+    /// Use SMT solver to resolve type variables in a structured type
+    /// This is a convenience method that creates SMT constraints and solves for type variables
+    pub fn smt_resolve_type_variables(&self, structured_type: &StructuredType) -> Result<StructuredType, crate::smt::solver::SMTError> {
+        use crate::smt::solver::{Z3Context, SolverResult};
+        
+        // Create SMT solver
+        let z3_context = Z3Context::new();
+        let mut solver = z3_context.create_solver();
+        
+        // Get existing SMT constraints from unification context
+        let constraints = self.unification_context().smt_constraints.clone();
+        
+        if constraints.is_empty() {
+            eprintln!("⚠️ No SMT constraints available for type variable resolution");
+            return Ok(structured_type.clone());
+        }
+        
+        eprintln!("🧠 Resolving type variables with {} SMT constraints", constraints.len());
+        
+        // Add all constraints to solver
+        solver.add_constraints(&constraints, self)?;
+        
+        // Solve constraints
+        match solver.solve() {
+            SolverResult::Satisfiable(model) => {
+                eprintln!("✅ SMT constraints satisfiable, applying model to type");
+                
+                // Apply the SMT model to resolve type variables in the structured type
+                let resolved_type = self.apply_smt_model_to_type(structured_type, &model);
+                
+                Ok(resolved_type)
+            }
+            SolverResult::Unsatisfiable(conflicts) => {
+                eprintln!("❌ SMT constraints unsatisfiable: {:?}", conflicts);
+                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                    "Type variable resolution failed: conflicting constraints: {:?}", 
+                    conflicts
+                )))
+            }
+            SolverResult::Unknown(reason) => {
+                eprintln!("⚠️ SMT solver returned unknown: {}", reason);
+                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                    "Type variable resolution failed: {}", 
+                    reason
+                )))
+            }
         }
     }
 

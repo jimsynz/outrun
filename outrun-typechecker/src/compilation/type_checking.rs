@@ -1863,8 +1863,9 @@ impl TypeCheckingVisitor {
                             match trait_func.function_type() {
                                 crate::compilation::FunctionType::TraitSignature => {
                                     // Trait function signature without implementation - this is an error
+                                    // Use SMT-enhanced Self type inference for better error reporting
                                     let inferred_self_type = self
-                                        .infer_trait_self_type_from_arguments(
+                                        .infer_implementing_type_with_smt(
                                             module_type_id.clone(),
                                             trait_func.definition(),
                                             call,
@@ -1877,8 +1878,9 @@ impl TypeCheckingVisitor {
                                 }
                                 crate::compilation::FunctionType::TraitDefault => {
                                     // Trait function with default implementation - use it
+                                    // Use SMT-enhanced Self type inference for trait defaults
                                     let inferred_self_type = self
-                                        .infer_trait_self_type_from_arguments(
+                                        .infer_implementing_type_with_smt(
                                             module_type_id.clone(),
                                             trait_func.definition(),
                                             call,
@@ -3670,7 +3672,7 @@ impl TypeCheckingVisitor {
         // For impl function lookup, we need to infer the implementing type from the arguments
         // For functions like `Comparison.greater?(left: T, right: T)`, the type T is the impl type
 
-        // First, try to infer the implementing type from the first argument
+        // First, try to infer the implementing type from the first argument using SMT resolution
         let impl_type = if let Some(first_arg) = call.arguments.first() {
             // Extract expression from argument and type check it
             let expression = match first_arg {
@@ -3679,11 +3681,29 @@ impl TypeCheckingVisitor {
             };
             {
                 let arg_type = self.check_expression_type(expression)?;
+                
+                // If the argument type contains type variables (like Self), use SMT to resolve them
+                let resolved_arg_type = if self.type_contains_variables(&arg_type) {
+                    eprintln!("🧠 Argument type contains variables: {:?}, using SMT resolution", arg_type);
+                    match self.compiler_environment.smt_resolve_type_variables(&arg_type) {
+                        Ok(resolved) => {
+                            eprintln!("✅ SMT resolved argument type: {:?} -> {:?}", arg_type, resolved);
+                            resolved
+                        }
+                        Err(err) => {
+                            eprintln!("⚠️ SMT resolution failed for argument type: {:?}", err);
+                            arg_type // Fallback to original type
+                        }
+                    }
+                } else {
+                    arg_type
+                };
+                
                 // Store the resolved type for later use by TypedASTBuilder
                 let mut context = self.compiler_environment.unification_context();
-                context.add_expression_type(expression.span, arg_type.clone());
+                context.add_expression_type(expression.span, resolved_arg_type.clone());
                 self.compiler_environment.set_unification_context(context);
-                arg_type
+                resolved_arg_type
             }
         } else {
             return Err(TypeError::undefined_function(
@@ -3799,6 +3819,27 @@ impl TypeCheckingVisitor {
             ConstraintExpression::Parenthesized { expression, .. } => {
                 self.process_trait_constraints_for_self(expression, self_type_id, trait_being_defined_id);
             }
+        }
+    }
+
+    /// Check if a structured type contains type variables that need SMT resolution
+    fn type_contains_variables(&self, structured_type: &crate::unification::StructuredType) -> bool {
+        use crate::unification::StructuredType;
+        
+        match structured_type {
+            StructuredType::TypeVariable(_) => true,
+            StructuredType::Generic { args, .. } => {
+                args.iter().any(|arg| self.type_contains_variables(arg))
+            }
+            StructuredType::Tuple(elements) => {
+                elements.iter().any(|elem| self.type_contains_variables(elem))
+            }
+            StructuredType::Function { params, return_type } => {
+                params.iter().any(|param| self.type_contains_variables(&param.param_type)) ||
+                self.type_contains_variables(return_type)
+            }
+            // Concrete types don't contain variables
+            _ => false,
         }
     }
 }
