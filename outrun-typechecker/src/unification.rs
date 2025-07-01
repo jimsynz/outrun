@@ -596,8 +596,10 @@ impl StructuredType {
 /// All type compatibility checking now goes through the SMT constraint system.
 /// Use UnificationContext::smt_types_compatible() instead.
 ///
-/// This function is kept only for legacy compatibility during transition.
-#[deprecated(note = "Use SMT constraint system instead")]
+/// This function is kept only for tests. DO NOT USE in main code.
+/// The main type checking system now uses SMT-based type compatibility.
+#[deprecated(note = "Use CompilerEnvironment::implements_trait or TypeCheckingVisitor::types_are_compatible instead")]
+#[allow(dead_code)]
 pub fn unify_structured_types(
     type1: &StructuredType,
     type2: &StructuredType,

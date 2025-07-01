@@ -2561,6 +2561,31 @@ impl CompilerEnvironment {
                     }
                 }
                 
+                // Look for TraitCompatibility constraints that involve this TypeVariable
+                for constraint in &context.smt_constraints {
+                    if let crate::smt::constraints::SMTConstraint::TraitCompatibility {
+                        trait_type,
+                        implementing_type,
+                        ..
+                    } = constraint {
+                        // Check if this constraint involves our TypeVariable
+                        if let StructuredType::TypeVariable(constraint_var_id) = implementing_type {
+                            if constraint_var_id == var_id {
+                                // Use SMT solver to find concrete implementations of the trait
+                                if let Ok(concrete_type) = self.resolve_trait_to_concrete_type(trait_type) {
+                                    eprintln!(
+                                        "🔗 Resolved TypeVariable {:?} via trait {} -> {}",
+                                        var_id,
+                                        trait_type.to_string_representation(),
+                                        concrete_type.to_string_representation()
+                                    );
+                                    return concrete_type;
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 // If no constraint found, return the TypeVariable as-is
                 // This allows the SMT solver to handle it
                 eprintln!("⚠️ Unresolved TypeVariable: {:?}", var_id);
@@ -2656,6 +2681,86 @@ impl CompilerEnvironment {
                 Ok(false)
             }
         }
+    }
+
+    /// Resolve a trait to a concrete implementation type
+    /// This method chooses a concrete type that implements the given trait
+    fn resolve_trait_to_concrete_type(&self, trait_type: &StructuredType) -> Result<StructuredType, crate::smt::solver::SMTError> {
+        // Find all implementations of this trait
+        let implementations = self.find_all_trait_implementations(trait_type);
+        
+        if implementations.is_empty() {
+            eprintln!("❌ No implementations found for trait {}", trait_type.to_string_representation());
+            return Err(crate::smt::solver::SMTError::SolverError(format!("No implementations found for trait {}", trait_type.to_string_representation())));
+        }
+        
+        // For now, choose the first available implementation
+        // TODO: In the future, this could use additional context or SMT solver to choose the best one
+        let chosen_impl = &implementations[0];
+        
+        eprintln!("🎯 Chose implementation {} for trait {}", 
+            chosen_impl.to_string_representation(),
+            trait_type.to_string_representation()
+        );
+        
+        Ok(chosen_impl.clone())
+    }
+
+    /// Find all concrete types that implement a given trait
+    fn find_all_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
+        let mut implementations = Vec::new();
+        let modules = self.modules.read().unwrap();
+        
+        // Extract trait name for matching
+        let trait_name = match trait_type {
+            StructuredType::Simple(trait_id) => {
+                if let Some(name) = self.resolve_type(trait_id.clone()) {
+                    name
+                } else {
+                    eprintln!("❌ Could not resolve trait name for {:?}", trait_id);
+                    return implementations;
+                }
+            }
+            StructuredType::Generic { base, .. } => {
+                if let Some(name) = self.resolve_type(base.clone()) {
+                    name
+                } else {
+                    eprintln!("❌ Could not resolve generic trait name for {:?}", base);
+                    return implementations;
+                }
+            }
+            _ => {
+                eprintln!("❌ Unsupported trait type: {}", trait_type.to_string_representation());
+                return implementations;
+            }
+        };
+        
+        // Search through all trait implementation modules
+        for (module_key, _module) in modules.iter() {
+            if let ModuleKey::TraitImpl(impl_trait_type, impl_type) = module_key {
+                // Check if this implementation is for our target trait
+                let impl_trait_name = match impl_trait_type.as_ref() {
+                    StructuredType::Simple(trait_id) => {
+                        self.resolve_type(trait_id.clone()).unwrap_or_default()
+                    }
+                    StructuredType::Generic { base, .. } => {
+                        self.resolve_type(base.clone()).unwrap_or_default()
+                    }
+                    _ => String::new(),
+                };
+                
+                if impl_trait_name == trait_name {
+                    implementations.push((**impl_type).clone());
+                    eprintln!("🔍 Found implementation: {} implements {}", 
+                        impl_type.to_string_representation(),
+                        trait_name
+                    );
+                }
+            }
+        }
+        
+        eprintln!("🔍 Found {} implementations for trait {}", implementations.len(), trait_name);
+        implementations
     }
 
     /// Check if a generic type can be instantiated to match a concrete type

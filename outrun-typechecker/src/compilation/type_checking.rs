@@ -84,15 +84,7 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 
         // If there was a type annotation, validate it matches the expression
         if let Some(expected_type) = &type_hint {
-            if crate::unification::unify_structured_types(
-                &expr_type,
-                expected_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )
-            .unwrap_or(None)
-            .is_none()
-            {
+            if !self.types_are_compatible(&expr_type, expected_type) {
                 self.errors.push(TypeError::type_mismatch(
                     expected_type.to_string_representation(),
                     expr_type.to_string_representation(),
@@ -315,6 +307,45 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 }
 
 impl TypeCheckingVisitor {
+    /// Check if two types are compatible using SMT constraint system
+    /// This replaces the deprecated unify_structured_types function
+    fn types_are_compatible(&self, type1: &StructuredType, type2: &StructuredType) -> bool {
+        // Early return for identical types
+        if type1 == type2 {
+            return true;
+        }
+        
+        // Use the SMT-based implements_trait method for compatibility checking
+        // This handles both trait compatibility and exact type matching
+        self.compiler_environment.implements_trait(type1, type2) ||
+        self.compiler_environment.implements_trait(type2, type1)
+    }
+
+    /// Find the most concrete type from two compatible types
+    /// This replaces the unification logic for cases that need a concrete result
+    fn find_most_concrete_type(&self, type1: &StructuredType, type2: &StructuredType) -> Option<StructuredType> {
+        // If types are identical, return one of them
+        if type1 == type2 {
+            return Some(type1.clone());
+        }
+        
+        // Check if they're compatible first
+        if !self.types_are_compatible(type1, type2) {
+            return None;
+        }
+        
+        // Prefer concrete types over trait types
+        let type1_is_trait = self.compiler_environment.is_trait(type1);
+        let type2_is_trait = self.compiler_environment.is_trait(type2);
+        
+        match (type1_is_trait, type2_is_trait) {
+            (true, false) => Some(type2.clone()),  // type2 is concrete, prefer it
+            (false, true) => Some(type1.clone()),  // type1 is concrete, prefer it  
+            (false, false) => Some(type1.clone()), // Both concrete, use first
+            (true, true) => Some(type1.clone()),   // Both traits, use first
+        }
+    }
+
     /// Add external variables to the global scope before type checking
     /// This is used by the REPL to provide previously bound variables
     pub fn add_external_variables(
@@ -577,14 +608,7 @@ impl TypeCheckingVisitor {
                         };
 
                         // Verify that LHS type unifies with RHS type
-                        if crate::unification::unify_structured_types(
-                            &lhs_type,
-                            &rhs_type,
-                            &self.compiler_environment.unification_context(),
-                            &self.compiler_environment,
-                        )
-                        .unwrap_or(None)
-                        .is_some()
+                        if self.types_are_compatible(&lhs_type, &rhs_type)
                         {
                             // Return the original LHS type (preserves concrete type for dispatch)
                             // The `as` operator is a type assertion, not a type conversion
@@ -767,13 +791,7 @@ impl TypeCheckingVisitor {
 
             // Validate all elements are compatible with hint
             for (i, element_type) in element_types.iter().enumerate() {
-                if crate::unification::unify_structured_types(
-                    element_type,
-                    hint_element_type,
-                    &self.compiler_environment.unification_context(),
-                    &self.compiler_environment,
-                )?
-                .is_none()
+                if !self.types_are_compatible(element_type, hint_element_type)
                 {
                     let element_expr = match &literal.elements[i] {
                         outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
@@ -808,13 +826,7 @@ impl TypeCheckingVisitor {
         // Case 4: No type hint - require homogeneous elements
         let first_element_type = &element_types[0];
         for (i, element_type) in element_types.iter().enumerate().skip(1) {
-            if crate::unification::unify_structured_types(
-                first_element_type,
-                element_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )?
-            .is_none()
+            if !self.types_are_compatible(first_element_type, element_type)
             {
                 let element_expr = match &literal.elements[i] {
                     outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
@@ -975,13 +987,7 @@ impl TypeCheckingVisitor {
                 let entry_value_type =
                     self.check_expression_type_with_hint(entry_value, value_hint)?;
 
-                if crate::unification::unify_structured_types(
-                    &key_type,
-                    &entry_key_type,
-                    &self.compiler_environment.unification_context(),
-                    &self.compiler_environment,
-                )?
-                .is_none()
+                if !self.types_are_compatible(&key_type, &entry_key_type)
                 {
                     return Err(TypeError::type_mismatch(
                         key_type.to_string_representation(),
@@ -990,13 +996,7 @@ impl TypeCheckingVisitor {
                     ));
                 }
 
-                if crate::unification::unify_structured_types(
-                    &value_type,
-                    &entry_value_type,
-                    &self.compiler_environment.unification_context(),
-                    &self.compiler_environment,
-                )?
-                .is_none()
+                if !self.types_are_compatible(&value_type, &entry_value_type)
                 {
                     return Err(TypeError::type_mismatch(
                         value_type.to_string_representation(),
@@ -1241,13 +1241,7 @@ impl TypeCheckingVisitor {
                         )?;
 
                     // Validate field type matches expected
-                    if crate::unification::unify_structured_types(
-                        &expected_field_type,
-                        &field_value_type,
-                        &self.compiler_environment.unification_context(),
-                        &self.compiler_environment,
-                    )?
-                    .is_none()
+                    if !self.types_are_compatible(&expected_field_type, &field_value_type)
                     {
                         return Err(TypeError::type_mismatch(
                             expected_field_type.to_string_representation(),
@@ -1292,13 +1286,7 @@ impl TypeCheckingVisitor {
                         let expected_field_type =
                             self.resolve_type_annotation(&field_def.type_annotation)?;
 
-                        if crate::unification::unify_structured_types(
-                            &expected_field_type,
-                            &field_value_type,
-                            &self.compiler_environment.unification_context(),
-                            &self.compiler_environment,
-                        )?
-                        .is_none()
+                        if !self.types_are_compatible(&expected_field_type, &field_value_type)
                         {
                             return Err(TypeError::type_mismatch(
                                 expected_field_type.to_string_representation(),
@@ -1326,13 +1314,7 @@ impl TypeCheckingVisitor {
                         // Look up the variable in the current scope
                         if let Some(variable_type) = self.lookup_variable(&name.name) {
                             // Check that the variable type matches the field type
-                            if crate::unification::unify_structured_types(
-                                &expected_field_type,
-                                variable_type,
-                                &self.compiler_environment.unification_context(),
-                                &self.compiler_environment,
-                            )?
-                            .is_none()
+                            if !self.types_are_compatible(&expected_field_type, variable_type)
                             {
                                 return Err(TypeError::type_mismatch(
                                     expected_field_type.to_string_representation(),
@@ -1394,13 +1376,7 @@ impl TypeCheckingVisitor {
         let boolean_type_id = self.compiler_environment.intern_type_name("Boolean");
         let expected_condition_type = crate::unification::StructuredType::Simple(boolean_type_id);
 
-        if crate::unification::unify_structured_types(
-            &expected_condition_type,
-            &condition_type,
-            &self.compiler_environment.unification_context(),
-            &self.compiler_environment,
-        )?
-        .is_none()
+        if !self.types_are_compatible(&expected_condition_type, &condition_type)
         {
             return Err(TypeError::type_mismatch(
                 expected_condition_type.to_string_representation(),
@@ -1417,13 +1393,7 @@ impl TypeCheckingVisitor {
             let else_type = self.check_block_type(else_block)?;
 
             // Both branches must have compatible types
-            if crate::unification::unify_structured_types(
-                &then_type,
-                &else_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )?
-            .is_none()
+            if !self.types_are_compatible(&then_type, &else_type)
             {
                 return Err(TypeError::type_mismatch(
                     then_type.to_string_representation(),
@@ -1495,13 +1465,7 @@ impl TypeCheckingVisitor {
                 self.compiler_environment.intern_type_name("Boolean"),
             );
 
-            if crate::unification::unify_structured_types(
-                &guard_type,
-                &boolean_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )?
-            .is_none()
+            if !self.types_are_compatible(&guard_type, &boolean_type)
             {
                 return Err(TypeError::type_mismatch(
                     "Boolean".to_string(),
@@ -1526,13 +1490,7 @@ impl TypeCheckingVisitor {
                     self.compiler_environment.intern_type_name("Boolean"),
                 );
 
-                if crate::unification::unify_structured_types(
-                    &guard_type,
-                    &boolean_type,
-                    &self.compiler_environment.unification_context(),
-                    &self.compiler_environment,
-                )?
-                .is_none()
+                if !self.types_are_compatible(&guard_type, &boolean_type)
                 {
                     return Err(TypeError::type_mismatch(
                         "Boolean".to_string(),
@@ -1548,13 +1506,7 @@ impl TypeCheckingVisitor {
             };
 
             // Unify clause types
-            if crate::unification::unify_structured_types(
-                &first_result_type,
-                &clause_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )?
-            .is_none()
+            if !self.types_are_compatible(&first_result_type, &clause_type)
             {
                 return Err(TypeError::type_mismatch(
                     first_result_type.to_string_representation(),
@@ -1954,22 +1906,14 @@ impl TypeCheckingVisitor {
                         self.resolve_type_annotation(&param_def.type_annotation)?;
 
                     // Validate argument type matches parameter type
-                    match crate::unification::unify_structured_types(
-                        &arg_type,
-                        &expected_param_type,
-                        &self.compiler_environment.unification_context(),
-                        &self.compiler_environment,
-                    ) {
-                        Ok(None) | Err(_) => {
-                            return Err(TypeError::ArgumentTypeMismatch {
-                                span: expression.span.to_source_span(),
-                                function_name: func_def.name.name.clone(),
-                                parameter_name: param_name.clone(),
-                                expected_type: expected_param_type.to_string_representation(),
-                                found_type: arg_type.to_string_representation(),
-                            });
-                        }
-                        Ok(Some(_)) => {} // Types unify successfully
+                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
+                        return Err(TypeError::ArgumentTypeMismatch {
+                            span: expression.span.to_source_span(),
+                            function_name: func_def.name.name.clone(),
+                            parameter_name: param_name.clone(),
+                            expected_type: expected_param_type.to_string_representation(),
+                            found_type: arg_type.to_string_representation(),
+                        });
                     }
 
                     // For shorthand format, validate that argument name matches parameter name
@@ -2085,22 +2029,14 @@ impl TypeCheckingVisitor {
                         .resolve_type_annotation_with_self(&param_def.type_annotation, self_type)?;
 
                     // Validate argument type matches parameter type
-                    match crate::unification::unify_structured_types(
-                        &arg_type,
-                        &expected_param_type,
-                        &self.compiler_environment.unification_context(),
-                        &self.compiler_environment,
-                    ) {
-                        Ok(None) | Err(_) => {
-                            return Err(TypeError::ArgumentTypeMismatch {
-                                span: expression.span.to_source_span(),
-                                function_name: func_def.name.name.clone(),
-                                parameter_name: param_name.clone(),
-                                expected_type: expected_param_type.to_string_representation(),
-                                found_type: arg_type.to_string_representation(),
-                            });
-                        }
-                        Ok(Some(_)) => {} // Types unify successfully
+                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
+                        return Err(TypeError::ArgumentTypeMismatch {
+                            span: expression.span.to_source_span(),
+                            function_name: func_def.name.name.clone(),
+                            parameter_name: param_name.clone(),
+                            expected_type: expected_param_type.to_string_representation(),
+                            found_type: arg_type.to_string_representation(),
+                        });
                     }
                 }
                 outrun_parser::Argument::Spread { .. } => {
@@ -2211,22 +2147,14 @@ impl TypeCheckingVisitor {
                         )?;
 
                     // Validate argument type matches parameter type
-                    match crate::unification::unify_structured_types(
-                        &arg_type,
-                        &expected_param_type,
-                        &self.compiler_environment.unification_context(),
-                        &self.compiler_environment,
-                    ) {
-                        Ok(None) | Err(_) => {
-                            return Err(TypeError::ArgumentTypeMismatch {
-                                span: expression.span.to_source_span(),
-                                function_name: func_def.name.name.clone(),
-                                parameter_name: param_name.clone(),
-                                expected_type: expected_param_type.to_string_representation(),
-                                found_type: arg_type.to_string_representation(),
-                            });
-                        }
-                        Ok(Some(_)) => {} // Types unify successfully
+                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
+                        return Err(TypeError::ArgumentTypeMismatch {
+                            span: expression.span.to_source_span(),
+                            function_name: func_def.name.name.clone(),
+                            parameter_name: param_name.clone(),
+                            expected_type: expected_param_type.to_string_representation(),
+                            found_type: arg_type.to_string_representation(),
+                        });
                     }
                 }
                 outrun_parser::Argument::Spread { .. } => {
@@ -2337,13 +2265,7 @@ impl TypeCheckingVisitor {
 
                     // If there was a type annotation, validate it matches the expression
                     if let Some(expected_type) = &type_hint {
-                        if crate::unification::unify_structured_types(
-                            &expr_type,
-                            expected_type,
-                            &self.compiler_environment.unification_context(),
-                            &self.compiler_environment,
-                        )?
-                        .is_none()
+                        if !self.types_are_compatible(&expr_type, expected_type)
                         {
                             return Err(TypeError::type_mismatch(
                                 expected_type.to_string_representation(),
@@ -2404,13 +2326,7 @@ impl TypeCheckingVisitor {
                 self.compiler_environment.intern_type_name("Boolean"),
             );
 
-            if crate::unification::unify_structured_types(
-                &guard_type,
-                &boolean_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            )?
-            .is_none()
+            if !self.types_are_compatible(&guard_type, &boolean_type)
             {
                 return Err(TypeError::type_mismatch(
                     "Boolean".to_string(),
@@ -2424,20 +2340,12 @@ impl TypeCheckingVisitor {
         let body_type = self.check_block_type_with_hint(&func.body, Some(&expected_return_type))?;
 
         // Validate body type matches return type
-        match crate::unification::unify_structured_types(
-            &body_type,
-            &expected_return_type,
-            &self.compiler_environment.unification_context(),
-            &self.compiler_environment,
-        ) {
-            Ok(None) | Err(_) => {
-                self.errors.push(TypeError::type_mismatch(
-                    expected_return_type.to_string_representation(),
-                    body_type.to_string_representation(),
-                    func.body.span.to_source_span(),
-                ));
-            }
-            Ok(Some(_)) => {} // Types unify successfully
+        if !self.types_are_compatible(&body_type, &expected_return_type) {
+            self.errors.push(TypeError::type_mismatch(
+                expected_return_type.to_string_representation(),
+                body_type.to_string_representation(),
+                func.body.span.to_source_span(),
+            ));
         }
 
         // Capture let-bound variables from the current scope (excluding parameters)
@@ -2687,29 +2595,21 @@ impl TypeCheckingVisitor {
             let trait_param_type =
                 self.resolve_type_annotation_with_self(&trait_param.type_annotation, impl_type)?;
 
-            match crate::unification::unify_structured_types(
-                &impl_param_type,
-                &trait_param_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            ) {
-                Ok(None) | Err(_) => {
-                    return Err(TypeError::SignatureMismatch {
-                        span: impl_param.span.to_source_span(),
-                        function_name: impl_func.name.name.clone(),
-                        expected: format!(
-                            "Parameter {}: {}",
-                            trait_param.name.name.clone(),
-                            trait_param_type.to_string_representation()
-                        ),
-                        found: format!(
-                            "Parameter {}: {}",
-                            impl_param.name.name.clone(),
-                            impl_param_type.to_string_representation()
-                        ),
-                    });
-                }
-                Ok(Some(_)) => {} // Types unify successfully
+            if !self.types_are_compatible(&impl_param_type, &trait_param_type) {
+                return Err(TypeError::SignatureMismatch {
+                    span: impl_param.span.to_source_span(),
+                    function_name: impl_func.name.name.clone(),
+                    expected: format!(
+                        "Parameter {}: {}",
+                        trait_param.name.name.clone(),
+                        trait_param_type.to_string_representation()
+                    ),
+                    found: format!(
+                        "Parameter {}: {}",
+                        impl_param.name.name.clone(),
+                        impl_param_type.to_string_representation()
+                    ),
+                });
             }
         }
 
@@ -2719,27 +2619,19 @@ impl TypeCheckingVisitor {
         let trait_return_type =
             self.resolve_type_annotation_with_self(trait_return_type, impl_type)?;
 
-        match crate::unification::unify_structured_types(
-            &impl_return_type,
-            &trait_return_type,
-            &self.compiler_environment.unification_context(),
-            &self.compiler_environment,
-        ) {
-            Ok(None) | Err(_) => {
-                return Err(TypeError::SignatureMismatch {
-                    span: impl_func.span.to_source_span(),
-                    function_name: impl_func.name.name.clone(),
-                    expected: format!(
-                        "Return type: {}",
-                        trait_return_type.to_string_representation()
-                    ),
-                    found: format!(
-                        "Return type: {}",
-                        impl_return_type.to_string_representation()
-                    ),
-                });
-            }
-            Ok(Some(_)) => {} // Types unify successfully
+        if !self.types_are_compatible(&impl_return_type, &trait_return_type) {
+            return Err(TypeError::SignatureMismatch {
+                span: impl_func.span.to_source_span(),
+                function_name: impl_func.name.name.clone(),
+                expected: format!(
+                    "Return type: {}",
+                    trait_return_type.to_string_representation()
+                ),
+                found: format!(
+                    "Return type: {}",
+                    impl_return_type.to_string_representation()
+                ),
+            });
         }
 
         Ok(())
@@ -2978,37 +2870,21 @@ impl TypeCheckingVisitor {
                 return Ok(self_types[0].clone());
             }
 
-            // Unify all Self types to find the most concrete compatible type
+            // Find the most concrete compatible type from all Self types
             let mut unified_type = self_types[0].clone();
             for self_type in self_types.iter().skip(1) {
-                match crate::unification::unify_structured_types(
-                    &unified_type,
-                    self_type,
-                    &self.compiler_environment.unification_context(),
-                    &self.compiler_environment,
-                ) {
-                    Ok(Some(concrete_type)) => {
-                        // Types unify - use the returned concrete type
-                        unified_type = concrete_type;
-                    }
-                    Ok(None) => {
-                        return Err(TypeError::internal_with_span(
-                            format!(
-                                "Incompatible Self types in trait function call: {} vs {}",
-                                unified_type.to_string_representation(),
-                                self_type.to_string_representation()
-                            ),
-                            call.span.to_source_span(),
-                        ));
-                    }
-                    Err(unification_error) => {
-                        return Err(TypeError::internal_with_span(
-                            format!(
-                                "Unification error during Self type inference: {unification_error:?}"
-                            ),
-                            call.span.to_source_span(),
-                        ));
-                    }
+                if let Some(concrete_type) = self.find_most_concrete_type(&unified_type, self_type) {
+                    // Types are compatible - use the returned concrete type
+                    unified_type = concrete_type;
+                } else {
+                    return Err(TypeError::internal_with_span(
+                        format!(
+                            "Incompatible Self types in trait function call: {} vs {}",
+                            unified_type.to_string_representation(),
+                            self_type.to_string_representation()
+                        ),
+                        call.span.to_source_span(),
+                    ));
                 }
             }
 
@@ -3131,35 +3007,19 @@ impl TypeCheckingVisitor {
             return Ok(self_types[0].clone());
         }
 
-        // Unify all Self types to find the most concrete compatible type
+        // Find the most concrete compatible type from all Self types
         let mut unified_type = self_types[0].clone();
         for self_type in self_types.iter().skip(1) {
-            match crate::unification::unify_structured_types(
-                &unified_type,
-                self_type,
-                &self.compiler_environment.unification_context(),
-                &self.compiler_environment,
-            ) {
-                Ok(Some(concrete_type)) => {
-                    // Types unify - use the returned concrete type
-                    unified_type = concrete_type;
-                }
-                Ok(None) => {
-                    // Types don't unify - this is a type mismatch error
-                    return Err(TypeError::type_mismatch(
-                        unified_type.to_string_representation(),
-                        self_type.to_string_representation(),
-                        call.span.to_source_span(),
-                    ));
-                }
-                Err(unification_error) => {
-                    return Err(TypeError::internal_with_span(
-                        format!(
-                            "Unification error during Self type inference: {unification_error:?}"
-                        ),
-                        call.span.to_source_span(),
-                    ));
-                }
+            if let Some(concrete_type) = self.find_most_concrete_type(&unified_type, self_type) {
+                // Types are compatible - use the returned concrete type
+                unified_type = concrete_type;
+            } else {
+                // Types don't unify - this is a type mismatch error
+                return Err(TypeError::type_mismatch(
+                    unified_type.to_string_representation(),
+                    self_type.to_string_representation(),
+                    call.span.to_source_span(),
+                ));
             }
         }
 
