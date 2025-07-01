@@ -214,6 +214,41 @@ impl ErrorSuggestionGenerator {
                                     self.type_to_string(implementing_type)
                                 )
                             }
+                            SMTConstraint::UniversalSelfConstraint {
+                                trait_being_defined,
+                                bound_traits,
+                                ..
+                            } => {
+                                let bound_names = bound_traits.iter()
+                                    .map(|t| self.type_to_string(t))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                format!(
+                                    "Remove universal Self constraint: Self must implement {} and {}",
+                                    self.type_to_string(trait_being_defined),
+                                    bound_names
+                                )
+                            }
+                            SMTConstraint::ConcreteSelfBinding {
+                                concrete_type,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove concrete Self binding: Self = {}",
+                                    self.type_to_string(concrete_type)
+                                )
+                            }
+                            SMTConstraint::SelfTypeInference {
+                                inferred_type,
+                                call_site_context,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove Self type inference: Self = {} (from {})",
+                                    self.type_to_string(inferred_type),
+                                    call_site_context
+                                )
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

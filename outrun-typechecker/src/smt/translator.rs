@@ -247,6 +247,54 @@ impl SMTTranslator {
                 // This is essentially the same as TraitImplemented but with different semantics
                 self.create_trait_predicate(implementing_type, trait_type, compiler_env)
             }
+            SMTConstraint::UniversalSelfConstraint {
+                self_variable_id,
+                trait_being_defined,
+                bound_traits,
+                ..
+            } => {
+                // Universal Self constraint: ∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))
+                let self_var_name = format!("Self_{}", self_variable_id.hash);
+                let trait_defined_sort = self.translate_structured_type(trait_being_defined, compiler_env);
+                
+                let mut implications = Vec::new();
+                for bound_trait in bound_traits {
+                    let bound_sort = self.translate_structured_type(bound_trait, compiler_env);
+                    // implements(Self, TraitBeingDefined) → implements(Self, BoundTrait)
+                    implications.push(format!(
+                        "(=> (implements {} {}) (implements {} {}))",
+                        self_var_name, trait_defined_sort, self_var_name, bound_sort
+                    ));
+                }
+                
+                if implications.is_empty() {
+                    "true".to_string()
+                } else if implications.len() == 1 {
+                    implications[0].clone()
+                } else {
+                    format!("(and {})", implications.join(" "))
+                }
+            }
+            SMTConstraint::ConcreteSelfBinding {
+                self_variable_id,
+                concrete_type,
+                ..
+            } => {
+                // Concrete Self binding: Self = ConcreteType
+                let self_var_name = format!("Self_{}", self_variable_id.hash);
+                let concrete_sort = self.translate_structured_type(concrete_type, compiler_env);
+                format!("(= {} {})", self_var_name, concrete_sort)
+            }
+            SMTConstraint::SelfTypeInference {
+                self_variable_id,
+                inferred_type,
+                ..
+            } => {
+                // Self type inference: Self should equal inferred type
+                let self_var_name = format!("Self_{}", self_variable_id.hash);
+                let inferred_sort = self.translate_structured_type(inferred_type, compiler_env);
+                format!("(= {} {})", self_var_name, inferred_sort)
+            }
         }
     }
 

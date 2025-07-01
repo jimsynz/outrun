@@ -68,6 +68,43 @@ pub enum SMTConstraint {
         implementing_type: StructuredType, // e.g., Outrun.Core.Boolean (what actually implements it)
         context: String,                  // For error reporting (e.g., "parameter type check")
     },
+
+    /// Universal Self constraint for trait definitions
+    /// This represents "∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))"
+    /// Used for "when Self: Equality" constraints in trait definitions
+    UniversalSelfConstraint {
+        self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable
+        trait_being_defined: StructuredType,  // The trait being defined (e.g., Binary)
+        bound_traits: Vec<StructuredType>,    // Required trait implementations (e.g., [Equality])
+        context: String,                      // For error reporting
+    },
+
+    /// Concrete Self binding for trait implementations 
+    /// This represents "Self = ConcreteType" in impl blocks
+    /// Used to bind Self to the specific implementing type
+    ConcreteSelfBinding {
+        self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable
+        concrete_type: StructuredType,        // The concrete implementing type (e.g., String)
+        context: String,                      // For error reporting
+    },
+
+    /// Self type inference constraint for function calls
+    /// This represents bidirectional inference where call arguments constrain Self
+    /// Used for calls like "Option.some?(value: Option<Integer>)" to infer Self = Option<Integer>
+    SelfTypeInference {
+        self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable  
+        inferred_type: StructuredType,        // The type inferred from arguments
+        call_site_context: String,           // Description of the function call
+        confidence: InferenceConfidence,     // How confident we are in this inference
+    },
+}
+
+/// Confidence level for Self type inference
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InferenceConfidence {
+    High,    // Direct parameter match (e.g., parameter is Self, argument is concrete)
+    Medium,  // Indirect inference (e.g., parameter is Option<Self>, argument is Option<Concrete>)
+    Low,     // Complex inference with multiple steps
 }
 
 /// Function signature with named parameters (Outrun requirement)
@@ -197,6 +234,40 @@ impl Hash for SMTConstraint {
                 trait_type.hash(state);
                 implementing_type.hash(state);
                 context.hash(state);
+            }
+            SMTConstraint::UniversalSelfConstraint {
+                self_variable_id,
+                trait_being_defined,
+                bound_traits,
+                context,
+            } => {
+                8u8.hash(state);
+                self_variable_id.hash(state);
+                trait_being_defined.hash(state);
+                bound_traits.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::ConcreteSelfBinding {
+                self_variable_id,
+                concrete_type,
+                context,
+            } => {
+                9u8.hash(state);
+                self_variable_id.hash(state);
+                concrete_type.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::SelfTypeInference {
+                self_variable_id,
+                inferred_type,
+                call_site_context,
+                confidence,
+            } => {
+                10u8.hash(state);
+                self_variable_id.hash(state);
+                inferred_type.hash(state);
+                call_site_context.hash(state);
+                confidence.hash(state);
             }
         }
     }

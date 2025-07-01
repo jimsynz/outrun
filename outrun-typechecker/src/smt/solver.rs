@@ -237,6 +237,89 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let bool_var = Bool::new_const(self.context, var_name);
                     self.solver.assert(&bool_var);
                 }
+                SMTConstraint::UniversalSelfConstraint {
+                    self_variable_id,
+                    trait_being_defined,
+                    bound_traits,
+                    context: _,
+                } => {
+                    // Universal Self constraint: ∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    let trait_defined_sort = self
+                        .translator
+                        .translate_structured_type(trait_being_defined, compiler_env);
+                    
+                    // For each bound trait, create an implication:
+                    // implements(Self, TraitBeingDefined) → implements(Self, BoundTrait)
+                    for bound_trait in bound_traits {
+                        let bound_sort = self
+                            .translator
+                            .translate_structured_type(bound_trait, compiler_env);
+                        
+                        let implements_defined = Bool::new_const(
+                            self.context, 
+                            format!("implements_{}_{}", self_var_name, trait_defined_sort)
+                        );
+                        let implements_bound = Bool::new_const(
+                            self.context, 
+                            format!("implements_{}_{}", self_var_name, bound_sort)
+                        );
+                        
+                        // Assert: implements_defined → implements_bound
+                        let implication = Bool::implies(&implements_defined, &implements_bound);
+                        self.solver.assert(&implication);
+                    }
+                }
+                SMTConstraint::ConcreteSelfBinding {
+                    self_variable_id,
+                    concrete_type,
+                    ..
+                } => {
+                    // Concrete Self binding: Self = ConcreteType
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    let concrete_sort = self
+                        .translator
+                        .translate_structured_type(concrete_type, compiler_env);
+                    
+                    let self_var = Bool::new_const(self.context, self_var_name);
+                    let concrete_var = Bool::new_const(self.context, format!("type_{}", concrete_sort));
+                    
+                    // Assert Self = ConcreteType
+                    let equality = self_var._eq(&concrete_var);
+                    self.solver.assert(&equality);
+                }
+                SMTConstraint::SelfTypeInference {
+                    self_variable_id,
+                    inferred_type,
+                    confidence,
+                    ..
+                } => {
+                    // Self type inference: Self should equal inferred type
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    let inferred_sort = self
+                        .translator
+                        .translate_structured_type(inferred_type, compiler_env);
+                    
+                    let self_var = Bool::new_const(self.context, self_var_name);
+                    let inferred_var = Bool::new_const(self.context, format!("type_{}", inferred_sort));
+                    
+                    // Create a weighted constraint based on confidence
+                    let equality = self_var._eq(&inferred_var);
+                    match confidence {
+                        crate::smt::constraints::InferenceConfidence::High => {
+                            // High confidence: assert directly
+                            self.solver.assert(&equality);
+                        }
+                        crate::smt::constraints::InferenceConfidence::Medium => {
+                            // Medium confidence: soft assertion (for now, treat as hard)
+                            self.solver.assert(&equality);
+                        }
+                        crate::smt::constraints::InferenceConfidence::Low => {
+                            // Low confidence: soft assertion (for now, treat as hard)
+                            self.solver.assert(&equality);
+                        }
+                    }
+                }
             }
         }
 

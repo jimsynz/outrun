@@ -182,7 +182,7 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
 
         // Register Self parameter as a type variable (not the trait type itself)
         let trait_name = trait_def.name_as_string();
-        let _trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
+        let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
         let self_type_id = self.compiler_environment.intern_type_name("Self");
         
         // Register Self as a type variable that can be constrained
@@ -193,7 +193,7 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         
         // Process trait constraints (when Self: Equality && Self: Comparison && ...)
         if let Some(ref constraints) = trait_def.constraints {
-            self.process_trait_constraints_for_self(constraints, &self_type_id);
+            self.process_trait_constraints_for_self(constraints, &self_type_id, &trait_type_id);
         }
 
         // Register generic parameters (T, E, K, V, etc.)
@@ -3624,14 +3624,15 @@ impl TypeCheckingVisitor {
         &mut self,
         constraints: &outrun_parser::ConstraintExpression,
         self_type_id: &TypeNameId,
+        trait_being_defined_id: &TypeNameId,
     ) {
         use outrun_parser::ConstraintExpression;
         
         match constraints {
             // Binary AND: Self: A && Self: B
             ConstraintExpression::And { left, right, .. } => {
-                self.process_trait_constraints_for_self(left, self_type_id);
-                self.process_trait_constraints_for_self(right, self_type_id);
+                self.process_trait_constraints_for_self(left, self_type_id, trait_being_defined_id);
+                self.process_trait_constraints_for_self(right, self_type_id, trait_being_defined_id);
             }
             // Single constraint: Self: TraitName
             ConstraintExpression::Constraint { type_param, trait_bound, .. } => {
@@ -3646,10 +3647,12 @@ impl TypeCheckingVisitor {
                     // Get trait type ID
                     let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
                     
-                    // Generate TypeVariableConstraint: Self must implement this trait
-                    let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
-                        variable_id: self_type_id.clone(),
-                        bound_type: crate::unification::StructuredType::Simple(trait_type_id),
+                    // Generate UniversalSelfConstraint: ∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))
+                    let bound_trait_type = crate::unification::StructuredType::Simple(trait_type_id);
+                    let constraint = crate::smt::constraints::SMTConstraint::UniversalSelfConstraint {
+                        self_variable_id: self_type_id.clone(),
+                        trait_being_defined: crate::unification::StructuredType::Simple(trait_being_defined_id.clone()),
+                        bound_traits: vec![bound_trait_type],
                         context: format!("Self constraint in trait definition: Self: {}", trait_name),
                     };
                     
@@ -3661,7 +3664,7 @@ impl TypeCheckingVisitor {
             }
             // Parenthesized: (constraint)
             ConstraintExpression::Parenthesized { expression, .. } => {
-                self.process_trait_constraints_for_self(expression, self_type_id);
+                self.process_trait_constraints_for_self(expression, self_type_id, trait_being_defined_id);
             }
         }
     }
