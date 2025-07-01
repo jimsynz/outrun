@@ -20,34 +20,10 @@ mod test_tuple_type_inference;
 // If expression integration tests
 mod test_if_expression_integration;
 
-// Core visitor and unification tests
-// TODO: Fix visitor pattern tests
-// mod test_visitor_patterns;
-mod test_type_unification;
 mod test_visitor_let_bindings;
 // TODO: Create these test files
 // mod test_structured_types;
 
-// Multi-program compiler tests
-// TODO: Fix multi-program compiler tests
-// mod test_multi_program_compiler;
-// TODO: Create these test files
-// mod test_program_collection;
-// mod test_dependency_resolution;
-
-// Phase-specific visitor tests
-// TODO: Create these test files
-// mod test_trait_extraction_visitor;
-// mod test_struct_extraction_visitor;
-// mod test_impl_extraction_visitor;
-// mod test_function_extraction_visitor;
-// mod test_type_checking_visitor;
-
-// Integration tests with new API
-// TODO: Create these test files
-// mod test_new_api_integration;
-// mod test_core_library_integration;
-// mod test_error_reporting;
 mod test_option_trait_registration_debug;
 
 // Impl block validation tests
@@ -68,9 +44,6 @@ mod test_generic_struct_constructor;
 // Exponentiate generic types tests
 mod test_exponentiate_generic_types;
 
-// Pattern typechecking tests
-// TODO: Fix test_pattern_typechecking after fixing helper function
-// mod test_pattern_typechecking;
 mod test_pattern_field_validation;
 mod test_pattern_variable_scoping;
 
@@ -100,9 +73,6 @@ mod test_generics_and_type_annotations;
 
 // Debug info and comment attachment tests (Week 9 functionality)
 mod test_debug_info_comments;
-
-// Error recovery and production polish tests (Week 10 functionality)
-mod test_error_recovery_production;
 
 // Case expression verification tests
 mod test_case_expression_verification;

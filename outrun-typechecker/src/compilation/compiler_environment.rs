@@ -2647,7 +2647,7 @@ impl CompilerEnvironment {
         context.add_smt_constraint(constraint);
         
         // Create SMT solver and check satisfiability
-        let mut z3_context = crate::smt::solver::Z3Context::new();
+        let z3_context = crate::smt::solver::Z3Context::new();
         let mut solver = z3_context.create_solver();
         
         // Add all constraints to the solver

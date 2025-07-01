@@ -314,35 +314,39 @@ impl TypeCheckingVisitor {
         if type1 == type2 {
             return true;
         }
-        
+
         // Use the SMT-based implements_trait method for compatibility checking
         // This handles both trait compatibility and exact type matching
-        self.compiler_environment.implements_trait(type1, type2) ||
-        self.compiler_environment.implements_trait(type2, type1)
+        self.compiler_environment.implements_trait(type1, type2)
+            || self.compiler_environment.implements_trait(type2, type1)
     }
 
     /// Find the most concrete type from two compatible types
     /// This replaces the unification logic for cases that need a concrete result
-    fn find_most_concrete_type(&self, type1: &StructuredType, type2: &StructuredType) -> Option<StructuredType> {
+    fn find_most_concrete_type(
+        &self,
+        type1: &StructuredType,
+        type2: &StructuredType,
+    ) -> Option<StructuredType> {
         // If types are identical, return one of them
         if type1 == type2 {
             return Some(type1.clone());
         }
-        
+
         // Check if they're compatible first
         if !self.types_are_compatible(type1, type2) {
             return None;
         }
-        
+
         // Prefer concrete types over trait types
         let type1_is_trait = self.compiler_environment.is_trait(type1);
         let type2_is_trait = self.compiler_environment.is_trait(type2);
-        
+
         match (type1_is_trait, type2_is_trait) {
-            (true, false) => Some(type2.clone()),  // type2 is concrete, prefer it
-            (false, true) => Some(type1.clone()),  // type1 is concrete, prefer it  
+            (true, false) => Some(type2.clone()), // type2 is concrete, prefer it
+            (false, true) => Some(type1.clone()), // type1 is concrete, prefer it
             (false, false) => Some(type1.clone()), // Both concrete, use first
-            (true, true) => Some(type1.clone()),   // Both traits, use first
+            (true, true) => Some(type1.clone()),  // Both traits, use first
         }
     }
 
@@ -608,8 +612,7 @@ impl TypeCheckingVisitor {
                         };
 
                         // Verify that LHS type unifies with RHS type
-                        if self.types_are_compatible(&lhs_type, &rhs_type)
-                        {
+                        if self.types_are_compatible(&lhs_type, &rhs_type) {
                             // Return the original LHS type (preserves concrete type for dispatch)
                             // The `as` operator is a type assertion, not a type conversion
                             Ok(lhs_type)
@@ -791,8 +794,7 @@ impl TypeCheckingVisitor {
 
             // Validate all elements are compatible with hint
             for (i, element_type) in element_types.iter().enumerate() {
-                if !self.types_are_compatible(element_type, hint_element_type)
-                {
+                if !self.types_are_compatible(element_type, hint_element_type) {
                     let element_expr = match &literal.elements[i] {
                         outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
                         _ => unreachable!(), // We already handled spreads above
@@ -826,8 +828,7 @@ impl TypeCheckingVisitor {
         // Case 4: No type hint - require homogeneous elements
         let first_element_type = &element_types[0];
         for (i, element_type) in element_types.iter().enumerate().skip(1) {
-            if !self.types_are_compatible(first_element_type, element_type)
-            {
+            if !self.types_are_compatible(first_element_type, element_type) {
                 let element_expr = match &literal.elements[i] {
                     outrun_parser::ListElement::Expression(expr) => expr.as_ref(),
                     _ => unreachable!(), // We already handled spreads above
@@ -987,8 +988,7 @@ impl TypeCheckingVisitor {
                 let entry_value_type =
                     self.check_expression_type_with_hint(entry_value, value_hint)?;
 
-                if !self.types_are_compatible(&key_type, &entry_key_type)
-                {
+                if !self.types_are_compatible(&key_type, &entry_key_type) {
                     return Err(TypeError::type_mismatch(
                         key_type.to_string_representation(),
                         entry_key_type.to_string_representation(),
@@ -996,8 +996,7 @@ impl TypeCheckingVisitor {
                     ));
                 }
 
-                if !self.types_are_compatible(&value_type, &entry_value_type)
-                {
+                if !self.types_are_compatible(&value_type, &entry_value_type) {
                     return Err(TypeError::type_mismatch(
                         value_type.to_string_representation(),
                         entry_value_type.to_string_representation(),
@@ -1233,16 +1232,24 @@ impl TypeCheckingVisitor {
                 // Find field definition
                 if let Some(field_def) = struct_def.fields.iter().find(|f| f.name.name == name.name)
                 {
-                    // Resolve field type with generic substitutions
-                    let expected_field_type = self
-                        .resolve_type_annotation_with_generic_substitution(
-                            &field_def.type_annotation,
-                            &generic_substitutions,
-                        )?;
+                    // Resolve field type - SMT constraints will handle generic substitutions
+                    let expected_field_type =
+                        self.resolve_type_annotation(&field_def.type_annotation)?;
+
+                    // Generate SMT constraints for generic type parameters if needed
+                    for (param_name, concrete_type) in &generic_substitutions {
+                        let constraint = SMTConstraint::TypeParameterUnification {
+                            parameter_name: param_name.clone(),
+                            concrete_type: concrete_type.clone(),
+                            context: "generic type substitution".to_string(),
+                        };
+                        self.compiler_environment
+                            .unification_context_mut()
+                            .add_smt_constraint(constraint);
+                    }
 
                     // Validate field type matches expected
-                    if !self.types_are_compatible(&expected_field_type, &field_value_type)
-                    {
+                    if !self.types_are_compatible(&expected_field_type, &field_value_type) {
                         return Err(TypeError::type_mismatch(
                             expected_field_type.to_string_representation(),
                             field_value_type.to_string_representation(),
@@ -1286,8 +1293,7 @@ impl TypeCheckingVisitor {
                         let expected_field_type =
                             self.resolve_type_annotation(&field_def.type_annotation)?;
 
-                        if !self.types_are_compatible(&expected_field_type, &field_value_type)
-                        {
+                        if !self.types_are_compatible(&expected_field_type, &field_value_type) {
                             return Err(TypeError::type_mismatch(
                                 expected_field_type.to_string_representation(),
                                 field_value_type.to_string_representation(),
@@ -1314,8 +1320,7 @@ impl TypeCheckingVisitor {
                         // Look up the variable in the current scope
                         if let Some(variable_type) = self.lookup_variable(&name.name) {
                             // Check that the variable type matches the field type
-                            if !self.types_are_compatible(&expected_field_type, variable_type)
-                            {
+                            if !self.types_are_compatible(&expected_field_type, variable_type) {
                                 return Err(TypeError::type_mismatch(
                                     expected_field_type.to_string_representation(),
                                     variable_type.to_string_representation(),
@@ -1376,8 +1381,7 @@ impl TypeCheckingVisitor {
         let boolean_type_id = self.compiler_environment.intern_type_name("Boolean");
         let expected_condition_type = crate::unification::StructuredType::Simple(boolean_type_id);
 
-        if !self.types_are_compatible(&expected_condition_type, &condition_type)
-        {
+        if !self.types_are_compatible(&expected_condition_type, &condition_type) {
             return Err(TypeError::type_mismatch(
                 expected_condition_type.to_string_representation(),
                 condition_type.to_string_representation(),
@@ -1393,8 +1397,7 @@ impl TypeCheckingVisitor {
             let else_type = self.check_block_type(else_block)?;
 
             // Both branches must have compatible types
-            if !self.types_are_compatible(&then_type, &else_type)
-            {
+            if !self.types_are_compatible(&then_type, &else_type) {
                 return Err(TypeError::type_mismatch(
                     then_type.to_string_representation(),
                     else_type.to_string_representation(),
@@ -1465,8 +1468,7 @@ impl TypeCheckingVisitor {
                 self.compiler_environment.intern_type_name("Boolean"),
             );
 
-            if !self.types_are_compatible(&guard_type, &boolean_type)
-            {
+            if !self.types_are_compatible(&guard_type, &boolean_type) {
                 return Err(TypeError::type_mismatch(
                     "Boolean".to_string(),
                     guard_type.to_string_representation(),
@@ -1490,8 +1492,7 @@ impl TypeCheckingVisitor {
                     self.compiler_environment.intern_type_name("Boolean"),
                 );
 
-                if !self.types_are_compatible(&guard_type, &boolean_type)
-                {
+                if !self.types_are_compatible(&guard_type, &boolean_type) {
                     return Err(TypeError::type_mismatch(
                         "Boolean".to_string(),
                         guard_type.to_string_representation(),
@@ -1506,8 +1507,7 @@ impl TypeCheckingVisitor {
             };
 
             // Unify clause types
-            if !self.types_are_compatible(&first_result_type, &clause_type)
-            {
+            if !self.types_are_compatible(&first_result_type, &clause_type) {
                 return Err(TypeError::type_mismatch(
                     first_result_type.to_string_representation(),
                     clause_type.to_string_representation(),
@@ -1579,11 +1579,22 @@ impl TypeCheckingVisitor {
                 }
             }
 
-            // Resolve field type with generic substitutions
-            self.resolve_type_annotation_with_generic_substitution(
-                &field_def.type_annotation,
-                &generic_substitutions,
-            )
+            // Resolve field type - SMT constraints will handle generic substitutions
+            let field_type = self.resolve_type_annotation(&field_def.type_annotation)?;
+
+            // Generate SMT constraints for generic type parameters
+            for (param_name, concrete_type) in &generic_substitutions {
+                let constraint = SMTConstraint::TypeParameterUnification {
+                    parameter_name: param_name.clone(),
+                    concrete_type: concrete_type.clone(),
+                    context: "generic type substitution".to_string(),
+                };
+                self.compiler_environment
+                    .unification_context_mut()
+                    .add_smt_constraint(constraint);
+            }
+
+            Ok(field_type)
         } else {
             // No generics, use regular resolution
             self.resolve_type_annotation(&field_def.type_annotation)
@@ -1672,10 +1683,23 @@ impl TypeCheckingVisitor {
                                 &generic_substitutions,
                             )?;
 
-                            return self.resolve_type_annotation_with_generic_substitution(
-                                &trait_func.definition().return_type,
-                                &generic_substitutions,
-                            );
+                            // Resolve return type - SMT constraints will handle generic substitutions
+                            let return_type =
+                                self.resolve_type_annotation(&trait_func.definition().return_type)?;
+
+                            // Generate SMT constraints for generic type parameters
+                            for (param_name, concrete_type) in &generic_substitutions {
+                                let constraint = SMTConstraint::TypeParameterUnification {
+                                    parameter_name: param_name.clone(),
+                                    concrete_type: concrete_type.clone(),
+                                    context: "generic type substitution".to_string(),
+                                };
+                                self.compiler_environment
+                                    .unification_context_mut()
+                                    .add_smt_constraint(constraint);
+                            }
+
+                            return Ok(return_type);
                         }
 
                         // Trait functions with default implementations (TraitDefault) should be treated
@@ -2139,12 +2163,21 @@ impl TypeCheckingVisitor {
                     context.add_expression_type(expression.span, arg_type.clone());
                     self.compiler_environment.set_unification_context(context);
 
-                    // Resolve parameter type with generic substitution
-                    let expected_param_type = self
-                        .resolve_type_annotation_with_generic_substitution(
-                            &param_def.type_annotation,
-                            generic_substitutions,
-                        )?;
+                    // Resolve parameter type - SMT constraints will handle generic substitutions
+                    let expected_param_type =
+                        self.resolve_type_annotation(&param_def.type_annotation)?;
+
+                    // Generate SMT constraints for generic type parameters
+                    for (param_name, concrete_type) in generic_substitutions {
+                        let constraint = SMTConstraint::TypeParameterUnification {
+                            parameter_name: param_name.clone(),
+                            concrete_type: concrete_type.clone(),
+                            context: "generic type substitution".to_string(),
+                        };
+                        self.compiler_environment
+                            .unification_context_mut()
+                            .add_smt_constraint(constraint);
+                    }
 
                     // Validate argument type matches parameter type
                     if !self.types_are_compatible(&arg_type, &expected_param_type) {
@@ -2171,10 +2204,19 @@ impl TypeCheckingVisitor {
         for param in &func_def.parameters {
             if !provided_params.contains(&param.name.name.clone()) {
                 // Check if parameter type implements Default trait (making it optional)
-                let param_type = self.resolve_type_annotation_with_generic_substitution(
-                    &param.type_annotation,
-                    generic_substitutions,
-                )?;
+                let param_type = self.resolve_type_annotation(&param.type_annotation)?;
+
+                // Generate SMT constraints for generic type parameters
+                for (param_name, concrete_type) in generic_substitutions {
+                    let constraint = SMTConstraint::TypeParameterUnification {
+                        parameter_name: param_name.clone(),
+                        concrete_type: concrete_type.clone(),
+                        context: "generic type substitution".to_string(),
+                    };
+                    self.compiler_environment
+                        .unification_context_mut()
+                        .add_smt_constraint(constraint);
+                }
                 let default_trait_id = self.compiler_environment.intern_type_name("Default");
 
                 // Check if param_type implements Default using CompilerEnvironment
@@ -2265,8 +2307,7 @@ impl TypeCheckingVisitor {
 
                     // If there was a type annotation, validate it matches the expression
                     if let Some(expected_type) = &type_hint {
-                        if !self.types_are_compatible(&expr_type, expected_type)
-                        {
+                        if !self.types_are_compatible(&expr_type, expected_type) {
                             return Err(TypeError::type_mismatch(
                                 expected_type.to_string_representation(),
                                 expr_type.to_string_representation(),
@@ -2326,8 +2367,7 @@ impl TypeCheckingVisitor {
                 self.compiler_environment.intern_type_name("Boolean"),
             );
 
-            if !self.types_are_compatible(&guard_type, &boolean_type)
-            {
+            if !self.types_are_compatible(&guard_type, &boolean_type) {
                 return Err(TypeError::type_mismatch(
                     "Boolean".to_string(),
                     guard_type.to_string_representation(),
@@ -2664,17 +2704,21 @@ impl TypeCheckingVisitor {
                 if path.len() == 1 && path[0].name == "Self" {
                     // Create a TypeVariable for Self and generate constraint
                     let self_var_id = self.compiler_environment.intern_type_name("Self");
-                    let self_type_variable = crate::unification::StructuredType::TypeVariable(self_var_id.clone());
+                    let self_type_variable =
+                        crate::unification::StructuredType::TypeVariable(self_var_id.clone());
 
                     // Generate SMT constraint: Self TypeVariable = concrete implementation type
-                    let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
-                        variable_id: self_var_id,
-                        bound_type: self_type.clone(),
-                        context: "Self type in impl block".to_string(),
-                    };
+                    let constraint =
+                        crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
+                            variable_id: self_var_id,
+                            bound_type: self_type.clone(),
+                            context: "Self type in impl block".to_string(),
+                        };
 
                     // Add constraint to unification context
-                    self.compiler_environment.unification_context_mut().add_smt_constraint(constraint);
+                    self.compiler_environment
+                        .unification_context_mut()
+                        .add_smt_constraint(constraint);
 
                     return Ok(self_type_variable);
                 }
@@ -2684,14 +2728,19 @@ impl TypeCheckingVisitor {
                     // Create a modified type annotation with Self resolved in args
                     let mut resolved_args = Vec::new();
                     for arg in &args.args {
-                        let resolved_arg = self.resolve_type_annotation_with_self_as_type_variable(arg, self_type)?;
+                        let resolved_arg = self
+                            .resolve_type_annotation_with_self_as_type_variable(arg, self_type)?;
                         resolved_args.push(resolved_arg);
                     }
-                    
+
                     // Get the base type name
-                    let type_name_str = path.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(".");
+                    let type_name_str = path
+                        .iter()
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
                     let type_name_id = self.compiler_environment.intern_type_name(&type_name_str);
-                    
+
                     Ok(crate::unification::StructuredType::Generic {
                         base: type_name_id,
                         args: resolved_args,
@@ -2705,7 +2754,11 @@ impl TypeCheckingVisitor {
                 // Recursively resolve tuple elements, checking for Self in each
                 let mut resolved_types = Vec::new();
                 for element_type in types {
-                    let resolved_element = self.resolve_type_annotation_with_self_as_type_variable(element_type, self_type)?;
+                    let resolved_element = self
+                        .resolve_type_annotation_with_self_as_type_variable(
+                            element_type,
+                            self_type,
+                        )?;
                     resolved_types.push(resolved_element);
                 }
                 Ok(crate::unification::StructuredType::Tuple(resolved_types))
@@ -2718,107 +2771,23 @@ impl TypeCheckingVisitor {
                 // Recursively resolve function parameters and return type, checking for Self
                 let mut resolved_params = Vec::new();
                 for param in params {
-                    let resolved_param_type = self.resolve_type_annotation_with_self_as_type_variable(&param.type_annotation, self_type)?;
+                    let resolved_param_type = self
+                        .resolve_type_annotation_with_self_as_type_variable(
+                            &param.type_annotation,
+                            self_type,
+                        )?;
                     resolved_params.push(crate::unification::FunctionParam {
                         name: self.compiler_environment.intern_atom_name(&param.name.name),
                         param_type: resolved_param_type,
                     });
                 }
 
-                let resolved_return_type = self.resolve_type_annotation_with_self_as_type_variable(return_type, self_type)?;
+                let resolved_return_type = self
+                    .resolve_type_annotation_with_self_as_type_variable(return_type, self_type)?;
 
                 Ok(crate::unification::StructuredType::Function {
                     params: resolved_params,
                     return_type: Box::new(resolved_return_type),
-                })
-            }
-        }
-    }
-
-    /// Recursively resolve type annotation with Self substitution
-    fn resolve_type_annotation_with_self_substitution(
-        &mut self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-        self_type: &crate::unification::StructuredType,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        match type_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path,
-                generic_args,
-                span: _,
-            } => {
-                let type_name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // Handle Self substitution directly
-                if type_name == "Self" {
-                    return Ok(self_type.clone());
-                }
-
-                // Handle other type parameters using the existing system
-                if let Some(type_param_type) = self.lookup_type_parameter(&type_name) {
-                    return Ok(type_param_type.clone());
-                }
-
-                // Intern the type name using CompilerEnvironment
-                {
-                    let type_id = self.compiler_environment.intern_type_name(&type_name);
-
-                    // Handle generic arguments with Self substitution
-                    if let Some(ref args) = generic_args {
-                        let mut arg_types = Vec::new();
-                        for arg in &args.args {
-                            let arg_type = self
-                                .resolve_type_annotation_with_self_substitution(arg, self_type)?;
-                            arg_types.push(arg_type);
-                        }
-
-                        Ok(crate::unification::StructuredType::Generic {
-                            base: type_id,
-                            args: arg_types,
-                        })
-                    } else {
-                        Ok(crate::unification::StructuredType::Simple(type_id))
-                    }
-                }
-            }
-            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
-                let mut element_types = Vec::new();
-                for element_type in types {
-                    let element_struct_type = self
-                        .resolve_type_annotation_with_self_substitution(element_type, self_type)?;
-                    element_types.push(element_struct_type);
-                }
-                Ok(crate::unification::StructuredType::Tuple(element_types))
-            }
-            outrun_parser::TypeAnnotation::Function {
-                params,
-                return_type,
-                ..
-            } => {
-                let mut param_types = Vec::new();
-                for param in params {
-                    let param_struct_type = self.resolve_type_annotation_with_self_substitution(
-                        &param.type_annotation,
-                        self_type,
-                    )?;
-                    param_types.push(crate::unification::FunctionParam {
-                        name: self
-                            .compiler_environment
-                            .intern_atom_name(&param.name.name.clone()),
-                        param_type: param_struct_type,
-                    });
-                }
-
-                let return_struct_type =
-                    self.resolve_type_annotation_with_self_substitution(return_type, self_type)?;
-
-                Ok(crate::unification::StructuredType::Function {
-                    params: param_types,
-                    return_type: Box::new(return_struct_type),
                 })
             }
         }
@@ -2873,7 +2842,8 @@ impl TypeCheckingVisitor {
             // Find the most concrete compatible type from all Self types
             let mut unified_type = self_types[0].clone();
             for self_type in self_types.iter().skip(1) {
-                if let Some(concrete_type) = self.find_most_concrete_type(&unified_type, self_type) {
+                if let Some(concrete_type) = self.find_most_concrete_type(&unified_type, self_type)
+                {
                     // Types are compatible - use the returned concrete type
                     unified_type = concrete_type;
                 } else {
@@ -3074,217 +3044,6 @@ impl TypeCheckingVisitor {
                     .iter()
                     .any(|p| self.type_annotation_contains_self(&p.type_annotation))
                     || self.type_annotation_contains_self(return_type)
-            }
-        }
-    }
-
-    /// Resolve type annotation with generic parameter substitutions
-    /// DEPRECATED: Manual generic substitution replaced by SMT TypeVariable constraints
-    #[deprecated(note = "Use SMT TypeVariable constraints instead")]
-    fn resolve_type_annotation_with_generic_substitution(
-        &mut self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-        generic_substitutions: &std::collections::HashMap<
-            String,
-            crate::unification::StructuredType,
-        >,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        // Forward to new TypeVariable-based approach
-        self.resolve_type_annotation_with_generic_type_variables(type_annotation, generic_substitutions)
-    }
-
-    /// NEW: Resolve type annotation with generic parameters as TypeVariables, generating SMT constraints
-    /// This replaces manual generic substitution with constraint-based approach
-    fn resolve_type_annotation_with_generic_type_variables(
-        &mut self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-        generic_substitutions: &std::collections::HashMap<
-            String,
-            crate::unification::StructuredType,
-        >,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        match type_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path, generic_args, ..
-            } => {
-                let type_name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // Check if this is a generic parameter to substitute (T, K, V, etc.)
-                if path.len() == 1 {
-                    if let Some(substitution) = generic_substitutions.get(&type_name) {
-                        // Create a TypeVariable for this generic parameter and generate constraint
-                        let generic_var_id = self.compiler_environment.intern_type_name(&type_name);
-                        let generic_type_variable = crate::unification::StructuredType::TypeVariable(generic_var_id.clone());
-
-                        // Generate SMT constraint: Generic TypeVariable = concrete type from substitution
-                        let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
-                            variable_id: generic_var_id,
-                            bound_type: substitution.clone(),
-                            context: format!("Generic parameter {} in function call", type_name),
-                        };
-
-                        // Add constraint to unification context
-                        self.compiler_environment.unification_context_mut().add_smt_constraint(constraint);
-
-                        return Ok(generic_type_variable);
-                    }
-                }
-
-                // Resolve base type
-                let base_type_id = self.compiler_environment.intern_type_name(&type_name);
-
-                // Handle generic arguments recursively
-                if let Some(args) = generic_args {
-                    let mut resolved_args = Vec::new();
-                    for arg in &args.args {
-                        let resolved_arg = self.resolve_type_annotation_with_generic_type_variables(
-                            arg,
-                            generic_substitutions,
-                        )?;
-                        resolved_args.push(resolved_arg);
-                    }
-                    Ok(crate::unification::StructuredType::Generic {
-                        base: base_type_id,
-                        args: resolved_args,
-                    })
-                } else {
-                    Ok(crate::unification::StructuredType::Simple(base_type_id))
-                }
-            }
-            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
-                let mut resolved_types = Vec::new();
-                for t in types {
-                    let resolved_type = self.resolve_type_annotation_with_generic_type_variables(
-                        t,
-                        generic_substitutions,
-                    )?;
-                    resolved_types.push(resolved_type);
-                }
-                Ok(crate::unification::StructuredType::Tuple(resolved_types))
-            }
-            outrun_parser::TypeAnnotation::Function {
-                params,
-                return_type,
-                ..
-            } => {
-                let mut resolved_params = Vec::new();
-                for param in params {
-                    let resolved_param_type = self
-                        .resolve_type_annotation_with_generic_type_variables(
-                            &param.type_annotation,
-                            generic_substitutions,
-                        )?;
-                    let param_name = self
-                        .compiler_environment
-                        .intern_atom_name(&param.name.name.clone());
-                    resolved_params.push(crate::unification::FunctionParam {
-                        name: param_name,
-                        param_type: resolved_param_type,
-                    });
-                }
-                let resolved_return_type = self.resolve_type_annotation_with_generic_type_variables(
-                    return_type,
-                    generic_substitutions,
-                )?;
-                Ok(crate::unification::StructuredType::Function {
-                    params: resolved_params,
-                    return_type: Box::new(resolved_return_type),
-                })
-            }
-        }
-    }
-
-    /// OLD: Keep the original method temporarily for compatibility
-    fn resolve_type_annotation_with_generic_substitution_original(
-        &mut self,
-        type_annotation: &outrun_parser::TypeAnnotation,
-        generic_substitutions: &std::collections::HashMap<
-            String,
-            crate::unification::StructuredType,
-        >,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
-        match type_annotation {
-            outrun_parser::TypeAnnotation::Simple {
-                path, generic_args, ..
-            } => {
-                let type_name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // Check if this is a generic parameter to substitute
-                if path.len() == 1 {
-                    if let Some(substitution) = generic_substitutions.get(&type_name) {
-                        return Ok(substitution.clone());
-                    }
-                }
-
-                // Resolve base type
-                let base_type_id = self.compiler_environment.intern_type_name(&type_name);
-                // Type is interned through CompilerEnvironment
-
-                // Handle generic arguments
-                if let Some(args) = generic_args {
-                    let mut resolved_args = Vec::new();
-                    for arg in &args.args {
-                        let resolved_arg = self.resolve_type_annotation_with_generic_substitution(
-                            arg,
-                            generic_substitutions,
-                        )?;
-                        resolved_args.push(resolved_arg);
-                    }
-                    Ok(crate::unification::StructuredType::Generic {
-                        base: base_type_id,
-                        args: resolved_args,
-                    })
-                } else {
-                    Ok(crate::unification::StructuredType::Simple(base_type_id))
-                }
-            }
-            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
-                let mut resolved_types = Vec::new();
-                for t in types {
-                    let resolved_type = self.resolve_type_annotation_with_generic_substitution(
-                        t,
-                        generic_substitutions,
-                    )?;
-                    resolved_types.push(resolved_type);
-                }
-                Ok(crate::unification::StructuredType::Tuple(resolved_types))
-            }
-            outrun_parser::TypeAnnotation::Function {
-                params,
-                return_type,
-                ..
-            } => {
-                let mut resolved_params = Vec::new();
-                for param in params {
-                    let resolved_param_type = self
-                        .resolve_type_annotation_with_generic_substitution(
-                            &param.type_annotation,
-                            generic_substitutions,
-                        )?;
-                    let param_name = self
-                        .compiler_environment
-                        .intern_atom_name(&param.name.name.clone());
-                    resolved_params.push(crate::unification::FunctionParam {
-                        name: param_name,
-                        param_type: resolved_param_type,
-                    });
-                }
-                let resolved_return_type = self.resolve_type_annotation_with_generic_substitution(
-                    return_type,
-                    generic_substitutions,
-                )?;
-                Ok(crate::unification::StructuredType::Function {
-                    params: resolved_params,
-                    return_type: Box::new(resolved_return_type),
-                })
             }
         }
     }
@@ -3513,13 +3272,17 @@ impl TypeCheckingVisitor {
                         // For generic traits like Iterator<String>, include the generic args in the name
                         let implementing_type_name = if let Some(ref args) = generic_args {
                             // Create a unique name that includes generic arguments
-                            let arg_names: Vec<String> = args.args.iter()
+                            let arg_names: Vec<String> = args
+                                .args
+                                .iter()
                                 .map(|arg| {
                                     // Convert TypeAnnotation to a string representation for the name
                                     match arg {
-                                        outrun_parser::TypeAnnotation::Simple { path, .. } => {
-                                            path.iter().map(|id| id.name.as_str()).collect::<Vec<_>>().join(".")
-                                        }
+                                        outrun_parser::TypeAnnotation::Simple { path, .. } => path
+                                            .iter()
+                                            .map(|id| id.name.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("."),
                                         _ => "GenericArg".to_string(), // Fallback for complex types
                                     }
                                 })
@@ -3528,9 +3291,11 @@ impl TypeCheckingVisitor {
                         } else {
                             format!("TraitImpl_{}", type_name)
                         };
-                        
-                        let implementing_type_id = self.compiler_environment.intern_type_name(&implementing_type_name);
-                        
+
+                        let implementing_type_id = self
+                            .compiler_environment
+                            .intern_type_name(&implementing_type_name);
+
                         // Create the appropriate TypeVariable structure that matches the trait's generic structure
                         let implementing_type_var = if let Some(ref args) = generic_args {
                             // For generic traits, create a Generic TypeVariable with the same argument structure
@@ -3539,28 +3304,30 @@ impl TypeCheckingVisitor {
                                 let resolved_arg = self.resolve_type_annotation(arg)?;
                                 resolved_args.push(resolved_arg);
                             }
-                            
+
                             crate::unification::StructuredType::Generic {
                                 base: implementing_type_id.clone(),
                                 args: resolved_args,
                             }
                         } else {
                             // For simple traits, create a simple TypeVariable
-                            crate::unification::StructuredType::TypeVariable(implementing_type_id.clone())
+                            crate::unification::StructuredType::TypeVariable(
+                                implementing_type_id.clone(),
+                            )
                         };
-                        
+
                         // Generate constraint: implementing_type_var must implement structured_type
                         let constraint = SMTConstraint::TraitCompatibility {
                             trait_type: structured_type.clone(),
                             implementing_type: implementing_type_var.clone(),
                             context: format!("trait name {} used in type position", type_name),
                         };
-                        
+
                         // Add constraint to SMT system
                         let mut context = self.compiler_environment.unification_context();
                         context.add_smt_constraint(constraint);
                         self.compiler_environment.set_unification_context(context);
-                        
+
                         // Return the TypeVariable - this represents "any type implementing the trait"
                         Ok(implementing_type_var)
                     } else {

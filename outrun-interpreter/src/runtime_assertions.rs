@@ -6,7 +6,7 @@
 
 use crate::value::Value;
 use outrun_parser::Span;
-use outrun_typechecker::unification::{StructuredType, UnificationContext, unify_structured_types};
+use outrun_typechecker::unification::{StructuredType, UnificationContext};
 
 /// Runtime assertion errors that indicate typechecker bugs
 #[derive(Debug)]
@@ -216,16 +216,22 @@ impl AssertionContext {
     fn can_unify(&mut self, value: &Value, expected_type: &StructuredType) -> bool {
         let actual_type = self.value_to_structured_type(value);
 
-        // Use the unification system to check type compatibility
-        // This is the proper way to check types in the Outrun typechecker
-        unify_structured_types(
-            &actual_type,
-            expected_type,
-            &self.unification_context,
-            &self.compiler_environment,
-        )
-        .unwrap_or(None)
-        .is_some()
+        // Fast path for primitive type checking - avoid SMT overhead for simple cases
+        if let (StructuredType::Simple(actual_id), StructuredType::Simple(expected_id)) = (&actual_type, expected_type) {
+            // For simple types, just compare the type IDs directly
+            return actual_id == expected_id;
+        }
+
+        // For complex types, fall back to SMT-based type compatibility checking
+        // This replaces the deprecated unify_structured_types function
+        self.unification_context
+            .smt_types_compatible(
+                &actual_type,
+                expected_type,
+                "runtime_assertion".to_string(),
+                &self.compiler_environment,
+            )
+            .unwrap_or(false) // If SMT solving fails, assume incompatible for safety
     }
 }
 
