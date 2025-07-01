@@ -4962,45 +4962,127 @@ impl CompilerEnvironment {
         resolved_trait_type: &StructuredType,
         resolved_impl_type: &StructuredType,
         function_name: AtomId,
-        _model: &crate::smt::solver::ConstraintModel,
+        model: &crate::smt::solver::ConstraintModel,
     ) -> Option<UnifiedFunctionEntry> {
         eprintln!("🔍 Looking up concrete function with resolved types");
         eprintln!("  📋 Trait: {:?}", resolved_trait_type);
         eprintln!("  🏗️ Impl: {:?}", resolved_impl_type);
         eprintln!("  ⚙️ Function: {:?}", function_name);
 
-        // Now that we have fully resolved types (no more type parameters like T),
-        // we can do a direct function lookup
+        // SMT-guided lookup: Search through all registered TraitImpl modules 
+        // and find ones that match after applying SMT type variable resolution
+        let modules = self.modules().read().unwrap();
+        
+        for (module_key, module) in modules.iter() {
+            if let ModuleKey::TraitImpl(registered_trait_type, registered_impl_type) = module_key {
+                // Apply SMT model to the registered types to see if they match our resolved types
+                let resolved_registered_trait = self.apply_smt_model_to_type(registered_trait_type, model);
+                let resolved_registered_impl = self.apply_smt_model_to_type(registered_impl_type, model);
+                
+                eprintln!("🧪 Testing module key:");
+                eprintln!("  📋 Registered trait: {:?} -> {:?}", registered_trait_type, resolved_registered_trait);
+                eprintln!("  🏗️ Registered impl: {:?} -> {:?}", registered_impl_type, resolved_registered_impl);
+                
+                // Check if the SMT-resolved registered types match our target types
+                if resolved_registered_trait == *resolved_trait_type && 
+                   resolved_registered_impl == *resolved_impl_type {
+                    eprintln!("✅ Found matching module after SMT resolution!");
+                    
+                    // Look up the function in this module
+                    if let Some(function_entry) = module.functions_by_name.get(&function_name) {
+                        eprintln!("✅ Found function in matching module");
+                        return Some(function_entry.clone());
+                    }
+                }
+            }
+        }
+
+        // Fallback: Try direct lookup (for cases where types were already concrete)
         if let Some(entry) = self.lookup_impl_function(
             resolved_trait_type,
             resolved_impl_type,
             function_name.clone(),
         ) {
-            eprintln!("✅ Found concrete function implementation");
+            eprintln!("✅ Found concrete function implementation via direct lookup");
             return Some(entry);
         }
 
-        // If direct lookup fails, the resolved types might point to a concrete implementation
-        // that we need to find by searching for compatible implementations
-        let compatible_implementations =
-            self.find_implementations_for_resolved_type(resolved_impl_type);
-
-        for impl_candidate in compatible_implementations {
-            if let Some(entry) = self.lookup_impl_function(
-                resolved_trait_type,
-                &impl_candidate,
-                function_name.clone(),
-            ) {
-                eprintln!(
-                    "✅ Found function on compatible implementation: {:?}",
-                    impl_candidate
-                );
-                return Some(entry);
-            }
-        }
-
-        eprintln!("❌ No concrete function found even with resolved types");
+        eprintln!("❌ No concrete function found even with SMT-guided lookup");
         None
+    }
+
+    /// Apply SMT model variable assignments to a structured type
+    /// This resolves type variables like $Self using the SMT model results
+    fn apply_smt_model_to_type(
+        &self,
+        structured_type: &StructuredType,
+        model: &crate::smt::solver::ConstraintModel,
+    ) -> StructuredType {
+        match structured_type {
+            StructuredType::TypeVariable(type_name_id) => {
+                // Try to find this type variable in the SMT model
+                let type_name = self.resolve_type_name(type_name_id).unwrap_or_default();
+                
+                // Check for Self variables
+                if type_name.starts_with("Self") {
+                    let self_var_name = format!("Self_{}", type_name_id.hash);
+                    if let Some(resolved_type) = model.get_type_assignment(&self_var_name) {
+                        eprintln!("🎯 SMT resolved {} -> {:?}", type_name, resolved_type);
+                        return resolved_type.clone();
+                    }
+                }
+                
+                // Check for other type variables (T, E, K, V, etc.)
+                let var_name = format!("TypeVar_{}", type_name);
+                if let Some(resolved_type) = model.get_type_assignment(&var_name) {
+                    eprintln!("🎯 SMT resolved {} -> {:?}", type_name, resolved_type);
+                    return resolved_type.clone();
+                }
+                
+                // No resolution found, return original
+                structured_type.clone()
+            }
+            StructuredType::Generic { base, args } => {
+                // Recursively apply model to generic arguments
+                let resolved_args: Vec<StructuredType> = args
+                    .iter()
+                    .map(|arg| self.apply_smt_model_to_type(arg, model))
+                    .collect();
+                
+                StructuredType::Generic {
+                    base: base.clone(),
+                    args: resolved_args,
+                }
+            }
+            StructuredType::Tuple(elements) => {
+                // Recursively apply model to tuple elements
+                let resolved_elements: Vec<StructuredType> = elements
+                    .iter()
+                    .map(|elem| self.apply_smt_model_to_type(elem, model))
+                    .collect();
+                
+                StructuredType::Tuple(resolved_elements)
+            }
+            StructuredType::Function { params, return_type } => {
+                // Recursively apply model to function parameters and return type
+                let resolved_params: Vec<crate::unification::FunctionParam> = params
+                    .iter()
+                    .map(|param| crate::unification::FunctionParam {
+                        name: param.name.clone(),
+                        param_type: self.apply_smt_model_to_type(&param.param_type, model),
+                    })
+                    .collect();
+                
+                let resolved_return_type = Box::new(self.apply_smt_model_to_type(return_type, model));
+                
+                StructuredType::Function {
+                    params: resolved_params,
+                    return_type: resolved_return_type,
+                }
+            }
+            // For concrete types (Simple, primitives, etc.), no resolution needed
+            _ => structured_type.clone(),
+        }
     }
 
     /// Find concrete implementations that are compatible with the resolved type
