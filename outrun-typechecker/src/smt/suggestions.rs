@@ -203,6 +203,17 @@ impl ErrorSuggestionGenerator {
                                     self.type_to_string(bound_type)
                                 )
                             }
+                            SMTConstraint::TraitCompatibility {
+                                trait_type,
+                                implementing_type,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove trait compatibility constraint: {} must be implemented by {}",
+                                    self.type_to_string(trait_type),
+                                    self.type_to_string(implementing_type)
+                                )
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

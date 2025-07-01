@@ -59,6 +59,15 @@ pub enum SMTConstraint {
         bound_type: StructuredType,
         context: String,                  // For error reporting
     },
+
+    /// Trait compatibility constraint - any type that implements the trait
+    /// This represents "T where T: TraitName" semantics
+    /// When we see a trait name in a type position, this constraint is generated
+    TraitCompatibility {
+        trait_type: StructuredType,       // e.g., Boolean trait
+        implementing_type: StructuredType, // e.g., Outrun.Core.Boolean (what actually implements it)
+        context: String,                  // For error reporting (e.g., "parameter type check")
+    },
 }
 
 /// Function signature with named parameters (Outrun requirement)
@@ -177,6 +186,16 @@ impl Hash for SMTConstraint {
                 6u8.hash(state);
                 variable_id.hash(state);
                 bound_type.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::TraitCompatibility {
+                trait_type,
+                implementing_type,
+                context,
+            } => {
+                7u8.hash(state);
+                trait_type.hash(state);
+                implementing_type.hash(state);
                 context.hash(state);
             }
         }

@@ -219,6 +219,24 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let equality = type_var._eq(&bound_var);
                     self.solver.assert(&equality);
                 }
+                SMTConstraint::TraitCompatibility {
+                    trait_type,
+                    implementing_type,
+                    ..
+                } => {
+                    // Create a boolean variable representing "implementing_type implements trait_type"
+                    let impl_sort = self
+                        .translator
+                        .translate_structured_type(implementing_type, compiler_env);
+                    let trait_sort = self
+                        .translator
+                        .translate_structured_type(trait_type, compiler_env);
+
+                    // Create a boolean assertion
+                    let var_name = format!("implements_{}_{}", impl_sort, trait_sort);
+                    let bool_var = Bool::new_const(self.context, var_name);
+                    self.solver.assert(&bool_var);
+                }
             }
         }
 

@@ -8,6 +8,7 @@
 use crate::compilation::compiler_environment::{AtomId, CompilerEnvironment, TypeNameId};
 use crate::compilation::FunctionType;
 use crate::error::{context, SpanExt, TypeError};
+use crate::smt::constraints::SMTConstraint;
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
 use outrun_parser::{StructDefinition, TraitDefinition};
@@ -3629,20 +3630,82 @@ impl TypeCheckingVisitor {
                     // Type interning always succeeds with CompilerEnvironment
                     let type_id = self.compiler_environment.intern_type_name(&type_name);
 
-                    // Handle generic arguments if present
-                    if let Some(ref args) = generic_args {
+                    // Create the appropriate StructuredType
+                    let structured_type = if let Some(ref args) = generic_args {
                         let mut arg_types = Vec::new();
                         for arg in &args.args {
                             let arg_type = self.resolve_type_annotation(arg)?;
                             arg_types.push(arg_type);
                         }
 
-                        Ok(crate::unification::StructuredType::Generic {
-                            base: type_id,
+                        crate::unification::StructuredType::Generic {
+                            base: type_id.clone(),
                             args: arg_types,
-                        })
+                        }
                     } else {
-                        Ok(crate::unification::StructuredType::Simple(type_id))
+                        crate::unification::StructuredType::Simple(type_id.clone())
+                    };
+
+                    // Check if this is a trait name in a type position
+                    // If so, generate a TraitCompatibility constraint representing "any type that implements this trait"
+                    if self.compiler_environment.is_trait(&structured_type) {
+                        // Create a TypeVariable to represent "any type implementing this trait"
+                        // For generic traits like Iterator<String>, include the generic args in the name
+                        let implementing_type_name = if let Some(ref args) = generic_args {
+                            // Create a unique name that includes generic arguments
+                            let arg_names: Vec<String> = args.args.iter()
+                                .map(|arg| {
+                                    // Convert TypeAnnotation to a string representation for the name
+                                    match arg {
+                                        outrun_parser::TypeAnnotation::Simple { path, .. } => {
+                                            path.iter().map(|id| id.name.as_str()).collect::<Vec<_>>().join(".")
+                                        }
+                                        _ => "GenericArg".to_string(), // Fallback for complex types
+                                    }
+                                })
+                                .collect();
+                            format!("TraitImpl_{}_{}", type_name, arg_names.join("_"))
+                        } else {
+                            format!("TraitImpl_{}", type_name)
+                        };
+                        
+                        let implementing_type_id = self.compiler_environment.intern_type_name(&implementing_type_name);
+                        
+                        // Create the appropriate TypeVariable structure that matches the trait's generic structure
+                        let implementing_type_var = if let Some(ref args) = generic_args {
+                            // For generic traits, create a Generic TypeVariable with the same argument structure
+                            let mut resolved_args = Vec::new();
+                            for arg in &args.args {
+                                let resolved_arg = self.resolve_type_annotation(arg)?;
+                                resolved_args.push(resolved_arg);
+                            }
+                            
+                            crate::unification::StructuredType::Generic {
+                                base: implementing_type_id.clone(),
+                                args: resolved_args,
+                            }
+                        } else {
+                            // For simple traits, create a simple TypeVariable
+                            crate::unification::StructuredType::TypeVariable(implementing_type_id.clone())
+                        };
+                        
+                        // Generate constraint: implementing_type_var must implement structured_type
+                        let constraint = SMTConstraint::TraitCompatibility {
+                            trait_type: structured_type.clone(),
+                            implementing_type: implementing_type_var.clone(),
+                            context: format!("trait name {} used in type position", type_name),
+                        };
+                        
+                        // Add constraint to SMT system
+                        let mut context = self.compiler_environment.unification_context();
+                        context.add_smt_constraint(constraint);
+                        self.compiler_environment.set_unification_context(context);
+                        
+                        // Return the TypeVariable - this represents "any type implementing the trait"
+                        Ok(implementing_type_var)
+                    } else {
+                        // This is a concrete type, return as-is
+                        Ok(structured_type)
                     }
                 }
             }

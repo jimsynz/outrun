@@ -238,6 +238,15 @@ impl SMTTranslator {
                 let bound_sort = self.translate_structured_type(bound_type, compiler_env);
                 format!("(= {} {})", var_name, bound_sort)
             }
+            SMTConstraint::TraitCompatibility {
+                trait_type,
+                implementing_type,
+                ..
+            } => {
+                // Trait compatibility: implementing_type must implement trait_type
+                // This is essentially the same as TraitImplemented but with different semantics
+                self.create_trait_predicate(implementing_type, trait_type, compiler_env)
+            }
         }
     }
 
