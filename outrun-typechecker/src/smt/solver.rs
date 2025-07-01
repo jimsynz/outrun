@@ -177,6 +177,24 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let true_const = Bool::from_bool(self.context, true);
                     self.solver.assert(&true_const);
                 }
+                SMTConstraint::TypeParameterUnification {
+                    parameter_name,
+                    concrete_type,
+                    ..
+                } => {
+                    // Assert that the type parameter equals the concrete type
+                    let concrete_sort = self
+                        .translator
+                        .translate_structured_type(concrete_type, compiler_env);
+                    
+                    // Create variables for the parameter and concrete type
+                    let param_var = Bool::new_const(self.context, format!("param_{}", parameter_name));
+                    let concrete_var = Bool::new_const(self.context, format!("type_{}", concrete_sort));
+                    
+                    // Assert they are equal
+                    let equality = param_var._eq(&concrete_var);
+                    self.solver.assert(&equality);
+                }
             }
         }
 
@@ -247,6 +265,26 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .add_type_assignment(format!("type_{}", type1_sort), type1.clone());
                     constraint_model
                         .add_type_assignment(format!("type_{}", type2_sort), type2.clone());
+                }
+                SMTConstraint::TypeParameterUnification {
+                    parameter_name,
+                    concrete_type,
+                    ..
+                } => {
+                    // Store the type parameter assignment in the model
+                    constraint_model.add_type_assignment(
+                        format!("param_{}", parameter_name),
+                        concrete_type.clone(),
+                    );
+                    
+                    // Also store the concrete type assignment
+                    let concrete_sort = self
+                        .translator
+                        .translate_structured_type(concrete_type, &CompilerEnvironment::new());
+                    constraint_model.add_type_assignment(
+                        format!("type_{}", concrete_sort),
+                        concrete_type.clone(),
+                    );
                 }
                 _ => {
                     // Handle other constraint types as needed

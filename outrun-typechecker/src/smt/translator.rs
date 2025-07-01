@@ -207,6 +207,15 @@ impl SMTTranslator {
                 // TODO: Implement guard condition translation
                 format!("true") // Placeholder
             }
+            SMTConstraint::TypeParameterUnification {
+                parameter_name,
+                concrete_type,
+                ..
+            } => {
+                // Create an equality constraint between the parameter and concrete type
+                let concrete_sort = self.translate_structured_type(concrete_type, compiler_env);
+                format!("(= {} {})", parameter_name, concrete_sort)
+            }
         }
     }
 

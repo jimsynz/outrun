@@ -90,6 +90,20 @@ impl TypeCheckingContext {
         }
     }
 
+    /// Look up a trait implementation function using SMT-enhanced lookup
+    pub fn lookup_impl_function_with_smt(
+        &self,
+        trait_type: &crate::unification::StructuredType,
+        impl_type: &crate::unification::StructuredType,
+        function_name: crate::compilation::compiler_environment::AtomId,
+    ) -> Option<crate::compilation::UnifiedFunctionEntry> {
+        if let Some(compiler_env) = &self.compiler_environment {
+            compiler_env.lookup_impl_function_with_smt(trait_type, impl_type, function_name)
+        } else {
+            None
+        }
+    }
+
     /// Look up a local function
     pub fn lookup_local_function(
         &self,

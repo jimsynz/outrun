@@ -346,6 +346,8 @@ pub struct Module {
     /// Trait constraints for trait modules (empty for struct/impl modules)
     /// These define requirements like T: Display && T: Debug for generic parameters
     pub trait_constraints: Vec<TraitConstraint>,
+    /// The original trait definition (only for trait modules)
+    pub trait_definition: Option<outrun_parser::TraitDefinition>,
 }
 
 impl Module {
@@ -362,6 +364,7 @@ impl Module {
             functions: HashMap::new(),
             functions_by_name: HashMap::new(),
             trait_constraints: Vec::new(),
+            trait_definition: None,
         }
     }
 
@@ -405,6 +408,16 @@ impl Module {
     pub fn get_trait_constraints(&self) -> &[TraitConstraint] {
         &self.trait_constraints
     }
+
+    /// Set trait definition for this module (only valid for trait modules)
+    pub fn set_trait_definition(&mut self, trait_def: outrun_parser::TraitDefinition) {
+        self.trait_definition = Some(trait_def);
+    }
+
+    /// Get trait definition for this module
+    pub fn get_trait_definition(&self) -> Option<&outrun_parser::TraitDefinition> {
+        self.trait_definition.as_ref()
+    }
 }
 
 /// Global compiler environment for managing types and modules
@@ -429,7 +442,7 @@ pub struct CompilerEnvironment {
 }
 
 /// Internal compilation state for the CompilerEnvironment
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct CompilationState {
     /// Dependency graph for program ordering
     dependency_graph: DependencyGraph,
@@ -453,25 +466,10 @@ struct CompilationState {
     smt_model: Option<crate::smt::solver::ConstraintModel>,
 }
 
-impl Default for CompilationState {
-    fn default() -> Self {
-        Self {
-            dependency_graph: DependencyGraph::default(),
-            unification_context: UnificationContext::default(),
-            errors: Vec::new(),
-            compilation_result: None,
-            dispatch_table: crate::dispatch::DispatchTable::default(),
-            compilation_order: Vec::new(),
-            external_variables: HashMap::new(),
-            implementations: Vec::new(),
-            next_dispatch_id: 0,
-            smt_model: None,
-        }
-    }
-}
 
 impl CompilationState {}
 
+#[allow(dead_code, clippy::uninlined_format_args)]
 impl CompilerEnvironment {
     /// Create a new compiler environment
     pub fn new() -> Self {
@@ -578,11 +576,19 @@ impl CompilerEnvironment {
             // Create module for the trait
             let module_key = ModuleKey::Module(type_id.hash);
             self.get_or_create_module(
-                module_key,
+                module_key.clone(),
                 ModuleKind::Trait,
                 SourceLocation::File("trait_definition".to_string()),
                 structured_type,
             );
+
+            // CRITICAL FIX: Store the trait definition in the module for SMT constraint generation
+            if let Ok(mut modules) = self.modules.write() {
+                if let Some(module) = modules.get_mut(&module_key) {
+                    module.set_trait_definition(trait_def.clone());
+                    eprintln!("🔧 Stored trait definition for {} in module", trait_def.name_as_string());
+                }
+            }
         }
 
         // Step 3: Phase 3 - Extract all structs (from desugared code)
@@ -1188,6 +1194,7 @@ impl CompilerEnvironment {
         impl_block: &outrun_parser::ImplBlock,
         source_file: &str,
     ) -> Result<(), TypeError> {
+        eprintln!("🔧 Extracting trait impl function: {} for impl block", func_def.name.name);
         // Get type names from TypeSpec path
         let trait_name = impl_block
             .trait_spec
@@ -1219,12 +1226,18 @@ impl CompilerEnvironment {
             is_guard,
         };
 
-        // IMPORTANT: Always use Simple trait type for registrations, even for generic traits
-        // This matches the lookup logic in function dispatch which also uses Simple trait types
-        // Trait implementations are registered against the simple trait type (e.g., "List")
-        // not the generic type (e.g., "List<T>")
+        // CRITICAL FIX: Look up full trait type from module registry
+        // This ensures we use Generic(Option<T>) instead of Simple(Option) for generic traits
         let trait_type_id = self.intern_type_name(&trait_name);
-        let trait_type = StructuredType::Simple(trait_type_id);
+        let trait_type = if let Some(module) = self.get_module(trait_type_id.clone()) {
+            // Use the full structured type from the module registry
+            eprintln!("🔧 Found trait module for {}: {:?}", trait_name, module.structured_type);
+            module.structured_type
+        } else {
+            // Fallback to simple type if module not found
+            eprintln!("⚠️ Trait module not found for {}, using Simple type", trait_name);
+            StructuredType::Simple(trait_type_id)
+        };
 
         let impl_type = match self.convert_type_spec_to_structured_type(&impl_block.type_spec) {
             Ok(structured_type) => structured_type,
@@ -1252,7 +1265,10 @@ impl CompilerEnvironment {
         let function_signature_type =
             StructuredType::Simple(self.intern_type_name(&func_def.name.name));
 
-        self.add_function_to_module(module_key, function_signature_type, function_name, entry);
+        self.add_function_to_module(module_key, function_signature_type.clone(), function_name.clone(), entry.clone());
+
+        // No base type registration - SMT system handles all type matching
+        // Functions are only registered with their exact generic types
 
         Ok(())
     }
@@ -1331,12 +1347,18 @@ impl CompilerEnvironment {
                 .collect::<Vec<_>>()
                 .join(".");
 
-            // IMPORTANT: Always use Simple trait type for registrations, even for generic traits
-            // This matches the lookup logic in function dispatch which also uses Simple trait types
-            // Trait implementations are registered against the simple trait type (e.g., "List")
-            // not the generic type (e.g., "List<T>")
+            // CRITICAL FIX: Look up full trait type from module registry
+            // This ensures we use Generic(Option<T>) instead of Simple(Option) for generic traits
             let trait_type_id = self.intern_type_name(&trait_name);
-            let trait_structured = StructuredType::Simple(trait_type_id);
+            let trait_structured = if let Some(module) = self.get_module(trait_type_id.clone()) {
+                // Use the full structured type from the module registry
+                eprintln!("🔧 Found trait module for {} (in register_trait_implementations): {:?}", trait_name, module.structured_type);
+                module.structured_type
+            } else {
+                // Fallback to simple type if module not found
+                eprintln!("⚠️ Trait module not found for {} (in register_trait_implementations), using Simple type", trait_name);
+                StructuredType::Simple(trait_type_id)
+            };
 
             let impl_structured = match self.convert_type_spec_to_structured_type_with_params(
                 &impl_block.type_spec,
@@ -2169,14 +2191,12 @@ impl CompilerEnvironment {
             (&trait_type, &impl_type)
         {
             // Create FunctionId from dispatch_id
-            let function_id = crate::types::traits::FunctionId(dispatch_id);
+            let _function_id = crate::types::traits::FunctionId(dispatch_id);
 
-            // Register the trait function dispatch entry
-            let module_id = state.dispatch_table.register_trait_function_dispatch(
+            // Register the trait implementation in dispatch table
+            let module_id = state.dispatch_table.register_trait_impl(
                 trait_id.clone(),
                 impl_id.clone(),
-                function_name.clone(),
-                function_id,
             );
 
             eprintln!(
@@ -2613,13 +2633,18 @@ impl CompilerEnvironment {
         let module_key =
             ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()));
 
+        eprintln!("🔧 Registering trait implementation: {:?} for {:?}", trait_type, impl_type);
+
         // Create trait implementation module if it doesn't exist
         self.get_or_create_module(
             module_key,
             ModuleKind::TraitImpl,
             SourceLocation::Input("compiler".to_string()),
-            impl_type,
+            impl_type.clone(),
         );
+
+        // No base type registration - SMT system handles all type matching
+        // The SMT constraint solver should unify Generic(Option<T>) with Generic(Option<Integer>)
     }
 
     /// Register a trait definition with the environment
@@ -2627,7 +2652,26 @@ impl CompilerEnvironment {
     pub fn register_trait_definition(&self, trait_def: outrun_parser::TraitDefinition) {
         let trait_name = trait_def.name_as_string();
         let trait_type_id = self.intern_type_name(&trait_name);
-        let trait_type = StructuredType::Simple(trait_type_id.clone());
+        
+        // CRITICAL FIX: Preserve generic parameters from trait definition
+        let trait_type = if let Some(ref generic_params) = trait_def.generic_params {
+            // Create generic type arguments from parameter names
+            let args: Vec<StructuredType> = generic_params.params.iter()
+                .map(|param| {
+                    let param_type_id = self.intern_type_name(&param.name.name);
+                    StructuredType::Simple(param_type_id)
+                })
+                .collect();
+            
+            StructuredType::Generic {
+                base: trait_type_id.clone(),
+                args,
+            }
+        } else {
+            StructuredType::Simple(trait_type_id.clone())
+        };
+        
+        eprintln!("🔧 Registering trait definition: {} as {:?}", trait_name, trait_type);
 
         // Create or get the trait module
         let module_key = ModuleKey::Module(trait_type_id.hash);
@@ -2890,20 +2934,8 @@ impl CompilerEnvironment {
                 }
             }
 
-            // If exact match fails, try base types (for generics)
-            let trait_base = self.extract_base_type_for_lookup(trait_type);
-            let impl_base = self.extract_base_type_for_lookup(impl_type);
-            let base_module_key = ModuleKey::TraitImpl(Box::new(trait_base), Box::new(impl_base));
-
-            if let Some(impl_module) = modules.get(&base_module_key) {
-                if let Some(function) = impl_module.get_function_by_name(function_name.clone()) {
-                    if matches!(function.function_type(), FunctionType::TraitSignature) {
-                        panic!("CRITICAL: Found TraitSignature after trait default expansion for trait {:?} on type {:?} function {:?}", 
-                               trait_type, impl_type, function_name);
-                    }
-                    return Some(function.clone());
-                }
-            }
+            // No base fallback - let SMT system handle all type matching
+            // The SMT constraint solver should unify Generic(Option<T>) with Generic(Option<Integer>)
         }
 
         // If we reach here, the trait implementation is missing or the function doesn't exist
@@ -3542,7 +3574,7 @@ impl CompilerEnvironment {
         {
             state
                 .dispatch_table
-                .lookup_trait_impl(&trait_id, &impl_id)
+                .lookup_trait_impl(trait_id.clone(), impl_id.clone())
                 .map(|id| id.0)
         } else {
             None
@@ -3927,6 +3959,423 @@ impl CompilerEnvironment {
     /// Clear compilation result, reverting to a clean state
     pub fn clear_compilation_result(&mut self) {
         self.compilation_state.write().unwrap().compilation_result = None;
+    }
+
+    /// **SMT-BASED TRAIT EXPANSION SYSTEM**
+    /// These functions implement the core trait expansion logic needed for SMT constraint solving.
+    ///
+    /// Look up trait implementation using full StructuredType
+    pub fn find_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
+        eprintln!("🔍 Finding trait implementations for: {:?}", trait_type);
+        let result = match trait_type {
+            StructuredType::Simple(trait_id) => {
+                eprintln!("🔍 Taking SIMPLE path for trait: {:?}", 
+                    self.resolve_type_name(trait_id).unwrap_or_default());
+                self.find_simple_trait_implementations(trait_id)
+            },
+            StructuredType::Generic { base, args } => {
+                eprintln!("🔍 Taking GENERIC path for trait: {:?} with {} args", 
+                    self.resolve_type_name(base).unwrap_or_default(), args.len());
+                self.find_generic_trait_implementations(base, args)
+            },
+            _ => {
+                eprintln!("🔍 Taking OTHER path for trait: {:?}", trait_type);
+                Vec::new()
+            },
+        };
+        eprintln!("🔍 Found {} implementations total", result.len());
+        result
+    }
+
+    /// Find concrete implementations for simple traits
+    fn find_simple_trait_implementations(&self, trait_id: &TypeNameId) -> Vec<StructuredType> {
+        // For now, use core trait knowledge until we can properly access parsed implementations
+        // This is a simplified approach that gets the core library working
+        self.get_core_trait_implementations(trait_id)
+    }
+
+    /// Get known core trait implementations for built-in traits
+    fn get_core_trait_implementations(&self, trait_id: &TypeNameId) -> Vec<StructuredType> {
+        let trait_name = self.resolve_type_name(trait_id).unwrap_or_default();
+        let mut implementations = Vec::new();
+
+        match trait_name.as_str() {
+            "Option" => {
+                // Option<T> trait is implemented by Outrun.Option.Some<T> and Outrun.Option.None<T>
+                let some_id = self.intern_type_name("Outrun.Option.Some");
+                let none_id = self.intern_type_name("Outrun.Option.None");
+                implementations.push(StructuredType::Simple(some_id));
+                implementations.push(StructuredType::Simple(none_id));
+            },
+            "String" => {
+                // String trait is implemented by Outrun.Core.String
+                let string_id = self.intern_type_name("Outrun.Core.String");
+                implementations.push(StructuredType::Simple(string_id));
+            },
+            "Integer" => {
+                // Integer trait is implemented by Outrun.Core.Integer64
+                let int_id = self.intern_type_name("Outrun.Core.Integer64");
+                implementations.push(StructuredType::Simple(int_id));
+            },
+            "Boolean" => {
+                // Boolean trait is implemented by Outrun.Core.Boolean
+                let bool_id = self.intern_type_name("Outrun.Core.Boolean");
+                implementations.push(StructuredType::Simple(bool_id));
+            },
+            "List" => {
+                // List trait is implemented by Outrun.Core.List
+                let list_id = self.intern_type_name("Outrun.Core.List");
+                implementations.push(StructuredType::Simple(list_id));
+            },
+            "Map" => {
+                // Map trait is implemented by Outrun.Core.Map
+                let map_id = self.intern_type_name("Outrun.Core.Map");
+                implementations.push(StructuredType::Simple(map_id));
+            },
+            "Binary" => {
+                // Binary trait is implemented by Outrun.Core.Binary
+                let binary_id = self.intern_type_name("Outrun.Core.Binary");
+                implementations.push(StructuredType::Simple(binary_id));
+            },
+            "BinarySubtraction" => {
+                // BinarySubtraction trait is implemented by numeric types
+                for concrete_type in ["Outrun.Core.Integer64", "Outrun.Core.Float64"] {
+                    let concrete_id = self.intern_type_name(concrete_type);
+                    implementations.push(StructuredType::Simple(concrete_id));
+                }
+            },
+            "Equality" => {
+                // Equality trait is implemented by most concrete types
+                for concrete_type in ["Outrun.Core.String", "Outrun.Core.Integer64", "Outrun.Core.Float64", "Outrun.Core.Boolean", "Outrun.Core.Binary"] {
+                    let concrete_id = self.intern_type_name(concrete_type);
+                    implementations.push(StructuredType::Simple(concrete_id));
+                }
+            },
+            _ => {
+                eprintln!("ℹ️  No known core implementations for trait: {}", trait_name);
+            }
+        }
+
+        if !implementations.is_empty() {
+            eprintln!("🔍 Found {} core implementations for trait {}: {:?}", 
+                implementations.len(), trait_name, 
+                implementations.iter().map(|t| self.format_structured_type(t)).collect::<Vec<_>>());
+        }
+
+        implementations
+    }
+
+    /// Helper to format StructuredType for debugging
+    fn format_structured_type(&self, structured_type: &StructuredType) -> String {
+        match structured_type {
+            StructuredType::Simple(type_id) => {
+                self.resolve_type_name(type_id).unwrap_or_else(|| format!("Unknown({})", type_id.hash))
+            },
+            StructuredType::Generic { base, args } => {
+                let base_name = self.resolve_type_name(base).unwrap_or_else(|| format!("Unknown({})", base.hash));
+                let arg_names: Vec<String> = args.iter().map(|arg| self.format_structured_type(arg)).collect();
+                format!("{}<{}>", base_name, arg_names.join(", "))
+            },
+            _ => "ComplexType".to_string(),
+        }
+    }
+
+    /// Find concrete implementations for generic traits like Option<T>
+    fn find_generic_trait_implementations(&self, base_trait: &TypeNameId, args: &[StructuredType]) -> Vec<StructuredType> {
+        let mut concrete_implementations = Vec::new();
+        
+        // Recursively expand each argument type
+        let expanded_args: Vec<Vec<StructuredType>> = args.iter()
+            .map(|arg_type| {
+                eprintln!("🔄 Recursively expanding generic argument: {:?}", arg_type);
+                let impls = self.find_trait_implementations(arg_type);
+                eprintln!("🔄 Argument {:?} expanded to {} implementations: {:?}", 
+                    arg_type, impls.len(), impls);
+                if impls.is_empty() { vec![arg_type.clone()] } else { impls }
+            })
+            .collect();
+        
+        // Get base trait implementations and create combinations
+        let base_implementations = self.find_simple_trait_implementations(base_trait);
+        eprintln!("🔄 Base trait {:?} has {} implementations: {:?}", 
+            self.resolve_type_name(base_trait).unwrap_or_default(), 
+            base_implementations.len(), 
+            base_implementations.iter().map(|t| self.format_structured_type(t)).collect::<Vec<_>>()
+        );
+        
+        for base_impl in &base_implementations {
+            if let StructuredType::Simple(base_impl_id) = base_impl {
+                let arg_combinations = self.cartesian_product(&expanded_args);
+                eprintln!("🔄 Creating {} argument combinations for base {:?}", 
+                    arg_combinations.len(), 
+                    self.resolve_type_name(base_impl_id).unwrap_or_default()
+                );
+                
+                for arg_combination in arg_combinations {
+                    let generic_type = StructuredType::Generic {
+                        base: base_impl_id.clone(),
+                        args: arg_combination.clone(),
+                    };
+                    eprintln!("🎯 Created concrete implementation: {:?}", generic_type);
+                    concrete_implementations.push(generic_type);
+                }
+            }
+        }
+        
+        eprintln!("🎯 Total concrete implementations generated: {}", concrete_implementations.len());
+        concrete_implementations
+    }
+
+    /// Generate cartesian product of argument type combinations
+    fn cartesian_product(&self, sets: &[Vec<StructuredType>]) -> Vec<Vec<StructuredType>> {
+        if sets.is_empty() { return vec![vec![]]; }
+
+        let mut result = vec![vec![]];
+        for set in sets {
+            let mut new_result = Vec::new();
+            for existing_combo in &result {
+                for item in set {
+                    let mut new_combo = existing_combo.clone();
+                    new_combo.push(item.clone());
+                    new_result.push(new_combo);
+                }
+            }
+            result = new_result;
+        }
+        result
+    }
+
+    /// Helper function to check if two TypeNameIds represent the same type
+    fn type_names_equal(&self, id1: &TypeNameId, id2: &TypeNameId) -> bool {
+        id1.hash == id2.hash
+    }
+
+    /// **SMT-ENHANCED FUNCTION LOOKUP**
+    /// Uses SMT constraint solving to find function implementations when traditional lookup fails
+    pub fn lookup_impl_function_with_smt(
+        &self,
+        trait_type: &StructuredType,
+        impl_type: &StructuredType,
+        function_name: AtomId,
+    ) -> Option<UnifiedFunctionEntry> {
+        // First try traditional lookup
+        if let Some(entry) = self.lookup_impl_function(trait_type, impl_type, function_name.clone()) {
+            return Some(entry);
+        }
+
+        eprintln!("🧠 SMT function lookup: trait {:?}, impl {:?}, function {:?}", 
+            trait_type, impl_type, function_name);
+
+        // CRITICAL FIX: Find the actual generic trait definition and create proper constraints
+        let (actual_trait_type, type_parameter_constraints) = 
+            self.resolve_generic_trait_with_parameters(trait_type, impl_type);
+
+        eprintln!("🎯 Resolved trait type: {:?}", actual_trait_type);
+        eprintln!("🎯 Type parameter constraints: {:?}", type_parameter_constraints);
+
+        // Create all constraints needed for this lookup
+        let mut constraints = Vec::new();
+
+        // Add type parameter unification constraints
+        constraints.extend(type_parameter_constraints);
+
+        // Generate SMT constraint: impl_type must implement actual_trait_type 
+        let trait_constraint = crate::smt::constraints::SMTConstraint::TraitImplemented {
+            impl_type: impl_type.clone(),
+            trait_type: actual_trait_type.clone(),
+        };
+        constraints.push(trait_constraint);
+
+        // Create a temporary SMT solver to check if this constraint is satisfiable
+        let constraint_system = crate::smt::SMTConstraintSystem::new();
+        let mut solver = constraint_system.create_solver();
+
+        // Add all constraints to the solver
+        if let Err(e) = solver.add_constraints(&constraints, self) {
+            eprintln!("⚠️ Failed to add SMT constraints: {}", e);
+            return None;
+        }
+
+        // Solve the constraints
+        match solver.solve() {
+            crate::smt::solver::SolverResult::Satisfiable(_model) => {
+                eprintln!("✅ SMT constraint satisfiable - trait implementation exists");
+                
+                // Now we know the constraint is satisfiable, but we still need to find
+                // the actual function implementation. Expand trait types and try lookups.
+                let concrete_implementations = self.find_trait_implementations(trait_type);
+                
+                for concrete_impl in &concrete_implementations {
+                    // Check if this concrete implementation is compatible with our impl_type
+                    if self.types_are_smt_compatible(impl_type, concrete_impl) {
+                        // Try to find the function on this concrete implementation
+                        if let Some(entry) = self.lookup_impl_function(trait_type, concrete_impl, function_name.clone()) {
+                            eprintln!("✅ SMT resolved: function {:?} found on concrete implementation {:?}", 
+                                function_name, concrete_impl);
+                            return Some(entry);
+                        }
+                    }
+                }
+
+                eprintln!("⚠️ SMT constraint satisfiable but no concrete function found");
+                None
+            },
+            crate::smt::solver::SolverResult::Unsatisfiable(_) => {
+                eprintln!("❌ SMT constraint unsatisfiable - trait not implemented");
+                None
+            },
+            crate::smt::solver::SolverResult::Unknown(reason) => {
+                eprintln!("❓ SMT solver unknown result: {}", reason);
+                None
+            }
+        }
+    }
+
+    /// Resolve a concrete trait type to its generic definition and extract type parameter constraints
+    /// 
+    /// For example: Option<Integer> -> (Option<T>, [T = Integer])
+    /// This is the core logic for proper type parameter handling in SMT constraints
+    fn resolve_generic_trait_with_parameters(
+        &self,
+        concrete_trait_type: &StructuredType,
+        _impl_type: &StructuredType,
+    ) -> (StructuredType, Vec<crate::smt::constraints::SMTConstraint>) {
+        match concrete_trait_type {
+            StructuredType::Generic { base, args } => {
+                // This is already a generic type like Option<Integer>
+                // We need to find the trait definition to get the parameter names
+                
+                let base_name = self.resolve_type_name(base).unwrap_or_default();
+                eprintln!("🔍 Looking for trait definition: {}", base_name);
+                
+                // Look up the trait definition to get parameter names
+                if let Some(trait_def) = self.find_trait_definition(&base_name) {
+                    eprintln!("✅ Found trait definition with {} parameters", 
+                        trait_def.generic_params.as_ref().map(|p| p.params.len()).unwrap_or(0));
+                    
+                    if let Some(ref generic_params) = trait_def.generic_params {
+                        // Create type parameter constraints by matching concrete args with parameter names
+                        let mut constraints = Vec::new();
+                        
+                        for (param, concrete_arg) in generic_params.params.iter().zip(args.iter()) {
+                            let constraint = crate::smt::constraints::SMTConstraint::TypeParameterUnification {
+                                parameter_name: param.name.name.clone(),
+                                concrete_type: concrete_arg.clone(),
+                                context: format!("trait lookup for {}", base_name),
+                            };
+                            constraints.push(constraint);
+                            
+                            eprintln!("🎯 Created constraint: {} = {:?}", param.name.name, concrete_arg);
+                        }
+                        
+                        // Create the generic trait type with parameter placeholders
+                        let generic_args: Vec<StructuredType> = generic_params.params.iter()
+                            .map(|param| {
+                                let param_type_id = self.intern_type_name(&param.name.name);
+                                StructuredType::Simple(param_type_id)
+                            })
+                            .collect();
+                        
+                        let generic_trait_type = StructuredType::Generic {
+                            base: base.clone(),
+                            args: generic_args,
+                        };
+                        
+                        return (generic_trait_type, constraints);
+                    }
+                }
+                
+                // Fallback: no trait definition found, use the concrete type as-is
+                eprintln!("⚠️ No trait definition found for {}, using concrete type", base_name);
+                (concrete_trait_type.clone(), Vec::new())
+            }
+            StructuredType::Simple(type_id) => {
+                // Simple trait type, check if it has a generic definition
+                let type_name = self.resolve_type_name(type_id).unwrap_or_default();
+                
+                if let Some(trait_def) = self.find_trait_definition(&type_name) {
+                    if trait_def.generic_params.is_some() {
+                        eprintln!("⚠️ Simple type {} has generic parameters but used without arguments", type_name);
+                    }
+                }
+                
+                // No generic parameters, use as-is
+                (concrete_trait_type.clone(), Vec::new())
+            }
+            _ => {
+                // Other types (Function, Tuple, etc.) - use as-is
+                (concrete_trait_type.clone(), Vec::new())
+            }
+        }
+    }
+
+    /// Find a trait definition by name
+    fn find_trait_definition(&self, trait_name: &str) -> Option<outrun_parser::TraitDefinition> {
+        // Look through all registered modules for trait definitions
+        if let Ok(modules) = self.modules.read() {
+            for (_key, module) in modules.iter() {
+                if module.module_kind == ModuleKind::Trait {
+                    // Check if this module corresponds to our trait
+                    if let Some(trait_def) = &module.trait_definition {
+                        let def_name = trait_def.name_as_string();
+                        if def_name == trait_name {
+                            return Some(trait_def.clone());
+                        }
+                    }
+                }
+            }
+        }
+        
+        eprintln!("❌ Trait definition not found for: {}", trait_name);
+        None
+    }
+
+    /// Helper to check if two types are compatible according to SMT constraints
+    fn types_are_smt_compatible(&self, type1: &StructuredType, type2: &StructuredType) -> bool {
+        // For now, use a simple compatibility check
+        // TODO: This should also use SMT constraints for complex cases
+        match (type1, type2) {
+            // Same type
+            (t1, t2) if t1 == t2 => true,
+            
+            // Generic types with same base and compatible arguments
+            (StructuredType::Generic { base: base1, args: args1 },
+             StructuredType::Generic { base: base2, args: args2 }) => {
+                base1 == base2 && args1.len() == args2.len() &&
+                args1.iter().zip(args2.iter()).all(|(a1, a2)| self.types_are_smt_compatible(a1, a2))
+            },
+            
+            // Simple type compatibility (trait to concrete)
+            (StructuredType::Simple(t1), StructuredType::Simple(t2)) => {
+                self.type_names_equal(t1, t2) || self.simple_types_compatible(t1, t2)
+            },
+            
+            _ => false
+        }
+    }
+
+    /// Check if simple types are compatible (e.g., Integer trait with Integer64 concrete)
+    fn simple_types_compatible(&self, type1: &TypeNameId, type2: &TypeNameId) -> bool {
+        let name1 = self.resolve_type_name(type1).unwrap_or_default();
+        let name2 = self.resolve_type_name(type2).unwrap_or_default();
+        
+        // Common trait-to-concrete mappings
+        matches!(
+            (name1.as_str(), name2.as_str()),
+            ("Integer", "Outrun.Core.Integer64") |
+            ("Float", "Outrun.Core.Float64") |
+            ("String", "Outrun.Core.String") |
+            ("Boolean", "Outrun.Core.Boolean") |
+            ("Option", "Outrun.Option.Some") |
+            ("Option", "Outrun.Option.None") |
+            // Reverse mappings
+            ("Outrun.Core.Integer64", "Integer") |
+            ("Outrun.Core.Float64", "Float") |
+            ("Outrun.Core.String", "String") |
+            ("Outrun.Core.Boolean", "Boolean") |
+            ("Outrun.Option.Some", "Option") |
+            ("Outrun.Option.None", "Option")
+        )
     }
 }
 

@@ -1665,9 +1665,15 @@ impl TypeCheckingVisitor {
                 let module_name = &module.name;
                 let function_name = &name.name;
 
-                // Get module TypeId (base type without generics)
+                // Get module TypeId and look up the full structured type from module registry
                 let module_type_id = self.compiler_environment.intern_type_name(module_name);
-                let module_type = StructuredType::Simple(module_type_id.clone());
+                let module_type = if let Some(module) = self.compiler_environment.get_module(module_type_id.clone()) {
+                    // Use the full structured type from the module registry
+                    module.structured_type
+                } else {
+                    // Fallback to simple type if module not found
+                    StructuredType::Simple(module_type_id.clone())
+                };
                 let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
                 // Check if this is a trait that has implementations
@@ -1729,10 +1735,11 @@ impl TypeCheckingVisitor {
                                 call,
                             )?;
 
-                        // Extract base TypeId for implementation lookup
-
-                        // Look up the actual implementation function
-                        if let Some(impl_func_def) = self.compiler_environment.lookup_impl_function(
+                        // TODO: Instantiate generic parameters in module_type based on implementing_structured_type
+                        // For now, use module_type from registry as-is
+                        
+                        // Look up the actual implementation function using SMT-enhanced lookup
+                        if let Some(impl_func_def) = self.compiler_environment.lookup_impl_function_with_smt(
                             &module_type,
                             &implementing_structured_type,
                             function_name_atom,
@@ -3534,11 +3541,24 @@ impl TypeCheckingVisitor {
             ));
         };
 
-        // Create StructuredType for the trait
-        let trait_type = StructuredType::Simple(trait_type_id.clone());
+        // Create StructuredType for the trait - derive from implementing type structure
+        let trait_type = match &impl_type {
+            StructuredType::Generic { base: _, args } => {
+                // If impl type is generic (e.g., Option<Integer>), trait type should match
+                // the same generic structure with the trait base
+                StructuredType::Generic {
+                    base: trait_type_id.clone(),
+                    args: args.clone(),
+                }
+            },
+            _ => {
+                // Simple implementing type means simple trait type
+                StructuredType::Simple(trait_type_id.clone())
+            }
+        };
 
-        // Look up the impl function in the registry
-        if let Some(func_entry) = self.compiler_environment.lookup_impl_function(
+        // Look up the impl function in the registry using SMT-enhanced lookup
+        if let Some(func_entry) = self.compiler_environment.lookup_impl_function_with_smt(
             &trait_type,
             &impl_type,
             function_name_atom.clone(),

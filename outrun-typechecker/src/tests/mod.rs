@@ -48,6 +48,7 @@ mod test_visitor_let_bindings;
 // mod test_new_api_integration;
 // mod test_core_library_integration;
 // mod test_error_reporting;
+mod test_option_trait_registration_debug;
 
 // Impl block validation tests
 mod test_default_trait_implementations;

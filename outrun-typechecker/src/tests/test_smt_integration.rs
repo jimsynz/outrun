@@ -1,5 +1,7 @@
 //! SMT integration tests
 
+#![allow(clippy::uninlined_format_args)]
+
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use crate::smt::{SMTConstraint, SMTConstraintSystem};
 use crate::unification::{StructuredType, UnificationContext};

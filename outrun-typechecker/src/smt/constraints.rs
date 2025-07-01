@@ -43,6 +43,14 @@ pub enum SMTConstraint {
         condition: String, // For now, use string representation until we define BooleanExpression
         variables: HashMap<String, StructuredType>,
     },
+
+    /// Type parameter must be unified to a concrete type
+    /// This handles cases like Option<T> matching Option<Integer> where T = Integer
+    TypeParameterUnification {
+        parameter_name: String,           // e.g., "T"
+        concrete_type: StructuredType,    // e.g., Integer
+        context: String,                  // For error reporting
+    },
 }
 
 /// Function signature with named parameters (Outrun requirement)
@@ -142,6 +150,16 @@ impl Hash for SMTConstraint {
                 // For now, we'll use a simplified hash
                 format!("{:?}", condition).hash(state);
                 variables.len().hash(state);
+            }
+            SMTConstraint::TypeParameterUnification {
+                parameter_name,
+                concrete_type,
+                context,
+            } => {
+                5u8.hash(state);
+                parameter_name.hash(state);
+                concrete_type.hash(state);
+                context.hash(state);
             }
         }
     }

@@ -176,6 +176,17 @@ impl ErrorSuggestionGenerator {
                             SMTConstraint::GuardCondition { .. } => {
                                 "Remove guard condition requirement".to_string()
                             }
+                            SMTConstraint::TypeParameterUnification { 
+                                parameter_name, 
+                                concrete_type, 
+                                .. 
+                            } => {
+                                format!(
+                                    "Remove type parameter constraint: {} = {}",
+                                    parameter_name,
+                                    self.type_to_string(concrete_type)
+                                )
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {
