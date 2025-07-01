@@ -608,6 +608,20 @@ pub enum TypeError {
         span: SourceSpan,
         feature: String,
     },
+
+    #[error("Missing trait constraint in trait {trait_name}")]
+    #[diagnostic(
+        code(outrun::typechecker::missing_trait_constraint),
+        help("{suggestion}")
+    )]
+    MissingTraitConstraintInDefinition {
+        #[label("function {function_name} requires {required_trait} but trait doesn't declare this constraint")]
+        span: SourceSpan,
+        trait_name: String,
+        function_name: String,
+        required_trait: String,
+        suggestion: String,
+    },
 }
 
 impl TypeError {

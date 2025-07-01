@@ -98,6 +98,7 @@ mod test_integer_equality_dispatch_bug;
 // SMT integration tests
 mod test_smt_integration;
 mod test_smt_typevariable_resolution;
+mod test_complex_trait_constraints;
 
 // Performance and edge case tests
 // TODO: Create these test files

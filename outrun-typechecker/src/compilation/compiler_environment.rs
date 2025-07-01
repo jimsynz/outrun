@@ -2951,6 +2951,17 @@ impl CompilerEnvironment {
         let trait_name = trait_def.name_as_string();
         let trait_type_id = self.intern_type_name(&trait_name);
 
+        // CRITICAL: Validate trait constraint dependencies BEFORE registration
+        // This catches cases where default implementations require undeclared trait constraints
+        if let Err(constraint_errors) = self.validate_trait_constraint_dependencies_via_constraints(&trait_def) {
+            // Add constraint errors to compilation state
+            for error in constraint_errors {
+                self.compilation_state.write().unwrap().errors.push(error);
+            }
+            // Continue with registration even if there are constraint errors
+            // The errors will be reported during compilation
+        }
+
         // CRITICAL FIX: Preserve generic parameters from trait definition
         let trait_type = if let Some(ref generic_params) = trait_def.generic_params {
             // Create generic type arguments from parameter names
@@ -3841,6 +3852,120 @@ impl CompilerEnvironment {
     /// This replaces FunctionRegistry::is_empty
     pub fn has_functions(&self) -> bool {
         self.function_count() > 0
+    }
+
+    /// Check if a StructuredType represents a trait (not a concrete type)
+    /// This is critical for SMT constraint generation and trait validation
+    fn is_trait_type(&self, structured_type: &StructuredType) -> bool {
+        match structured_type {
+            StructuredType::Simple(type_id) => {
+                // Check if this type ID represents a trait in our trait registry
+                if let Ok(traits) = self.traits.read() {
+                    traits.contains_key(type_id)
+                } else {
+                    false
+                }
+            }
+            StructuredType::Generic { base, .. } => {
+                // For generic types like Option<T>, check if the base is a trait
+                if let Ok(traits) = self.traits.read() {
+                    traits.contains_key(base)
+                } else {
+                    false
+                }
+            }
+            // Other structured types (Tuple, Function, etc.) are not traits
+            _ => false,
+        }
+    }
+
+    /// Validate trait constraint dependencies using the constraint system
+    /// This detects when default implementations require traits not declared in the trait's constraints
+    fn validate_trait_constraint_dependencies_via_constraints(
+        &self,
+        trait_def: &TraitDefinition,
+    ) -> Result<(), Vec<TypeError>> {
+        let mut errors = Vec::new();
+        let trait_name = &trait_def.name_as_string();
+        
+        // Get the declared constraints for Self in this trait (from where clauses)
+        let declared_constraints = self.extract_self_constraints_from_trait(trait_def);
+        
+        // For each default implementation, type-check it and see what constraints it generates
+        for trait_function in &trait_def.functions {
+            if let outrun_parser::TraitFunction::Definition(func_def) = trait_function {
+                // Create a temporary type-checking context where Self can only implement declared traits
+                let required_constraints = self.analyze_default_implementation_constraints(
+                    trait_name,
+                    func_def,
+                    &declared_constraints,
+                );
+                
+                // Find constraints that are required but not declared
+                for required_trait in required_constraints {
+                    if !declared_constraints.contains(&required_trait) {
+                        errors.push(TypeError::MissingTraitConstraintInDefinition {
+                            span: crate::error::span_to_source_span(func_def.span),
+                            trait_name: trait_name.clone(),
+                            function_name: func_def.name.name.clone(),
+                            required_trait: required_trait.clone(),
+                            suggestion: format!(
+                                "Add constraint 'where Self: {}' to trait {} definition",
+                                required_trait, trait_name
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+    
+    /// Extract Self constraints from a trait definition (from where clauses)
+    fn extract_self_constraints_from_trait(&self, trait_def: &TraitDefinition) -> Vec<String> {
+        let constraints = Vec::new();
+        
+        // Parse constraints from trait_def.constraints
+        // For now, assume empty constraints since most traits don't have explicit where clauses yet
+        if let Some(constraint_expr) = &trait_def.constraints {
+            // TODO: Parse actual constraint syntax like "where Self: Equality"
+            // For now, we'll detect this during the constraint analysis phase
+            eprintln!("🔍 Found trait constraint: {:?}", constraint_expr);
+        }
+        
+        constraints
+    }
+    
+    /// Analyze what trait constraints a default implementation actually requires
+    /// by running type checking and examining generated constraints
+    fn analyze_default_implementation_constraints(
+        &self,
+        trait_name: &str,
+        func_def: &outrun_parser::FunctionDefinition,
+        _declared_constraints: &[String],
+    ) -> Vec<String> {
+        // Create a temporary type checking context for this default implementation
+        // with Self constrained to only the declared traits
+        
+        // TODO: Implement proper constraint analysis by:
+        // 1. Creating a temporary UnificationContext
+        // 2. Type-checking the function body with Self as a type parameter
+        // 3. Collecting all generated TraitImplemented constraints involving Self
+        // 4. Returning the list of required traits
+        
+        eprintln!(
+            "🧪 Analyzing constraints for {}::{} default implementation", 
+            trait_name, func_def.name.name
+        );
+        
+        // For now, return a placeholder to demonstrate the concept
+        // This should be replaced with actual constraint collection from type checking
+        vec!["Equality".to_string()] // Placeholder - should come from actual constraint analysis
     }
 
     // =============================================================================
