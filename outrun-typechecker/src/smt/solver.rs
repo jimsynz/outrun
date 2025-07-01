@@ -415,6 +415,35 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         concrete_type.clone(),
                     );
                 }
+                SMTConstraint::ConcreteSelfBinding {
+                    self_variable_id,
+                    concrete_type,
+                    ..
+                } => {
+                    // Store the Self variable assignment in the model
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    constraint_model.add_type_assignment(self_var_name, concrete_type.clone());
+                }
+                SMTConstraint::SelfTypeInference {
+                    self_variable_id,
+                    inferred_type,
+                    ..
+                } => {
+                    // Store the Self type inference in the model
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    constraint_model.add_type_assignment(self_var_name, inferred_type.clone());
+                }
+                SMTConstraint::UniversalSelfConstraint {
+                    self_variable_id,
+                    trait_being_defined,
+                    ..
+                } => {
+                    // Store the universal Self constraint in the model
+                    // For universal constraints, we might not have a specific assignment,
+                    // but we can store the trait being defined as a fallback
+                    let self_var_name = format!("Self_{}", self_variable_id.hash);
+                    constraint_model.add_type_assignment(self_var_name, trait_being_defined.clone());
+                }
                 _ => {
                     // Handle other constraint types as needed
                 }
