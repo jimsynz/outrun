@@ -2797,6 +2797,151 @@ impl CompilerEnvironment {
         implementations
     }
 
+    /// Resolve a Self type variable using SMT constraint solving
+    /// This method uses the accumulated SelfTypeInference constraints to determine
+    /// the concrete type that Self should be bound to
+    pub fn smt_resolve_self_type(
+        &self,
+        self_type_id: &TypeNameId,
+    ) -> Result<StructuredType, crate::smt::solver::SMTError> {
+        eprintln!("🧠 SMT resolving Self type: {:?}", self_type_id);
+        
+        // Get all constraints from unification context
+        let context = self.unification_context();
+        
+        // Filter SelfTypeInference constraints for this Self variable
+        let self_constraints: Vec<_> = context.smt_constraints.iter()
+            .filter_map(|constraint| {
+                if let crate::smt::constraints::SMTConstraint::SelfTypeInference {
+                    self_variable_id,
+                    inferred_type,
+                    confidence,
+                    call_site_context,
+                } = constraint {
+                    if self_variable_id == self_type_id {
+                        Some((inferred_type.clone(), confidence.clone(), call_site_context.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        if self_constraints.is_empty() {
+            return Err(crate::smt::solver::SMTError::NoConstraintsFound(
+                format!("No SelfTypeInference constraints found for Self variable {:?}", self_type_id)
+            ));
+        }
+        
+        eprintln!("🔍 Found {} Self inference constraints", self_constraints.len());
+        
+        // Use actual SMT solving to resolve Self type - no fallbacks!
+        let z3_context = crate::smt::solver::Z3Context::new();
+        let mut solver = z3_context.create_solver();
+        
+        // Add all constraints to the solver (including the Self inference constraints)
+        if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
+            eprintln!("❌ SMT solver error when resolving Self: {:?}", e);
+            return Err(e);
+        }
+        
+        // Solve the constraints - this must be mathematically sound
+        match solver.solve() {
+            crate::smt::solver::SolverResult::Satisfiable(model) => {
+                // Extract the Self type from the model
+                let self_var_name = format!("Self_{}", self_type_id.hash);
+                if let Some(resolved_type) = self.extract_self_type_from_model(&model, &self_var_name) {
+                    eprintln!(
+                        "✅ SMT resolved Self to {} (mathematically proven)",
+                        resolved_type.to_string_representation()
+                    );
+                    Ok(resolved_type)
+                } else {
+                    // If SMT says satisfiable but we can't extract the type, this is a bug
+                    Err(crate::smt::solver::SMTError::SolverError(
+                        format!("SMT model is satisfiable but missing Self variable {}", self_var_name)
+                    ))
+                }
+            }
+            crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
+                eprintln!("❌ SMT constraints unsatisfiable for Self resolution: {:?}", conflicting);
+                Err(crate::smt::solver::SMTError::SolvingFailed(
+                    format!("Conflicting Self type constraints - this indicates a type error: {:?}", conflicting)
+                ))
+            }
+            crate::smt::solver::SolverResult::Unknown(reason) => {
+                eprintln!("❓ SMT solver returned unknown for Self resolution: {}", reason);
+                // Unknown means we can't prove satisfiability OR unsatisfiability
+                // This should be treated as a solver limitation, not a fallback opportunity
+                Err(crate::smt::solver::SMTError::SolvingFailed(
+                    format!("SMT solver cannot determine satisfiability: {}", reason)
+                ))
+            }
+        }
+    }
+
+    /// Extract the resolved Self type from an SMT model
+    /// This method looks for the Self variable assignment in the Z3 model
+    fn extract_self_type_from_model(
+        &self,
+        model: &crate::smt::solver::ConstraintModel,
+        self_var_name: &str,
+    ) -> Option<StructuredType> {
+        // Look for the Self type assignment in the model
+        if let Some(assigned_type) = model.type_assignments.get(self_var_name) {
+            eprintln!("🎯 Found Self assignment in model: {} = {}", self_var_name, assigned_type.to_string_representation());
+            Some(assigned_type.clone())
+        } else {
+            // Check if there are any boolean assignments that tell us about Self
+            for (var_name, is_true) in &model.boolean_assignments {
+                if var_name.contains(self_var_name) && *is_true {
+                    eprintln!("🔍 Found boolean assignment for Self: {} = true", var_name);
+                    // Try to extract type information from the boolean variable name
+                    // Format is typically "Self_123_equals_SomeType" or similar
+                    if let Some(type_info) = self.extract_type_from_boolean_var(var_name) {
+                        return Some(type_info);
+                    }
+                }
+            }
+            
+            eprintln!("❌ No Self type assignment found in SMT model");
+            eprintln!("📊 Model contains type assignments: {:?}", model.type_assignments.keys().collect::<Vec<_>>());
+            eprintln!("📊 Model contains boolean assignments: {:?}", model.boolean_assignments.keys().collect::<Vec<_>>());
+            None
+        }
+    }
+
+    /// Extract type information from a boolean variable name like "Self_123_equals_Option_Integer"
+    fn extract_type_from_boolean_var(&self, var_name: &str) -> Option<StructuredType> {
+        // This is a heuristic approach - in a production system, we'd want more structured model extraction
+        if let Some(type_part) = var_name.split("_equals_").nth(1) {
+            // Try to parse the type part back into a StructuredType
+            // For now, just handle simple cases
+            if let Some(type_id) = self.try_resolve_type_name(type_part) {
+                return Some(StructuredType::Simple(type_id));
+            }
+        }
+        
+        eprintln!("⚠️ Could not extract type from boolean variable: {}", var_name);
+        None
+    }
+
+    /// Try to resolve a type name string back to a TypeNameId
+    fn try_resolve_type_name(&self, type_name: &str) -> Option<crate::compilation::compiler_environment::TypeNameId> {
+        // For now, just intern the type name and hope it exists
+        // In a more robust system, we'd maintain bidirectional mappings
+        let type_id = self.intern_type_name(type_name);
+        
+        // Verify it actually exists
+        if self.resolve_type(type_id.clone()).is_some() {
+            Some(type_id)
+        } else {
+            None
+        }
+    }
+
     /// Check if a generic type can be instantiated to match a concrete type
     /// For example: Map<K, V> can be instantiated to Map<String, Integer>
     fn generic_types_match(

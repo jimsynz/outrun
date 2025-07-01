@@ -1816,9 +1816,9 @@ impl TypeCheckingVisitor {
                         // as trait dispatch, not static dispatch - they need to find an implementation
                         // or use the default implementation
 
-                        // For non-static trait functions, infer the concrete implementing type from the first Self parameter
+                        // For non-static trait functions, infer the concrete implementing type using SMT constraints
                         let implementing_structured_type = self
-                            .infer_implementing_type_from_arguments(
+                            .infer_implementing_type_with_smt(
                                 module_type_id.clone(),
                                 trait_func.definition(),
                                 call,
@@ -3110,6 +3110,139 @@ impl TypeCheckingVisitor {
         }
 
         Ok(unified_type)
+    }
+
+    /// Infer implementing type using SMT constraint generation and solving
+    /// This replaces the direct unification approach with SMT-based inference
+    fn infer_implementing_type_with_smt(
+        &mut self,
+        trait_type_id: TypeNameId,
+        trait_func_def: &outrun_parser::FunctionDefinition,
+        call: &outrun_parser::FunctionCall,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        // Create a Self type variable for this function call
+        let self_type_id = self.compiler_environment.intern_type_name(&format!("Self_call_{}", call.span.start));
+        
+        // Build argument type mapping
+        let mut arg_type_map = std::collections::HashMap::new();
+        for arg in &call.arguments {
+            if let outrun_parser::Argument::Named {
+                name, expression, ..
+            } = arg
+            {
+                let arg_type = self.check_expression_type(expression)?;
+                arg_type_map.insert(name.name.clone(), arg_type);
+            }
+        }
+
+        // Generate SelfTypeInference constraints for each Self parameter
+        let mut inference_constraints = Vec::new();
+        let mut has_self_parameters = false;
+        
+        for param in &trait_func_def.parameters {
+            let param_name = &param.name.name.clone();
+            if let Some(arg_type) = arg_type_map.get(param_name) {
+                // Check if this parameter is typed as Self or contains Self
+                if self.is_self_type_annotation(&param.type_annotation) {
+                    // Direct Self parameter: Self = arg_type
+                    has_self_parameters = true;
+                    let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
+                        self_variable_id: self_type_id.clone(),
+                        inferred_type: arg_type.clone(),
+                        call_site_context: format!("parameter {} in call to {}", param_name, trait_func_def.name.name),
+                        confidence: crate::smt::constraints::InferenceConfidence::High,
+                    };
+                    inference_constraints.push(constraint);
+                } else if self.type_annotation_contains_self(&param.type_annotation) {
+                    // Parameter contains Self (e.g., Option<Self>): need to extract Self from arg_type
+                    has_self_parameters = true;
+                    if let Some(extracted_self_type) = self.extract_self_type_from_generic(&param.type_annotation, arg_type)? {
+                        let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
+                            self_variable_id: self_type_id.clone(),
+                            inferred_type: extracted_self_type,
+                            call_site_context: format!("generic parameter {} in call to {}", param_name, trait_func_def.name.name),
+                            confidence: crate::smt::constraints::InferenceConfidence::Medium,
+                        };
+                        inference_constraints.push(constraint);
+                    }
+                }
+            }
+        }
+
+        if !has_self_parameters {
+            // If no Self parameter found, this is an error - trait functions should have Self parameters
+            return Err(TypeError::internal_with_span(
+                format!(
+                    "Trait function {} has no Self parameter for implementation dispatch",
+                    trait_func_def.name.name
+                ),
+                call.span.to_source_span(),
+            ));
+        }
+
+        // Add all inference constraints to SMT context
+        let mut context = self.compiler_environment.unification_context();
+        for constraint in inference_constraints {
+            context.add_smt_constraint(constraint);
+        }
+        
+        // Add constraint that Self must implement the trait
+        let trait_type = crate::unification::StructuredType::Simple(trait_type_id.clone());
+        let self_implements_trait = crate::smt::constraints::SMTConstraint::TraitImplemented {
+            impl_type: crate::unification::StructuredType::TypeVariable(self_type_id.clone()),
+            trait_type: trait_type.clone(),
+        };
+        context.add_smt_constraint(self_implements_trait);
+        self.compiler_environment.set_unification_context(context);
+
+        // Use SMT to solve for the Self type - this must succeed for type safety
+        match self.compiler_environment.smt_resolve_self_type(&self_type_id) {
+            Ok(resolved_type) => Ok(resolved_type),
+            Err(smt_error) => {
+                // SMT solving failed - this indicates a real type error, not a fallback situation
+                Err(TypeError::internal_with_span(
+                    format!(
+                        "Cannot resolve Self type for trait function call {}: {}",
+                        trait_func_def.name.name,
+                        smt_error
+                    ),
+                    call.span.to_source_span(),
+                ))
+            }
+        }
+    }
+
+    /// Extract Self type from a generic type annotation like Option<Self> when given Option<ConcreteType>
+    fn extract_self_type_from_generic(
+        &self,
+        param_annotation: &outrun_parser::TypeAnnotation,
+        arg_type: &crate::unification::StructuredType,
+    ) -> Result<Option<crate::unification::StructuredType>, TypeError> {
+        match (param_annotation, arg_type) {
+            (
+                outrun_parser::TypeAnnotation::Simple {
+                    path: param_path,
+                    generic_args: Some(param_args),
+                    ..
+                },
+                crate::unification::StructuredType::Generic { base: arg_base, args: arg_args }
+            ) => {
+                // Check if parameter is Generic<Self> and argument is Generic<ConcreteType>
+                let param_base_name = param_path.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(".");
+                let arg_base_name = arg_base.to_string();
+                
+                if param_base_name == arg_base_name && param_args.args.len() == arg_args.len() {
+                    // Find the first Self in parameter args and return corresponding argument type
+                    for (param_arg, arg_arg) in param_args.args.iter().zip(arg_args.iter()) {
+                        if self.is_self_type_annotation(param_arg) {
+                            return Ok(Some(arg_arg.clone()));
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
     }
 
     /// Check if a type annotation is Self

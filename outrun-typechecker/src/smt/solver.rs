@@ -20,6 +20,8 @@ pub enum SMTError {
     TranslationError(String),
     TimeoutError,
     ResourceLimitError,
+    NoConstraintsFound(String),
+    SolvingFailed(String),
 }
 
 impl std::fmt::Display for SMTError {
@@ -29,6 +31,8 @@ impl std::fmt::Display for SMTError {
             SMTError::TranslationError(msg) => write!(f, "SMT translation error: {}", msg),
             SMTError::TimeoutError => write!(f, "SMT solver timeout"),
             SMTError::ResourceLimitError => write!(f, "SMT solver resource limit exceeded"),
+            SMTError::NoConstraintsFound(msg) => write!(f, "No constraints found: {}", msg),
+            SMTError::SolvingFailed(msg) => write!(f, "SMT solving failed: {}", msg),
         }
     }
 }

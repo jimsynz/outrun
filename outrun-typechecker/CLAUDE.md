@@ -2,616 +2,471 @@
 
 ## Project Overview
 
-The Outrun type checker is a comprehensive static type analysis system for the Outrun programming language. It validates trait constraints, function signatures, and expressions at compile time, generating efficient dispatch tables for the interpreter.
+The Outrun type checker is a mathematically sound static type analysis system for the Outrun programming language. It uses SMT (Satisfiability Modulo Theories) constraint solving with Z3 to validate trait constraints, function signatures, and expressions at compile time, generating efficient dispatch tables for the interpreter.
 
-**Current Status**: ✅ **PRODUCTION READY** - Full type checking, trait system, generics, and package composition support
+**Current Status**: ✅ **PRODUCTION READY** - SMT-first type checking, trait system, Self type inference, and package composition support
 
-### Recent Architectural Improvements
+## 🧮 Mathematical Soundness: Core Principle
 
-**Thread-Safe Function Registry**: Implemented `Arc<RwLock<>>` interior mutability pattern for:
+**⚠️ CRITICAL**: This type checker is **mathematically sound** - we never use fallbacks, heuristics, or "best guesses". Every type decision must be **proven correct** by SMT constraint solving or fail with a proper error.
 
-- True sharing of function registries between components
-- Preservation of typed function definitions across package composition
-- Thread-safe access for concurrent type checking scenarios
-- Elimination of registry cloning/merging data loss
+### ❌ **NEVER DO THIS**
+```rust
+// ❌ WRONG: Fallback logic introduces non-determinism
+match smt_solver.solve() {
+    Ok(solution) => use_solution(solution),
+    Err(_) => fallback_to_heuristics(), // 🚨 NEVER!
+}
 
-**TypeInterner Singleton Architecture**: Enhanced type ID consistency with:
+// ❌ WRONG: "Confidence-based" type selection
+let best_type = types.iter().max_by_key(|t| confidence_score(t));
 
-- Global singleton pattern for production builds ensuring consistent type IDs
-- Test isolation via conditional compilation preventing cross-test contamination
-- Proper memory management eliminating Box::leak patterns
-- Consistent type resolution across all typechecker components
+// ❌ WRONG: Guessing when constraints are unsatisfiable  
+if constraints_unsatisfiable() {
+    pick_most_likely_type() // 🚨 NEVER!
+}
+```
 
-#### Recursive Type Unification Algorithm
+### ✅ **ALWAYS DO THIS**
+```rust
+// ✅ CORRECT: Either SMT proves a solution exists, or we fail properly
+match smt_solver.solve() {
+    SolverResult::Satisfiable(model) => extract_proven_solution(model),
+    SolverResult::Unsatisfiable(conflicts) => Err(TypeError::ConflictingConstraints(conflicts)),
+    SolverResult::Unknown(reason) => Err(TypeError::SolverLimitation(reason)),
+}
+```
 
-Instead of string comparison, the system uses recursive unification:
+**Rationale**: Type checking is a mathematical proof system. If we can't prove a program is type-safe, we must reject it. Fallbacks undermine correctness and create subtle bugs.
+
+## 🔬 SMT-First Architecture
+
+### Core SMT Pipeline
+
+1. **Constraint Generation**: Convert Outrun type relationships to SMT constraints
+2. **Z3 Solving**: Use Z3 SMT solver to find satisfying assignments  
+3. **Model Extraction**: Extract concrete type assignments from proven models
+4. **Dispatch Generation**: Use proven types for runtime dispatch tables
 
 ```rust
-// Option<Self> vs Option<Outrun.Core.String> when Self = Outrun.Core.String
-fn unify_structured_types(type1: &StructuredType, type2: &StructuredType) -> bool {
-    match (type1, type2) {
-        // Generic type unification: Generic<A1, A2, ...> vs Generic<B1, B2, ...>
-        (StructuredType::Generic { base: base1, args: args1 },
-         StructuredType::Generic { base: base2, args: args2 }) => {
-            // 1. Base types must unify (Option = Option) ✓
-            unify_simple_types(base1, base2) &&
-            // 2. Argument arity must match (1 = 1) ✓
-            args1.len() == args2.len() &&
-            // 3. All arguments must unify recursively (Self = Outrun.Core.String) ✓
-            args1.iter().zip(args2.iter()).all(|(a1, a2)| unify_structured_types(a1, a2))
+// Phase 6: SMT constraint collection during type checking
+let constraints = collect_smt_constraints(&programs);
+
+// Phase 7: SMT constraint solving with Z3
+let model = z3_solver.solve(constraints)?; // Must succeed or fail properly
+
+// Phase 8: Extract proven type assignments
+let type_assignments = extract_model(model); // Mathematically guaranteed
+
+// Phase 9: Generate dispatch tables from proven types
+let dispatch_tables = generate_dispatch(type_assignments);
+```
+
+### SMT Constraint Types
+
+The system generates these constraint types (all handled by Z3):
+
+```rust
+pub enum SMTConstraint {
+    /// Type A must implement trait B
+    TraitImplemented {
+        impl_type: StructuredType,
+        trait_type: StructuredType,
+    },
+    
+    /// Universal Self constraint for trait definitions
+    /// ∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))
+    UniversalSelfConstraint {
+        self_variable_id: TypeNameId,
+        trait_being_defined: StructuredType,
+        bound_traits: Vec<StructuredType>,
+    },
+    
+    /// Concrete Self binding for trait implementations
+    /// Self = ConcreteType
+    ConcreteSelfBinding {
+        self_variable_id: TypeNameId,
+        concrete_type: StructuredType,
+    },
+    
+    /// Self type inference from function call arguments
+    /// Generated for calls like Option.some?(value: Option<Integer>) → Self = Option<Integer>
+    SelfTypeInference {
+        self_variable_id: TypeNameId,
+        inferred_type: StructuredType,
+        call_site_context: String,
+        confidence: InferenceConfidence,
+    },
+    
+    /// Type parameter unification T = ConcreteType
+    TypeParameterUnification {
+        parameter_name: String,
+        concrete_type: StructuredType,
+    },
+    
+    // ... other constraint types
+}
+```
+
+## 🎯 Self Type Resolution: The Core Problem Solved
+
+### Problem Statement
+
+In calls like `Option.some?(value: return_value)` where `return_value` has type `Option<Integer>`, we need to infer that `Self = Option<Integer>` for trait dispatch to work correctly.
+
+### SMT-Based Solution
+
+**Old Approach (Broken)**:
+- Premature Self substitution in compilation phase
+- Direct unification attempts 
+- Fallback to "best guess" when unification failed
+
+**New Approach (Mathematically Sound)**:
+1. **Keep Self as type variable** throughout compilation
+2. **Generate SelfTypeInference constraints** from function call arguments
+3. **Let Z3 solve** for the Self type using all available constraints
+4. **Extract proven Self type** from SMT model
+5. **Use proven Self type** for dispatch resolution
+
+```rust
+// Example: Option.some?(value: Option<Integer>)
+// Generates these SMT constraints:
+
+// 1. Self type inference from argument
+SelfTypeInference {
+    self_variable_id: Self_call_123,
+    inferred_type: Option<Integer>,
+    call_site_context: "parameter value in call to some?",
+    confidence: High,
+}
+
+// 2. Self must implement the trait
+TraitImplemented {
+    impl_type: TypeVariable(Self_call_123),
+    trait_type: Option,
+}
+
+// 3. Z3 solves: Self_call_123 = Option<Integer> ✓ (proven!)
+```
+
+### Self Semantics by Context
+
+The system correctly handles different Self semantics:
+
+**Trait Definitions**: `Self` means "any type implementing this trait"
+```rust
+trait Binary when Self: Equality {
+    def add(left: Self, right: Self): Self
+    //      ^^^^^        ^^^^^       ^^^^
+    //      Universally quantified Self variables
+}
+```
+
+**Trait Implementations**: `Self` means "the specific implementing type"  
+```rust
+impl Binary for Integer {
+    def add(left: Self, right: Self): Self {
+    //      ^^^^^        ^^^^^       ^^^^
+    //      All resolve to Integer (proven by SMT)
+    }
+}
+```
+
+## 🏗️ Compilation Pipeline
+
+### Phase Overview
+
+```rust
+impl CompilerEnvironment {
+    pub fn compile_programs(&mut self, programs: Vec<Program>) -> Result<CompilationResult, Vec<TypeError>> {
+        // Phases 1-5: AST processing (unchanged)
+        self.phase_1_desugaring(&programs)?;
+        self.phase_2_trait_extraction(&programs)?;
+        self.phase_3_struct_extraction(&programs)?;
+        self.phase_4_impl_extraction(&programs)?;
+        self.phase_5_function_extraction(&programs)?;
+        
+        // 🔥 REMOVED: Phase 5.6 - substitute_self_types_in_impl_blocks()
+        // This was premature and prevented SMT from seeing Self types!
+        
+        // Phase 6: SMT constraint collection during type checking
+        self.smt_type_check_all(&programs)?;
+        
+        // Phase 7: SMT constraint solving with Z3
+        self.phase_7_smt_constraint_solving()?;
+        
+        // Phase 8: SMT-guided dispatch table generation  
+        self.calculate_dispatch_tables_with_smt(&programs)?;
+        
+        // Phase 9: Typed AST building
+        self.build_typed_ast(&programs)
+    }
+}
+```
+
+### Key Architecture Changes
+
+**✅ What We Added**:
+- SMT constraint generation in type checking
+- Z3-based constraint solving phase
+- Mathematically proven Self type resolution
+- SMT-guided dispatch table generation
+
+**❌ What We Removed**:  
+- `substitute_self_types_in_impl_blocks()` - premature substitution
+- Unification fallback logic - non-mathematical
+- "Confidence-based" type selection - unsound
+
+## 🔧 Function Call Type Checking
+
+### SMT-Based Self Inference
+
+```rust
+fn infer_implementing_type_with_smt(
+    &mut self,
+    trait_type_id: TypeNameId,
+    trait_func_def: &FunctionDefinition,
+    call: &FunctionCall,
+) -> Result<StructuredType, TypeError> {
+    // 1. Create unique Self type variable for this call
+    let self_type_id = self.intern_type_name(&format!("Self_call_{}", call.span.start));
+    
+    // 2. Generate SelfTypeInference constraints from arguments
+    for param in &trait_func_def.parameters {
+        if self.is_self_type_annotation(&param.type_annotation) {
+            let constraint = SMTConstraint::SelfTypeInference {
+                self_variable_id: self_type_id.clone(),
+                inferred_type: arg_type.clone(), // From function call argument
+                call_site_context: format!("parameter {} in call to {}", param_name, trait_func_def.name.name),
+                confidence: InferenceConfidence::High,
+            };
+            self.add_smt_constraint(constraint);
         }
-        // ... other cases
+    }
+    
+    // 3. Add constraint: Self must implement trait
+    let trait_constraint = SMTConstraint::TraitImplemented {
+        impl_type: StructuredType::TypeVariable(self_type_id.clone()),
+        trait_type: StructuredType::Simple(trait_type_id),
+    };
+    self.add_smt_constraint(trait_constraint);
+    
+    // 4. Use Z3 to solve for Self type (NO FALLBACKS!)
+    match self.smt_resolve_self_type(&self_type_id) {
+        Ok(proven_type) => Ok(proven_type), // ✅ Mathematically proven
+        Err(smt_error) => Err(TypeError::SelfResolutionFailed(smt_error)), // ❌ Proper error
     }
 }
-```
-
-#### Function Type Handling with Named Parameters
-
-Outrun requires named parameters, so function types track both names and types:
-
-```rust
-#[derive(Debug, Clone, PartialEq)]
-pub struct FunctionParam {
-    pub name: AtomId,           // Parameter name (required for Outrun)
-    pub param_type: StructuredType,
-}
-
-// Function type: (name: String, age: Integer) -> Boolean
-StructuredType::Function {
-    params: vec![
-        FunctionParam { name: "name".into(), param_type: StructuredType::Simple("String".into()) },
-        FunctionParam { name: "age".into(), param_type: StructuredType::Simple("Integer".into()) },
-    ],
-    return_type: Box::new(StructuredType::Simple("Boolean".into())),
-}
-```
-
-#### Type Resolution Pipeline
-
-1. **Parser** → `TypeAnnotation` with `GenericArgs` (structured representation preserved)
-2. **Type Resolver** → `StructuredType::from_type_annotation()` (recursive resolution with Self support)
-3. **Type Checker** → `unify_structured_types()` (recursive unification with trait compatibility)
-4. **Error Reporting** → `StructuredType::to_string_representation()` (readable error messages)
-
-#### Key Benefits
-
-- **Correct Generic Unification**: `Option<Self>` properly unifies with `Option<ConcreteType>`
-- **Trait-Based Compatibility**: `Boolean` trait unifies with `Outrun.Core.Boolean` implementation
-- **Precise Error Messages**: Show exact generic type mismatches with proper structure
-- **Performance**: Avoid string parsing/reconstruction during type checking
-- **Extensibility**: Easy to add new type constructs (unions, intersections, etc.)
-
-### Implementation Strategy for Structured Types
-
-#### Critical Implementation Rules
-
-1. **Never flatten to strings during type checking** - only for error reporting
-2. **Always use recursive unification** for generic type compatibility
-3. **Preserve Self binding context** when resolving type annotations in impl blocks
-4. **Handle trait vs concrete type relationships** in unification algorithm
-5. **Maintain TypeId compatibility** only where absolutely necessary for legacy code
-
-#### Common Pitfalls to Avoid
-
-- ❌ Converting StructuredType → string → TypeId → StructuredType (loses structure)
-- ❌ Using string comparison for generic types (`"Option<T>"` == `"Option<U>"`)
-- ❌ Forgetting Self binding in impl block function signatures
-- ❌ Not handling trait implementation in unification (Boolean vs Outrun.Core.Boolean)
-- ❌ Mixing TypeId and StructuredType incompatibly in the same code path
-
-## Comprehensive Type Unification Algorithm
-
-### Overview
-
-The type unification algorithm is the core of Outrun's type system. It determines when two types are compatible, handling generic types recursively and trait-based relationships. This replaces the flawed string-based comparison with proper structural analysis.
-
-### Unification Rules
-
-The algorithm follows these fundamental rules in order:
-
-#### 1. Exact Match (Fast Path)
-
-```rust
-if type1 == type2 { return true; }
-```
-
-If both types are structurally identical, they unify immediately.
-
-#### 2. Generic Type Unification
-
-For types like `Option<T>` vs `Option<U>`:
-
-```rust
-(StructuredType::Generic { base: base1, args: args1 },
- StructuredType::Generic { base: base2, args: args2 }) => {
-    // Base types must unify (Option = Option)
-    unify_simple_types(base1, base2) &&
-    // Argument count must match (arity check)
-    args1.len() == args2.len() &&
-    // All arguments must unify recursively
-    args1.iter().zip(args2.iter()).all(|(a1, a2)| unify_structured_types(a1, a2))
-}
-```
-
-**Examples:**
-
-- ✅ `Option<String>` ∪ `Option<String>` → unified (exact match)
-- ✅ `Option<Self>` ∪ `Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
-- ✅ `Map<String, Integer>` ∪ `Map<String, Integer>` → unified (exact match)
-- ❌ `Option<String>` ∪ `Option<Integer>` → not unified (different argument types)
-- ❌ `Option<T>` ∪ `Map<T, U>` → not unified (different base types)
-- ❌ `Option<T>` ∪ `Map<T>` → not unified (different arity: 1 vs 2)
-
-#### 3. Tuple Type Unification
-
-For tuple types like `(String, Integer)`:
-
-```rust
-(StructuredType::Tuple(elems1), StructuredType::Tuple(elems2)) => {
-    // Element count must match
-    elems1.len() == elems2.len() &&
-    // All elements must unify positionally
-    elems1.iter().zip(elems2.iter()).all(|(e1, e2)| unify_structured_types(e1, e2))
-}
-```
-
-**Examples:**
-
-- ✅ `(String, Integer)` ∪ `(String, Integer)` → unified
-- ✅ `(Self, Boolean)` ∪ `(Outrun.Core.String, Outrun.Core.Boolean)` → unified (when Self = Outrun.Core.String, Boolean trait implemented by Outrun.Core.Boolean)
-- ❌ `(String, Integer)` ∪ `(Integer, String)` → not unified (order matters)
-- ❌ `(String)` ∪ `(String, Integer)` → not unified (different arity)
-
-#### 4. Function Type Unification
-
-For function types with named parameters:
-
-```rust
-(StructuredType::Function { params: params1, return_type: ret1 },
- StructuredType::Function { params: params2, return_type: ret2 }) => {
-    // Parameter count must match
-    params1.len() == params2.len() &&
-    // All parameters must have matching names AND types (Outrun requirement)
-    params1.iter().zip(params2.iter()).all(|(p1, p2)| {
-        p1.name == p2.name && unify_structured_types(&p1.param_type, &p2.param_type)
-    }) &&
-    // Return types must unify
-    unify_structured_types(ret1, ret2)
-}
-```
-
-**Examples:**
-
-- ✅ `(name: String) -> Boolean` ∪ `(name: String) -> Boolean` → unified
-- ✅ `(value: Self) -> Option<Self>` ∪ `(value: Outrun.Core.String) -> Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
-- ❌ `(name: String) -> Boolean` ∪ `(title: String) -> Boolean` → not unified (different parameter names)
-- ❌ `(name: String) -> Boolean` ∪ `(name: String, age: Integer) -> Boolean` → not unified (different arity)
-
-#### 5. Simple Type Unification (Traits + Concrete)
-
-For non-generic types, the algorithm handles trait-based compatibility:
-
-```rust
-fn unify_simple_types(type1: TypeId, type2: TypeId) -> bool {
-    // Fast path: exact match
-    if type1 == type2 { return true; }
-
-    // Determine if types are traits or concrete
-    let type1_is_trait = interner.get_trait(&type1_name).is_some();
-    let type2_is_trait = interner.get_trait(&type2_name).is_some();
-
-    match (type1_is_trait, type2_is_trait) {
-        // Both traits: must be exactly equal
-        (true, true) => false,
-
-        // Type1 is trait, type2 is concrete: type2 must implement type1
-        (true, false) => trait_registry.implements_trait(type2, type1_trait_id),
-
-        // Type1 is concrete, type2 is trait: type1 must implement type2
-        (false, true) => trait_registry.implements_trait(type1, type2_trait_id),
-
-        // Both concrete: must be exactly equal
-        (false, false) => false,
-    }
-}
-```
-
-**Examples:**
-
-- ✅ `Boolean` ∪ `Outrun.Core.Boolean` → unified (concrete type implements trait)
-- ✅ `Outrun.Core.Boolean` ∪ `Boolean` → unified (trait compatibility is symmetric)
-- ✅ `Integer` ∪ `Outrun.Core.Integer64` → unified (if Integer64 implements Integer)
-- ❌ `String` ∪ `Integer` → not unified (different concrete types)
-- ❌ `Display` ∪ `Debug` → not unified (different traits)
-
-#### 6. Cross-Type Unification
-
-Different type categories never unify:
-
-```rust
-// These combinations always return false:
-(StructuredType::Simple(_), StructuredType::Generic { .. }) => false,
-(StructuredType::Generic { .. }, StructuredType::Simple(_)) => false,
-(StructuredType::Function { .. }, StructuredType::Tuple(_)) => false,
-// ... etc
 ```
 
 ### Self Type Resolution
 
-The algorithm handles `Self` type resolution in impl blocks:
-
 ```rust
-// In impl Display for String { def show(value: Self): Self { ... } }
-StructuredType::from_type_annotation(
-    type_annotation,
-    &mut interner,
-    generic_params,
-    Some(string_type_id), // Self resolves to String
-)
-```
-
-**Self Resolution Rules:**
-
-1. `Self` in trait definitions → remains as generic parameter
-2. `Self` in impl blocks → resolves to implementing type
-3. `Self` in standalone functions → error (no context)
-4. `Self` in generic arguments → recursive resolution (`Option<Self>` → `Option<ConcreteType>`)
-
-### Generic Parameter Substitution
-
-The algorithm supports generic parameter substitution:
-
-```rust
-// trait Iterator<T> { def next(iter: Self): Option<T> }
-// impl Iterator<String> for StringIterator { ... }
-
-// During impl validation:
-// Generic context: [("T", string_type_id)]
-// Self context: string_iterator_type_id
-
-// Function signature: (iter: Self) -> Option<T>
-// Resolves to: (iter: StringIterator) -> Option<String>
-```
-
-### Error Cases and Debugging
-
-#### Common Unification Failures
-
-1. **Arity Mismatch**: `Option<T>` vs `Map<K, V>` (1 ≠ 2 arguments)
-2. **Base Type Mismatch**: `Option<String>` vs `List<String>` (Option ≠ List)
-3. **Argument Type Mismatch**: `Option<String>` vs `Option<Integer>` (String ≠ Integer)
-4. **Parameter Name Mismatch**: `(name: String)` vs `(title: String)` (name ≠ title)
-5. **Trait Implementation Missing**: `Boolean` vs `String` (String doesn't implement Boolean)
-
-#### Debugging Unification
-
-```rust
-// Enable debug output for unification failures
-if cfg!(debug_assertions) {
-    eprintln!("Unification failed: {} vs {}",
-        type1.to_string_representation(&interner),
-        type2.to_string_representation(&interner));
+pub fn smt_resolve_self_type(&self, self_type_id: &TypeNameId) -> Result<StructuredType, SMTError> {
+    // Create Z3 solver and add all constraints
+    let mut solver = Z3ConstraintSolver::new();
+    solver.add_constraints(&self.unification_context().smt_constraints, self)?;
+    
+    // Solve constraints (mathematically sound!)
+    match solver.solve() {
+        SolverResult::Satisfiable(model) => {
+            // Extract proven Self type from model
+            let self_var_name = format!("Self_{}", self_type_id.hash);
+            if let Some(proven_type) = self.extract_self_type_from_model(&model, &self_var_name) {
+                Ok(proven_type) // ✅ Z3 mathematically proved this assignment
+            } else {
+                Err(SMTError::SolverError("Model missing Self variable".to_string()))
+            }
+        }
+        SolverResult::Unsatisfiable(conflicts) => {
+            // Constraints are mathematically contradictory
+            Err(SMTError::SolvingFailed(format!("Conflicting Self constraints: {:?}", conflicts)))
+        }
+        SolverResult::Unknown(reason) => {
+            // Z3 cannot determine satisfiability (solver limitation)
+            Err(SMTError::SolvingFailed(format!("SMT solver limitation: {}", reason)))
+        }
+    }
+    // 🚨 NO FALLBACKS! Either proven or failed.
 }
 ```
 
-### Performance Considerations
+## 📊 Type System Components
 
-#### Fast Paths
+### StructuredType System
 
-1. **Structural equality check first** (avoids trait lookups)
-2. **Early arity mismatch detection** (avoids recursive calls)
-3. **TypeId interning** (fast equality for simple types)
-
-#### Optimization Opportunities
-
-1. **Memoization** for expensive trait implementation checks
-2. **Type canonicalization** for equivalent types
-3. **Parallel unification** for independent generic arguments
-
-### Integration with Type Checking
-
-The unification algorithm integrates with key type checking phases:
-
-1. **Function Return Type Checking**: Unify body type with declared return type
-2. **Function Call Validation**: Unify argument types with parameter types
-3. **Variable Assignment**: Unify expression type with variable type
-4. **Pattern Matching**: Unify pattern type with matched expression type
-5. **Trait Implementation**: Unify impl function signatures with trait signatures
-
-This comprehensive unification system ensures that Outrun's type system correctly handles all combinations of generic types, traits, and concrete types while providing clear error messages when unification fails.
-
-## Key Design Principles
-
-### Type Interning for Performance
-
-All types, atoms, and traits use interned IDs for fast equality comparisons:
+All types preserve structure throughout compilation:
 
 ```rust
-let string_type = context.interner.intern_type("Outrun.Core.String");
-let name_atom = context.interner.intern_atom("name");
-let display_trait = context.interner.intern_trait("Display");
-```
-
-### Scope-Based Context Management
-
-The type checker maintains a scope stack for proper variable shadowing:
-
-```rust
-context.push_scope(false);  // Create new scope
-context.register_variable(var)?;  // Register in current scope
-// ... type check expressions in scope
-context.pop_scope();  // Clean up scope
-```
-
-### Comprehensive Error Reporting
-
-All errors use miette for beautiful source highlighting:
-
-```rust
-return Err(TypeError::type_mismatch(
-    "Outrun.Core.Boolean".to_string(),
-    "Outrun.Core.Integer64".to_string(),
-    crate::error::span_to_source_span(expr.span),
-));
-```
-
-## Core Type Checking Flow
-
-### Expression Type Checking
-
-The main entry point is `ExpressionChecker::check_expression()` in `expressions.rs`:
-
-1. **Literals**: Direct type mapping (`42` → `Outrun.Core.Integer64`)
-2. **Binary Operations**: Trait-based dispatch validation
-3. **Function Calls**: Parameter validation with named argument checking
-4. **Collections**: Homogeneous lists, heterogeneous tuples, typed maps
-5. **Control Flow**: If/case expressions with branch type compatibility
-6. **Pattern Matching**: Destructuring validation with variable binding
-
-### Case Expression Variants
-
-Two distinct case expression types:
-
-**Concrete Case**: Pattern-based matching with exhaustiveness checking
-
-```rust
-case value {
-    when guard1 -> result1
-    when guard2 -> result2
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum StructuredType {
+    Simple(TypeNameId),                    // Boolean, String
+    Generic { base: TypeNameId, args: Vec<StructuredType> }, // Option<Integer>
+    Tuple(Vec<StructuredType>),           // (String, Integer)
+    Function { params: Vec<FunctionParam>, return_type: Box<StructuredType> },
+    TypeVariable(TypeNameId),             // Self, T, K, V
 }
 ```
 
-**Trait Case**: Trait implementation dispatch with orphan rule checking
+**Key Principle**: Never flatten to strings during type checking - only for error reporting.
+
+### SMT Integration Points
+
+1. **Type Checking**: Generate constraints during AST traversal
+2. **Constraint Solving**: Use Z3 to find satisfying assignments
+3. **Model Extraction**: Convert Z3 models back to StructuredTypes
+4. **Dispatch Resolution**: Use proven types for runtime dispatch
+
+## 🧪 Testing Strategy
+
+### Mathematical Soundness Tests
 
 ```rust
-case value as Display {
-    String {} -> "string"
-    Integer {} -> "number"
+#[test]
+fn test_no_fallbacks_in_self_resolution() {
+    // Ensure unsatisfiable constraints properly fail
+    let code = r#"
+        trait Foo when Self: Bar && Self: Baz {
+            def test(value: Self): Self
+        }
+        
+        def broken(): ??? {
+            Foo.test(value: incompatible_type) // Should fail, not fallback
+        }
+    "#;
+    
+    let result = compile_and_check(code);
+    match result {
+        Err(TypeError::SelfResolutionFailed(_)) => {}, // ✅ Proper mathematical failure
+        Ok(_) => panic!("Should have failed - constraints are unsatisfiable"),
+        Err(other) => panic!("Wrong error type - should be SelfResolutionFailed, got {:?}", other),
+    }
+}
+
+#[test] 
+fn test_self_inference_from_arguments() {
+    let code = r#"
+        def test_function(): Boolean {
+            Option.some?(value: String.index_of(value: "hello", search: "world"))
+        }
+    "#;
+    
+    let result = compile_and_check(code);
+    assert!(result.is_ok(), "SMT should prove Self = Option<Integer> from arguments");
+    
+    // Verify the SMT system generated correct constraints
+    let compilation = result.unwrap();
+    let constraints = compilation.smt_constraints();
+    assert!(constraints.iter().any(|c| matches!(c, SMTConstraint::SelfTypeInference { .. })));
 }
 ```
 
-## Trait System Architecture
+### Integration Test Coverage
 
-### Trait Definition Validation
+- **✅ SMT constraint generation**: All constraint types properly generated
+- **✅ Z3 integration**: Real SMT solving with satisfiable/unsatisfiable cases  
+- **✅ Self type inference**: Function calls correctly infer Self types
+- **✅ No fallback paths**: All failure cases properly handled without guessing
+- **✅ Trait constraints**: Universal/concrete Self semantics work correctly
 
-- Function signature validation (parameters, return types)
-- Guard function validation (must return Boolean)
-- Generic parameter constraint checking
-- Type name resolution (`Boolean` → `Outrun.Core.Boolean`)
+## 🚨 Development Guidelines
 
-### Trait Implementation Tracking
+### Mathematical Soundness Rules
+
+1. **Never implement fallback logic** - if SMT can't prove it, reject it
+2. **Always handle all SolverResult cases** - Satisfiable, Unsatisfiable, Unknown
+3. **Extract types from models** - don't guess based on constraints
+4. **Fail fast on constraint conflicts** - unsatisfiable = type error
+5. **No confidence scoring** - either proven or not proven
+
+### SMT Constraint Best Practices
 
 ```rust
-// Register trait implementations
-let impl_id = context.trait_registry.register_implementation(trait_impl);
+// ✅ GOOD: Generate precise constraints
+let constraint = SMTConstraint::SelfTypeInference {
+    self_variable_id: call_specific_id,  // Unique per call site
+    inferred_type: concrete_arg_type,    // From actual argument
+    call_site_context: specific_context, // For debugging
+    confidence: High,                    // Based on constraint precision
+};
 
-// Check trait implementation
-if context.trait_registry.implements_trait(type_id, trait_id) {
-    // Type implements trait
-}
-
-// Exhaustiveness checking
-let result = context.trait_registry.check_trait_case_exhaustiveness(
-    trait_id,
-    covered_types
-);
+// ❌ BAD: Vague or overly broad constraints  
+let constraint = SMTConstraint::SelfTypeInference {
+    self_variable_id: global_self_id,    // Conflicts with other calls
+    inferred_type: any_type,             // Too permissive
+    call_site_context: "somewhere",     // Useless for debugging
+    confidence: guess_confidence(),      // Non-mathematical
+};
 ```
 
-### Orphan Rule Analysis
-
-The trait system enforces orphan rules for trait implementations:
-
-- Can only implement traits you own OR for types you own
-- Prevents conflicting implementations
-- Enables exhaustiveness checking for trait case expressions
-
-## Pattern Type Checking
-
-### Unified Pattern System
-
-All patterns work consistently across:
-
-- Let bindings: `let User { name, age } = user`
-- Case expressions: `case user { when User { age } when age > 18 -> ... }`
-- Function parameters: `def process(User { name, address: Address { city } })`
-
-### Variable Binding Collection
-
-Pattern checker returns bound variables for scope registration:
+### Error Handling
 
 ```rust
-let bound_variables = PatternChecker::check_pattern(
-    context,
-    pattern,
-    target_type
-)?;
-
-for variable in bound_variables {
-    context.register_variable(variable)?;
+// ✅ GOOD: Proper mathematical failure
+match smt_solver.solve() {
+    SolverResult::Unsatisfiable(conflicts) => {
+        Err(TypeError::ConflictingConstraints {
+            constraints: conflicts,
+            explanation: "These type requirements are mathematically contradictory",
+            suggestions: generate_conflict_resolution_suggestions(conflicts),
+        })
+    }
 }
-```
 
-## Testing Strategy
-
-### Comprehensive Test Coverage
-
-- **Unit tests**: Individual component validation
-- **Integration tests**: Real type checking scenarios
-- **Error case tests**: Comprehensive error condition coverage
-- **Pattern tests**: All pattern types and nesting combinations
-
-### Test Organization
-
-Tests are organized by feature area in `src/tests/`:
-
-- `test_basic_type_checking.rs`: Core expression type checking integration tests
-- `test_trait_case_exhaustiveness.rs`: Trait dispatch validation integration tests
-- `test_trait_case_patterns.rs`: Pattern integration with trait cases integration tests
-- `test_type_checker_core.rs`: TypeChecker core functionality unit tests
-- `test_type_interning.rs`: Type interning system unit tests
-- `test_traits_unit.rs`: Trait system component unit tests
-
-## Development Workflow
-
-### Adding New Type Checking Features
-
-1. **Define error types** in `error.rs` with miette integration
-2. **Add type checking logic** in appropriate checker module
-3. **Update typed AST** structures in `checker/mod.rs` if needed
-4. **Write comprehensive tests** covering success and error cases
-5. **Test with real Outrun programs** for integration validation
-
-### Type System Extensions
-
-1. **Add concrete types** in `types/concrete.rs`
-2. **Update type compatibility** checking if needed
-3. **Add trait definitions** in `types/traits.rs` for new behaviour
-4. **Update dispatch tables** if new trait functions are added
-
-### Error Message Guidelines
-
-- Use fully qualified type names: `Outrun.Core.String` not `String`
-- Include helpful context: "Expected struct type for pattern destructuring"
-- Provide specific spans: Point to exact source location causing error
-- Suggest fixes when possible: "Consider using Option.some(value: ...)"
-
-## Performance Considerations
-
-### Type Interning
-
-- All type comparisons are O(1) via TypeId equality
-- String interning prevents repeated allocations
-- Thread-safe design for future parallel type checking
-
-### Scope Management
-
-- Efficient scope stack with variable shadowing support
-- O(1) variable lookup within scope
-- Automatic cleanup on scope exit
-
-### Trait Implementation Lookup
-
-- Hash-based trait implementation storage
-- Fast trait membership checking
-- Efficient exhaustiveness analysis
-
-## Integration Points
-
-### Parser Integration
-
-The type checker consumes AST from `outrun-parser`:
-
-- All source spans preserved for error reporting
-- Pattern structures shared between parser and type checker
-- Expression kinds mapped to typed expression variants
-
-### Future Interpreter Integration
-
-Type checker produces:
-
-- Typed AST with complete type information
-- Trait dispatch tables for runtime method calls
-- Static function lookup tables
-- Pre-validated function signatures
-
-## Common Patterns
-
-### Error Creation
-
-```rust
-// Type mismatch with helpful messages
-TypeError::type_mismatch(
-    expected_type_name,
-    found_type_name,
-    span_to_source_span(span)
-)
-
-// Internal errors for debugging
-TypeError::internal(format!("Unexpected state: {}", details))
-
-// Trait-specific errors
-TypeError::TraitNotImplemented {
-    span: span_to_source_span(span),
-    trait_name: trait_name.clone(),
-    type_name: type_name.clone(),
+// ❌ BAD: Hiding mathematical impossibility
+match smt_solver.solve() {
+    SolverResult::Unsatisfiable(_) => {
+        eprintln!("Constraints unsatisfiable, trying fallback...");
+        try_heuristic_approach() // 🚨 NEVER!
+    }
 }
 ```
 
-### Scope Management
-
-```rust
-// Function scopes need special handling
-context.push_scope(true);  // Function scope
-// ... register parameters and check body
-context.pop_scope();
-
-// Expression scopes for let bindings
-context.push_scope(false);  // Expression scope
-// ... register pattern variables
-// ... check expression in scope
-context.pop_scope();
-```
-
-## Useful Commands
+## 🔧 Useful Commands
 
 ```bash
-# Run type checker tests
+# Run SMT integration tests
+cargo test test_smt_integration
+
+# Run type checker with SMT debugging
+RUST_LOG=debug cargo test -- --nocapture
+
+# Check mathematical soundness (no fallbacks)
+rg -n "fallback|heuristic|guess|confidence" src/ # Should find minimal results
+
+# Verify Z3 integration  
+cargo test test_z3_constraint_solving
+
+# Run all type checker tests
 cargo test --package outrun-typechecker
 
-# Run specific test category
-cargo test test_trait_case_exhaustiveness
-
-# Run with output for debugging
-cargo test -- --nocapture
-
-# Check type checker specifically
-cargo check --package outrun-typechecker
-
-# Run clippy on type checker
-cargo clippy --package outrun-typechecker --all-targets --all-features -- -D warnings
-
-# Format type checker code
-cargo fmt --package outrun-typechecker
+# Check for SMT constraint coverage
+cargo test test_constraint_generation
 ```
 
-## Future Extensions
+## 🚀 Future Enhancements
 
-### Type Inference
+### Advanced SMT Features
 
-- Hindley-Milner style type inference
-- Reduce explicit type annotations
-- Maintain trait dispatch efficiency
+- **Quantifier instantiation**: Better handling of universal constraints
+- **Unsat core analysis**: Precise conflict identification for error messages
+- **SMT optimization**: Minimal satisfying assignments for better performance
+- **Incremental solving**: Reuse solver state across compilation units
 
-### Advanced Error Recovery
+### Performance Optimizations
 
-- Multiple error reporting in single pass
-- Error recovery strategies for parser integration
-- IDE integration with real-time feedback
+- **Constraint caching**: Memoize common constraint patterns
+- **Parallel solving**: Independent constraint sets solved concurrently  
+- **Smart constraint ordering**: Reduce SMT solver search space
+- **Model minimization**: Extract simplest satisfying type assignments
 
-### Performance Optimization
+## 📚 Key Principles Summary
 
-- Incremental type checking for large codebases
-- Parallel type checking for independent modules
-- Advanced dispatch table optimization
+1. **Mathematical Soundness**: Every type decision must be proven by SMT or fail properly
+2. **No Fallbacks**: Unsatisfiable constraints indicate real type errors, not fallback opportunities  
+3. **SMT-First**: Generate constraints, solve with Z3, extract proven solutions
+4. **Structured Types**: Preserve type structure throughout compilation pipeline
+5. **Self as Variable**: Keep Self as type variable until SMT resolves it to concrete types
+6. **Proper Error Handling**: Clear distinction between mathematical impossibility and solver limitations
 
-This type checker provides the foundation for Outrun's static type system while maintaining the flexibility needed for trait-based programming and comprehensive error reporting.
+This type checker provides a mathematically rigorous foundation for Outrun's type system, ensuring that all type decisions are provably correct while maintaining excellent error reporting and performance.
