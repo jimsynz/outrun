@@ -1246,6 +1246,9 @@ impl TypeCheckingVisitor {
                         self.compiler_environment
                             .unification_context_mut()
                             .add_smt_constraint(constraint);
+                        
+                        // Add constraints to resolve any TypeVariables in concrete_type
+                        self.add_type_variable_resolution_constraints(concrete_type)?;
                     }
 
                     // Validate field type matches expected
@@ -1519,6 +1522,98 @@ impl TypeCheckingVisitor {
         Ok(first_result_type)
     }
 
+    /// Add SMT constraints to resolve TypeVariable references in a structured type
+    fn add_type_variable_resolution_constraints(
+        &mut self,
+        structured_type: &crate::unification::StructuredType,
+    ) -> Result<(), TypeError> {
+        match structured_type {
+            crate::unification::StructuredType::TypeVariable(type_var_id) => {
+                // Look up the concrete type that this TypeVariable represents
+                if let Some(concrete_type_name) = self.compiler_environment.resolve_type(type_var_id.clone()) {
+                    // Convert the resolved type name to a StructuredType
+                    let concrete_type_id = self.compiler_environment.intern_type_name(&concrete_type_name);
+                    let concrete_type = crate::unification::StructuredType::Simple(concrete_type_id);
+                    
+                    // Add SMT constraint: TypeVariable(X) = ConcreteType
+                    let constraint = SMTConstraint::TypeVariableConstraint {
+                        variable_id: type_var_id.clone(),
+                        bound_type: concrete_type,
+                        context: "TypeVariable resolution".to_string(),
+                    };
+                    self.compiler_environment
+                        .unification_context_mut()
+                        .add_smt_constraint(constraint);
+                } else {
+                    return Err(TypeError::internal(format!(
+                        "Unable to resolve TypeVariable {} to concrete type",
+                        type_var_id.hash
+                    )));
+                }
+            }
+            crate::unification::StructuredType::Generic { base: _, args } => {
+                // Recursively add constraints for generic arguments
+                for arg in args {
+                    self.add_type_variable_resolution_constraints(arg)?;
+                }
+            }
+            crate::unification::StructuredType::Tuple(elements) => {
+                // Recursively add constraints for tuple elements
+                for elem in elements {
+                    self.add_type_variable_resolution_constraints(elem)?;
+                }
+            }
+            crate::unification::StructuredType::Function { params, return_type } => {
+                // Recursively add constraints for function parameter and return types
+                for param in params {
+                    self.add_type_variable_resolution_constraints(&param.param_type)?;
+                }
+                self.add_type_variable_resolution_constraints(return_type)?;
+            }
+            crate::unification::StructuredType::Option { inner_type } => {
+                // Recursively add constraints for the inner type
+                self.add_type_variable_resolution_constraints(inner_type)?;
+            }
+            crate::unification::StructuredType::Result { ok_type, err_type } => {
+                // Recursively add constraints for both result types
+                self.add_type_variable_resolution_constraints(ok_type)?;
+                self.add_type_variable_resolution_constraints(err_type)?;
+            }
+            crate::unification::StructuredType::List { element_type } => {
+                // Recursively add constraints for the element type
+                self.add_type_variable_resolution_constraints(element_type)?;
+            }
+            crate::unification::StructuredType::Map { key_type, value_type } => {
+                // Recursively add constraints for both key and value types
+                self.add_type_variable_resolution_constraints(key_type)?;
+                self.add_type_variable_resolution_constraints(value_type)?;
+            }
+            crate::unification::StructuredType::Struct { name: _, fields } => {
+                // Recursively add constraints for field types in struct definitions
+                for field in fields {
+                    self.add_type_variable_resolution_constraints(&field.field_type)?;
+                }
+            }
+            crate::unification::StructuredType::Trait { name: _, functions: _ } => {
+                // Trait functions are resolved separately, no TypeVariables in trait structure itself
+            }
+            crate::unification::StructuredType::TypeError { error: _, fallback_type, error_span: _ } => {
+                // If there's a fallback type, recursively handle it
+                if let Some(fallback) = fallback_type {
+                    self.add_type_variable_resolution_constraints(fallback)?;
+                }
+            }
+            // For primitive types, no TypeVariables to resolve
+            crate::unification::StructuredType::Simple(_) 
+            | crate::unification::StructuredType::Integer64
+            | crate::unification::StructuredType::Float64
+            | crate::unification::StructuredType::Boolean
+            | crate::unification::StructuredType::String
+            | crate::unification::StructuredType::Atom => {}
+        }
+        Ok(())
+    }
+
     /// Check field access type
     fn check_field_access_type(
         &mut self,
@@ -1584,6 +1679,7 @@ impl TypeCheckingVisitor {
 
             // Generate SMT constraints for generic type parameters
             for (param_name, concrete_type) in &generic_substitutions {
+                // Create the type parameter unification constraint
                 let constraint = SMTConstraint::TypeParameterUnification {
                     parameter_name: param_name.clone(),
                     concrete_type: concrete_type.clone(),
@@ -1592,6 +1688,9 @@ impl TypeCheckingVisitor {
                 self.compiler_environment
                     .unification_context_mut()
                     .add_smt_constraint(constraint);
+                
+                // If the concrete_type contains TypeVariables, add constraints to resolve them
+                self.add_type_variable_resolution_constraints(concrete_type)?;
             }
 
             Ok(field_type)
@@ -1697,6 +1796,9 @@ impl TypeCheckingVisitor {
                                 self.compiler_environment
                                     .unification_context_mut()
                                     .add_smt_constraint(constraint);
+                                
+                                // Add constraints to resolve any TypeVariables in concrete_type
+                                self.add_type_variable_resolution_constraints(concrete_type)?;
                             }
 
                             return Ok(return_type);
@@ -2177,6 +2279,9 @@ impl TypeCheckingVisitor {
                         self.compiler_environment
                             .unification_context_mut()
                             .add_smt_constraint(constraint);
+                        
+                        // Add constraints to resolve any TypeVariables in concrete_type
+                        self.add_type_variable_resolution_constraints(&concrete_type)?;
                     }
 
                     // Validate argument type matches parameter type
@@ -2216,6 +2321,9 @@ impl TypeCheckingVisitor {
                     self.compiler_environment
                         .unification_context_mut()
                         .add_smt_constraint(constraint);
+                    
+                    // Add constraints to resolve any TypeVariables in concrete_type
+                    self.add_type_variable_resolution_constraints(&concrete_type)?;
                 }
                 let default_trait_id = self.compiler_environment.intern_type_name("Default");
 

@@ -27,6 +27,12 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
+/// Result of applying SMT model to resolve type parameters
+struct ResolvedTypes {
+    trait_type: StructuredType,
+    impl_type: StructuredType,
+}
+
 /// Hash-based type name identifier with display capabilities
 #[derive(Clone)]
 pub struct TypeNameId {
@@ -4563,30 +4569,26 @@ impl CompilerEnvironment {
 
         // Solve the constraints
         match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_model) => {
+            crate::smt::solver::SolverResult::Satisfiable(model) => {
                 eprintln!("✅ SMT constraint satisfiable - trait implementation exists");
 
-                // Now we know the constraint is satisfiable, but we still need to find
-                // the actual function implementation. Expand trait types and try lookups.
-                let concrete_implementations = self.find_trait_implementations(trait_type);
-
-                for concrete_impl in &concrete_implementations {
-                    // Check if this concrete implementation is compatible with our impl_type
-                    if self.types_are_smt_compatible(impl_type, concrete_impl) {
-                        // Try to find the function on this concrete implementation
-                        if let Some(entry) = self.lookup_impl_function(
-                            trait_type,
-                            concrete_impl,
-                            function_name.clone(),
-                        ) {
-                            eprintln!("✅ SMT resolved: function {:?} found on concrete implementation {:?}",
-                                function_name, concrete_impl);
-                            return Some(entry);
-                        }
-                    }
+                // SMT-FIRST: Use the constraint model to resolve type parameters and find concrete function
+                let resolved_types = self.apply_smt_model_to_types(&model, trait_type, impl_type);
+                
+                // Use the resolved types to find the concrete function implementation
+                if let Some(concrete_function) = self.lookup_concrete_function_with_resolved_types(
+                    &resolved_types.trait_type,
+                    &resolved_types.impl_type,
+                    function_name.clone(),
+                    &model,
+                ) {
+                    eprintln!("🎯 SMT-guided dispatch: function {:?} resolved using constraint model", function_name);
+                    return Some(concrete_function);
                 }
 
-                eprintln!("⚠️ SMT constraint satisfiable but no concrete function found");
+                // If SMT-guided lookup fails, this indicates a problem with our SMT model application
+                // In an SMT-first system, if constraints are satisfiable, we should find the function
+                eprintln!("❌ CRITICAL: SMT constraints satisfiable but concrete function not found - indicates SMT model application issue");
                 None
             }
             crate::smt::solver::SolverResult::Unsatisfiable(_) => {
@@ -4598,6 +4600,249 @@ impl CompilerEnvironment {
                 None
             }
         }
+    }
+
+    /// Add SMT constraints to resolve TypeVariable references in a structured type to a constraint list
+    fn add_type_variable_resolution_constraints_to_list(
+        &self,
+        structured_type: &StructuredType,
+        constraints: &mut Vec<crate::smt::constraints::SMTConstraint>,
+    ) {
+        match structured_type {
+            StructuredType::TypeVariable(type_var_id) => {
+                // Look up the concrete type that this TypeVariable represents
+                if let Some(concrete_type_name) = self.resolve_type(type_var_id.clone()) {
+                    // Convert the resolved type name to a StructuredType
+                    let concrete_type_id = self.intern_type_name(&concrete_type_name);
+                    let concrete_type = StructuredType::Simple(concrete_type_id);
+                    
+                    // Add SMT constraint: TypeVariable(X) = ConcreteType
+                    let constraint = crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
+                        variable_id: type_var_id.clone(),
+                        bound_type: concrete_type,
+                        context: "TypeVariable resolution".to_string(),
+                    };
+                    constraints.push(constraint);
+                } else {
+                    eprintln!(
+                        "⚠️ Unable to resolve TypeVariable {} to concrete type",
+                        type_var_id.hash
+                    );
+                }
+            }
+            StructuredType::Generic { base: _, args } => {
+                // Recursively add constraints for generic arguments
+                for arg in args {
+                    self.add_type_variable_resolution_constraints_to_list(arg, constraints);
+                }
+            }
+            StructuredType::Tuple(elements) => {
+                // Recursively add constraints for tuple elements
+                for elem in elements {
+                    self.add_type_variable_resolution_constraints_to_list(elem, constraints);
+                }
+            }
+            StructuredType::Function { params, return_type } => {
+                // Recursively add constraints for function parameter and return types
+                for param in params {
+                    self.add_type_variable_resolution_constraints_to_list(&param.param_type, constraints);
+                }
+                self.add_type_variable_resolution_constraints_to_list(return_type, constraints);
+            }
+            StructuredType::Option { inner_type } => {
+                // Recursively handle the inner type
+                self.add_type_variable_resolution_constraints_to_list(inner_type, constraints);
+            }
+            StructuredType::Result { ok_type, err_type } => {
+                // Recursively handle both result types
+                self.add_type_variable_resolution_constraints_to_list(ok_type, constraints);
+                self.add_type_variable_resolution_constraints_to_list(err_type, constraints);
+            }
+            StructuredType::List { element_type } => {
+                // Recursively handle the element type
+                self.add_type_variable_resolution_constraints_to_list(element_type, constraints);
+            }
+            StructuredType::Map { key_type, value_type } => {
+                // Recursively handle both key and value types
+                self.add_type_variable_resolution_constraints_to_list(key_type, constraints);
+                self.add_type_variable_resolution_constraints_to_list(value_type, constraints);
+            }
+            StructuredType::Struct { name: _, fields } => {
+                // Recursively handle field types in struct definitions
+                for field in fields {
+                    self.add_type_variable_resolution_constraints_to_list(&field.field_type, constraints);
+                }
+            }
+            StructuredType::Trait { name: _, functions: _ } => {
+                // Trait functions are resolved separately, no TypeVariables in trait structure itself
+            }
+            StructuredType::TypeError { error: _, fallback_type, error_span: _ } => {
+                // If there's a fallback type, recursively handle it
+                if let Some(fallback) = fallback_type {
+                    self.add_type_variable_resolution_constraints_to_list(fallback, constraints);
+                }
+            }
+            // For primitive types, no TypeVariables to resolve
+            StructuredType::Simple(_) 
+            | StructuredType::Integer64
+            | StructuredType::Float64
+            | StructuredType::Boolean
+            | StructuredType::String
+            | StructuredType::Atom => {}
+        }
+    }
+
+    /// Apply SMT constraint model to resolve type parameters in trait and implementation types
+    fn apply_smt_model_to_types(
+        &self,
+        model: &crate::smt::solver::ConstraintModel,
+        trait_type: &StructuredType,
+        impl_type: &StructuredType,
+    ) -> ResolvedTypes {
+        eprintln!("🔍 Applying SMT model to resolve type parameters");
+        
+        // Extract type parameter assignments from the SMT model
+        // For example: T -> Integer, K -> String, etc.
+        let mut type_parameter_map = std::collections::HashMap::new();
+        
+        for (var_name, concrete_type) in &model.type_assignments {
+            eprintln!("📝 SMT assignment: {} = {:?}", var_name, concrete_type);
+            
+            // Handle parameter assignments with "param_" prefix
+            if var_name.starts_with("param_") {
+                let param_name = var_name.strip_prefix("param_").unwrap();
+                type_parameter_map.insert(param_name.to_string(), concrete_type.clone());
+                eprintln!("🎯 Extracted parameter: {} = {:?}", param_name, concrete_type);
+            } else {
+                type_parameter_map.insert(var_name.clone(), concrete_type.clone());
+            }
+        }
+        
+        // Apply the type parameter assignments to resolve generic types
+        let resolved_trait_type = self.substitute_type_parameters(trait_type, &type_parameter_map);
+        let resolved_impl_type = self.substitute_type_parameters(impl_type, &type_parameter_map);
+        
+        eprintln!("🎯 Resolved trait type: {:?} -> {:?}", trait_type, resolved_trait_type);
+        eprintln!("🎯 Resolved impl type: {:?} -> {:?}", impl_type, resolved_impl_type);
+        
+        ResolvedTypes {
+            trait_type: resolved_trait_type,
+            impl_type: resolved_impl_type,
+        }
+    }
+
+    /// Substitute type parameters in a StructuredType using SMT model assignments
+    fn substitute_type_parameters(
+        &self,
+        structured_type: &StructuredType,
+        type_parameter_map: &std::collections::HashMap<String, StructuredType>,
+    ) -> StructuredType {
+        match structured_type {
+            StructuredType::Simple(type_id) => {
+                let type_name = type_id.to_string();
+                
+                // Check if this is a type parameter that needs substitution
+                if let Some(concrete_type) = type_parameter_map.get(&type_name) {
+                    eprintln!("🔄 Substituting type parameter {} -> {:?}", type_name, concrete_type);
+                    concrete_type.clone()
+                } else {
+                    structured_type.clone()
+                }
+            }
+            StructuredType::Generic { base, args } => {
+                // Recursively substitute in generic arguments
+                let substituted_args: Vec<StructuredType> = args
+                    .iter()
+                    .map(|arg| self.substitute_type_parameters(arg, type_parameter_map))
+                    .collect();
+                
+                StructuredType::Generic {
+                    base: base.clone(),
+                    args: substituted_args,
+                }
+            }
+            StructuredType::TypeVariable(var_id) => {
+                let var_name = var_id.to_string();
+                
+                // TypeVariable should definitely be in the SMT model if it was part of constraints
+                if let Some(concrete_type) = type_parameter_map.get(&var_name) {
+                    eprintln!("🔄 Resolving TypeVariable {} -> {:?}", var_name, concrete_type);
+                    concrete_type.clone()
+                } else {
+                    eprintln!("⚠️ TypeVariable {} not found in SMT model", var_name);
+                    structured_type.clone()
+                }
+            }
+            // For other types (Tuple, Function, etc.), recursively substitute if they contain generics
+            StructuredType::Tuple(elements) => {
+                let substituted_elements: Vec<StructuredType> = elements
+                    .iter()
+                    .map(|elem| self.substitute_type_parameters(elem, type_parameter_map))
+                    .collect();
+                StructuredType::Tuple(substituted_elements)
+            }
+            // For primitive and other types, no substitution needed
+            _ => structured_type.clone(),
+        }
+    }
+
+    /// Look up concrete function implementation using fully resolved types from SMT model
+    fn lookup_concrete_function_with_resolved_types(
+        &self,
+        resolved_trait_type: &StructuredType,
+        resolved_impl_type: &StructuredType,
+        function_name: AtomId,
+        _model: &crate::smt::solver::ConstraintModel,
+    ) -> Option<UnifiedFunctionEntry> {
+        eprintln!("🔍 Looking up concrete function with resolved types");
+        eprintln!("  📋 Trait: {:?}", resolved_trait_type);
+        eprintln!("  🏗️ Impl: {:?}", resolved_impl_type);
+        eprintln!("  ⚙️ Function: {:?}", function_name);
+        
+        // Now that we have fully resolved types (no more type parameters like T),
+        // we can do a direct function lookup
+        if let Some(entry) = self.lookup_impl_function(
+            resolved_trait_type,
+            resolved_impl_type,
+            function_name.clone(),
+        ) {
+            eprintln!("✅ Found concrete function implementation");
+            return Some(entry);
+        }
+        
+        // If direct lookup fails, the resolved types might point to a concrete implementation
+        // that we need to find by searching for compatible implementations
+        let compatible_implementations = self.find_implementations_for_resolved_type(resolved_impl_type);
+        
+        for impl_candidate in compatible_implementations {
+            if let Some(entry) = self.lookup_impl_function(
+                resolved_trait_type,
+                &impl_candidate,
+                function_name.clone(),
+            ) {
+                eprintln!("✅ Found function on compatible implementation: {:?}", impl_candidate);
+                return Some(entry);
+            }
+        }
+        
+        eprintln!("❌ No concrete function found even with resolved types");
+        None
+    }
+
+    /// Find concrete implementations that are compatible with the resolved type
+    fn find_implementations_for_resolved_type(&self, resolved_type: &StructuredType) -> Vec<StructuredType> {
+        // For now, return the resolved type itself and any known concrete implementations
+        // This can be enhanced later with more sophisticated implementation discovery
+        let mut implementations = vec![resolved_type.clone()];
+        
+        // If the resolved type is still generic somehow, expand it
+        if let StructuredType::Generic { base: _, args: _ } = resolved_type {
+            // Look for concrete implementations of this generic type
+            let concrete_impls = self.find_trait_implementations(resolved_type);
+            implementations.extend(concrete_impls);
+        }
+        
+        implementations
     }
 
     /// Resolve a concrete trait type to its generic definition and extract type parameter constraints
@@ -4640,6 +4885,9 @@ impl CompilerEnvironment {
                                     context: format!("trait lookup for {}", base_name),
                                 };
                             constraints.push(constraint);
+
+                            // Add constraints to resolve any TypeVariables in concrete_arg
+                            self.add_type_variable_resolution_constraints_to_list(concrete_arg, &mut constraints);
 
                             eprintln!(
                                 "🎯 Created constraint: {} = {:?}",
