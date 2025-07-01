@@ -3148,6 +3148,7 @@ impl TypeCheckingVisitor {
                 if self.is_self_type_annotation(&param.type_annotation) {
                     // Direct Self parameter: Self = arg_type
                     has_self_parameters = true;
+                    
                     let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
                         self_variable_id: self_type_id.clone(),
                         inferred_type: arg_type.clone(),
@@ -3842,4 +3843,5 @@ impl TypeCheckingVisitor {
             _ => false,
         }
     }
+
 }

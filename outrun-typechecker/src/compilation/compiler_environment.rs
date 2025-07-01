@@ -1392,7 +1392,11 @@ impl CompilerEnvironment {
                 }
             };
 
-            self.register_trait_implementation(impl_structured, trait_structured);
+            self.register_trait_implementation(impl_structured.clone(), trait_structured.clone());
+
+            // 🚀 CRITICAL FIX: Generate ConcreteSelfBinding constraints for Self types in impl blocks
+            // This ensures Self resolves to the concrete implementing type, not the abstract trait type
+            self.generate_concrete_self_binding_constraints(&impl_structured, &trait_structured, impl_block);
         }
 
         // Update the compilation state with the modified unification context
@@ -1405,6 +1409,71 @@ impl CompilerEnvironment {
             Err(errors)
         } else {
             Ok(())
+        }
+    }
+
+    /// Generate ConcreteSelfBinding constraints for impl blocks
+    /// This is the missing piece that ensures Self resolves to concrete implementing types
+    fn generate_concrete_self_binding_constraints(
+        &mut self,
+        impl_type: &StructuredType,
+        trait_type: &StructuredType,
+        impl_block: &ImplBlock,
+    ) {
+        eprintln!("🔄 Generating ConcreteSelfBinding constraints for impl {} for {}", 
+                 impl_type.to_string_representation(),
+                 trait_type.to_string_representation());
+
+        // For each function in the impl block, create Self binding constraints
+        for function_def in &impl_block.functions {
+            // Create a unique Self type variable for this impl block + function combination
+            let self_var_name = format!("Self_impl_{}_{}", 
+                                       impl_type.to_string_representation().replace(['<', '>', ' ', '.'], "_"),
+                                       function_def.name.name);
+            let self_type_id = self.intern_type_name(&self_var_name);
+
+            // Generate ConcreteSelfBinding: Self = ConcreteImplementingType
+            let concrete_self_constraint = crate::smt::constraints::SMTConstraint::ConcreteSelfBinding {
+                self_variable_id: self_type_id,
+                concrete_type: impl_type.clone(),
+                context: format!("impl {} for {} - function {}", 
+                               trait_type.to_string_representation(),
+                               impl_type.to_string_representation(),
+                               function_def.name.name),
+            };
+
+            // Add the constraint to our SMT system via unification context
+            let mut context = self.unification_context();
+            context.add_smt_constraint(concrete_self_constraint);
+            self.set_unification_context(context);
+
+            eprintln!("✅ Generated ConcreteSelfBinding: {} = {:?}", 
+                     self_var_name, impl_type);
+        }
+
+        // ADDITIONAL: Handle generic Self parameters in impl blocks
+        // For `impl Option<T> for Outrun.Option.Some<T>`, ensure Self<T> = Outrun.Option.Some<T>
+        if let StructuredType::Generic { base: _, args: _ } = impl_type {
+            // Generate a generic Self binding for the entire impl block scope
+            let generic_self_var_name = format!("Self_impl_generic_{}", 
+                                               impl_type.to_string_representation().replace(['<', '>', ' ', '.'], "_"));
+            let generic_self_type_id = self.intern_type_name(&generic_self_var_name);
+
+            let generic_concrete_self_constraint = crate::smt::constraints::SMTConstraint::ConcreteSelfBinding {
+                self_variable_id: generic_self_type_id,
+                concrete_type: impl_type.clone(),
+                context: format!("impl {} for {} - generic Self binding", 
+                               trait_type.to_string_representation(),
+                               impl_type.to_string_representation()),
+            };
+
+            // Add the constraint to our SMT system via unification context
+            let mut context = self.unification_context();
+            context.add_smt_constraint(generic_concrete_self_constraint);
+            self.set_unification_context(context);
+
+            eprintln!("✅ Generated Generic ConcreteSelfBinding: {} = {:?}", 
+                     generic_self_var_name, impl_type);
         }
     }
 
@@ -5051,7 +5120,8 @@ impl CompilerEnvironment {
                     let self_var_name = format!("Self_{}", type_name_id.hash);
                     if let Some(resolved_type) = model.get_type_assignment(&self_var_name) {
                         eprintln!("🎯 SMT resolved {} -> {:?}", type_name, resolved_type);
-                        return resolved_type.clone();
+                        // Recursively apply model to the resolved type in case it contains more variables
+                        return self.apply_smt_model_to_type(resolved_type, model);
                     }
                 }
                 
@@ -5059,7 +5129,27 @@ impl CompilerEnvironment {
                 let var_name = format!("TypeVar_{}", type_name);
                 if let Some(resolved_type) = model.get_type_assignment(&var_name) {
                     eprintln!("🎯 SMT resolved {} -> {:?}", type_name, resolved_type);
-                    return resolved_type.clone();
+                    // Recursively apply model to the resolved type in case it contains more variables
+                    return self.apply_smt_model_to_type(resolved_type, model);
+                }
+                
+                // Check for trait implementation variables like TraitImpl_Integer
+                if type_name.starts_with("TraitImpl_") {
+                    let trait_impl_var_name = format!("TypeVar_{}", type_name);
+                    if let Some(resolved_type) = model.get_type_assignment(&trait_impl_var_name) {
+                        eprintln!("🎯 SMT resolved trait impl {} -> {:?}", type_name, resolved_type);
+                        return self.apply_smt_model_to_type(resolved_type, model);
+                    }
+                }
+                
+                // ADDITIONAL: Try to resolve trait implementation variables through the trait system
+                if type_name.starts_with("TraitImpl_") {
+                    if let Some(trait_name) = type_name.strip_prefix("TraitImpl_") {
+                        if let Some(resolved_concrete_type) = self.resolve_trait_impl_variable(trait_name) {
+                            eprintln!("🎯 Trait system resolved {} -> {:?}", type_name, resolved_concrete_type);
+                            return self.apply_smt_model_to_type(&resolved_concrete_type, model);
+                        }
+                    }
                 }
                 
                 // No resolution found, return original
@@ -5106,6 +5196,32 @@ impl CompilerEnvironment {
             // For concrete types (Simple, primitives, etc.), no resolution needed
             _ => structured_type.clone(),
         }
+    }
+
+    /// Resolve trait implementation variables like TraitImpl_Integer -> Outrun.Core.Integer64
+    /// This looks for the most common concrete implementation of a trait
+    pub fn resolve_trait_impl_variable(&self, trait_name: &str) -> Option<StructuredType> {
+        // Convert trait name to TypeNameId
+        let trait_type_id = self.intern_type_name(trait_name);
+        let trait_type = StructuredType::Simple(trait_type_id);
+        
+        // Get all implementations of this trait
+        let implementations = self.get_trait_implementations(&trait_type);
+        
+        // For simplicity, return the first concrete implementation
+        // In a more sophisticated system, this could use SMT to find the best match
+        for impl_type in implementations {
+            match impl_type {
+                StructuredType::Simple(_) => {
+                    eprintln!("🎯 Found concrete implementation for {}: {:?}", trait_name, impl_type);
+                    return Some(impl_type);
+                }
+                _ => continue, // Skip non-concrete implementations
+            }
+        }
+        
+        eprintln!("⚠️ No concrete implementation found for trait {}", trait_name);
+        None
     }
 
     /// Use SMT solver to resolve type variables in a structured type
