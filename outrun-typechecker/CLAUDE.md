@@ -9,18 +9,21 @@ The Outrun type checker is a comprehensive static type analysis system for the O
 ### Recent Architectural Improvements
 
 **Thread-Safe Function Registry**: Implemented `Arc<RwLock<>>` interior mutability pattern for:
+
 - True sharing of function registries between components
 - Preservation of typed function definitions across package composition
 - Thread-safe access for concurrent type checking scenarios
 - Elimination of registry cloning/merging data loss
 
 **TypeInterner Singleton Architecture**: Enhanced type ID consistency with:
+
 - Global singleton pattern for production builds ensuring consistent type IDs
-- Test isolation via conditional compilation preventing cross-test contamination  
+- Test isolation via conditional compilation preventing cross-test contamination
 - Proper memory management eliminating Box::leak patterns
 - Consistent type resolution across all typechecker components
 
 #### Recursive Type Unification Algorithm
+
 Instead of string comparison, the system uses recursive unification:
 
 ```rust
@@ -32,7 +35,7 @@ fn unify_structured_types(type1: &StructuredType, type2: &StructuredType) -> boo
          StructuredType::Generic { base: base2, args: args2 }) => {
             // 1. Base types must unify (Option = Option) ✓
             unify_simple_types(base1, base2) &&
-            // 2. Argument arity must match (1 = 1) ✓  
+            // 2. Argument arity must match (1 = 1) ✓
             args1.len() == args2.len() &&
             // 3. All arguments must unify recursively (Self = Outrun.Core.String) ✓
             args1.iter().zip(args2.iter()).all(|(a1, a2)| unify_structured_types(a1, a2))
@@ -43,6 +46,7 @@ fn unify_structured_types(type1: &StructuredType, type2: &StructuredType) -> boo
 ```
 
 #### Function Type Handling with Named Parameters
+
 Outrun requires named parameters, so function types track both names and types:
 
 ```rust
@@ -63,12 +67,14 @@ StructuredType::Function {
 ```
 
 #### Type Resolution Pipeline
+
 1. **Parser** → `TypeAnnotation` with `GenericArgs` (structured representation preserved)
 2. **Type Resolver** → `StructuredType::from_type_annotation()` (recursive resolution with Self support)
 3. **Type Checker** → `unify_structured_types()` (recursive unification with trait compatibility)
 4. **Error Reporting** → `StructuredType::to_string_representation()` (readable error messages)
 
 #### Key Benefits
+
 - **Correct Generic Unification**: `Option<Self>` properly unifies with `Option<ConcreteType>`
 - **Trait-Based Compatibility**: `Boolean` trait unifies with `Outrun.Core.Boolean` implementation
 - **Precise Error Messages**: Show exact generic type mismatches with proper structure
@@ -78,6 +84,7 @@ StructuredType::Function {
 ### Implementation Strategy for Structured Types
 
 #### Critical Implementation Rules
+
 1. **Never flatten to strings during type checking** - only for error reporting
 2. **Always use recursive unification** for generic type compatibility
 3. **Preserve Self binding context** when resolving type annotations in impl blocks
@@ -85,6 +92,7 @@ StructuredType::Function {
 5. **Maintain TypeId compatibility** only where absolutely necessary for legacy code
 
 #### Common Pitfalls to Avoid
+
 - ❌ Converting StructuredType → string → TypeId → StructuredType (loses structure)
 - ❌ Using string comparison for generic types (`"Option<T>"` == `"Option<U>"`)
 - ❌ Forgetting Self binding in impl block function signatures
@@ -102,13 +110,17 @@ The type unification algorithm is the core of Outrun's type system. It determine
 The algorithm follows these fundamental rules in order:
 
 #### 1. Exact Match (Fast Path)
+
 ```rust
 if type1 == type2 { return true; }
 ```
+
 If both types are structurally identical, they unify immediately.
 
 #### 2. Generic Type Unification
+
 For types like `Option<T>` vs `Option<U>`:
+
 ```rust
 (StructuredType::Generic { base: base1, args: args1 },
  StructuredType::Generic { base: base2, args: args2 }) => {
@@ -122,6 +134,7 @@ For types like `Option<T>` vs `Option<U>`:
 ```
 
 **Examples:**
+
 - ✅ `Option<String>` ∪ `Option<String>` → unified (exact match)
 - ✅ `Option<Self>` ∪ `Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
 - ✅ `Map<String, Integer>` ∪ `Map<String, Integer>` → unified (exact match)
@@ -130,7 +143,9 @@ For types like `Option<T>` vs `Option<U>`:
 - ❌ `Option<T>` ∪ `Map<T>` → not unified (different arity: 1 vs 2)
 
 #### 3. Tuple Type Unification
+
 For tuple types like `(String, Integer)`:
+
 ```rust
 (StructuredType::Tuple(elems1), StructuredType::Tuple(elems2)) => {
     // Element count must match
@@ -141,13 +156,16 @@ For tuple types like `(String, Integer)`:
 ```
 
 **Examples:**
+
 - ✅ `(String, Integer)` ∪ `(String, Integer)` → unified
 - ✅ `(Self, Boolean)` ∪ `(Outrun.Core.String, Outrun.Core.Boolean)` → unified (when Self = Outrun.Core.String, Boolean trait implemented by Outrun.Core.Boolean)
 - ❌ `(String, Integer)` ∪ `(Integer, String)` → not unified (order matters)
 - ❌ `(String)` ∪ `(String, Integer)` → not unified (different arity)
 
 #### 4. Function Type Unification
+
 For function types with named parameters:
+
 ```rust
 (StructuredType::Function { params: params1, return_type: ret1 },
  StructuredType::Function { params: params2, return_type: ret2 }) => {
@@ -163,33 +181,35 @@ For function types with named parameters:
 ```
 
 **Examples:**
+
 - ✅ `(name: String) -> Boolean` ∪ `(name: String) -> Boolean` → unified
 - ✅ `(value: Self) -> Option<Self>` ∪ `(value: Outrun.Core.String) -> Option<Outrun.Core.String>` → unified (when Self = Outrun.Core.String)
 - ❌ `(name: String) -> Boolean` ∪ `(title: String) -> Boolean` → not unified (different parameter names)
 - ❌ `(name: String) -> Boolean` ∪ `(name: String, age: Integer) -> Boolean` → not unified (different arity)
 
 #### 5. Simple Type Unification (Traits + Concrete)
+
 For non-generic types, the algorithm handles trait-based compatibility:
 
 ```rust
 fn unify_simple_types(type1: TypeId, type2: TypeId) -> bool {
     // Fast path: exact match
     if type1 == type2 { return true; }
-    
+
     // Determine if types are traits or concrete
     let type1_is_trait = interner.get_trait(&type1_name).is_some();
     let type2_is_trait = interner.get_trait(&type2_name).is_some();
-    
+
     match (type1_is_trait, type2_is_trait) {
         // Both traits: must be exactly equal
         (true, true) => false,
-        
+
         // Type1 is trait, type2 is concrete: type2 must implement type1
         (true, false) => trait_registry.implements_trait(type2, type1_trait_id),
-        
+
         // Type1 is concrete, type2 is trait: type1 must implement type2
         (false, true) => trait_registry.implements_trait(type1, type2_trait_id),
-        
+
         // Both concrete: must be exactly equal
         (false, false) => false,
     }
@@ -197,6 +217,7 @@ fn unify_simple_types(type1: TypeId, type2: TypeId) -> bool {
 ```
 
 **Examples:**
+
 - ✅ `Boolean` ∪ `Outrun.Core.Boolean` → unified (concrete type implements trait)
 - ✅ `Outrun.Core.Boolean` ∪ `Boolean` → unified (trait compatibility is symmetric)
 - ✅ `Integer` ∪ `Outrun.Core.Integer64` → unified (if Integer64 implements Integer)
@@ -204,7 +225,9 @@ fn unify_simple_types(type1: TypeId, type2: TypeId) -> bool {
 - ❌ `Display` ∪ `Debug` → not unified (different traits)
 
 #### 6. Cross-Type Unification
+
 Different type categories never unify:
+
 ```rust
 // These combinations always return false:
 (StructuredType::Simple(_), StructuredType::Generic { .. }) => false,
@@ -228,6 +251,7 @@ StructuredType::from_type_annotation(
 ```
 
 **Self Resolution Rules:**
+
 1. `Self` in trait definitions → remains as generic parameter
 2. `Self` in impl blocks → resolves to implementing type
 3. `Self` in standalone functions → error (no context)
@@ -252,6 +276,7 @@ The algorithm supports generic parameter substitution:
 ### Error Cases and Debugging
 
 #### Common Unification Failures
+
 1. **Arity Mismatch**: `Option<T>` vs `Map<K, V>` (1 ≠ 2 arguments)
 2. **Base Type Mismatch**: `Option<String>` vs `List<String>` (Option ≠ List)
 3. **Argument Type Mismatch**: `Option<String>` vs `Option<Integer>` (String ≠ Integer)
@@ -259,10 +284,11 @@ The algorithm supports generic parameter substitution:
 5. **Trait Implementation Missing**: `Boolean` vs `String` (String doesn't implement Boolean)
 
 #### Debugging Unification
+
 ```rust
 // Enable debug output for unification failures
 if cfg!(debug_assertions) {
-    eprintln!("Unification failed: {} vs {}", 
+    eprintln!("Unification failed: {} vs {}",
         type1.to_string_representation(&interner),
         type2.to_string_representation(&interner));
 }
@@ -271,11 +297,13 @@ if cfg!(debug_assertions) {
 ### Performance Considerations
 
 #### Fast Paths
+
 1. **Structural equality check first** (avoids trait lookups)
 2. **Early arity mismatch detection** (avoids recursive calls)
 3. **TypeId interning** (fast equality for simple types)
 
 #### Optimization Opportunities
+
 1. **Memoization** for expensive trait implementation checks
 2. **Type canonicalization** for equivalent types
 3. **Parallel unification** for independent generic arguments
@@ -295,7 +323,9 @@ This comprehensive unification system ensures that Outrun's type system correctl
 ## Key Design Principles
 
 ### Type Interning for Performance
+
 All types, atoms, and traits use interned IDs for fast equality comparisons:
+
 ```rust
 let string_type = context.interner.intern_type("Outrun.Core.String");
 let name_atom = context.interner.intern_atom("name");
@@ -303,7 +333,9 @@ let display_trait = context.interner.intern_trait("Display");
 ```
 
 ### Scope-Based Context Management
+
 The type checker maintains a scope stack for proper variable shadowing:
+
 ```rust
 context.push_scope(false);  // Create new scope
 context.register_variable(var)?;  // Register in current scope
@@ -312,7 +344,9 @@ context.pop_scope();  // Clean up scope
 ```
 
 ### Comprehensive Error Reporting
+
 All errors use miette for beautiful source highlighting:
+
 ```rust
 return Err(TypeError::type_mismatch(
     "Outrun.Core.Boolean".to_string(),
@@ -324,6 +358,7 @@ return Err(TypeError::type_mismatch(
 ## Core Type Checking Flow
 
 ### Expression Type Checking
+
 The main entry point is `ExpressionChecker::check_expression()` in `expressions.rs`:
 
 1. **Literals**: Direct type mapping (`42` → `Outrun.Core.Integer64`)
@@ -334,9 +369,11 @@ The main entry point is `ExpressionChecker::check_expression()` in `expressions.
 6. **Pattern Matching**: Destructuring validation with variable binding
 
 ### Case Expression Variants
+
 Two distinct case expression types:
 
 **Concrete Case**: Pattern-based matching with exhaustiveness checking
+
 ```rust
 case value {
     when guard1 -> result1
@@ -345,6 +382,7 @@ case value {
 ```
 
 **Trait Case**: Trait implementation dispatch with orphan rule checking
+
 ```rust
 case value as Display {
     String {} -> "string"
@@ -355,12 +393,14 @@ case value as Display {
 ## Trait System Architecture
 
 ### Trait Definition Validation
+
 - Function signature validation (parameters, return types)
 - Guard function validation (must return Boolean)
 - Generic parameter constraint checking
 - Type name resolution (`Boolean` → `Outrun.Core.Boolean`)
 
 ### Trait Implementation Tracking
+
 ```rust
 // Register trait implementations
 let impl_id = context.trait_registry.register_implementation(trait_impl);
@@ -372,13 +412,15 @@ if context.trait_registry.implements_trait(type_id, trait_id) {
 
 // Exhaustiveness checking
 let result = context.trait_registry.check_trait_case_exhaustiveness(
-    trait_id, 
+    trait_id,
     covered_types
 );
 ```
 
 ### Orphan Rule Analysis
+
 The trait system enforces orphan rules for trait implementations:
+
 - Can only implement traits you own OR for types you own
 - Prevents conflicting implementations
 - Enables exhaustiveness checking for trait case expressions
@@ -386,17 +428,21 @@ The trait system enforces orphan rules for trait implementations:
 ## Pattern Type Checking
 
 ### Unified Pattern System
+
 All patterns work consistently across:
+
 - Let bindings: `let User { name, age } = user`
 - Case expressions: `case user { when User { age } when age > 18 -> ... }`
 - Function parameters: `def process(User { name, address: Address { city } })`
 
 ### Variable Binding Collection
+
 Pattern checker returns bound variables for scope registration:
+
 ```rust
 let bound_variables = PatternChecker::check_pattern(
-    context, 
-    pattern, 
+    context,
+    pattern,
     target_type
 )?;
 
@@ -408,18 +454,21 @@ for variable in bound_variables {
 ## Testing Strategy
 
 ### Comprehensive Test Coverage
+
 - **Unit tests**: Individual component validation
-- **Integration tests**: Real type checking scenarios  
+- **Integration tests**: Real type checking scenarios
 - **Error case tests**: Comprehensive error condition coverage
 - **Pattern tests**: All pattern types and nesting combinations
 
 ### Test Organization
+
 Tests are organized by feature area in `src/tests/`:
+
 - `test_basic_type_checking.rs`: Core expression type checking integration tests
 - `test_trait_case_exhaustiveness.rs`: Trait dispatch validation integration tests
 - `test_trait_case_patterns.rs`: Pattern integration with trait cases integration tests
 - `test_type_checker_core.rs`: TypeChecker core functionality unit tests
-- `test_type_interning.rs`: Type interning system unit tests  
+- `test_type_interning.rs`: Type interning system unit tests
 - `test_traits_unit.rs`: Trait system component unit tests
 
 ## Development Workflow
@@ -437,7 +486,7 @@ Tests are organized by feature area in `src/tests/`:
 1. **Add concrete types** in `types/concrete.rs`
 2. **Update type compatibility** checking if needed
 3. **Add trait definitions** in `types/traits.rs` for new behaviour
-4. **Update dispatch tables** if new trait methods are added
+4. **Update dispatch tables** if new trait functions are added
 
 ### Error Message Guidelines
 
@@ -449,16 +498,19 @@ Tests are organized by feature area in `src/tests/`:
 ## Performance Considerations
 
 ### Type Interning
+
 - All type comparisons are O(1) via TypeId equality
 - String interning prevents repeated allocations
 - Thread-safe design for future parallel type checking
 
 ### Scope Management
+
 - Efficient scope stack with variable shadowing support
 - O(1) variable lookup within scope
 - Automatic cleanup on scope exit
 
 ### Trait Implementation Lookup
+
 - Hash-based trait implementation storage
 - Fast trait membership checking
 - Efficient exhaustiveness analysis
@@ -466,13 +518,17 @@ Tests are organized by feature area in `src/tests/`:
 ## Integration Points
 
 ### Parser Integration
+
 The type checker consumes AST from `outrun-parser`:
+
 - All source spans preserved for error reporting
 - Pattern structures shared between parser and type checker
 - Expression kinds mapped to typed expression variants
 
 ### Future Interpreter Integration
+
 Type checker produces:
+
 - Typed AST with complete type information
 - Trait dispatch tables for runtime method calls
 - Static function lookup tables
@@ -481,11 +537,12 @@ Type checker produces:
 ## Common Patterns
 
 ### Error Creation
+
 ```rust
 // Type mismatch with helpful messages
 TypeError::type_mismatch(
     expected_type_name,
-    found_type_name, 
+    found_type_name,
     span_to_source_span(span)
 )
 
@@ -501,6 +558,7 @@ TypeError::TraitNotImplemented {
 ```
 
 ### Scope Management
+
 ```rust
 // Function scopes need special handling
 context.push_scope(true);  // Function scope
@@ -508,7 +566,7 @@ context.push_scope(true);  // Function scope
 context.pop_scope();
 
 // Expression scopes for let bindings
-context.push_scope(false);  // Expression scope  
+context.push_scope(false);  // Expression scope
 // ... register pattern variables
 // ... check expression in scope
 context.pop_scope();
@@ -539,16 +597,19 @@ cargo fmt --package outrun-typechecker
 ## Future Extensions
 
 ### Type Inference
+
 - Hindley-Milner style type inference
 - Reduce explicit type annotations
 - Maintain trait dispatch efficiency
 
 ### Advanced Error Recovery
+
 - Multiple error reporting in single pass
 - Error recovery strategies for parser integration
 - IDE integration with real-time feedback
 
 ### Performance Optimization
+
 - Incremental type checking for large codebases
 - Parallel type checking for independent modules
 - Advanced dispatch table optimization

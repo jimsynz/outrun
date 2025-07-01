@@ -1667,7 +1667,9 @@ impl TypeCheckingVisitor {
 
                 // Get module TypeId and look up the full structured type from module registry
                 let module_type_id = self.compiler_environment.intern_type_name(module_name);
-                let module_type = if let Some(module) = self.compiler_environment.get_module(module_type_id.clone()) {
+                let module_type = if let Some(module) =
+                    self.compiler_environment.get_module(module_type_id.clone())
+                {
                     // Use the full structured type from the module registry
                     module.structured_type
                 } else {
@@ -1737,13 +1739,15 @@ impl TypeCheckingVisitor {
 
                         // TODO: Instantiate generic parameters in module_type based on implementing_structured_type
                         // For now, use module_type from registry as-is
-                        
+
                         // Look up the actual implementation function using SMT-enhanced lookup
-                        if let Some(impl_func_def) = self.compiler_environment.lookup_impl_function_with_smt(
-                            &module_type,
-                            &implementing_structured_type,
-                            function_name_atom,
-                        ) {
+                        if let Some(impl_func_def) =
+                            self.compiler_environment.lookup_impl_function_with_smt(
+                                &module_type,
+                                &implementing_structured_type,
+                                function_name_atom,
+                            )
+                        {
                             // Store trait dispatch strategy
                             let mut context = self.compiler_environment.unification_context();
                             context.add_dispatch_strategy(
@@ -2577,7 +2581,7 @@ impl TypeCheckingVisitor {
         let mut implemented_functions: HashSet<String> = HashSet::new();
 
         // Validate each impl function
-        for impl_func in &impl_block.methods {
+        for impl_func in &impl_block.functions {
             let func_name = &impl_func.name.name;
             implemented_functions.insert(func_name.clone());
 
@@ -3550,7 +3554,7 @@ impl TypeCheckingVisitor {
                     base: trait_type_id.clone(),
                     args: args.clone(),
                 }
-            },
+            }
             _ => {
                 // Simple implementing type means simple trait type
                 StructuredType::Simple(trait_type_id.clone())

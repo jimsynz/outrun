@@ -1799,7 +1799,7 @@ impl TypedASTBuilder {
 
         // Convert functions with generic context
         let mut typed_functions = Vec::new();
-        for function in &struct_def.methods {
+        for function in &struct_def.functions {
             if let Some(typed_function) = self.convert_function_definition(function) {
                 typed_functions.push(typed_function);
             } else {
@@ -2135,7 +2135,7 @@ impl TypedASTBuilder {
 
         // Convert functions with Self type resolution
         let mut typed_functions = Vec::new();
-        for function in &impl_block.methods {
+        for function in &impl_block.functions {
             if let Some(typed_function) = self.convert_function_definition(function) {
                 typed_functions.push(typed_function);
             } else {

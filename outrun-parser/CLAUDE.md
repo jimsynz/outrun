@@ -21,7 +21,7 @@ outrun-parser/
 │       ├── collections.rs  # List, map, tuple parsing
 │       ├── control_flow.rs # If/case expression parsing
 │       ├── expressions.rs  # Expression parsing with precedence
-│       ├── functions.rs    # Function definition/call parsing  
+│       ├── functions.rs    # Function definition/call parsing
 │       ├── literals.rs     # Literal parsing (strings, numbers, atoms)
 │       └── types.rs        # Type system parsing (structs, traits, impls)
 ├── src/
@@ -39,12 +39,14 @@ outrun-parser/
 ## AST Design Principles
 
 ### Source Preservation
+
 - **Lossless representation**: AST preserves all source information for perfect reconstruction
 - **Comprehensive span tracking**: Every AST node includes position information with optional line/column
 - **Format preservation**: Original literal formats, whitespace, comments, and debug info maintained
 - **Formatter-friendly**: Designed to support auto-formatting and refactoring tools via Display traits
 
 ### Advanced Span System
+
 ```rust
 // Enhanced span with optional line/column tracking
 pub struct Span {
@@ -63,6 +65,7 @@ pub struct DebugInfo {
 ```
 
 ### Format Tracking Examples
+
 ```rust
 // Integer literals preserve their original format
 IntegerLiteral {
@@ -93,7 +96,9 @@ ListLiteral {
 ## Working with Pest Grammar
 
 ### Current Grammar Organization (600+ lines, production-ready)
+
 The `grammar.pest` file is organized as follows:
+
 1. **Critical operators** (multi-character first: `&&`, `||`, `|>`, `|?`, `<<`, `>>`, `==`, `!=`, `<=`, `>=`, `**`)
 2. **Lexical elements** (identifiers, keywords, atomic rules)
 3. **Literals** (integers, floats, strings, atoms, sigils with format preservation)
@@ -105,6 +110,7 @@ The `grammar.pest` file is organized as follows:
 9. **Top-level program** (items with expression wrapping)
 
 ### Critical Operator Precedence (IMPLEMENTED)
+
 ```pest
 // Multi-character operators MUST come before single-character ones
 op_logical_and = @{ "&&" }
@@ -119,12 +125,14 @@ op_shift_right = @{ ">>" }
 ### Pest Best Practices (Applied in Current Grammar)
 
 #### Rule Naming Conventions
+
 - ✅ **snake_case** for all rule names consistently applied
 - ✅ **Specificity**: `integer_decimal`, `integer_binary`, `integer_octal`, `integer_hexadecimal`
 - ✅ **Grouping**: `string_basic`, `string_multiline`, `string_interpolated`
 - ✅ **Format tracking**: `float_standard`, `float_scientific`
 
 #### Source Preservation Rules (Current Implementation)
+
 ```pest
 // Explicit comment preservation (not using special COMMENT rule)
 comment = { "#" ~ (!"\n" ~ ANY)* }
@@ -144,23 +152,26 @@ newline = { "\n" | "\r\n" }
 ```
 
 #### Complete Expression Precedence (IMPLEMENTED)
+
 Ruby-style operator precedence (from lowest to highest):
-1. **Pipe operators** (`|>`, `|?`) - left associative, lowest precedence  
+
+1. **Pipe operators** (`|>`, `|?`) - left associative, lowest precedence
 2. **Logical OR** (`||`) - left associative
-3. **Logical AND** (`&&`) - left associative  
+3. **Logical AND** (`&&`) - left associative
 4. **Equality** (`==`, `!=`) - left associative
 5. **Comparison** (`>`, `>=`, `<`, `<=`) - left associative
 6. **Bitwise OR** (`|`) - left associative
 7. **Bitwise XOR** (`^`) - left associative
 8. **Bitwise AND** (`&`) - left associative
 9. **Shift** (`<<`, `>>`) - left associative
-10. **Additive** (`+`, `-`) - left associative  
+10. **Additive** (`+`, `-`) - left associative
 11. **Multiplicative** (`*`, `/`, `%`) - left associative
 12. **Exponentiation** (`**`) - right associative
 13. **Unary** (`+`, `-`, `!`, `~`) - prefix operators with chaining support
 14. **Primary** (literals, identifiers, parentheses, function calls, field access)
 
 #### Parser Module Organization (CURRENT)
+
 ```rust
 // parser/expressions.rs - Expression precedence climbing parser
 pub fn parse_expression(pair: Pair<Rule>) -> Expression {
@@ -184,6 +195,7 @@ pub fn parse_impl_block(pair: Pair<Rule>) -> ImplBlock;
 ```
 
 #### Grammar Testing & Debugging
+
 ```bash
 # Current test suite (all passing)
 cargo test --package outrun-parser
@@ -193,7 +205,7 @@ cargo test --package outrun-parser -- --nocapture
 
 # Test specific features
 cargo test test_integer_formats
-cargo test test_string_interpolation  
+cargo test test_string_interpolation
 cargo test test_destructuring_patterns
 cargo test test_control_flow_case_simple
 
@@ -204,6 +216,7 @@ cargo check --package outrun-parser
 ### AST Construction (CURRENT IMPLEMENTATION)
 
 #### Utility Functions for Consistency
+
 ```rust
 // parser.rs - Main parser utilities (IMPLEMENTED)
 pub fn span_from_pair(pair: &Pair<Rule>) -> Span {
@@ -216,6 +229,7 @@ pub fn span_from_range(start: usize, end: usize) -> Span {
 ```
 
 #### Enhanced Span System (IMPLEMENTED)
+
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
@@ -233,6 +247,7 @@ pub struct Span {
 ```
 
 #### Comprehensive Format Enums (IMPLEMENTED)
+
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntegerFormat {
@@ -262,6 +277,7 @@ pub enum StringContent {
 ```
 
 #### Advanced Collection Support (IMPLEMENTED)
+
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListLiteral {
@@ -280,12 +296,13 @@ pub struct MapLiteral {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapEntry {
     KeyValue { key: Expression, value: Expression },     // key: value
-    Arrow { key: Expression, value: Expression },        // key => value  
+    Arrow { key: Expression, value: Expression },        // key => value
     Spread { expression: Expression },                   // ..expression
 }
 ```
 
 #### Comment and Debug Info System (IMPLEMENTED)
+
 ```rust
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DebugInfo {
@@ -310,6 +327,7 @@ pub enum CommentStyle {
 ## Comprehensive Error Handling & Diagnostics (IMPLEMENTED)
 
 ### Advanced Diagnostic System
+
 ```rust
 // diagnostics.rs - Complete diagnostic collection system
 #[derive(Debug, Clone, PartialEq)]
@@ -343,6 +361,7 @@ pub enum DiagnosticKind {
 ```
 
 ### Production Error Types (IMPLEMENTED)
+
 ```rust
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
@@ -379,12 +398,13 @@ pub enum ParseError {
 ```
 
 ### Public API Functions (IMPLEMENTED)
+
 ```rust
 // lib.rs - Production-ready parsing API
 pub fn parse_program(input: &str) -> Result<Program, ParseError>;
 
 pub fn parse_program_with_source(
-    input: &str, 
+    input: &str,
     source_file: Option<String>
 ) -> Result<Program, ParseError>;
 
@@ -403,11 +423,12 @@ pub fn parse_program_with_diagnostics_and_source(
 ```
 
 ### Beautiful CLI Error Display (IMPLEMENTED)
+
 ```rust
 // With miette integration for CLI tools
 fn main() {
     let input = std::fs::read_to_string("program.outrun").unwrap();
-    
+
     match parse_program_with_source(&input, Some("program.outrun".to_string())) {
         Ok(program) => println!("Parsed successfully!"),
         Err(error) => {
@@ -422,6 +443,7 @@ fn main() {
 ## Testing Strategy (COMPREHENSIVE COVERAGE)
 
 ### Current Test Statistics (ALL PASSING ✅)
+
 ```
 Total Test Files: 43 files
 Total Tests: 400+ individual test cases
@@ -430,7 +452,9 @@ Coverage: All major language features with edge cases
 ```
 
 ### Test Categories (IMPLEMENTED)
+
 1. **Literals & Primitives**
+
    - `test_integer_formats.rs` - All number formats (decimal, binary, octal, hex)
    - `test_float_literals.rs` - Standard and scientific notation
    - `test_string_literals.rs` - Basic strings with escape sequences
@@ -440,25 +464,29 @@ Coverage: All major language features with edge cases
    - `test_sigil_literals.rs` - Custom sigil types with interpolation
 
 2. **Collections & Data Structures**
+
    - `test_collections.rs` - Lists, maps, tuples with trailing comma support
    - `test_map_literals.rs` - All map entry types (key:value, key=>value, ..spread)
    - `test_struct_literals.rs` - Struct construction with field patterns
    - `test_spread_operator_integration.rs` - Spread in all contexts
 
 3. **Expressions & Operators**
+
    - `test_arithmetic_operators.rs` - All math operators with precedence
-   - `test_logical_operators.rs` - Boolean logic with short-circuiting  
+   - `test_logical_operators.rs` - Boolean logic with short-circuiting
    - `test_bitwise_operators.rs` - Bit manipulation operators
    - `test_comparison_operators.rs` - All comparison types
    - `test_pipe_operators.rs` - Pipeline and maybe-pipeline operators
 
 4. **Control Flow & Patterns**
+
    - `test_control_flow_if.rs` - If expressions with optional else
    - `test_control_flow_case_simple.rs` - Case expressions without else clauses
    - `test_destructuring_patterns.rs` - Recursive pattern matching (21 tests)
    - `test_let_bindings.rs` - Variable declarations with patterns
 
 5. **Functions & Definitions**
+
    - `test_function_definitions.rs` - Function signatures with guards
    - `test_function_calls.rs` - Named parameter calling
    - `test_function_captures.rs` - Function reference syntax
@@ -466,8 +494,9 @@ Coverage: All major language features with edge cases
    - `test_constant_definitions.rs` - Constant declarations
 
 6. **Type System**
+
    - `test_type_system_basic.rs` - Basic type annotations
-   - `test_type_system_structs.rs` - Struct definitions with methods
+   - `test_type_system_structs.rs` - Struct definitions with functions
    - `test_type_system_traits.rs` - Trait definitions with constraints
    - `test_type_system_impls.rs` - Implementation blocks
    - `test_function_types.rs` - Function type annotations
@@ -481,6 +510,7 @@ Coverage: All major language features with edge cases
    - `test_diagnostics_unit.rs` - Diagnostics system unit tests (4 tests)
 
 ### Example Test Patterns (CURRENT STYLE)
+
 ```rust
 #[test]
 fn test_comprehensive_integer_formats() {
@@ -491,7 +521,7 @@ fn test_comprehensive_integer_formats() {
         ("0o52", 42, IntegerFormat::Octal),
         ("0x2A", 42, IntegerFormat::Hexadecimal),
     ];
-    
+
     for (input, expected_value, expected_format) in test_cases {
         let result = parse_expression(input).unwrap();
         match result.kind {
@@ -509,7 +539,7 @@ fn test_recursive_destructuring_patterns() {
     // Test deeply nested pattern matching
     let input = r#"let (a, [b, User { name, address: Address { city } }], c) = data"#;
     let program = parse_program(input).unwrap();
-    
+
     // Verify complex pattern structure is parsed correctly
     match &program.items[0].kind {
         ItemKind::LetBinding(let_binding) => {
@@ -527,8 +557,9 @@ fn test_recursive_destructuring_patterns() {
 ```
 
 ### Source Reconstruction Testing (IMPLEMENTED)
+
 ```rust
-#[test]  
+#[test]
 fn test_perfect_source_reconstruction() {
     let test_cases = vec![
         "let x: Integer = 0xFF",         // Format preservation
@@ -536,7 +567,7 @@ fn test_perfect_source_reconstruction() {
         "[1, 2, 3,]",                    // Trailing comma preservation
         "User { name, ..defaults }",     // Shorthand and spread syntax
     ];
-    
+
     for original in test_cases {
         let ast = parse_program(original).unwrap();
         let reconstructed = format!("{}", ast);
@@ -550,21 +581,25 @@ fn test_perfect_source_reconstruction() {
 ### Parser Extension Process (PROVEN METHODOLOGY)
 
 1. **Grammar Design** - Add rules to `grammar.pest` following current patterns
+
    - Place multi-character operators before single-character ones
    - Use atomic rules (@) for tokens, regular rules for structures
    - Follow snake_case naming: `integer_decimal`, `string_basic`
 
 2. **AST Definition** - Add structures to `ast.rs` with comprehensive tracking
+
    - Include Span for all nodes: `pub span: Span`
    - Add format enums for variants: `IntegerFormat`, `StringFormat`
    - Use Display traits for source reconstruction
 
 3. **Parser Implementation** - Add parsing logic in appropriate module
+
    - Use utility functions: `span_from_pair()`, `span_from_range()`
    - Handle all variants with proper error reporting
    - Follow existing patterns for consistency
 
 4. **Comprehensive Testing** - Create dedicated test file
+
    - Test all format variants and edge cases
    - Include source reconstruction tests
    - Add error case testing for invalid syntax
@@ -579,6 +614,7 @@ fn test_perfect_source_reconstruction() {
 ### Current Grammar Patterns (BATTLE-TESTED)
 
 #### Multi-Character Operator Precedence (CRITICAL)
+
 ```pest
 // MUST come first to avoid tokenization conflicts
 op_logical_and = @{ "&&" }    // Before &
@@ -590,10 +626,11 @@ op_not_equal = @{ "!=" }      // Before !
 ```
 
 #### Format-Preserving Literals (IMPLEMENTED)
+
 ```pest
 // Each format tracked separately for perfect reconstruction
 integer_literal = {
-    integer_hexadecimal | integer_binary | 
+    integer_hexadecimal | integer_binary |
     integer_octal | integer_decimal
 }
 
@@ -603,21 +640,23 @@ string_literal = {
 ```
 
 #### Collection Patterns with Trailing Comma Support
+
 ```pest
 // Optional trailing comma with proper termination
-list_literal = { 
-    "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" 
+list_literal = {
+    "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]"
 }
 
 // Map entries with multiple syntax styles
 map_entry = {
     spread_entry |           // ..expression
-    arrow_entry |           // key => value  
+    arrow_entry |           // key => value
     key_value_entry         // key: value
 }
 ```
 
 #### Error-Resilient Parsing Patterns
+
 ```pest
 // Use silent rules (_) for structural elements
 list_elements = _{ expression ~ ("," ~ expression)* ~ ","? }
@@ -631,19 +670,23 @@ function_call = {
 ## Integration Points (CURRENT STATUS)
 
 ### ✅ Type Checker Integration (ACTIVE)
+
 The AST is actively consumed by `outrun-typechecker`:
+
 - Complete span preservation for error reporting with miette
 - Type annotations parsed and validated in type checking phase
 - Generic parameters and constraints processed by trait system
 - Function signatures integrated with trait definition validation
 
 ### ✅ CLI Tool Integration (PRODUCTION)
+
 Current integration with `outrun` CLI:
+
 ```bash
 # Parse and display S-expressions (IMPLEMENTED)
 outrun parse program.outrun
 
-# Type check with beautiful error reporting (IMPLEMENTED)  
+# Type check with beautiful error reporting (IMPLEMENTED)
 outrun typecheck program.outrun
 
 # Parse from stdin (IMPLEMENTED)
@@ -651,14 +694,18 @@ echo "let x = 42" | outrun parse
 ```
 
 ### 🚧 Future Language Server Protocol
+
 AST designed for LSP features:
+
 - ✅ Precise position information for goto-definition (spans implemented)
 - ✅ Comprehensive error reporting (miette integration complete)
 - ✅ Symbol extraction capability (AST structure supports this)
 - ✅ Comment preservation for hover documentation (DebugInfo system)
 
 ### 🚧 Future Formatting Tools
+
 Format preservation enables auto-formatting:
+
 - ✅ Original literal formats preserved (`0xFF` stays hexadecimal)
 - ✅ Comment placement tracked (DebugInfo system)
 - ✅ Trailing comma preferences maintained
@@ -700,13 +747,15 @@ echo "let x = 42" | ./target/debug/outrun parse
 ### ✅ **COMPLETE PARSER IMPLEMENTATION** - Ready for Production Use
 
 #### **📊 Current Statistics**
+
 - **Total Lines**: 18,756 lines of Rust code
-- **Test Coverage**: 400+ comprehensive test cases across 43 test files  
+- **Test Coverage**: 400+ comprehensive test cases across 43 test files
 - **Test Pass Rate**: 100% (all tests passing)
 - **Features**: Complete Outrun language parsing with all syntax features
 - **Integration**: Active usage by typechecker and CLI tools
 
 #### **Core Language Features (IMPLEMENTED & TESTED)**
+
 - ✅ **All literal types**: Integers (4 formats), floats (2 formats), strings (basic/multiline), atoms, booleans
 - ✅ **String interpolation**: `"Hello #{name}!"` with full expression parsing inside interpolations
 - ✅ **Complete operator system**: 13-level precedence hierarchy with all operators (`+`, `-`, `*`, `/`, `%`, `**`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!`, `&`, `|`, `^`, `~`, `<<`, `>>`, `|>`, `|?`)
@@ -720,6 +769,7 @@ echo "let x = 42" | ./target/debug/outrun parse
 - ✅ **Advanced features**: Macros, constants, sigils, comments
 
 #### **Parser Architecture (PRODUCTION-GRADE)**
+
 - ✅ **Pest-based PEG parser**: 600+ line grammar with perfect operator precedence
 - ✅ **Modular organization**: 6 parser modules (literals, expressions, collections, control_flow, functions, types)
 - ✅ **Source preservation**: Complete span tracking, format preservation, comment attachment
@@ -727,6 +777,7 @@ echo "let x = 42" | ./target/debug/outrun parse
 - ✅ **Performance optimized**: Utility functions, efficient parsing patterns
 
 #### **Quality Assurance (PRODUCTION-READY)**
+
 - ✅ **Code quality**: Zero clippy warnings, consistent formatting
 - ✅ **Test methodology**: Systematic coverage with edge cases and error conditions
 - ✅ **Source reconstruction**: Perfect round-trip parsing via Display traits
@@ -734,6 +785,7 @@ echo "let x = 42" | ./target/debug/outrun parse
 - ✅ **Documentation**: Comprehensive inline docs and usage examples
 
 #### **Integration & Tooling (ACTIVE)**
+
 - ✅ **CLI integration**: `outrun parse` and `outrun typecheck` commands working
 - ✅ **Type checker integration**: AST actively consumed by outrun-typechecker
 - ✅ **S-expression formatter**: Complete CLI visualization of parsed AST
@@ -743,18 +795,21 @@ echo "let x = 42" | ./target/debug/outrun parse
 ### 🎯 **Key Implementation Highlights**
 
 #### **Robust Grammar Design**
+
 - **Multi-character operator precedence**: Critical ordering prevents tokenization conflicts
 - **Atomic vs structural rules**: Perfect balance for efficient parsing and error reporting
 - **Expression-first architecture**: All top-level items support full operator precedence
 - **Format-specific rules**: Each literal format tracked separately for perfect reconstruction
 
 #### **Production-Grade Error Handling**
+
 - **Miette integration**: Beautiful source highlighting with professional CLI output
 - **Diagnostic collection**: Multi-error batching with configurable severity levels
 - **Parse recovery**: Graceful handling of malformed input with helpful suggestions
 - **Context preservation**: Complete span tracking for precise error location
 
 #### **Comprehensive Testing Methodology**
+
 - **Feature coverage**: Dedicated test file per language feature with systematic edge cases
 - **Format preservation**: Source reconstruction tests ensure perfect round-trip parsing
 - **Error scenarios**: Comprehensive invalid input testing with expected error validation
@@ -763,6 +818,7 @@ echo "let x = 42" | ./target/debug/outrun parse
 ### 🏗️ **Proven Architecture Patterns**
 
 #### **Parser Module Organization**
+
 ```rust
 // Modular design with clear separation of concerns
 parser/
@@ -775,12 +831,14 @@ parser/
 ```
 
 #### **AST Design Philosophy**
+
 - **Span-first design**: Every node includes precise source location
 - **Format enums**: Track original representation for perfect reconstruction
 - **Display traits**: Enable source regeneration for testing and tooling
 - **Debug info**: Comment and metadata attachment for advanced tooling
 
 #### **Quality Assurance Standards**
+
 - **Zero clippy warnings**: Strict adherence to Rust best practices
 - **100% test pass rate**: No broken tests allowed in codebase
 - **Consistent formatting**: Automated cargo fmt enforcement
@@ -789,18 +847,21 @@ parser/
 ### 💡 **Production Lessons Learned**
 
 #### **Pest Grammar Best Practices**
+
 - **Operator ordering**: Multi-character operators MUST come before single-character
 - **Silent rules**: Use `_` for structural elements that don't need AST nodes
 - **Error context**: Explicit rule names provide better error messages
 - **Atomic tokens**: Use `@` for indivisible tokens, regular rules for structures
 
 #### **Parser Implementation Patterns**
+
 - **Utility functions**: `span_from_pair()` eliminates 29 instances of manual span creation
 - **Error propagation**: Consistent error handling patterns across all parser modules
 - **Format tracking**: Separate parsing paths for each format variant
 - **Collection parsing**: Generic patterns for comma-separated lists with optional trailing comma
 
 #### **Testing Strategy Evolution**
+
 - **One test file per feature**: Clear organization with systematic coverage
 - **Format-specific testing**: Each literal format tested independently
 - **Source reconstruction**: Every parsed construct must regenerate original source

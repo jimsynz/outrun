@@ -351,13 +351,13 @@ fn format_function_path(path: &FunctionPath) -> String {
 
 fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: usize) -> String {
     let name = struct_def.name_as_string();
-    let methods_count = struct_def.methods.len();
+    let methods_count = struct_def.functions.len();
 
     if methods_count == 0 {
         format!("(struct {name})")
     } else {
         format!(
-            "(struct {}\n{}(methods {}))",
+            "(struct {}\n{}(functions {}))",
             name,
             " ".repeat(indent + 2),
             methods_count
@@ -409,10 +409,10 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
 fn format_impl_block_with_indent(impl_block: &ImplBlock, indent: usize) -> String {
     let trait_name = format_type_path(&impl_block.trait_spec);
     let type_name = format_type_path(&impl_block.type_spec);
-    let methods_count = impl_block.methods.len();
+    let methods_count = impl_block.functions.len();
 
     format!(
-        "(impl {} for {}\n{}(methods {}))",
+        "(impl {} for {}\n{}(functions {}))",
         trait_name,
         type_name,
         " ".repeat(indent + 2),

@@ -105,7 +105,7 @@ Outrun's module system is based on types, with clear separation between static f
 Functions store parameter and return type information:
 
 ```rust
-Value::Function { 
+Value::Function {
     param_types: Vec<(AtomId, TypeId)>,  // (param_name, type)
     return_type: TypeId,
     body: FunctionBody,
@@ -184,7 +184,7 @@ Two separate formatting traits with different semantics:
 ```outrun
 # Single line comment
 
-### 
+###
 Block comment
 can span multiple lines
 ###
@@ -193,6 +193,7 @@ can span multiple lines
 ### Literals
 
 #### Integers
+
 ```outrun
 42          # Decimal
 0b1010      # Binary
@@ -201,18 +202,21 @@ can span multiple lines
 ```
 
 #### Floats
+
 ```outrun
 3.14        # Standard notation
 1.23e-4     # Scientific notation
 ```
 
 #### Booleans
+
 ```outrun
 true
 false
 ```
 
 #### Strings
+
 ```outrun
 "Hello, world!"                    # Basic string
 "Name: #{user.name}"               # String interpolation
@@ -223,6 +227,7 @@ can span multiple lines
 ```
 
 #### Atoms
+
 ```outrun
 :name                              # Basic atom
 :user_id                          # Atom with underscore
@@ -232,6 +237,7 @@ can span multiple lines
 ```
 
 #### Collections
+
 ```outrun
 [1, 2, 3]                         # List
 (42, "hello", true)               # Tuple
@@ -307,7 +313,7 @@ impl<T> Display for SynthesizerBank<T> when T: Waveform {
     def to_string(self: Self): String {
         "SynthBank: #{self.patches.length()} patches loaded"
     }
-    
+
     def add_patch(self: Self, patch: T): Self {
         SynthesizerBank { patches: [patch, ..self.patches] }
     }
@@ -324,11 +330,11 @@ trait Result<T, E> {
     defs ok(result: T): Result<T, E> {
         Result.Ok { result: result}
     }
-    
+
     defs error(error: E): Result<T, E> {
         Result.Error { error: error }
     }
-    
+
     # Instance functions - must be implemented by concrete types
     def is_ok?(self: Self): Boolean
     def unwrap(self: Self): T
@@ -340,12 +346,12 @@ trait Option<T> {
     defs some(value: T): Option<T> {
         Option.Some { value: value }
     }
-    
+
     defs none(): Option<T> {
         Option.None {}
     }
-    
-    # Instance methods
+
+    # Instance functions
     def some?(self: Self): Boolean
     def unwrap(self: Self): T
 }
@@ -412,7 +418,7 @@ struct Processor<T>(data: T) when T: Display {
     }
 }
 
-# Multiple constraints  
+# Multiple constraints
 struct RaceTrack<T>(segments: List<T>) when T: Measurable && T: Navigable {
     def calculate_lap_time(self: Self): Duration {
         # Can use both Measurable and Navigable operations
@@ -525,9 +531,10 @@ impl Synthesizable for LaserHarp<String> {
 ```
 
 **Self Type Characteristics:**
+
 - **Always available**: `Self` is implicitly available in all trait and struct function definitions
 - **Refers to implementer**: In trait implementations, `Self` refers to the concrete implementing type
-- **Type-safe**: Ensures methods return the correct concrete type, not a generic
+- **Type-safe**: Ensures functions return the correct concrete type, not a generic
 - **No explicit declaration**: `Self` doesn't need to be declared like other generic parameters
 
 ### Generic Type Rules
@@ -549,7 +556,7 @@ def process(callback: Function<(x: Integer) -> String>) {
     callback(x: 42)
 }
 
-# Function type with no parameters  
+# Function type with no parameters
 def run(task: Function<() -> Option>) {
     task()
 }
@@ -573,7 +580,7 @@ struct EventHandler(
 
 # Functions using existing generic types in signatures
 def process_list(
-    list: List<String>, 
+    list: List<String>,
     mapper: Function<(item: String) -> Integer>
 ): List<Integer> {
     List.map(list, mapper)
@@ -592,6 +599,7 @@ let validator: Function<(email: String) -> Boolean> = &Email.valid?
 ```
 
 **Function Type Features:**
+
 - **Explicit parameter types**: Each parameter must specify its type
 - **Named parameters**: Function types follow the same named parameter convention
 - **Generic support**: Return types can use generics like `Result<T, E>`
@@ -635,7 +643,7 @@ All functions in Outrun **must have explicit return type annotations** and **mus
 def calculate(x: Integer): Integer { x * 2 }
 
 # ✅ Valid: Function returns Option value
-def process_data(msg: String): Option<String> { 
+def process_data(msg: String): Option<String> {
     if String.empty?(string: msg) {
         Option.none()
     } else {
@@ -724,8 +732,9 @@ trait Spreadable<T> {
 **Conflict Resolution:**
 
 When multiple sources provide the same parameter:
+
 1. **Explicit arguments** override spread arguments
-2. **Later spreads** override earlier spreads  
+2. **Later spreads** override earlier spreads
 3. **Lenient spreads** (`..?`) ignore mismatched fields
 
 **Type Requirements:**
@@ -781,6 +790,7 @@ processor = fn {
 Anonymous functions follow strict type consistency rules to enable static analysis and efficient dispatch:
 
 **1. Parameter Signature Consistency**
+
 - All clauses in an anonymous function **must have identical parameter signatures**
 - Parameter names, types, and arity must match exactly across all clauses
 - Pattern types are considered part of the parameter signature
@@ -807,6 +817,7 @@ arity_mismatch = fn {
 ```
 
 **2. Return Type Consistency**
+
 - All clauses **must return the same concrete type**
 - Return type is inferred from the first clause and validated against all subsequent clauses
 - No implicit type conversions or common supertype inference
@@ -834,6 +845,7 @@ option_mismatch = fn {
 ```
 
 **3. Guard Function Requirements**
+
 - Guards must be side-effect-free functions returning Boolean
 - Guards can access all parameters bound by the clause pattern
 - Guards follow the same rules as function guards (functions ending with `?`)
@@ -854,6 +866,7 @@ invalid_guard = fn {
 ```
 
 **4. Pattern Matching Consistency**
+
 - When using pattern matching in parameters, all clauses must use the same pattern structure
 - Cannot mix simple parameters with pattern parameters
 
@@ -872,6 +885,7 @@ pattern_mismatch = fn {
 ```
 
 **5. Function Type Inference**
+
 - Anonymous functions have type `Function<(params...) -> ReturnType>`
 - Parameter and return types are inferred from clause analysis
 - Function type is used for type checking in assignments and function calls
@@ -892,6 +906,7 @@ let result = apply_processor(data: 42, proc: processor)  # ✅ Valid: types matc
 ```
 
 **Error Messages:**
+
 - Parameter signature mismatches produce clear compilation errors
 - Return type inconsistencies highlight the conflicting clauses
 - Guard validation errors specify the problematic guard expression
@@ -952,7 +967,7 @@ Case expressions support all pattern types with optional guards in a single, con
 ```outrun
 result = case user {
     User { name } when String.equal?(value: name, other: "Marty") -> :is_marty
-    User { name } when String.length(string: name) > 10 -> :long_name  
+    User { name } when String.length(string: name) > 10 -> :long_name
     User { name } -> :other_user
     Guest { session_id } -> :guest
     Admin { permissions } when List.contains?(list: permissions, item: :admin) -> :admin_user
@@ -974,24 +989,24 @@ result = case data {
 result = case value {
     # Struct destructuring
     User { name, email } when String.contains?(string: email, substring: "@") -> "valid user"
-    
-    # Tuple destructuring  
+
+    # Tuple destructuring
     (x, y) when Integer.positive?(value: x) && Integer.positive?(value: y) -> "positive coordinates"
     (x, y) -> "coordinates"
-    
+
     # List destructuring with head/tail
     [head, ..tail] when List.not_empty?(list: tail) -> "list with multiple items"
     [single] -> "single item list"
     [] -> "empty list"
-    
+
     # Value patterns (exact matches)
     0 -> "zero"
     42 -> "the answer"
-    
+
     # Identifier patterns (match anything, bind to variable)
     n when Integer.positive?(value: n) -> "positive number"
     data when String.type?(value: data) -> "some string"
-    
+
     # Identifier pattern as catch-all (no underscore needed)
     other -> "unknown: #{other}"
 }
@@ -1002,24 +1017,24 @@ result = case request_data {
     HttpRequest { method: "GET", path } when path |> String.starts_with?(prefix: "/api") -> {
         handle_api_get(path: path)
     }
-    
+
     # Type pattern with full destructuring
     HttpRequest { method: "POST", path, body } -> {
-        handle_post(path: path, body: body)  
+        handle_post(path: path, body: body)
     }
-    
+
     # Type pattern with partial destructuring and infix guard
     HttpRequest { method } when method == "DELETE" -> :unauthorized
-    
-    # Literal pattern with guard  
+
+    # Literal pattern with guard
     :health_check when System.healthy?() -> :ok
-    
+
     # Identifier pattern with guard (catches any non-HttpRequest)
     other when Debug.enabled?() -> {
         Logger.debug(message: "Unknown request: #{other}")
         :invalid_request
     }
-    
+
     # Final identifier pattern (default case)
     unknown -> :invalid_request
 }
@@ -1043,7 +1058,7 @@ result = case mixed_values as Display {
 # Trait dispatch with identifier patterns and guards
 result = case data as Serializable {
     config when Config.valid?(config) -> config.serialize()
-    settings when Settings.active?(settings) -> settings.to_json()  
+    settings when Settings.active?(settings) -> settings.to_json()
     metadata -> metadata.to_string()
     # Each identifier pattern binds the value with its concrete type
 }
@@ -1059,6 +1074,7 @@ The unified case syntax supports all pattern types with intelligent exhaustivene
 - **Complex patterns**: `(User { name }, active)` - nested destructuring with guards
 
 **Exhaustiveness rules:**
+
 - **Without type annotation**: Exhaustiveness based on patterns and identifier catch-alls
 - **With type annotation** (`as Trait`): Must handle all concrete types implementing the trait
 - **Orphan rule analysis**: Compiler determines possible implementations for exhaustiveness
@@ -1070,7 +1086,7 @@ Case expressions use Outrun's **unified destructuring pattern system**. The same
 - **Identifier patterns**: `data`, `_` - match anything and bind to that variable
 - **Value patterns**: `42`, `"hello"` - match exact literal values
 - **Struct patterns**: `User { name, email }` - destructure struct fields into variables
-- **Tuple patterns**: `(x, y, z)` - destructure tuple elements into variables  
+- **Tuple patterns**: `(x, y, z)` - destructure tuple elements into variables
 - **List patterns**: `[head, ..tail]` - destructure list with head/tail syntax
 
 See **Unified Destructuring Patterns** section below for complete details and examples.
@@ -1097,7 +1113,7 @@ case user_data {
 
 **Outrun uses a unified pattern system for all assignment contexts.** The same destructuring patterns work consistently across:
 
-- **Variable bindings** (`let pattern = value`)  
+- **Variable bindings** (`let pattern = value`)
 - **Case statements** (`case value { pattern -> ... }`)
 - **Function parameters** (in anonymous functions)
 
@@ -1108,12 +1124,13 @@ This unification means any pattern that works in one context works in all contex
 All assignment contexts support the same five pattern types:
 
 **1. Identifier Patterns** - Match anything, bind to variable:
+
 ```outrun
 # In let bindings
 let x = some_value                    # Binds any value to 'x'
 let _ = expensive_computation()       # Convention: underscore means "unused"
 
-# In case statements  
+# In case statements
 case user_input {
     value -> process(value: value)    # Binds any value to 'value'
     _ -> handle_unknown()             # Convention: underscore means "unused"
@@ -1121,6 +1138,7 @@ case user_input {
 ```
 
 **2. Value Patterns** - Match exact literals:
+
 ```outrun
 # In let bindings (assertion)
 let 42 = get_answer()                 # Asserts the value equals 42
@@ -1135,6 +1153,7 @@ case user_input {
 ```
 
 **3. Struct Patterns** - Destructure struct fields:
+
 ```outrun
 # In let bindings
 let User { name, email } = fetch_user()          # Extracts name and email
@@ -1149,6 +1168,7 @@ case user_data {
 ```
 
 **4. Tuple Patterns** - Destructure tuple elements:
+
 ```outrun
 # In let bindings
 let (x, y) = get_coordinates()               # Extracts both coordinates
@@ -1163,12 +1183,13 @@ case coordinate_data {
 ```
 
 **5. List Patterns** - Destructure lists with head/tail:
+
 ```outrun
 # In let bindings
 let [head, ..tail] = process_items()              # Head/tail extraction
 let [first, second, ..rest] = get_sequence()     # Multiple head elements
 
-# In case statements  
+# In case statements
 case item_list {
     [] -> "empty list"                            # Empty list match
     [single] -> process_single(item: single)      # Single item list
@@ -1195,6 +1216,7 @@ let ((id, status), [Record { value }, Record { backup: (x, y) }], :valid) = proc
 ```
 
 **Recursive Pattern Grammar:**
+
 - **Tuples**: `(pattern1, pattern2, ...)` - each element can be any recursive pattern
 - **Lists**: `[pattern1, pattern2, ..rest_identifier]` - each element can be any recursive pattern, but rest patterns (`..name`) must be identifiers only
 - **Structs**: `Type { field1: pattern1, field2 }` - field patterns can be any recursive pattern
@@ -1205,10 +1227,10 @@ let ((id, status), [Record { value }, Record { backup: (x, y) }], :valid) = proc
 
 ```outrun
 # API response parsing with deeply nested data
-let Response { 
-    status: (code, message), 
+let Response {
+    status: (code, message),
     data: [User { profile: Profile { settings } }, ..others],
-    metadata: :success 
+    metadata: :success
 } = api_call()
 
 # Complex case matching with mixed patterns
@@ -1233,7 +1255,7 @@ Guards are supported in case statements and anonymous functions to add condition
 ```outrun
 case user_age {
     age when Integer.greater?(value: age, other: 65) -> "senior"
-    age when Integer.greater?(value: age, other: 18) -> "adult"  
+    age when Integer.greater?(value: age, other: 18) -> "adult"
     age when Integer.positive?(value: age) -> "minor"
     _ -> "invalid age"
 }
@@ -1248,12 +1270,14 @@ All operators are trait-based and follow Ruby's precedence rules. Operators are 
 ### Binary Operations and Type Safety
 
 Binary operations like `a + b` are syntactic sugar for trait function calls:
+
 - `a + b` becomes `BinaryAddition.add(lhs: a, rhs: b)`
 - Trait functions defined as `def add(lhs: Self, rhs: Self): Self`
 - **Both operands must be same concrete type**, result is same concrete type
 - **No implicit conversions** - requires explicit type conversion for mixed operations
 
 ### Arithmetic
+
 - `+` Addition (BinaryAddition trait)
 - `-` Subtraction (BinarySubtraction trait)
 - `*` Multiplication (BinaryMultiplication trait)
@@ -1262,16 +1286,19 @@ Binary operations like `a + b` are syntactic sugar for trait function calls:
 - `**` Exponentiation (BinaryExponentiation trait)
 
 ### Comparison
+
 - `==` Equality (Equality trait)
 - `>`, `>=` Greater than (Comparison trait)
 - `<`, `<=` Less than (Comparison trait)
 
 ### Logical
+
 - `&&` Logical AND (LogicalAnd trait)
 - `||` Logical OR (LogicalOr trait)
 - `!` Logical NOT (LogicalNot trait)
 
 ### Bitwise
+
 - `&` Bitwise AND (BitwiseAnd trait)
 - `|` Bitwise OR (BitwiseOr trait)
 - `^` Bitwise XOR (BitwiseXor trait)
@@ -1279,10 +1306,12 @@ Binary operations like `a + b` are syntactic sugar for trait function calls:
 - `<<`, `>>` Bitwise shift (BitwiseShift trait)
 
 ### Unary
+
 - `+` Unary plus (UnaryPlus trait)
 - `-` Unary minus (UnaryMinus trait)
 
 ### Pipe Operators
+
 - `|>` Pipe (calls `Pipe.pipe_into` trait method)
 - `|?` Pipe with unwrap (calls `Maybe.maybe_pipe` trait method)
 
@@ -1293,13 +1322,15 @@ Type annotations provide explicit type information to the type checker for valid
 ### Annotation Syntax
 
 **Variable binding syntax**: `: Type`
+
 ```outrun
 let name: String = "James"
 let config: Config = parse_config()
 let result: Result<User, Error> = User.create(name: name)
 ```
 
-**Expression syntax**: `as Type` 
+**Expression syntax**: `as Type`
+
 ```outrun
 let result = Sigil.parse(input: "content") as HTML
 let data = (fetch_data() |> transform()) as ProcessedData
@@ -1312,7 +1343,7 @@ let total = (price * quantity) as Currency
 Both syntactic forms provide the same functionality:
 
 1. **Static type checking**: Compiler verifies type compatibility at compile time
-2. **Trait dispatch**: Enables calling trait methods on the annotated type
+2. **Trait dispatch**: Enables calling trait functions on the annotated type
 3. **Type validation**: Ensures the value matches the specified type
 4. **No runtime overhead**: Pure compile-time information
 
@@ -1325,6 +1356,7 @@ The `as Type` syntax is an infix operator for annotating expressions:
 - **Usage**: Anywhere an expression needs explicit type information
 
 **Common patterns:**
+
 ```outrun
 # Sigil desugaring (automatic)
 ~HTML"content"  # Becomes: Sigil.parse(input: "content") as HTML
@@ -1358,7 +1390,7 @@ let user: User = User.create(name: name, age: age)
 
 # Type inference syntax (supported by grammar, future feature)
 let name = "James"           # Will infer String
-let age = 35                 # Will infer Integer  
+let age = 35                 # Will infer Integer
 let user = User.create(...)  # Will infer User
 
 # Rebinding allowed (not mutation)
@@ -1397,6 +1429,7 @@ let (database_config, app_settings) = config_data
 See **Unified Destructuring Patterns** section above for complete details on the pattern system that works across all assignment contexts.
 
 **Implementation Notes:**
+
 - **Grammar**: Supports both explicit and inferred types
 - **Current Parser**: Requires explicit type annotations
 - **Future**: Type inference will allow omitting obvious types
@@ -1463,6 +1496,7 @@ first_element = tuple.0
 ### Module Organization
 
 Outrun uses a type-based module system where:
+
 - **Types (structs/traits) ARE modules** - each type defines its own module namespace
 - **File structure is conventional** - file names and directory structure are for organization, not module definition
 - **Module names come from type definitions** - `struct Http.Client(...)` creates the `Http.Client` module
@@ -1484,7 +1518,7 @@ src/
 ```outrun
 # Type names define module paths - each type IS a module
 let user = User.create(name: "James")                    # User module
-let client = Http.Client.new(timeout: 5000)             # Http.Client module  
+let client = Http.Client.new(timeout: 5000)             # Http.Client module
 let preferences = User.Preferences.default()            # User.Preferences module
 
 # Multiple types can be defined in the same file for organization
@@ -1561,7 +1595,7 @@ Guards are side-effect-free functions ending in `?` that return Boolean:
 
 ```outrun
 # In function definitions
-def safe_divide(a: Integer, b: Integer): Float 
+def safe_divide(a: Integer, b: Integer): Float
 when Integer.non_zero?(value: b) {
     Float.from_integer(a) / Float.from_integer(b)
 }
@@ -1657,6 +1691,7 @@ format = "outrun fmt"
 All functionality is built on traits, including operators and control flow:
 
 **Operators:**
+
 ```outrun
 trait BinaryAddition<T> { def add(left: Self, right: T): Self }
 trait Comparison<T> { def compare(left: Self, right: T): Ordering }
@@ -1665,9 +1700,10 @@ trait Maybe<T, E> { def maybe_pipe(self: Self, f: fn(T) -> Maybe<U, E>): Maybe<U
 ```
 
 **Core Types:**
+
 ```outrun
 alias Outrun.Option as Option
-alias Outrun.Result as Result  
+alias Outrun.Result as Result
 alias Outrun.Iterator as Iterator
 
 trait Option<T> {
@@ -1685,6 +1721,7 @@ trait Result<T, E> {
 ```
 
 **Sigils:**
+
 ```outrun
 trait Sigil {
     def parse(content: String): Result<Self, ParseError>
@@ -1703,6 +1740,7 @@ query = ~SQL"SELECT * FROM users"
 ```
 
 **Attributes:**
+
 ```outrun
 trait Attribute {
     def apply(target: AST, args: Map<Atom, Any>): Result<AST, AttributeError>
@@ -1721,7 +1759,7 @@ The examples below show destructuring in `let` binding contexts:
 # Basic tuple destructuring
 let (x, y, z) = some_tuple
 
-# Basic struct destructuring  
+# Basic struct destructuring
 let User { name, email } = user
 
 # Basic list destructuring with rest patterns
@@ -1732,8 +1770,8 @@ let [first, second, ..rest] = list
 
 ```outrun
 # Nested struct destructuring
-let User { 
-    profile: UserProfile { 
+let User {
+    profile: UserProfile {
         preferences: UserPreferences { theme, language }
     }
 } = fetch_user()
@@ -1763,6 +1801,7 @@ let (database_config, app_settings) = config_data
 Rest patterns (`..identifier`) provide Elixir-style head|tail operations and can be used in both **destructuring contexts** (extracting values) and **construction contexts** (building lists):
 
 **Destructuring (extracting values):**
+
 ```outrun
 # Rest patterns in destructuring - head|tail pattern
 let [head, ..tail] = process_items()
@@ -1770,6 +1809,7 @@ let [first_item, second_item, ..remaining] = inventory_list
 ```
 
 **Construction (building lists):**
+
 ```outrun
 # Head|tail construction - prepend elements to existing list
 let new_list = [first, ..existing_list]
@@ -1782,11 +1822,13 @@ let with_header = [header_item, ..body_items]
 ```
 
 **Type Requirements:**
+
 - In construction contexts, the spread variable must be of list type
 - The resulting list type is inferred from all elements
 - Only supports head|tail pattern (prepending to lists)
 
 **Rest Pattern Constraints:**
+
 - **Rest patterns in destructuring must be identifiers only**: `..tail`, `..rest`, `..remaining` (not complex patterns)
 - **Main patterns are fully recursive**: Regular elements in lists/tuples can be any nested pattern
 - **Example**: `[first, (x, y), ..rest]` - `first` and `(x, y)` can be complex patterns, but `rest` must be a simple identifier
@@ -1838,12 +1880,14 @@ Value::Tuple { element_types: vec![TypeId("Outrun.Core.Integer64"), TypeId("Outr
 ```
 
 **Interning Benefits:**
+
 - **Fast equality**: Compare by ID instead of string comparison
 - **Memory efficiency**: Single instance per unique atom/type name
 - **Collection optimization**: Element types stored efficiently
 - **Function signatures**: Parameter names and types use interned IDs
 
 **Implementation Notes:**
+
 - Interning managed by interpreter context, not global state
 - Thread-safe design for future multi-threaded execution
 - String interning crates provide efficient implementation
@@ -1884,22 +1928,22 @@ The runtime type system distinguishes between concrete types and trait abstracti
 // Concrete types used at runtime
 enum Value {
     Integer64(i64),           // Outrun.Core.Integer64
-    Float64(f64),             // Outrun.Core.Float64 
+    Float64(f64),             // Outrun.Core.Float64
     Boolean(bool),            // Outrun.Core.Boolean
     String(String),           // Outrun.Core.String
     Atom(AtomId),             // Outrun.Core.Atom
-    List { 
-        element_type: TypeId, 
-        nodes: LinkedList<Value> 
+    List {
+        element_type: TypeId,
+        nodes: LinkedList<Value>
     },                        // Outrun.Core.List<T>
-    Tuple { 
-        element_types: Vec<TypeId>, 
-        values: Vec<Value> 
+    Tuple {
+        element_types: Vec<TypeId>,
+        values: Vec<Value>
     },                        // Outrun.Core.Tuple<T1, T2, ...>
-    Map { 
-        key_type: TypeId, 
-        value_type: TypeId, 
-        entries: IndexMap<Value, Value> 
+    Map {
+        key_type: TypeId,
+        value_type: TypeId,
+        entries: IndexMap<Value, Value>
     },                        // Outrun.Core.Map<K, V>
     Option(OptionValue),      // Outrun.Option.Some<T>, Outrun.Option.None
     Result(ResultValue),      // Outrun.Result.Ok<T>, Outrun.Result.Err<E>

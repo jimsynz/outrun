@@ -13,7 +13,7 @@ fn test_simple_struct_definition() {
             assert_eq!(struct_def.name[0].name, "User");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 2);
-            assert_eq!(struct_def.methods.len(), 0);
+            assert_eq!(struct_def.functions.len(), 0);
 
             assert_eq!(struct_def.fields[0].name.name, "name");
             assert_eq!(struct_def.fields[1].name.name, "email");
@@ -57,7 +57,7 @@ fn test_empty_struct() {
             assert_eq!(struct_def.name[0].name, "Empty");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 0);
-            assert_eq!(struct_def.methods.len(), 0);
+            assert_eq!(struct_def.functions.len(), 0);
         }
         _ => panic!("Expected struct definition"),
     }
@@ -146,7 +146,7 @@ fn test_simple_impl_block() {
         ItemKind::ImplBlock(impl_block) => {
             assert!(impl_block.generic_params.is_none());
             assert!(impl_block.constraints.is_none());
-            assert_eq!(impl_block.methods.len(), 1);
+            assert_eq!(impl_block.functions.len(), 1);
 
             assert_eq!(impl_block.trait_spec.path.len(), 1);
             assert_eq!(impl_block.trait_spec.path[0].name, "Drawable");
@@ -154,7 +154,7 @@ fn test_simple_impl_block() {
             assert_eq!(impl_block.type_spec.path.len(), 1);
             assert_eq!(impl_block.type_spec.path[0].name, "User");
 
-            assert_eq!(impl_block.methods[0].name.name, "draw");
+            assert_eq!(impl_block.functions[0].name.name, "draw");
         }
         _ => panic!("Expected impl block"),
     }

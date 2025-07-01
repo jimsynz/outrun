@@ -100,7 +100,7 @@ impl<'a> FunctionCallContext<'a> {
 }
 
 /// Context for intrinsic function execution that consolidates the common parameters
-/// passed to intrinsic methods
+/// passed to intrinsic functions
 #[derive(Debug)]
 pub struct IntrinsicExecutionContext<'a> {
     /// Function name being executed

@@ -1364,14 +1364,14 @@ impl std::fmt::Display for CaseResult {
 
 // === TYPE SYSTEM ===
 
-/// Struct definition with optional generics and methods
+/// Struct definition with optional generics and functions
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDefinition {
     pub attributes: Vec<Attribute>,
     pub name: Vec<TypeIdentifier>,
     pub generic_params: Option<GenericParams>,
     pub fields: Vec<StructField>,
-    pub methods: Vec<FunctionDefinition>,
+    pub functions: Vec<FunctionDefinition>,
     pub span: Span,
 }
 
@@ -1443,7 +1443,7 @@ pub struct ImplBlock {
     pub trait_spec: TypeSpec,
     pub type_spec: TypeSpec,
     pub constraints: Option<ConstraintExpression>,
-    pub methods: Vec<FunctionDefinition>,
+    pub functions: Vec<FunctionDefinition>,
     pub span: Span,
 }
 
@@ -1527,7 +1527,7 @@ impl std::fmt::Display for StructDefinition {
             write!(f, "{field}")?;
         }
         write!(f, ") {{")?;
-        for method in &self.methods {
+        for method in &self.functions {
             write!(f, "\n    {method}")?;
         }
         write!(f, "\n}}")
@@ -1623,7 +1623,7 @@ impl std::fmt::Display for ImplBlock {
             write!(f, " when {constraints}")?;
         }
         write!(f, " {{")?;
-        for method in &self.methods {
+        for method in &self.functions {
             write!(f, "\n    {method}")?;
         }
         write!(f, "\n}}")

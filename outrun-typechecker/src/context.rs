@@ -131,7 +131,7 @@ impl TypeCheckingContext {
         }
     }
 
-    /// Get a reference to the compiler environment for type operations  
+    /// Get a reference to the compiler environment for type operations
     pub fn compiler_environment(
         &self,
     ) -> &Option<crate::compilation::compiler_environment::CompilerEnvironment> {
@@ -208,7 +208,7 @@ pub struct FunctionCallContext<'a> {
 
 // Note: InterpreterContext and ExpressionEvaluator are not included in this context
 // as they live in the outrun-interpreter crate and would create circular dependencies.
-// They are passed separately to the dispatch methods that use FunctionCallContext.
+// They are passed separately to the dispatch functions that use FunctionCallContext.
 
 impl<'a> FunctionCallContext<'a> {
     /// Create a new function call context with the provided components
@@ -409,7 +409,7 @@ mod tests {
             }],
             generic_params: None,
             fields: vec![],
-            methods: vec![],
+            functions: vec![],
             span: outrun_parser::Span {
                 start: 0,
                 end: 0,

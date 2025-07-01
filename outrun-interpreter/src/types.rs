@@ -454,7 +454,7 @@ mod tests {
         // Test validation works
         assert!(integration.validate_value_type(&int_val, &int_type));
 
-        // Test that type creation methods work
+        // Test that type creation functions work
         let list_type = integration.create_list_type(int_type);
         assert!(matches!(list_type, StructuredType::Generic { .. }));
     }

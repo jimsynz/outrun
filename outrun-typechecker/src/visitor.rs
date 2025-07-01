@@ -33,7 +33,7 @@ pub trait Visitor<T>: Sized {
         walk_item(self, item)
     }
 
-    /// Visit an expression  
+    /// Visit an expression
     fn visit_expression(&mut self, expr: &Expression) -> VisitorResult {
         walk_expression(self, expr)
     }
@@ -259,7 +259,7 @@ pub fn walk_unary_operation<V: Visitor<T>, T>(
 /// Walk an impl block by visiting all function definitions
 pub fn walk_impl_block<V: Visitor<T>, T>(visitor: &mut V, impl_block: &ImplBlock) -> VisitorResult {
     // Visit all functions in the impl block
-    for func in &impl_block.methods {
+    for func in &impl_block.functions {
         visitor.visit_function_definition(func)?;
     }
     Ok(())

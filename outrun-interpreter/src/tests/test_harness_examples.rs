@@ -2,7 +2,7 @@
 //!
 //! These tests show how to use the test harness to:
 //! - Evaluate basic Outrun expressions
-//! - Assert on results using different assertion methods
+//! - Assert on results using different assertion functions
 //! - Set up variables and context for complex test scenarios
 //! - Work with different Outrun data types and operations
 

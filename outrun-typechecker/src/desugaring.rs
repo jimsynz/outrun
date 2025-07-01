@@ -39,7 +39,7 @@ impl SpanMapping {
         self.original_to_desugared.get(&original).copied()
     }
 
-    /// Get the original span for a desugared span  
+    /// Get the original span for a desugared span
     pub fn get_original_span(&self, desugared: Span) -> Option<Span> {
         self.desugared_to_original.get(&desugared).copied()
     }
@@ -103,8 +103,8 @@ impl DesugaringVisitor {
                 trait_spec: impl_block.trait_spec,
                 type_spec: impl_block.type_spec,
                 constraints: impl_block.constraints,
-                methods: impl_block
-                    .methods
+                functions: impl_block
+                    .functions
                     .into_iter()
                     .map(Self::desugar_function_definition)
                     .collect(),
@@ -679,8 +679,8 @@ impl DesugaringVisitor {
                 trait_spec: impl_block.trait_spec,
                 type_spec: impl_block.type_spec,
                 constraints: impl_block.constraints,
-                methods: impl_block
-                    .methods
+                functions: impl_block
+                    .functions
                     .into_iter()
                     .map(|method| {
                         Self::desugar_function_definition_with_mapping(method, span_mapping)
