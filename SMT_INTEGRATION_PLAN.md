@@ -806,13 +806,15 @@ fn benchmark_constraint_solving(c: &mut Criterion) {
 4. **Performance acceptable**: ✅ REPL startup time optimized (debug output cleanup complete), SMT solving functional
 5. **Error messages improved**: ⚠️ SMT provides satisfiability checking but not user-facing error suggestions yet
 
-## Current Overall Status: **97% Complete** 🎯
+## Current Overall Status: **95% Complete** 🎯
 
 **Major Achievement:** SMT-first type system with real Z3 integration successfully replacing traditional unification. The core trait dispatch problem is architecturally solved.
 
-**Latest Achievement:** Performance optimization complete - debug output cleanup makes REPL development usable.
+**Latest Achievement:** Debug output cleanup completed, but critical SMT performance bottleneck discovered.
 
-**Remaining 3%:** Fine-tune SMT constraint application to dispatch resolution and implement remaining performance optimizations.
+**CRITICAL BLOCKER:** Tests timeout after 60s due to SMT solver performance issues (25s for single test).
+
+**Immediate Priority:** SMT performance optimization (Phase 1-3) to achieve <1s test execution times.
 
 ## Critical Implementation Notes
 
@@ -1232,9 +1234,162 @@ Based on recent achievements:
 
 The SMT integration project is in excellent shape with all critical architectural components working and the development environment optimized for continued progress.
 
-## 📋 IMMEDIATE NEXT STEPS (Priority Order)
+## 🚨 CRITICAL: SMT Performance Optimization (Priority 1)
 
-### 1. Enhanced Error Reporting (1-2 weeks) 
+### Problem Analysis
+**Current Issue**: Type checking tests timeout after 60s. Single string literal test takes 25s, indicating critical SMT performance bottlenecks that make development impossible.
+
+### Root Causes Identified
+1. **Z3 Solver Creation Overhead** - Creating new Z3 contexts/solvers for every constraint check
+2. **No Constraint Caching** - Solving identical constraints repeatedly  
+3. **Excessive Individual SMT Calls** - Not batching constraints
+4. **No Early Termination** - Full SMT solving even for obvious cases
+5. **Complex Constraint Generation** - Overly detailed constraints for simple type checks
+
+### Phase 1: Immediate Wins (1-2 days) 🔥
+**Target**: Reduce test time from 25s to <5s (80% improvement)
+
+#### 1.1 Singleton Z3 Context & Solver Pool
+- **Problem**: Creating new Z3Context and Z3ConstraintSolver for every constraint check
+- **Solution**: Create `Z3SolverPool` with reusable solvers
+- **Implementation**: 
+  ```rust
+  // src/smt/solver_pool.rs
+  pub struct Z3SolverPool {
+      available_solvers: Vec<Z3ConstraintSolver>,
+      context: Arc<Z3Context>, // Shared context
+      max_pool_size: usize,
+  }
+  ```
+- **Entry Point**: Replace all `Z3ConstraintSolver::new()` calls with pool checkout/return
+
+#### 1.2 Aggressive Constraint Caching
+- **Problem**: Solving identical constraints repeatedly across function calls
+- **Solution**: Cache constraint → result mappings with LRU eviction
+- **Implementation**:
+  ```rust
+  // src/smt/cache.rs enhancement
+  pub struct PerformanceConstraintCache {
+      constraint_cache: LruCache<ConstraintSetHash, SolverResult>,
+      type_compatibility_cache: LruCache<(StructuredType, StructuredType), bool>,
+      trait_implementation_cache: LruCache<(StructuredType, StructuredType), bool>,
+  }
+  ```
+- **Entry Point**: Enhance existing `ConstraintCache` in `src/smt/cache.rs`
+
+#### 1.3 Early Termination for Obvious Cases
+- **Problem**: Full SMT solving for trivial type compatibility checks
+- **Solution**: Short-circuit obvious cases before SMT solving
+- **Implementation**:
+  ```rust
+  // src/compilation/compiler_environment.rs optimization
+  impl CompilerEnvironment {
+      pub fn fast_implements_trait(&self, impl_type: &StructuredType, trait_type: &StructuredType) -> Option<bool> {
+          // Fast path for identical types
+          if impl_type == trait_type { return Some(true); }
+          
+          // Fast path for known incompatible types
+          if self.definitely_incompatible(impl_type, trait_type) { return Some(false); }
+          
+          // Check cache before SMT
+          if let Some(cached) = self.cache.get_trait_implementation(impl_type, trait_type) {
+              return Some(cached);
+          }
+          
+          None // Proceed to SMT solving
+      }
+  }
+  ```
+- **Entry Point**: Add fast paths to `implements_trait()` and `smt_types_compatible()`
+
+### Phase 2: Algorithmic Improvements (3-5 days)
+**Target**: Reduce to <1s per test (80% further improvement)
+
+#### 2.1 Constraint Batching & Deduplication  
+- **Problem**: Individual SMT solver calls for each constraint
+- **Solution**: Collect constraints during type checking, deduplicate, and batch solve
+- **Implementation**:
+  ```rust
+  // Modify compilation pipeline to batch constraints
+  impl CompilerEnvironment {
+      pub fn phase_7_optimized_smt_solving(&mut self) -> Result<(), Vec<TypeError>> {
+          // 1. Collect ALL constraints from unification context
+          let all_constraints = self.extract_all_constraints();
+          
+          // 2. Deduplicate and batch by type
+          let deduplicated = self.deduplicate_constraints(all_constraints);
+          let batched = self.batch_constraints_by_type(deduplicated);
+          
+          // 3. Solve batches with shared solver context
+          for batch in batched {
+              self.solve_constraint_batch(batch)?;
+          }
+          
+          Ok(())
+      }
+  }
+  ```
+- **Entry Point**: Modify `phase_7_smt_constraint_solving()` in compilation pipeline
+
+#### 2.2 Incremental SMT Solving
+- **Problem**: Starting fresh solver state for each constraint set
+- **Solution**: Use Z3's push/pop for constraint scoping and state reuse
+- **Implementation**: Add push/pop capabilities to `Z3ConstraintSolver`
+- **Entry Point**: Enhance `src/smt/solver.rs` with incremental solving support
+
+#### 2.3 Constraint Simplification
+- **Problem**: Complex constraints generated for simple type relationships
+- **Solution**: Reduce constraints to simpler forms before solving
+- **Implementation**: Add constraint optimization pass before Z3 solving
+- **Entry Point**: Add `simplify_constraints()` method to constraint system
+
+### Phase 3: Advanced Optimizations (1 week) 
+**Target**: Production-ready performance (<0.5s per test)
+
+#### 3.1 Parallel Constraint Generation
+- **Solution**: Generate constraints concurrently where independent
+- **Entry Point**: Add parallel processing to constraint collection phase
+
+#### 3.2 Constraint Pattern Recognition  
+- **Solution**: Identify common patterns for instant resolution without SMT
+- **Entry Point**: Add pattern matching to constraint system
+
+#### 3.3 SMT Solver Configuration Tuning
+- **Solution**: Optimize Z3 parameters for our specific constraint types
+- **Entry Point**: Research and implement optimal Z3 solver configuration
+
+### Expected Performance Timeline
+
+**Phase 1 Implementation (Days 1-2)**:
+- Day 1: Solver pool + constraint caching  
+- Day 2: Early termination optimization
+- **Result**: 25s → 5s (80% improvement)
+
+**Phase 2 Implementation (Days 3-7)**:
+- Days 3-4: Constraint batching and deduplication
+- Days 5-6: Incremental SMT solving  
+- Day 7: Constraint simplification
+- **Result**: 5s → 1s (80% further improvement)
+
+**Phase 3 Implementation (Week 2)**:
+- Advanced optimizations for production performance
+- **Result**: 1s → 0.1-0.5s (50-80% further improvement)
+
+### Success Metrics
+- **Phase 1**: All tests complete under 5s (currently 25s)
+- **Phase 2**: All tests complete under 1s  
+- **Phase 3**: Production-ready performance for large codebases
+- **Quality**: Maintain 0 type checking errors throughout optimization
+
+### Implementation Strategy
+1. **Start with solver pool** (biggest immediate impact - eliminates Z3 creation overhead)
+2. **Add constraint caching** (high cache hit rate expected for repeated patterns)
+3. **Implement early termination** (eliminate unnecessary SMT calls entirely)
+4. **Move to constraint batching** (reduce SMT call frequency dramatically)
+
+## 📋 LOWER PRIORITY NEXT STEPS
+
+### 1. Enhanced Error Reporting (AFTER performance fixed)
 **Impact**: High - significantly improves developer experience
 
 **Tasks**:
