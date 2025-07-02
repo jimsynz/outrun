@@ -44,8 +44,8 @@ pub enum SuggestionType {
     },
     /// Suggest relaxing a constraint
     RelaxConstraint {
-        original_constraint: SMTConstraint,
-        relaxed_constraint: SMTConstraint,
+        original_constraint: Box<SMTConstraint>,
+        relaxed_constraint: Box<SMTConstraint>,
         reasoning: String,
     },
 }

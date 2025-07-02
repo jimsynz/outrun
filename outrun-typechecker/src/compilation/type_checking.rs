@@ -5,6 +5,8 @@
 //! type compatibility, manages variable scopes, and tracks type information
 //! for later use in typed AST generation.
 
+#![allow(dead_code)] // Many methods are for future use or debugging
+
 use crate::compilation::compiler_environment::{AtomId, CompilerEnvironment, TypeNameId};
 use crate::compilation::FunctionType;
 use crate::error::{context, SpanExt, TypeError};
@@ -1931,7 +1933,7 @@ impl TypeCheckingVisitor {
                                             );
 
                                         if !generic_implementations.is_empty() {
-                                            let concrete_impl = &generic_implementations[0];
+                                            let _concrete_impl = &generic_implementations[0];
 
                                             // Continue with the generic implementation
                                             return self.infer_implementing_type_with_smt(
@@ -3784,7 +3786,7 @@ impl TypeCheckingVisitor {
                         .smt_resolve_type_variables(&arg_type)
                     {
                         Ok(resolved) => resolved,
-                        Err(err) => {
+                        Err(_err) => {
                             // SMT resolution failed for argument type
                             arg_type // Fallback to original type
                         }
@@ -3936,6 +3938,7 @@ impl TypeCheckingVisitor {
     }
 
     /// Check if a structured type contains type variables that need SMT resolution
+    #[allow(clippy::only_used_in_recursion)]
     fn type_contains_variables(
         &self,
         structured_type: &crate::unification::StructuredType,

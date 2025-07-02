@@ -6,6 +6,11 @@
 //! The CompilerEnvironment serves as the root of the compilation system,
 //! providing methods to compile programs and manage compilation state.
 
+#![allow(dead_code)] // Many methods are for future use or debugging
+#![allow(clippy::manual_unwrap_or_default)] // More explicit error handling
+#![allow(clippy::manual_unwrap_or)] // More explicit error handling
+#![allow(clippy::collapsible_match)] // Clearer logic flow
+
 use crate::checker::TypedFunctionDefinition;
 use crate::compilation::program_collection::{CompilationResult, ProgramCollection};
 use crate::compilation::type_checking::TypeCheckingVisitor;
@@ -710,7 +715,7 @@ impl CompilerEnvironment {
         {
             let cache_stats = crate::smt::solver_pool::get_cache_stats();
             if cache_stats.total_queries > 0 {
-                eprintln!("🚀 SMT Cache Performance: {}", cache_stats);
+                eprintln!("🚀 SMT Cache Performance: {cache_stats}");
             }
         }
 
@@ -1586,7 +1591,7 @@ impl CompilerEnvironment {
             state.smt_model.clone()
         };
 
-        if let Some(model) = smt_model {
+        if let Some(_model) = smt_model {
             // Use SMT model to determine which trait implementations to include in dispatch tables
 
             // For now, fall back to traditional dispatch table calculation
@@ -1824,11 +1829,8 @@ impl CompilerEnvironment {
                                 span: (0, 0).into(), // TODO: Get actual span from type annotation
                                 name: format!("{type_name} (no concrete implementations found)"),
                             })
-                        } else if implementations.len() == 1 {
-                            let concrete_type = implementations[0].clone();
-
-                            Ok(concrete_type)
                         } else {
+                            // Take the first implementation (either == 1 or > 1)
                             let concrete_type = implementations[0].clone();
 
                             Ok(concrete_type)
@@ -1885,16 +1887,14 @@ impl CompilerEnvironment {
         collection: &ProgramCollection,
         compilation_order: &[String],
     ) -> Result<(), Vec<TypeError>> {
-        let mut dispatch_entries = 0;
-
         for file_path in compilation_order {
             if let Some(program) = collection.programs.get(file_path) {
-                dispatch_entries += self.process_program_for_dispatch(program)?;
+                self.process_program_for_dispatch(program)?;
             }
         }
 
         // Get dispatch table statistics
-        let stats = {
+        let _stats = {
             let state = self.compilation_state.read().unwrap();
             state.dispatch_table.stats()
         };
@@ -1971,7 +1971,6 @@ impl CompilerEnvironment {
             outrun_parser::ExpressionKind::QualifiedIdentifier(qualified_id) => {
                 // Check if this is a trait reference (module name is a trait)
                 let trait_name = &qualified_id.module.name;
-                let function_name = &qualified_id.name.name;
 
                 let trait_type_id = self.intern_type_name(trait_name);
                 if self.get_trait(&trait_type_id).is_some() {
@@ -2128,8 +2127,7 @@ impl CompilerEnvironment {
                         // Could not resolve argument type - this indicates a problem with dispatch generation
                         return Err(vec![TypeError::internal_with_span(
                             format!(
-                                "Could not resolve argument type for trait function call {}.{}",
-                                trait_name, function_name
+                                "Could not resolve argument type for trait function call {trait_name}.{function_name}"
                             ),
                             call.span.to_source_span(),
                         )]);
@@ -2138,8 +2136,7 @@ impl CompilerEnvironment {
                     // Trait function calls should have arguments for dispatch resolution
                     return Err(vec![TypeError::internal_with_span(
                         format!(
-                            "Trait function call {}.{} has no arguments for dispatch resolution",
-                            trait_name, function_name
+                            "Trait function call {trait_name}.{function_name} has no arguments for dispatch resolution"
                         ),
                         call.span.to_source_span(),
                     )]);
@@ -2225,8 +2222,8 @@ impl CompilerEnvironment {
         &self,
         trait_type: StructuredType,
         impl_type: StructuredType,
-        function_name: String,
-        dispatch_id: u32,
+        _function_name: String,
+        _dispatch_id: u32,
     ) {
         let mut state = self.compilation_state.write().unwrap();
 
@@ -2234,11 +2231,8 @@ impl CompilerEnvironment {
         if let (StructuredType::Simple(trait_id), StructuredType::Simple(impl_id)) =
             (&trait_type, &impl_type)
         {
-            // Create FunctionId from dispatch_id
-            let _function_id = crate::types::traits::FunctionId(dispatch_id);
-
             // Register the trait implementation in dispatch table
-            let module_id = state
+            let _module_id = state
                 .dispatch_table
                 .register_trait_impl(trait_id.clone(), impl_id.clone());
         } else {
@@ -2483,11 +2477,8 @@ impl CompilerEnvironment {
         }
 
         // Step 5: Use SMT constraint generation and solving - no manual type checking
-        let result = self.smt_check_trait_implementation(&resolved_impl_type, &resolved_trait_type);
-
         // Result handled by caller with proper error reporting
-
-        result
+        self.smt_check_trait_implementation(&resolved_impl_type, &resolved_trait_type)
     }
 
     /// SMT-based trait implementation checking - mathematically sound (with caching + early termination)
@@ -3419,16 +3410,15 @@ impl CompilerEnvironment {
             }
         };
 
-        if let Some(type_name) = self.resolve_type(base_type_id.clone()) {
-            let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
+        if let Some(_type_name) = self.resolve_type(base_type_id.clone()) {
 
             let module_key = ModuleKey::Module(base_type_id.hash);
 
             if let Ok(modules) = self.modules.read() {
                 if let Some(module) = modules.get(&module_key) {
                     let function_entry = module.get_function_by_name(function_name).cloned();
-                    if let Some(ref entry) = function_entry {
-                        ()
+                    if let Some(ref _entry) = function_entry {
+                        // Function found in module
                     } else {
                         // Function not found in module
                         // Function count logged for debugging
@@ -3505,18 +3495,13 @@ impl CompilerEnvironment {
                     .to_string_representation()
                     .contains("Option")
                 {
-                    let trait_compatible =
-                        self.smt_types_are_compatible(concrete_trait_type, generic_trait_type);
-                    let impl_compatible =
-                        self.smt_types_are_compatible(concrete_impl_type, generic_impl_type);
-                }
-
-                // Use SMT to check if concrete types are compatible with this generic implementation
-                if self.smt_types_are_compatible(concrete_trait_type, generic_trait_type)
-                    && self.smt_types_are_compatible(concrete_impl_type, generic_impl_type)
-                {
-                    if let Some(function) = module.get_function_by_name(function_name.clone()) {
-                        return Some(function.clone());
+                    // Use SMT to check if concrete types are compatible with this generic implementation
+                    if self.smt_types_are_compatible(concrete_trait_type, generic_trait_type)
+                        && self.smt_types_are_compatible(concrete_impl_type, generic_impl_type)
+                    {
+                        if let Some(function) = module.get_function_by_name(function_name.clone()) {
+                            return Some(function.clone());
+                        }
                     }
                 }
             }
@@ -3762,7 +3747,6 @@ impl CompilerEnvironment {
 
         // Find missing default implementations
         let mut expanded_functions = impl_block.functions.clone();
-        let mut additions_count = 0;
 
         for default_func in defaults {
             if !existing_functions.contains(&default_func.name.name) {
@@ -3779,7 +3763,6 @@ impl CompilerEnvironment {
                 };
 
                 expanded_functions.push(copied_func);
-                additions_count += 1;
             }
         }
 
@@ -4069,6 +4052,7 @@ impl CompilerEnvironment {
     }
 
     /// Parse trait constraint expressions like "Self: Equality && Self: Comparison"
+    #[allow(clippy::only_used_in_recursion)]
     fn parse_trait_constraints(
         &self,
         constraint_expr: &outrun_parser::ConstraintExpression,
@@ -4519,7 +4503,7 @@ impl CompilerEnvironment {
             // Use CompilationResult::merge to combine core + user
             match CompilationResult::merge(core_compilation, vec![user_compilation.clone()]) {
                 Ok(merged) => merged,
-                Err(conflicts) => {
+                Err(_conflicts) => {
                     // Log conflicts but proceed with user compilation only
                     // Warning: Compilation conflicts detected
                     user_compilation
@@ -4566,14 +4550,13 @@ impl CompilerEnvironment {
     ///
     /// Look up trait implementation using full StructuredType
     pub fn find_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
-        let result = match trait_type {
+        match trait_type {
             StructuredType::Simple(trait_id) => self.find_simple_trait_implementations(trait_id),
             StructuredType::Generic { base, args } => {
                 self.find_generic_trait_implementations(base, args)
             }
             _ => Vec::new(),
-        };
-        result
+        }
     }
 
     /// Find concrete implementations for simple traits
@@ -4777,7 +4760,7 @@ impl CompilerEnvironment {
         let mut solver = constraint_system.create_solver();
 
         // Add all constraints to the solver
-        if let Err(e) = solver.add_constraints(&constraints, self) {
+        if let Err(_e) = solver.add_constraints(&constraints, self) {
             // Failed to add SMT constraints
             return None;
         }
@@ -4805,7 +4788,7 @@ impl CompilerEnvironment {
                 // SMT constraint unsatisfiable - trait not implemented
                 None
             }
-            crate::smt::solver::SolverResult::Unknown(reason) => {
+            crate::smt::solver::SolverResult::Unknown(_reason) => {
                 // SMT solver unknown result
                 None
             }
@@ -4948,6 +4931,7 @@ impl CompilerEnvironment {
     }
 
     /// Substitute type parameters in a StructuredType using SMT model assignments
+    #[allow(clippy::only_used_in_recursion)]
     fn substitute_type_parameters(
         &self,
         structured_type: &StructuredType,

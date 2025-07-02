@@ -43,7 +43,6 @@ pub fn check_constraints_satisfiable(
     })
 }
 
-/// Thread-local cache for performance optimization
 thread_local! {
     static THREAD_CACHE: RefCell<ConstraintCache> = RefCell::new(ConstraintCache::new());
 }
@@ -220,7 +219,7 @@ mod tests {
     fn test_cache_stats_format() {
         clear_cache();
         let stats = get_cache_stats();
-        let formatted = format!("{}", stats);
+        let formatted = format!("{stats}");
         assert!(formatted.contains("Cache Stats"));
         assert!(formatted.contains("0 hits"));
         assert!(formatted.contains("0 misses"));
