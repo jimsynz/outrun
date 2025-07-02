@@ -113,7 +113,6 @@ impl ExpressionEvaluator {
         }
     }
 
-
     /// Create a mock StructuredType for development
     /// TODO: Replace with proper type integration
     fn mock_structured_type() -> outrun_typechecker::unification::StructuredType {
@@ -254,8 +253,6 @@ impl ExpressionEvaluator {
             expression.span,
         )?;
 
-
-
         // Use the function dispatcher to handle the call
         // We need to work around the borrow checker issue by temporarily taking ownership
         let mut temp_dispatcher = std::mem::replace(
@@ -304,10 +301,13 @@ impl ExpressionEvaluator {
                         if parts.len() >= 5 && parts[0] == "impl" && parts[2] == "for" {
                             let trait_name = parts[1];
                             let function_name = parts[parts.len() - 1];
-                            
+
                             // Only override if this is likely a Self-related trait function
                             // Don't override operators like LogicalNot that operate on result types
-                            if trait_name != "LogicalNot" && trait_name != "UnaryMinus" && trait_name != "UnaryPlus" {
+                            if trait_name != "LogicalNot"
+                                && trait_name != "UnaryMinus"
+                                && trait_name != "UnaryPlus"
+                            {
                                 // Override with trait dispatch using the current self type
                                 return Ok(DispatchMethod::Trait {
                                     trait_name: trait_name.to_string(),
@@ -323,11 +323,14 @@ impl ExpressionEvaluator {
                     if let TypedFunctionPath::Qualified { module, name } = function_path {
                         // Only override trait calls that are likely to involve Self
                         // Don't override unary operators that operate on results
-                        if module != "LogicalNot" && module != "UnaryMinus" && module != "UnaryPlus" {
+                        if module != "LogicalNot" && module != "UnaryMinus" && module != "UnaryPlus"
+                        {
                             // Check if this looks like a trait function call (like "Equality.equal?")
-                            if let Some(compiler_env) = self.dispatch_context.compiler_environment.as_ref() {
+                            if let Some(compiler_env) =
+                                self.dispatch_context.compiler_environment.as_ref()
+                            {
                                 let trait_type_id = compiler_env.intern_type_name(module);
-                                
+
                                 // Check if this module name corresponds to a trait
                                 if compiler_env.get_trait(&trait_type_id).is_some() {
                                     // This is a trait function call - use the self type as impl_type
@@ -343,7 +346,7 @@ impl ExpressionEvaluator {
                 }
             }
         }
-        
+
         // Otherwise, use the original dispatch strategy
         Ok(original_dispatch_strategy.clone())
     }

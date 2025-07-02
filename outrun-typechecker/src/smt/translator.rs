@@ -48,7 +48,10 @@ impl SMTTranslator {
                 if let Some(type_name) = compiler_env.resolve_type(type_name_id.clone()) {
                     self.get_or_create_type_variable(&format!("TypeVar_{type_name}"))
                 } else {
-                    self.get_or_create_type_variable(&format!("TypeVar_unknown_{}", type_name_id.hash))
+                    self.get_or_create_type_variable(&format!(
+                        "TypeVar_unknown_{}",
+                        type_name_id.hash
+                    ))
                 }
             }
             StructuredType::Generic { base, args } => {
@@ -230,11 +233,12 @@ impl SMTTranslator {
                 ..
             } => {
                 // TypeVariable = concrete type constraint
-                let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
-                    format!("TypeVar_{type_name}")
-                } else {
-                    format!("TypeVar_unknown_{}", variable_id.hash)
-                };
+                let var_name =
+                    if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
+                        format!("TypeVar_{type_name}")
+                    } else {
+                        format!("TypeVar_unknown_{}", variable_id.hash)
+                    };
                 let bound_sort = self.translate_structured_type(bound_type, compiler_env);
                 format!("(= {var_name} {bound_sort})")
             }
@@ -255,8 +259,9 @@ impl SMTTranslator {
             } => {
                 // Universal Self constraint: ∀ Self. (implements(Self, TraitBeingDefined) ∧ implements(Self, BoundTrait))
                 let self_var_name = format!("Self_{}", self_variable_id.hash);
-                let trait_defined_sort = self.translate_structured_type(trait_being_defined, compiler_env);
-                
+                let trait_defined_sort =
+                    self.translate_structured_type(trait_being_defined, compiler_env);
+
                 let mut implications = Vec::new();
                 for bound_trait in bound_traits {
                     let bound_sort = self.translate_structured_type(bound_trait, compiler_env);
@@ -265,7 +270,7 @@ impl SMTTranslator {
                         "(=> (implements {self_var_name} {trait_defined_sort}) (implements {self_var_name} {bound_sort}))"
                     ));
                 }
-                
+
                 if implications.is_empty() {
                     "true".to_string()
                 } else if implications.len() == 1 {

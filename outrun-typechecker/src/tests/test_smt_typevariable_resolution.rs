@@ -57,14 +57,19 @@ Integer.abs(value: 42)
             for error in &errors {
                 println!("  - {error:?}");
             }
-            
+
             // Check if we're getting the trait constraint validation errors
             let has_constraint_error = errors.iter().any(|e| {
-                matches!(e, crate::error::TypeError::MissingTraitConstraintInDefinition { .. })
+                matches!(
+                    e,
+                    crate::error::TypeError::MissingTraitConstraintInDefinition { .. }
+                )
             });
-            
+
             if has_constraint_error {
-                println!("✅ Trait constraint validation is working - found missing constraint errors");
+                println!(
+                    "✅ Trait constraint validation is working - found missing constraint errors"
+                );
             } else {
                 println!("ℹ️  No trait constraint errors found - this may be expected");
             }

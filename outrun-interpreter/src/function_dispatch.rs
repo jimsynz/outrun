@@ -248,7 +248,7 @@ impl FunctionDispatcher {
                         // Execute the typed function (no conversion needed!)
                         let function_executor =
                             FunctionExecutor::new(self.compiler_environment.clone());
-                        
+
                         // Check if this is a trait default implementation that needs Self type context
                         // We need to check both the function type and whether this is actually a default implementation
                         let self_type_for_execution = match function_entry.function_type() {
@@ -267,7 +267,7 @@ impl FunctionDispatcher {
                                 }
                             }
                         };
-                        
+
                         return function_executor
                             .execute_typed_function_with_self_type(
                                 interpreter_context,

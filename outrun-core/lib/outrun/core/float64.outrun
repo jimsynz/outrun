@@ -15,7 +15,6 @@ Float literals without explicit type annotations default to this type.
 """)
 struct Outrun.Core.Float64() {}
 
-# Binary arithmetic operations
 impl BinaryAddition for Outrun.Core.Float64 {
     def add(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.f64_add(lhs: lhs, rhs: rhs)
@@ -52,7 +51,6 @@ impl BinaryExponentiation for Outrun.Core.Float64 {
     }
 }
 
-# Unary operations
 impl UnaryPlus for Outrun.Core.Float64 {
     def plus(value: Self): Self {
         Outrun.Intrinsic.f64_pos(value: value)
@@ -65,7 +63,6 @@ impl UnaryMinus for Outrun.Core.Float64 {
     }
 }
 
-# Comparison operations
 impl Equality for Outrun.Core.Float64 {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.f64_eq(lhs: lhs, rhs: rhs)
@@ -90,7 +87,6 @@ impl Comparison for Outrun.Core.Float64 {
     }
 }
 
-# Display trait implementation
 impl Display for Outrun.Core.Float64 {
     def to_string(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.f64_to_string(value: value)
@@ -98,9 +94,7 @@ impl Display for Outrun.Core.Float64 {
 }
 
 
-# Float trait implementation
 impl Float for Outrun.Core.Float64 {
-
     def abs(value: Self): Self {
         Outrun.Intrinsic.f64_abs(value: value)
     }
@@ -158,7 +152,6 @@ impl Float for Outrun.Core.Float64 {
     }
 }
 
-# Default trait implementation
 impl Default for Outrun.Core.Float64 {
     def default(): Self {
         0.0

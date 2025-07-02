@@ -13,7 +13,6 @@ false                 # Defaults to Outrun.Core.Boolean
 """)
 struct Outrun.Core.Boolean() {}
 
-# Display trait implementation
 impl Display for Outrun.Core.Boolean {
     def to_string(value: Self): Outrun.Core.String {
         if value {
@@ -25,14 +24,12 @@ impl Display for Outrun.Core.Boolean {
 }
 
 
-# Equality trait implementation
 impl Equality for Outrun.Core.Boolean {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.bool_eq(lhs: lhs, rhs: rhs)
     }
 }
 
-# Logical operator trait implementations
 impl LogicalAnd for Outrun.Core.Boolean {
     def and(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.bool_and(lhs: lhs, rhs: rhs)
@@ -51,14 +48,12 @@ impl LogicalNot for Outrun.Core.Boolean {
     }
 }
 
-# Boolean trait implementation
 impl Boolean for Outrun.Core.Boolean {
     def true?(value: Self): Outrun.Core.Boolean {
         value
     }
 }
 
-# Default trait implementation
 impl Default for Outrun.Core.Boolean {
     def default(): Self {
         false

@@ -16,7 +16,6 @@ Integer literals without explicit type annotations default to this type.
 """)
 struct Outrun.Core.Integer64() {}
 
-# Binary arithmetic operations
 impl BinaryAddition for Outrun.Core.Integer64 {
     def add(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.i64_add(lhs: lhs, rhs: rhs)
@@ -53,7 +52,6 @@ impl BinaryExponentiation for Outrun.Core.Integer64 {
     }
 }
 
-# Unary operations
 impl UnaryPlus for Outrun.Core.Integer64 {
     def plus(value: Self): Self {
         Outrun.Intrinsic.i64_pos(value: value)
@@ -66,7 +64,6 @@ impl UnaryMinus for Outrun.Core.Integer64 {
     }
 }
 
-# Comparison operations
 impl Equality for Outrun.Core.Integer64 {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.i64_eq(lhs: lhs, rhs: rhs)
@@ -91,7 +88,6 @@ impl Comparison for Outrun.Core.Integer64 {
     }
 }
 
-# Bitwise operations
 impl BitwiseAnd for Outrun.Core.Integer64 {
     def and(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.i64_and(lhs: lhs, rhs: rhs)
@@ -128,15 +124,12 @@ impl ShiftRight for Outrun.Core.Integer64 {
     }
 }
 
-# Display trait implementation
 impl Display for Outrun.Core.Integer64 {
     def to_string(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.i64_to_string_radix(value: value, radix: 10)
     }
 }
 
-
-# Integer trait implementation
 impl Integer for Outrun.Core.Integer64 {
     def to_string_radix(value: Self, radix: Integer): Outrun.Core.String {
         Outrun.Intrinsic.i64_to_string_radix(value: value, radix: radix)
@@ -147,15 +140,15 @@ impl Integer for Outrun.Core.Integer64 {
     }
 
     def zero?(value: Self): Boolean {
-        Equality.equal?(lhs: value, rhs: 0)
+        value == 0
     }
 
     def positive?(value: Self): Boolean {
-        Comparison.greater?(lhs: value, rhs: 0)
+        value > 0
     }
 
     def negative?(value: Self): Boolean {
-        Comparison.less?(lhs: value, rhs: 0)
+        value < 0
     }
 }
 

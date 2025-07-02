@@ -47,9 +47,9 @@ pub enum SMTConstraint {
     /// Type parameter must be unified to a concrete type
     /// This handles cases like Option<T> matching Option<Integer> where T = Integer
     TypeParameterUnification {
-        parameter_name: String,           // e.g., "T"
-        concrete_type: StructuredType,    // e.g., Integer
-        context: String,                  // For error reporting
+        parameter_name: String,        // e.g., "T"
+        concrete_type: StructuredType, // e.g., Integer
+        context: String,               // For error reporting
     },
 
     /// Type variable constraint for generic parameters and Self types
@@ -57,16 +57,16 @@ pub enum SMTConstraint {
     TypeVariableConstraint {
         variable_id: crate::compilation::compiler_environment::TypeNameId,
         bound_type: StructuredType,
-        context: String,                  // For error reporting
+        context: String, // For error reporting
     },
 
     /// Trait compatibility constraint - any type that implements the trait
     /// This represents "T where T: TraitName" semantics
     /// When we see a trait name in a type position, this constraint is generated
     TraitCompatibility {
-        trait_type: StructuredType,       // e.g., Boolean trait
+        trait_type: StructuredType,        // e.g., Boolean trait
         implementing_type: StructuredType, // e.g., Outrun.Core.Boolean (what actually implements it)
-        context: String,                  // For error reporting (e.g., "parameter type check")
+        context: String,                   // For error reporting (e.g., "parameter type check")
     },
 
     /// Universal Self constraint for trait definitions
@@ -74,37 +74,37 @@ pub enum SMTConstraint {
     /// Used for "when Self: Equality" constraints in trait definitions
     UniversalSelfConstraint {
         self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable
-        trait_being_defined: StructuredType,  // The trait being defined (e.g., Binary)
-        bound_traits: Vec<StructuredType>,    // Required trait implementations (e.g., [Equality])
-        context: String,                      // For error reporting
+        trait_being_defined: StructuredType, // The trait being defined (e.g., Binary)
+        bound_traits: Vec<StructuredType>,   // Required trait implementations (e.g., [Equality])
+        context: String,                     // For error reporting
     },
 
-    /// Concrete Self binding for trait implementations 
+    /// Concrete Self binding for trait implementations
     /// This represents "Self = ConcreteType" in impl blocks
     /// Used to bind Self to the specific implementing type
     ConcreteSelfBinding {
         self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable
-        concrete_type: StructuredType,        // The concrete implementing type (e.g., String)
-        context: String,                      // For error reporting
+        concrete_type: StructuredType, // The concrete implementing type (e.g., String)
+        context: String,               // For error reporting
     },
 
     /// Self type inference constraint for function calls
     /// This represents bidirectional inference where call arguments constrain Self
     /// Used for calls like "Option.some?(value: Option<Integer>)" to infer Self = Option<Integer>
     SelfTypeInference {
-        self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable  
-        inferred_type: StructuredType,        // The type inferred from arguments
-        call_site_context: String,           // Description of the function call
-        confidence: InferenceConfidence,     // How confident we are in this inference
+        self_variable_id: crate::compilation::compiler_environment::TypeNameId, // The Self type variable
+        inferred_type: StructuredType, // The type inferred from arguments
+        call_site_context: String,     // Description of the function call
+        confidence: InferenceConfidence, // How confident we are in this inference
     },
 }
 
 /// Confidence level for Self type inference
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InferenceConfidence {
-    High,    // Direct parameter match (e.g., parameter is Self, argument is concrete)
-    Medium,  // Indirect inference (e.g., parameter is Option<Self>, argument is Option<Concrete>)
-    Low,     // Complex inference with multiple steps
+    High,   // Direct parameter match (e.g., parameter is Self, argument is concrete)
+    Medium, // Indirect inference (e.g., parameter is Option<Self>, argument is Option<Concrete>)
+    Low,    // Complex inference with multiple steps
 }
 
 /// Function signature with named parameters (Outrun requirement)

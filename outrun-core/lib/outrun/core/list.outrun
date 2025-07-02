@@ -21,7 +21,6 @@ All elements must be of the same type T.
 struct Outrun.Core.List<T>() {}
 
 
-# Equality trait implementation - recursive equality check  
 impl<T> Equality for Outrun.Core.List<T> when T: Equality {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         # Simplified implementation without pattern matching
@@ -29,7 +28,6 @@ impl<T> Equality for Outrun.Core.List<T> when T: Equality {
     }
 }
 
-# List trait implementation
 impl<T> List<T> for Outrun.Core.List<T> {
     def head(value: Self): Option<T> {
         Outrun.Intrinsic.list_head(value: value)
@@ -48,7 +46,6 @@ impl<T> List<T> for Outrun.Core.List<T> {
     }
 }
 
-# Default trait implementation
 impl<T> Default for Outrun.Core.List<T> {
     def default(): Self {
         Outrun.Intrinsic.list_empty()

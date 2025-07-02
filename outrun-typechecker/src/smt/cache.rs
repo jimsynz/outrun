@@ -132,7 +132,11 @@ impl ConstraintCache {
     }
 
     /// Get cached implementation check result
-    pub fn get_implementation(&mut self, trait_id: &TypeNameId, impl_id: &TypeNameId) -> Option<bool> {
+    pub fn get_implementation(
+        &mut self,
+        trait_id: &TypeNameId,
+        impl_id: &TypeNameId,
+    ) -> Option<bool> {
         self.implementation_cache
             .get(&(trait_id.clone(), impl_id.clone()))
             .copied()
@@ -197,7 +201,6 @@ impl ConstraintCache {
             constraint_count: constraints.len(),
         }
     }
-
 }
 
 impl Default for ConstraintCache {

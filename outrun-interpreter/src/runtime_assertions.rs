@@ -217,7 +217,9 @@ impl AssertionContext {
         let actual_type = self.value_to_structured_type(value);
 
         // Fast path for primitive type checking - avoid SMT overhead for simple cases
-        if let (StructuredType::Simple(actual_id), StructuredType::Simple(expected_id)) = (&actual_type, expected_type) {
+        if let (StructuredType::Simple(actual_id), StructuredType::Simple(expected_id)) =
+            (&actual_type, expected_type)
+        {
             // For simple types, just compare the type IDs directly
             return actual_id == expected_id;
         }

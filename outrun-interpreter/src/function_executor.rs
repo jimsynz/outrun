@@ -102,10 +102,12 @@ impl FunctionExecutor {
             Some(typed_function.span),
             self_type.cloned(),
         );
-        context.push_call_frame(call_frame).map_err(|e| FunctionExecutionError::Internal {
-            message: format!("Failed to push call frame: {e:?}"),
-            span,
-        })?;
+        context
+            .push_call_frame(call_frame)
+            .map_err(|e| FunctionExecutionError::Internal {
+                message: format!("Failed to push call frame: {e:?}"),
+                span,
+            })?;
 
         // Push a new function scope
         context.push_scope(crate::context::ScopeType::Function {
@@ -125,7 +127,7 @@ impl FunctionExecutor {
 
         // Always pop scope and call frame, even if function execution failed
         // This ensures proper cleanup and prevents test isolation issues
-        
+
         // Pop the function scope
         if let Err(scope_err) = context.pop_scope() {
             // If function execution succeeded but scope cleanup failed, return scope error

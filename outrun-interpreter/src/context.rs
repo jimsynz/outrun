@@ -121,12 +121,18 @@ impl InterpreterContext {
     // Call Stack Management
 
     /// Push a new call frame onto the stack
-    pub fn push_call_frame(&mut self, frame: crate::call_stack::CallFrame) -> Result<(), ContextError> {
+    pub fn push_call_frame(
+        &mut self,
+        frame: crate::call_stack::CallFrame,
+    ) -> Result<(), ContextError> {
         Ok(self.call_stack.push_frame(frame)?)
     }
 
     /// Pop the current call frame from the stack
-    pub fn pop_call_frame(&mut self, span: Span) -> Result<crate::call_stack::CallFrame, ContextError> {
+    pub fn pop_call_frame(
+        &mut self,
+        span: Span,
+    ) -> Result<crate::call_stack::CallFrame, ContextError> {
         Ok(self.call_stack.pop_frame(span)?)
     }
 
@@ -320,7 +326,6 @@ pub enum ScopeType {
     Repl,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,7 +391,7 @@ mod tests {
     #[test]
     fn test_call_stack_management() {
         use outrun_typechecker::checker::TypedFunctionPath;
-        
+
         let mut ctx = InterpreterContext::new_repl();
 
         assert_eq!(ctx.call_stack_depth(), 0);
@@ -498,7 +503,7 @@ mod tests {
     #[test]
     fn test_stack_overflow_protection() {
         use outrun_typechecker::checker::TypedFunctionPath;
-        
+
         let compiler_env =
             outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
         let mut ctx = InterpreterContext::new(
@@ -509,7 +514,9 @@ mod tests {
 
         // Push frames up to the limit
         let frame1 = crate::call_stack::CallFrame::new(
-            TypedFunctionPath::Simple { name: "func1".to_string() },
+            TypedFunctionPath::Simple {
+                name: "func1".to_string(),
+            },
             HashMap::new(),
             None,
             Span::new(0, 0),
@@ -517,7 +524,9 @@ mod tests {
             None,
         );
         let frame2 = crate::call_stack::CallFrame::new(
-            TypedFunctionPath::Simple { name: "func2".to_string() },
+            TypedFunctionPath::Simple {
+                name: "func2".to_string(),
+            },
             HashMap::new(),
             None,
             Span::new(0, 0),
@@ -530,7 +539,9 @@ mod tests {
 
         // Next push should fail
         let frame3 = crate::call_stack::CallFrame::new(
-            TypedFunctionPath::Simple { name: "func3".to_string() },
+            TypedFunctionPath::Simple {
+                name: "func3".to_string(),
+            },
             HashMap::new(),
             None,
             Span::new(0, 0),

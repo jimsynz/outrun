@@ -12,8 +12,8 @@ use miette::Diagnostic;
 use outrun_interpreter::{ExpressionEvaluator, InterpreterContext, Value};
 use outrun_parser::{ParseError, parse_expression, parse_program};
 use outrun_typechecker::{
-    CompilerEnvironment,
     checker::{TypedExpression, TypedItemKind},
+    compilation::compiler_environment::CompilerEnvironment,
     error::TypeError,
     unification::StructuredType,
 };
@@ -179,19 +179,21 @@ impl ReplSession {
             }
         }
 
-        // Initialize CompilerEnvironment with core library directly by compiling it
-        // This matches the working typecheck command approach
+        // BETTER APPROACH: Compile core library directly and use the resulting CompilerEnvironment
+        // This avoids the complexity of trying to reconstruct state from CompilationResult
         let mut compiler_environment = CompilerEnvironment::new();
-        let _core_result = outrun_typechecker::core_library::compile_core_library_with_environment(
-            &mut compiler_environment,
-        );
+        let core_compilation =
+            outrun_typechecker::core_library::compile_core_library_with_environment(
+                &mut compiler_environment,
+            );
 
-        // Create shared compilation context from core library (efficient, no duplication)
-        let shared_context = outrun_typechecker::shared_context::SharedCompilationContextFactory::create_from_core_library();
+        // Use the UnificationContext from the compiler environment that just compiled core library
+        let unification_context = compiler_environment.unification_context().clone();
+
+        // Create shared context for compatibility with other parts of the system
+        let shared_context =
+            outrun_typechecker::shared_context::SharedCompilationContext::new(core_compilation);
         let compilation_session = shared_context.create_session_context();
-
-        // Use the UnificationContext from the core compilation to ensure TypeInterner consistency
-        let unification_context = shared_context.core_compilation().type_context.clone();
 
         // Create interpreter context with the CompilerEnvironment
         let interpreter_context = InterpreterContext::new(

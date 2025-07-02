@@ -29,12 +29,15 @@ Integer.abs(value: 42)
             for error in &errors {
                 println!("  - {error:?}");
             }
-            
+
             // Look for specific constraint-related errors vs missing implementation errors
             let has_constraint_errors = errors.iter().any(|e| {
-                matches!(e, crate::error::TypeError::MissingTraitConstraintInDefinition { .. })
+                matches!(
+                    e,
+                    crate::error::TypeError::MissingTraitConstraintInDefinition { .. }
+                )
             });
-            
+
             if has_constraint_errors {
                 println!("✅ Found trait constraint validation errors - system is working");
             } else {
@@ -44,7 +47,7 @@ Integer.abs(value: 42)
     }
 }
 
-#[test] 
+#[test]
 fn test_float_trait_with_integer_constraints() {
     let source = r#"
 Integer.abs(value: 42)
@@ -69,7 +72,7 @@ Integer.abs(value: 42)
             for error in &errors {
                 println!("  - {error:?}");
             }
-            
+
             // We expect this to have errors due to missing implementations,
             // but the constraint system should be working
             println!("ℹ️  Errors are expected due to missing core library implementations");
@@ -102,7 +105,7 @@ Float.abs(value: 3.14)
             for error in &errors {
                 println!("  - {error:?}");
             }
-            
+
             // We expect this to have errors due to missing implementations,
             // but the constraint system should be working
             println!("ℹ️  Errors are expected due to missing core library implementations");

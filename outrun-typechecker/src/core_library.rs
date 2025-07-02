@@ -30,6 +30,9 @@ pub fn load_and_compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
     collection: ProgramCollection,
 ) -> CompilationResult {
+    // Clear any existing cache to ensure we start fresh for core library
+    crate::smt::solver_pool::clear_cache();
+
     match compiler_env.compile_collection(collection.clone()) {
         Ok(result) => result,
         Err(errors) => {

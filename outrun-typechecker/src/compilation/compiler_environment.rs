@@ -705,10 +705,13 @@ impl CompilerEnvironment {
             return Err(validation_errors);
         }
 
-        // Display SMT cache performance statistics
-        let cache_stats = crate::smt::solver_pool::get_cache_stats();
-        if cache_stats.total_queries > 0 {
-            println!("🚀 SMT Cache Performance: {}", cache_stats);
+        // Display SMT cache performance statistics only in debug mode
+        #[cfg(debug_assertions)]
+        {
+            let cache_stats = crate::smt::solver_pool::get_cache_stats();
+            if cache_stats.total_queries > 0 {
+                eprintln!("🚀 SMT Cache Performance: {}", cache_stats);
+            }
         }
 
         Ok(result)
@@ -2517,14 +2520,18 @@ impl CompilerEnvironment {
     }
 
     /// Fast check for obviously incompatible types to avoid SMT calls
-    pub fn definitely_incompatible_types(&self, impl_type: &StructuredType, trait_type: &StructuredType) -> bool {
+    pub fn definitely_incompatible_types(
+        &self,
+        impl_type: &StructuredType,
+        trait_type: &StructuredType,
+    ) -> bool {
         match (impl_type, trait_type) {
             // Simple type mismatches that can never be compatible
             (StructuredType::Simple(impl_id), StructuredType::Simple(trait_id)) => {
                 // Check if these are known to be completely different type families
                 if let (Some(impl_name), Some(trait_name)) = (
                     self.resolve_type(impl_id.clone()),
-                    self.resolve_type(trait_id.clone())
+                    self.resolve_type(trait_id.clone()),
                 ) {
                     // Quick check: Integer vs String vs Boolean etc. can never be compatible
                     self.are_incompatible_primitive_types(&impl_name, &trait_name)
@@ -2678,7 +2685,10 @@ impl CompilerEnvironment {
         context.add_smt_constraint(constraint);
 
         // Use cached SMT solver for better performance
-        match crate::smt::solver_pool::check_constraints_satisfiable_cached(&context.smt_constraints, self) {
+        match crate::smt::solver_pool::check_constraints_satisfiable_cached(
+            &context.smt_constraints,
+            self,
+        ) {
             Ok(satisfiable) => Ok(satisfiable),
             Err(e) => Err(e),
         }

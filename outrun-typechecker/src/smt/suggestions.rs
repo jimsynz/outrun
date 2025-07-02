@@ -176,10 +176,10 @@ impl ErrorSuggestionGenerator {
                             SMTConstraint::GuardCondition { .. } => {
                                 "Remove guard condition requirement".to_string()
                             }
-                            SMTConstraint::TypeParameterUnification { 
-                                parameter_name, 
-                                concrete_type, 
-                                .. 
+                            SMTConstraint::TypeParameterUnification {
+                                parameter_name,
+                                concrete_type,
+                                ..
                             } => {
                                 format!(
                                     "Remove type parameter constraint: {} = {}",
@@ -192,7 +192,9 @@ impl ErrorSuggestionGenerator {
                                 bound_type,
                                 ..
                             } => {
-                                let var_name = if let Some(name) = compiler_env.resolve_type(variable_id.clone()) {
+                                let var_name = if let Some(name) =
+                                    compiler_env.resolve_type(variable_id.clone())
+                                {
                                     name
                                 } else {
                                     format!("TypeVar_{}", variable_id.hash)
@@ -219,7 +221,8 @@ impl ErrorSuggestionGenerator {
                                 bound_traits,
                                 ..
                             } => {
-                                let bound_names = bound_traits.iter()
+                                let bound_names = bound_traits
+                                    .iter()
                                     .map(|t| self.type_to_string(t))
                                     .collect::<Vec<_>>()
                                     .join(", ");
@@ -229,10 +232,7 @@ impl ErrorSuggestionGenerator {
                                     bound_names
                                 )
                             }
-                            SMTConstraint::ConcreteSelfBinding {
-                                concrete_type,
-                                ..
-                            } => {
+                            SMTConstraint::ConcreteSelfBinding { concrete_type, .. } => {
                                 format!(
                                     "Remove concrete Self binding: Self = {}",
                                     self.type_to_string(concrete_type)

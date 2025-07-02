@@ -17,107 +17,100 @@ can span multiple lines
 """)
 struct Outrun.Core.String() {}
 
-# Display trait implementation  
 impl Display for Outrun.Core.String {
     def to_string(value: Self): Outrun.Core.String {
-        # String displays as itself
         value
     }
 }
 
 
-# String trait implementation
 impl String for Outrun.Core.String {
     def length(value: Self): Integer {
         Outrun.Intrinsic.string_length(value: value)
     }
-    
+
     def char_at(value: Self, index: Integer): Option<Self> {
         Outrun.Intrinsic.string_char_at(value: value, index: index)
     }
-    
+
     def slice(value: Self, start: Integer, end: Integer): Self {
         Outrun.Intrinsic.string_slice(value: value, start: start, end: end)
     }
-    
+
     def concat(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.string_concat(lhs: lhs, rhs: rhs)
     }
-    
+
     def index_of(value: Self, search: Self): Option<Integer> {
         Outrun.Intrinsic.string_index_of(value: value, search: search)
     }
-    
-    
+
+
     def to_upper(value: Self): Self {
         Outrun.Intrinsic.string_to_upper(value: value)
     }
-    
+
     def to_lower(value: Self): Self {
         Outrun.Intrinsic.string_to_lower(value: value)
     }
-    
+
     def trim(value: Self): Self {
         Outrun.Intrinsic.string_trim(value: value)
     }
-    
+
     def trim_start(value: Self): Self {
         Outrun.Intrinsic.string_trim_start(value: value)
     }
-    
+
     def trim_end(value: Self): Self {
         Outrun.Intrinsic.string_trim_end(value: value)
     }
-    
+
     def valid_utf8?(value: Self): Boolean {
         Outrun.Intrinsic.string_valid_utf8(value: value)
     }
-    
+
     def to_string(value: Self): Outrun.Core.String {
-        # Core string converts to itself
         value
     }
 }
 
-# Equality trait implementation
 impl Equality for Outrun.Core.String {
     def equal?(lhs: Self, rhs: Self): Boolean {
         Outrun.Intrinsic.string_eq(lhs: lhs, rhs: rhs)
     }
 }
 
-# Binary trait implementation
 impl Binary for Outrun.Core.String {
     def byte_size(value: Self): Integer {
         Outrun.Intrinsic.binary_byte_size(value: value)
     }
-    
+
     def byte_at(value: Self, index: Integer): Option<Integer> {
         Outrun.Intrinsic.binary_byte_at(value: value, index: index)
     }
-    
+
     def slice(value: Self, start: Integer, end: Integer): Self {
         Outrun.Intrinsic.binary_slice(value: value, start: start, end: end)
     }
-    
+
     def concat(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.binary_concat(lhs: lhs, rhs: rhs)
     }
-    
+
     def index_of(value: Self, search: Self): Option<Integer> {
         Outrun.Intrinsic.binary_index_of(value: value, search: search)
     }
-    
+
     def to_hex(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.binary_to_hex(value: value)
     }
-    
+
     def from_hex(value: String): Option<Self> {
         Outrun.Intrinsic.binary_from_hex(value: String.to_string(value: value))
     }
 }
 
-# Default trait implementation
 impl Default for Outrun.Core.String {
     def default(): Self {
         ""

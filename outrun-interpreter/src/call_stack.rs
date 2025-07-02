@@ -548,7 +548,14 @@ mod tests {
 
         // Test with frames in stack
         let mut stack_with_frames = CallStack::new();
-        let frame1 = CallFrame::new(func_path1.clone(), HashMap::new(), None, test_span(), None, None);
+        let frame1 = CallFrame::new(
+            func_path1.clone(),
+            HashMap::new(),
+            None,
+            test_span(),
+            None,
+            None,
+        );
         stack_with_frames.push_frame(frame1).unwrap();
 
         // Different function - no recursion
@@ -678,8 +685,22 @@ mod tests {
         };
 
         let frame1 = CallFrame::new(simple_path, HashMap::new(), None, test_span(), None, None);
-        let frame2 = CallFrame::new(qualified_path, HashMap::new(), None, test_span(), None, None);
-        let frame3 = CallFrame::new(expression_path, HashMap::new(), None, test_span(), None, None);
+        let frame2 = CallFrame::new(
+            qualified_path,
+            HashMap::new(),
+            None,
+            test_span(),
+            None,
+            None,
+        );
+        let frame3 = CallFrame::new(
+            expression_path,
+            HashMap::new(),
+            None,
+            test_span(),
+            None,
+            None,
+        );
 
         assert_eq!(frame1.function_name(), "simple");
         assert_eq!(frame2.function_name(), "Module.qualified");
@@ -782,7 +803,14 @@ mod tests {
         // Initial call - should push normally
         let mut params1 = HashMap::new();
         params1.insert("n".to_string(), Value::integer(5));
-        let frame1 = CallFrame::new(factorial_path.clone(), params1, None, test_span(), None, None);
+        let frame1 = CallFrame::new(
+            factorial_path.clone(),
+            params1,
+            None,
+            test_span(),
+            None,
+            None,
+        );
         stack.push_frame_or_tail_call(frame1, false).unwrap();
 
         assert_eq!(stack.depth(), 1);
@@ -791,7 +819,14 @@ mod tests {
         // Recursive call, not in tail position - should push normally
         let mut params2 = HashMap::new();
         params2.insert("n".to_string(), Value::integer(4));
-        let frame2 = CallFrame::new(factorial_path.clone(), params2, None, test_span(), None, None);
+        let frame2 = CallFrame::new(
+            factorial_path.clone(),
+            params2,
+            None,
+            test_span(),
+            None,
+            None,
+        );
         stack.push_frame_or_tail_call(frame2, false).unwrap();
 
         assert_eq!(stack.depth(), 2);
@@ -799,7 +834,14 @@ mod tests {
         // Recursive call in tail position - should optimize
         let mut params3 = HashMap::new();
         params3.insert("n".to_string(), Value::integer(3));
-        let frame3 = CallFrame::new(factorial_path.clone(), params3, None, test_span(), None, None);
+        let frame3 = CallFrame::new(
+            factorial_path.clone(),
+            params3,
+            None,
+            test_span(),
+            None,
+            None,
+        );
         stack.push_frame_or_tail_call(frame3, true).unwrap();
 
         assert_eq!(stack.depth(), 2); // Same depth due to optimization
@@ -848,7 +890,14 @@ mod tests {
         };
 
         // Create frame with tail calls
-        let frame = CallFrame::new(factorial_path, HashMap::new(), None, test_span(), None, None);
+        let frame = CallFrame::new(
+            factorial_path,
+            HashMap::new(),
+            None,
+            test_span(),
+            None,
+            None,
+        );
         stack.push_frame(frame).unwrap();
 
         // Perform some tail call optimizations
@@ -887,7 +936,14 @@ mod tests {
         let factorial_path = TypedFunctionPath::Simple {
             name: "factorial".to_string(),
         };
-        let mut frame = CallFrame::new(factorial_path, HashMap::new(), None, test_span(), None, None);
+        let mut frame = CallFrame::new(
+            factorial_path,
+            HashMap::new(),
+            None,
+            test_span(),
+            None,
+            None,
+        );
 
         // Add some locals
         frame.set_local_variable("temp".to_string(), Value::string("test".to_string()));

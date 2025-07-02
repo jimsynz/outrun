@@ -18,16 +18,15 @@ case in optional value scenarios.
 """)
 struct Outrun.Option.None<T>() {}
 
-# Implementation of Option trait for None variant - works for any T
 impl<T> Option<T> for Outrun.Option.None<T> {
     def some?(value: Self): Boolean {
-        false  # None never contains a value
+        false
     }
-    
+
     def none?(value: Self): Boolean {
-        true  # None is always empty
+        true
     }
-    
+
     def unwrap(value: Self): T {
         Outrun.Intrinsic.panic(message: "Attempt to unwrap a None")
     }

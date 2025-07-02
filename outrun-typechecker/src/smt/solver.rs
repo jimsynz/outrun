@@ -71,35 +71,35 @@ pub struct Z3Context {
 impl Z3Context {
     pub fn new() -> Self {
         let mut config = Config::new();
-        
+
         // Optimize Z3 configuration for Outrun's constraint patterns
         Self::configure_for_performance(&mut config);
-        
+
         let context = Context::new(&config);
         Self { context }
     }
-    
+
     /// Configure Z3 for optimal performance on Outrun type constraints
     fn configure_for_performance(config: &mut Config) {
         // Set timeout for individual solver calls (5 seconds)
         config.set_param_value("timeout", "5000");
-        
+
         // Enable model generation for extracting type assignments
         config.set_model_generation(true);
-        
+
         // Optimize for satisfiability checking (vs proof generation)
         config.set_proof_generation(false);
         config.set_param_value("unsat_core", "false");
-        
+
         // Disable auto configuration to use our custom settings
         config.set_param_value("auto_config", "false");
-        
+
         // Set resource limit to prevent runaway queries
         config.set_param_value("rlimit", "100000");
-        
+
         // Only use binary API compatible parameters
         config.set_param_value("type_check", "true");
-        
+
         // Note: model_validate and well_sorted_check are shell-only parameters
         // and cannot be set via the binary API
     }
@@ -181,8 +181,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let generic_sort = self
                         .translator
                         .translate_structured_type(generic_type, compiler_env);
-                    let generic_var =
-                        Bool::new_const(self.context, format!("type_{generic_sort}"));
+                    let generic_var = Bool::new_const(self.context, format!("type_{generic_sort}"));
 
                     let mut disjuncts = Vec::new();
                     for candidate in concrete_candidates {
@@ -219,11 +218,13 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let concrete_sort = self
                         .translator
                         .translate_structured_type(concrete_type, compiler_env);
-                    
+
                     // Create variables for the parameter and concrete type
-                    let param_var = Bool::new_const(self.context, format!("param_{parameter_name}"));
-                    let concrete_var = Bool::new_const(self.context, format!("type_{concrete_sort}"));
-                    
+                    let param_var =
+                        Bool::new_const(self.context, format!("param_{parameter_name}"));
+                    let concrete_var =
+                        Bool::new_const(self.context, format!("type_{concrete_sort}"));
+
                     // Assert they are equal
                     let equality = param_var._eq(&concrete_var);
                     self.solver.assert(&equality);
@@ -237,17 +238,18 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let bound_sort = self
                         .translator
                         .translate_structured_type(bound_type, compiler_env);
-                    
-                    let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
-                        format!("TypeVar_{type_name}")
-                    } else {
-                        format!("TypeVar_unknown_{}", variable_id.hash)
-                    };
-                    
+
+                    let var_name =
+                        if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
+                            format!("TypeVar_{type_name}")
+                        } else {
+                            format!("TypeVar_unknown_{}", variable_id.hash)
+                        };
+
                     // Create variables for the TypeVariable and bound type
                     let type_var = Bool::new_const(self.context, var_name);
                     let bound_var = Bool::new_const(self.context, format!("type_{bound_sort}"));
-                    
+
                     // Assert they are equal
                     let equality = type_var._eq(&bound_var);
                     self.solver.assert(&equality);
@@ -281,23 +283,23 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let trait_defined_sort = self
                         .translator
                         .translate_structured_type(trait_being_defined, compiler_env);
-                    
+
                     // For each bound trait, create an implication:
                     // implements(Self, TraitBeingDefined) → implements(Self, BoundTrait)
                     for bound_trait in bound_traits {
                         let bound_sort = self
                             .translator
                             .translate_structured_type(bound_trait, compiler_env);
-                        
+
                         let implements_defined = Bool::new_const(
-                            self.context, 
-                            format!("implements_{self_var_name}_{trait_defined_sort}")
+                            self.context,
+                            format!("implements_{self_var_name}_{trait_defined_sort}"),
                         );
                         let implements_bound = Bool::new_const(
-                            self.context, 
-                            format!("implements_{self_var_name}_{bound_sort}")
+                            self.context,
+                            format!("implements_{self_var_name}_{bound_sort}"),
                         );
-                        
+
                         // Assert: implements_defined → implements_bound
                         let implication = Bool::implies(&implements_defined, &implements_bound);
                         self.solver.assert(&implication);
@@ -313,10 +315,11 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let concrete_sort = self
                         .translator
                         .translate_structured_type(concrete_type, compiler_env);
-                    
+
                     let self_var = Bool::new_const(self.context, self_var_name);
-                    let concrete_var = Bool::new_const(self.context, format!("type_{concrete_sort}"));
-                    
+                    let concrete_var =
+                        Bool::new_const(self.context, format!("type_{concrete_sort}"));
+
                     // Assert Self = ConcreteType
                     let equality = self_var._eq(&concrete_var);
                     self.solver.assert(&equality);
@@ -332,10 +335,11 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let inferred_sort = self
                         .translator
                         .translate_structured_type(inferred_type, compiler_env);
-                    
+
                     let self_var = Bool::new_const(self.context, self_var_name);
-                    let inferred_var = Bool::new_const(self.context, format!("type_{inferred_sort}"));
-                    
+                    let inferred_var =
+                        Bool::new_const(self.context, format!("type_{inferred_sort}"));
+
                     // Create a weighted constraint based on confidence
                     let equality = self_var._eq(&inferred_var);
                     match confidence {
@@ -434,7 +438,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         format!("param_{parameter_name}"),
                         concrete_type.clone(),
                     );
-                    
+
                     // Also store the concrete type assignment
                     let concrete_sort = self
                         .translator
@@ -471,7 +475,8 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     // For universal constraints, we might not have a specific assignment,
                     // but we can store the trait being defined as a fallback
                     let self_var_name = format!("Self_{}", self_variable_id.hash);
-                    constraint_model.add_type_assignment(self_var_name, trait_being_defined.clone());
+                    constraint_model
+                        .add_type_assignment(self_var_name, trait_being_defined.clone());
                 }
                 _ => {
                     // Handle other constraint types as needed
@@ -585,7 +590,10 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
         compiler_env: &CompilerEnvironment,
     ) -> SolverResult {
         self.reset();
-        if self.add_constraints(&constraint_set.constraints, compiler_env).is_err() {
+        if self
+            .add_constraints(&constraint_set.constraints, compiler_env)
+            .is_err()
+        {
             return SolverResult::Unknown("Failed to add constraints".to_string());
         }
         self.solve()
