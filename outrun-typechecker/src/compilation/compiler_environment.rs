@@ -2494,22 +2494,21 @@ impl CompilerEnvironment {
         };
 
         // Use the existing SMT solver infrastructure
-        let z3_context = crate::smt::solver::Z3Context::new();
-        let mut solver = z3_context.create_solver();
+        crate::smt::solver_pool::with_solver(|solver| {
+            // Add the trait implementation constraint
+            solver
+                .add_constraints(&[constraint], self)
+                .unwrap_or_else(|_e| {
+                    // Failed to add constraint
+                });
 
-        // Add the trait implementation constraint
-        solver
-            .add_constraints(&[constraint], self)
-            .unwrap_or_else(|e| {
-                // Failed to add constraint
-            });
-
-        // Solve and check result
-        match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_model) => true,
-            crate::smt::solver::SolverResult::Unsatisfiable(_conflicts) => false,
-            crate::smt::solver::SolverResult::Unknown(_reason) => false,
-        }
+            // Solve and check result
+            match solver.solve() {
+                crate::smt::solver::SolverResult::Satisfiable(_model) => true,
+                crate::smt::solver::SolverResult::Unsatisfiable(_conflicts) => false,
+                crate::smt::solver::SolverResult::Unknown(_reason) => false,
+            }
+        })
     }
 
     /// Resolve TypeVariable constraints using the SMT system
@@ -2623,28 +2622,26 @@ impl CompilerEnvironment {
         context.add_smt_constraint(constraint);
 
         // Create SMT solver and check satisfiability
-        let z3_context = crate::smt::solver::Z3Context::new();
-        let mut solver = z3_context.create_solver();
-
-        // Add all constraints to the solver
-        if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
-            // SMT solver error
-            return Err(e);
-        }
-
-        // Solve and return result
-        match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
-            crate::smt::solver::SolverResult::Unsatisfiable(_) => {
-                // SMT unsatisfiable: type does not implement trait
-                Ok(false)
+        crate::smt::solver_pool::with_solver(|solver| {
+            // Add all constraints to the solver
+            if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
+                return Err(e);
             }
-            crate::smt::solver::SolverResult::Unknown(_) => {
-                // SMT unknown result for trait implementation
-                // For unknown results, fall back to false for safety
-                Ok(false)
+
+            // Solve and return result
+            match solver.solve() {
+                crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
+                crate::smt::solver::SolverResult::Unsatisfiable(_) => {
+                    // SMT unsatisfiable: type does not implement trait
+                    Ok(false)
+                }
+                crate::smt::solver::SolverResult::Unknown(_) => {
+                    // SMT unknown result for trait implementation
+                    // For unknown results, fall back to false for safety
+                    Ok(false)
+                }
             }
-        }
+        })
     }
 
     /// Resolve a trait to a concrete implementation type
@@ -2837,46 +2834,44 @@ impl CompilerEnvironment {
         }
 
         // Use actual SMT solving to resolve Self type - no fallbacks!
-        let z3_context = crate::smt::solver::Z3Context::new();
-        let mut solver = z3_context.create_solver();
+        crate::smt::solver_pool::with_solver(|solver| {
+            // Add all constraints to the solver (including the Self inference constraints)
+            if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
+                return Err(e);
+            }
 
-        // Add all constraints to the solver (including the Self inference constraints)
-        if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
-            // SMT solver error when resolving Self
-            return Err(e);
-        }
-
-        // Solve the constraints - this must be mathematically sound
-        match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(model) => {
-                // Extract the Self type from the model
-                let self_var_name = format!("Self_{}", self_type_id.hash);
-                if let Some(resolved_type) =
-                    self.extract_self_type_from_model(&model, &self_var_name)
-                {
-                    Ok(resolved_type)
-                } else {
-                    // If SMT says satisfiable but we can't extract the type, this is a bug
-                    Err(crate::smt::solver::SMTError::SolverError(format!(
-                        "SMT model is satisfiable but missing Self variable {self_var_name}"
+            // Solve the constraints - this must be mathematically sound
+            match solver.solve() {
+                crate::smt::solver::SolverResult::Satisfiable(model) => {
+                    // Extract the Self type from the model
+                    let self_var_name = format!("Self_{}", self_type_id.hash);
+                    if let Some(resolved_type) =
+                        self.extract_self_type_from_model(&model, &self_var_name)
+                    {
+                        Ok(resolved_type)
+                    } else {
+                        // If SMT says satisfiable but we can't extract the type, this is a bug
+                        Err(crate::smt::solver::SMTError::SolverError(format!(
+                            "SMT model is satisfiable but missing Self variable {self_var_name}"
+                        )))
+                    }
+                }
+                crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
+                    // SMT constraints unsatisfiable for Self resolution
+                    Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                        "Conflicting Self type constraints - this indicates a type error: {conflicting:?}"
+                    )))
+                }
+                crate::smt::solver::SolverResult::Unknown(reason) => {
+                    // SMT solver returned unknown for Self resolution
+                    // Unknown means we can't prove satisfiability OR unsatisfiability
+                    // This should be treated as a solver limitation, not a fallback opportunity
+                    Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                        "SMT solver cannot determine satisfiability: {reason}"
                     )))
                 }
             }
-            crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
-                // SMT constraints unsatisfiable for Self resolution
-                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
-                    "Conflicting Self type constraints - this indicates a type error: {conflicting:?}"
-                )))
-            }
-            crate::smt::solver::SolverResult::Unknown(reason) => {
-                // SMT solver returned unknown for Self resolution
-                // Unknown means we can't prove satisfiability OR unsatisfiability
-                // This should be treated as a solver limitation, not a fallback opportunity
-                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
-                    "SMT solver cannot determine satisfiability: {reason}"
-                )))
-            }
-        }
+        })
     }
 
     /// Extract the resolved Self type from an SMT model
@@ -3594,17 +3589,16 @@ impl CompilerEnvironment {
             return true; // Empty constraint set is trivially satisfiable
         }
 
-        let z3_context = crate::smt::solver::Z3Context::new();
-        let mut solver = z3_context.create_solver();
-
-        // Add the specific constraints we want to check
-        match solver.add_constraints(constraints, self) {
-            Ok(_) => match solver.solve() {
-                crate::smt::solver::SolverResult::Satisfiable(_) => true,
-                _ => false,
-            },
-            Err(_) => false,
-        }
+        crate::smt::solver_pool::with_solver(|solver| {
+            // Add the specific constraints we want to check
+            match solver.add_constraints(constraints, self) {
+                Ok(_) => match solver.solve() {
+                    crate::smt::solver::SolverResult::Satisfiable(_) => true,
+                    _ => false,
+                },
+                Err(_) => false,
+            }
+        })
     }
 
     /// Instantiate a generic implementation function with concrete types
@@ -5137,10 +5131,6 @@ impl CompilerEnvironment {
     ) -> Result<StructuredType, crate::smt::solver::SMTError> {
         use crate::smt::solver::{SolverResult, Z3Context};
 
-        // Create SMT solver
-        let z3_context = Z3Context::new();
-        let mut solver = z3_context.create_solver();
-
         // Get existing SMT constraints from unification context
         let constraints = self.unification_context().smt_constraints.clone();
 
@@ -5149,28 +5139,32 @@ impl CompilerEnvironment {
             return Ok(structured_type.clone());
         }
 
-        solver.add_constraints(&constraints, self)?;
+        // Create SMT solver and solve constraints
+        crate::smt::solver_pool::with_solver(|solver| {
+            if let Err(e) = solver.add_constraints(&constraints, self) {
+                return Err(e);
+            }
 
-        // Solve constraints
-        match solver.solve() {
-            SolverResult::Satisfiable(model) => {
-                let resolved_type = self.apply_smt_model_to_type(structured_type, &model);
-
-                Ok(resolved_type)
+            // Solve constraints
+            match solver.solve() {
+                SolverResult::Satisfiable(model) => {
+                    let resolved_type = self.apply_smt_model_to_type(structured_type, &model);
+                    Ok(resolved_type)
+                }
+                SolverResult::Unsatisfiable(conflicts) => {
+                    // SMT constraints unsatisfiable
+                    Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                        "Type variable resolution failed: conflicting constraints: {conflicts:?}"
+                    )))
+                }
+                SolverResult::Unknown(reason) => {
+                    // SMT solver returned unknown
+                    Err(crate::smt::solver::SMTError::SolvingFailed(format!(
+                        "Type variable resolution failed: {reason}"
+                    )))
+                }
             }
-            SolverResult::Unsatisfiable(conflicts) => {
-                // SMT constraints unsatisfiable
-                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
-                    "Type variable resolution failed: conflicting constraints: {conflicts:?}"
-                )))
-            }
-            SolverResult::Unknown(reason) => {
-                // SMT solver returned unknown
-                Err(crate::smt::solver::SMTError::SolvingFailed(format!(
-                    "Type variable resolution failed: {reason}"
-                )))
-            }
-        }
+        })
     }
 
     /// Find concrete implementations that are compatible with the resolved type
