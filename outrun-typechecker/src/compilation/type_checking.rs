@@ -1914,7 +1914,7 @@ impl TypeCheckingVisitor {
                                                         call,
                                                     );
                                                 } else {
-                                                    eprintln!("❌ Concrete implementation doesn't satisfy trait constraint");
+                                                    // Concrete implementation doesn't satisfy trait constraint
                                                 }
                                             }
                                         }
@@ -3785,7 +3785,7 @@ impl TypeCheckingVisitor {
                     {
                         Ok(resolved) => resolved,
                         Err(err) => {
-                            eprintln!("⚠️ SMT resolution failed for argument type: {err:?}");
+                            // SMT resolution failed for argument type
                             arg_type // Fallback to original type
                         }
                     }

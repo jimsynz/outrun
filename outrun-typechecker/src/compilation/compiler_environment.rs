@@ -2233,12 +2233,7 @@ impl CompilerEnvironment {
                 .dispatch_table
                 .register_trait_impl(trait_id.clone(), impl_id.clone());
         } else {
-            eprintln!(
-                "    ⚠️ Cannot register dispatch for complex types: {}.{} for {}",
-                trait_type.to_string_representation(),
-                function_name,
-                impl_type.to_string_representation()
-            );
+            // Cannot register dispatch for complex types
         }
     }
 
@@ -2481,13 +2476,7 @@ impl CompilerEnvironment {
         // Step 5: Use SMT constraint generation and solving - no manual type checking
         let result = self.smt_check_trait_implementation(&resolved_impl_type, &resolved_trait_type);
 
-        if !result {
-            eprintln!(
-                "❌ No implementation: {} does not implement {}",
-                resolved_impl_type.to_string_representation(),
-                resolved_trait_type.to_string_representation()
-            );
-        }
+        // Result handled by caller with proper error reporting
 
         result
     }
@@ -2647,19 +2636,11 @@ impl CompilerEnvironment {
         match solver.solve() {
             crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
             crate::smt::solver::SolverResult::Unsatisfiable(_) => {
-                eprintln!(
-                    "❌ SMT unsatisfiable: {} does not implement {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation()
-                );
+                // SMT unsatisfiable: type does not implement trait
                 Ok(false)
             }
             crate::smt::solver::SolverResult::Unknown(_) => {
-                eprintln!(
-                    "❓ SMT unknown result for {} implementing {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation()
-                );
+                // SMT unknown result for trait implementation
                 // For unknown results, fall back to false for safety
                 Ok(false)
             }
@@ -2676,10 +2657,7 @@ impl CompilerEnvironment {
         let implementations = self.find_all_trait_implementations(trait_type);
 
         if implementations.is_empty() {
-            eprintln!(
-                "❌ No implementations found for trait {}",
-                trait_type.to_string_representation()
-            );
+            // No implementations found for trait
             return Err(crate::smt::solver::SMTError::SolverError(format!(
                 "No implementations found for trait {}",
                 trait_type.to_string_representation()
@@ -2702,7 +2680,7 @@ impl CompilerEnvironment {
                 if let Some(name) = self.resolve_type(trait_id.clone()) {
                     name
                 } else {
-                    eprintln!("❌ Could not resolve trait name for {trait_id:?}");
+                    // Could not resolve trait name
                     return implementations;
                 }
             }
@@ -2710,15 +2688,12 @@ impl CompilerEnvironment {
                 if let Some(name) = self.resolve_type(base.clone()) {
                     name
                 } else {
-                    eprintln!("❌ Could not resolve generic trait name for {base:?}");
+                    // Could not resolve generic trait name
                     return implementations;
                 }
             }
             _ => {
-                eprintln!(
-                    "❌ Unsupported trait type: {}",
-                    trait_type.to_string_representation()
-                );
+                // Unsupported trait type
                 return implementations;
             }
         };
@@ -2762,7 +2737,7 @@ impl CompilerEnvironment {
                 if let Some(name) = self.resolve_type(trait_id.clone()) {
                     name
                 } else {
-                    eprintln!("❌ Could not resolve trait name for {trait_id:?}");
+                    // Could not resolve trait name
                     return implementations;
                 }
             }
@@ -2770,15 +2745,12 @@ impl CompilerEnvironment {
                 if let Some(name) = self.resolve_type(base.clone()) {
                     name
                 } else {
-                    eprintln!("❌ Could not resolve generic trait name for {base:?}");
+                    // Could not resolve generic trait name
                     return implementations;
                 }
             }
             _ => {
-                eprintln!(
-                    "❌ Unsupported trait type: {}",
-                    trait_type.to_string_representation()
-                );
+                // Unsupported trait type
                 return implementations;
             }
         };
@@ -2929,15 +2901,9 @@ impl CompilerEnvironment {
                 }
             }
 
-            eprintln!("❌ No Self type assignment found in SMT model");
-            eprintln!(
-                "📊 Model contains type assignments: {:?}",
-                model.type_assignments.keys().collect::<Vec<_>>()
-            );
-            eprintln!(
-                "📊 Model contains boolean assignments: {:?}",
-                model.boolean_assignments.keys().collect::<Vec<_>>()
-            );
+            // No Self type assignment found in SMT model
+            // Model contains type assignments for debugging
+            // Model contains boolean assignments for debugging
             None
         }
     }
@@ -3151,11 +3117,7 @@ impl CompilerEnvironment {
                 .smt_constraints
                 .push(trait_impl_constraint);
         } else {
-            eprintln!(
-                "⚠️ Failed to add SMT constraint for {} implements {}",
-                impl_type.to_string_representation(),
-                trait_type.to_string_representation()
-            );
+            // Failed to add SMT constraint for trait implementation
         }
     }
 
@@ -3415,9 +3377,7 @@ impl CompilerEnvironment {
             StructuredType::Simple(type_id) => type_id.clone(),
             StructuredType::Generic { base, .. } => base.clone(),
             _ => {
-                eprintln!(
-                    "❌ Qualified function lookup failed: unsupported module type {module_type:?}.{function_name:?}"
-                );
+                // Qualified function lookup failed: unsupported module type
                 return None;
             }
         };
@@ -3433,13 +3393,8 @@ impl CompilerEnvironment {
                     if let Some(ref entry) = function_entry {
                         ()
                     } else {
-                        eprintln!(
-                            "❌ Function {type_name}.{function_name_str} not found in module"
-                        );
-                        eprintln!(
-                            "📋 Function count in module: {}",
-                            module.functions_by_name.len()
-                        );
+                        // Function not found in module
+                        // Function count logged for debugging
                     }
                     return function_entry;
                 } else {
@@ -3477,10 +3432,7 @@ impl CompilerEnvironment {
                     }
                     return Some(function.clone());
                 } else {
-                    eprintln!(
-                        "❌ Function {} not found in trait implementation module",
-                        self.resolve_atom_name(&function_name).unwrap_or_default()
-                    );
+                    // Function not found in trait implementation module
                 }
             } else {
                 // No exact module match found, proceeding to SMT-based search
@@ -3497,14 +3449,7 @@ impl CompilerEnvironment {
         }
 
         // If we reach here, the trait implementation is missing or the function doesn't exist
-        eprintln!(
-            "⚠️  No implementation found for trait {} on type {} function {} (original: trait {:?} on type {:?})",
-            resolved_trait_type.to_string_representation(),
-            resolved_impl_type.to_string_representation(),
-            function_name,
-            trait_type,
-            impl_type
-        );
+        // No implementation found for trait function
         None
     }
 
@@ -3632,11 +3577,7 @@ impl CompilerEnvironment {
 
             // Other combinations are structurally incompatible
             _ => {
-                eprintln!(
-                    "❌ Incompatible type combination: {} ↔ {}",
-                    concrete_type.to_string_representation(),
-                    generic_type.to_string_representation()
-                );
+                // Incompatible type combination
                 None
             }
         };
@@ -4549,7 +4490,7 @@ impl CompilerEnvironment {
                 Ok(merged) => merged,
                 Err(conflicts) => {
                     // Log conflicts but proceed with user compilation only
-                    eprintln!("Warning: Compilation conflicts detected: {conflicts:?}");
+                    // Warning: Compilation conflicts detected
                     user_compilation
                 }
             }
@@ -4675,7 +4616,7 @@ impl CompilerEnvironment {
                 }
             }
             _ => {
-                eprintln!("ℹ️  No known core implementations for trait: {trait_name}");
+                // No known core implementations for trait
             }
         }
 
@@ -4863,10 +4804,7 @@ impl CompilerEnvironment {
                         };
                     constraints.push(constraint);
                 } else {
-                    eprintln!(
-                        "⚠️ Unable to resolve TypeVariable {} to concrete type",
-                        type_var_id.hash
-                    );
+                    // Unable to resolve TypeVariable to concrete type
                 }
             }
             StructuredType::Generic { base: _, args } => {
@@ -5221,13 +5159,13 @@ impl CompilerEnvironment {
                 Ok(resolved_type)
             }
             SolverResult::Unsatisfiable(conflicts) => {
-                eprintln!("❌ SMT constraints unsatisfiable: {conflicts:?}");
+                // SMT constraints unsatisfiable
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
                     "Type variable resolution failed: conflicting constraints: {conflicts:?}"
                 )))
             }
             SolverResult::Unknown(reason) => {
-                eprintln!("⚠️ SMT solver returned unknown: {reason}");
+                // SMT solver returned unknown
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
                     "Type variable resolution failed: {reason}"
                 )))
@@ -5312,7 +5250,7 @@ impl CompilerEnvironment {
                 }
 
                 // Fallback: no trait definition found, use the concrete type as-is
-                eprintln!("⚠️ No trait definition found for {base_name}, using concrete type");
+                // No trait definition found, using concrete type
                 (concrete_trait_type.clone(), Vec::new())
             }
             StructuredType::Simple(type_id) => {
@@ -5321,9 +5259,7 @@ impl CompilerEnvironment {
 
                 if let Some(trait_def) = self.find_trait_definition(&type_name) {
                     if trait_def.generic_params.is_some() {
-                        eprintln!(
-                            "⚠️ Simple type {type_name} has generic parameters but used without arguments"
-                        );
+                        // Simple type has generic parameters but used without arguments
                     }
                 }
 
@@ -5354,7 +5290,7 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!("❌ Trait definition not found for: {trait_name}");
+        // Trait definition not found
         None
     }
 
