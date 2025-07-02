@@ -1887,35 +1887,19 @@ impl TypeCheckingVisitor {
                                             trait_func.definition(),
                                             call,
                                         )?;
-                                    // CRITICAL FIX: Check if inferred_self_type is a trait that needs concrete resolution
-                                    eprintln!(
-                                        "🚨 DEBUG: Looking for trait {} on type {}",
-                                        module_name,
-                                        inferred_self_type.to_string_representation()
-                                    );
 
                                     // Check if the type is actually a trait name that should resolve to implementers
                                     if let StructuredType::Simple(_type_name_id) =
                                         &inferred_self_type
                                     {
                                         if self.compiler_environment.is_trait(&inferred_self_type) {
-                                            eprintln!("🎯 Type '{}' is a trait, resolving to concrete implementers", inferred_self_type.to_string_representation());
-
                                             let implementations = self
                                                 .compiler_environment
                                                 .get_trait_implementations(&inferred_self_type);
-                                            eprintln!(
-                                                "🎯 Found {} implementations for trait '{}'",
-                                                implementations.len(),
-                                                inferred_self_type.to_string_representation()
-                                            );
 
                                             if !implementations.is_empty() {
                                                 // Try the first implementation
                                                 let concrete_impl = &implementations[0];
-                                                eprintln!(
-                                                    "✅ Using concrete implementation: {concrete_impl:?}"
-                                                );
 
                                                 // Check if this concrete type implements the required trait
                                                 let module_trait_type =
@@ -1924,8 +1908,6 @@ impl TypeCheckingVisitor {
                                                     concrete_impl,
                                                     &module_trait_type,
                                                 ) {
-                                                    eprintln!("✅ Concrete implementation satisfies trait constraint");
-                                                    // Continue with the concrete implementation instead of erroring
                                                     return self.infer_implementing_type_with_smt(
                                                         module_type_id.clone(),
                                                         trait_func.definition(),
@@ -1938,15 +1920,9 @@ impl TypeCheckingVisitor {
                                         }
                                     }
 
-                                    // GENERIC TRAIT CARTESIAN PRODUCT FIX: Handle Option<T> on concrete types
-                                    eprintln!("🎯 Checking if this is a generic trait mismatch...");
                                     let module_trait_type =
                                         StructuredType::Simple(module_type_id.clone());
                                     if self.compiler_environment.is_trait(&module_trait_type) {
-                                        eprintln!("🎯 Module '{module_name}' is a trait, checking for generic implementations");
-
-                                        // Look for implementations of this trait with the given type as a parameter
-                                        // e.g., find Option<T> implementations where T = Outrun.Core.Integer64
                                         let generic_implementations = self
                                             .compiler_environment
                                             .find_generic_trait_implementations_for_concrete_type(
@@ -1954,16 +1930,8 @@ impl TypeCheckingVisitor {
                                                 &inferred_self_type,
                                             );
 
-                                        eprintln!(
-                                            "🎯 Found {} generic implementations",
-                                            generic_implementations.len()
-                                        );
-
                                         if !generic_implementations.is_empty() {
                                             let concrete_impl = &generic_implementations[0];
-                                            eprintln!(
-                                                "✅ Using generic implementation: {concrete_impl:?}"
-                                            );
 
                                             // Continue with the generic implementation
                                             return self.infer_implementing_type_with_smt(
@@ -3811,19 +3779,11 @@ impl TypeCheckingVisitor {
 
                 // If the argument type contains type variables (like Self), use SMT to resolve them
                 let resolved_arg_type = if self.type_contains_variables(&arg_type) {
-                    eprintln!(
-                        "🧠 Argument type contains variables: {arg_type:?}, using SMT resolution"
-                    );
                     match self
                         .compiler_environment
                         .smt_resolve_type_variables(&arg_type)
                     {
-                        Ok(resolved) => {
-                            eprintln!(
-                                "✅ SMT resolved argument type: {arg_type:?} -> {resolved:?}"
-                            );
-                            resolved
-                        }
+                        Ok(resolved) => resolved,
                         Err(err) => {
                             eprintln!("⚠️ SMT resolution failed for argument type: {err:?}");
                             arg_type // Fallback to original type
@@ -4011,17 +3971,6 @@ impl TypeCheckingVisitor {
         arg_type: &StructuredType,
         trait_type_id: TypeNameId,
     ) -> Result<StructuredType, TypeError> {
-        eprintln!(
-            "🔍 Resolving {} to concrete implementing type for trait call {}",
-            arg_type.to_string_representation(),
-            self.compiler_environment
-                .resolve_type_name(&trait_type_id)
-                .unwrap_or_default()
-        );
-
-        // For calls like Option.some?(value: Option<Integer>), we need to find what concrete type
-        // implements Option<Integer>. Instead of hardcoded mappings, use the trait system.
-
         match arg_type {
             StructuredType::Generic { base, args: _ } => {
                 // Check if this argument type matches the trait being called
@@ -4041,14 +3990,6 @@ impl TypeCheckingVisitor {
                         .compiler_environment
                         .find_trait_implementations(arg_type);
 
-                    eprintln!(
-                        "🔍 Found {} implementations for {}",
-                        concrete_implementations.len(),
-                        arg_type.to_string_representation()
-                    );
-
-                    // For now, prefer the first concrete implementation
-                    // TODO: In the future, use SMT to choose the best implementation based on context
                     for implementation in concrete_implementations {
                         match &implementation {
                             StructuredType::Generic {
@@ -4060,10 +4001,6 @@ impl TypeCheckingVisitor {
                                     .unwrap_or_default();
                                 // Prefer concrete implementations over abstract ones
                                 if impl_name.contains("Outrun.") && impl_name != trait_name {
-                                    eprintln!(
-                                        "✅ Choosing concrete implementation: {}",
-                                        implementation.to_string_representation()
-                                    );
                                     return Ok(implementation);
                                 }
                             }
@@ -4073,10 +4010,6 @@ impl TypeCheckingVisitor {
                                     .resolve_type_name(impl_type_id)
                                     .unwrap_or_default();
                                 if impl_name.contains("Outrun.") && impl_name != trait_name {
-                                    eprintln!(
-                                        "✅ Choosing concrete implementation: {}",
-                                        implementation.to_string_representation()
-                                    );
                                     return Ok(implementation);
                                 }
                             }
@@ -4085,8 +4018,6 @@ impl TypeCheckingVisitor {
                     }
                 }
 
-                // No concrete implementation found, return as-is
-                eprintln!("⚠️ No concrete implementation found, using argument type as-is");
                 Ok(arg_type.clone())
             }
             _ => {
@@ -4096,13 +4027,6 @@ impl TypeCheckingVisitor {
                     .find_trait_implementations(arg_type);
 
                 if !concrete_implementations.is_empty() {
-                    eprintln!(
-                        "🔍 Found {} implementations for simple type {}",
-                        concrete_implementations.len(),
-                        arg_type.to_string_representation()
-                    );
-
-                    // Prefer concrete implementations
                     for implementation in concrete_implementations {
                         if let StructuredType::Simple(impl_type_id) = &implementation {
                             let impl_name = self
@@ -4110,10 +4034,6 @@ impl TypeCheckingVisitor {
                                 .resolve_type_name(impl_type_id)
                                 .unwrap_or_default();
                             if impl_name.contains("Outrun.") {
-                                eprintln!(
-                                    "✅ Choosing concrete implementation: {}",
-                                    implementation.to_string_representation()
-                                );
                                 return Ok(implementation);
                             }
                         }

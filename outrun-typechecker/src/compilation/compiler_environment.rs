@@ -590,10 +590,6 @@ impl CompilerEnvironment {
             if let Ok(mut modules) = self.modules.write() {
                 if let Some(module) = modules.get_mut(&module_key) {
                     module.set_trait_definition(trait_def.clone());
-                    eprintln!(
-                        "🔧 Stored trait definition for {} in module",
-                        trait_def.name_as_string()
-                    );
                 }
             }
         }
@@ -1197,11 +1193,6 @@ impl CompilerEnvironment {
         impl_block: &outrun_parser::ImplBlock,
         source_file: &str,
     ) -> Result<(), TypeError> {
-        eprintln!(
-            "🔧 Extracting trait impl function: {} for impl block",
-            func_def.name.name
-        );
-        // Get type names from TypeSpec path
         let trait_name = impl_block
             .trait_spec
             .path
@@ -1210,6 +1201,7 @@ impl CompilerEnvironment {
             .cloned()
             .collect::<Vec<_>>()
             .join(".");
+
         let impl_type_name = impl_block
             .type_spec
             .path
@@ -1236,17 +1228,8 @@ impl CompilerEnvironment {
         // This ensures we use Generic(Option<T>) instead of Simple(Option) for generic traits
         let trait_type_id = self.intern_type_name(&trait_name);
         let trait_type = if let Some(module) = self.get_module(trait_type_id.clone()) {
-            // Use the full structured type from the module registry
-            eprintln!(
-                "🔧 Found trait module for {}: {:?}",
-                trait_name, module.structured_type
-            );
             module.structured_type
         } else {
-            // Fallback to simple type if module not found
-            eprintln!(
-                "⚠️ Trait module not found for {trait_name}, using Simple type"
-            );
             StructuredType::Simple(trait_type_id)
         };
 
@@ -1259,10 +1242,6 @@ impl CompilerEnvironment {
                 type_params.insert(
                     param.name.name.clone(),
                     StructuredType::TypeVariable(param_type_id.clone()),
-                );
-                eprintln!(
-                    "🔧 Added type parameter: {} -> TypeVariable({})",
-                    param.name.name, param_type_id
                 );
             }
         }
@@ -1283,12 +1262,7 @@ impl CompilerEnvironment {
                 &impl_block.type_spec,
                 &type_params,
             ) {
-                Ok(structured_type) => {
-                    eprintln!(
-                        "🔧 Converted impl type with generics: {structured_type:?}"
-                    );
-                    structured_type
-                }
+                Ok(structured_type) => structured_type,
                 Err(_) => {
                     // Fallback to simple type if conversion fails
                     let impl_type_id = self.intern_type_name(&impl_type_name);
@@ -1405,15 +1379,8 @@ impl CompilerEnvironment {
             // This ensures we use Generic(Option<T>) instead of Simple(Option) for generic traits
             let trait_type_id = self.intern_type_name(&trait_name);
             let trait_structured = if let Some(module) = self.get_module(trait_type_id.clone()) {
-                // Use the full structured type from the module registry
-                eprintln!(
-                    "🔧 Found trait module for {} (in register_trait_implementations): {:?}",
-                    trait_name, module.structured_type
-                );
                 module.structured_type
             } else {
-                // Fallback to simple type if module not found
-                eprintln!("⚠️ Trait module not found for {trait_name} (in register_trait_implementations), using Simple type");
                 StructuredType::Simple(trait_type_id)
             };
 
@@ -1460,11 +1427,7 @@ impl CompilerEnvironment {
         trait_type: &StructuredType,
         impl_block: &ImplBlock,
     ) {
-        eprintln!(
-            "🔄 Generating ConcreteSelfBinding constraints for impl {} for {}",
-            impl_type.to_string_representation(),
-            trait_type.to_string_representation()
-        );
+        // Generate ConcreteSelfBinding constraints
 
         // For each function in the impl block, create Self binding constraints
         for function_def in &impl_block.functions {
@@ -1495,10 +1458,6 @@ impl CompilerEnvironment {
             let mut context = self.unification_context();
             context.add_smt_constraint(concrete_self_constraint);
             self.set_unification_context(context);
-
-            eprintln!(
-                "✅ Generated ConcreteSelfBinding: {self_var_name} = {impl_type:?}"
-            );
         }
 
         // ADDITIONAL: Handle generic Self parameters in impl blocks
@@ -1528,10 +1487,6 @@ impl CompilerEnvironment {
             let mut context = self.unification_context();
             context.add_smt_constraint(generic_concrete_self_constraint);
             self.set_unification_context(context);
-
-            eprintln!(
-                "✅ Generated Generic ConcreteSelfBinding: {generic_self_var_name} = {impl_type:?}"
-            );
         }
     }
 
@@ -1549,8 +1504,6 @@ impl CompilerEnvironment {
         implementations: &[ImplBlock],
         external_variables: HashMap<String, StructuredType>,
     ) -> Result<(), Vec<TypeError>> {
-        println!("🔄 Phase 6: SMT-based type checking with constraint collection");
-
         // Register trait implementations with the unification context
         self.register_trait_implementations(implementations)?;
 
@@ -1584,44 +1537,22 @@ impl CompilerEnvironment {
             return Err(errors);
         }
 
-        println!("✅ Phase 6: SMT constraint collection completed");
         Ok(())
     }
 
     /// NEW: Phase 7 - SMT constraint solving
     fn phase_7_smt_constraint_solving(&mut self) -> Result<(), Vec<TypeError>> {
-        println!("🔄 Phase 7: SMT constraint solving");
-
         // 1. Get accumulated constraints from unification context
         let mut unification_context = self.unification_context();
 
         if !unification_context.has_pending_constraints() {
-            println!("ℹ️  No SMT constraints to solve");
             return Ok(());
         }
 
-        println!(
-            "📊 Solving {} SMT constraints",
-            unification_context.constraint_count()
-        );
-
-        // 2. Solve all accumulated constraints
         let solve_result = unification_context.solve_accumulated_constraints(self);
 
         match solve_result {
             Ok(model) => {
-                println!("✅ SMT constraints solved successfully");
-
-                // 3. Apply solutions back to type system (for now, just log)
-                if !model.is_empty() {
-                    println!(
-                        "📋 Constraint model has {} type assignments and {} boolean assignments",
-                        model.type_assignments.len(),
-                        model.boolean_assignments.len()
-                    );
-                }
-
-                // 4. Store the model for dispatch table generation
                 self.compilation_state.write().unwrap().smt_model = Some(model);
 
                 Ok(())
@@ -1640,8 +1571,6 @@ impl CompilerEnvironment {
         collection: &ProgramCollection,
         order: &[String],
     ) -> Result<(), Vec<TypeError>> {
-        println!("🔄 Phase 8: Calculating dispatch tables using SMT results");
-
         // Get the SMT model from constraint solving
         let smt_model = {
             let state = self.compilation_state.read().unwrap();
@@ -1650,19 +1579,12 @@ impl CompilerEnvironment {
 
         if let Some(model) = smt_model {
             // Use SMT model to determine which trait implementations to include in dispatch tables
-            println!(
-                "📊 Using SMT model with {} type assignments for dispatch calculation",
-                model.type_assignments.len()
-            );
 
             // For now, fall back to traditional dispatch table calculation
             // TODO: Implement SMT-guided dispatch table generation
             self.calculate_dispatch_tables(collection, order)?;
-
-            println!("✅ Dispatch tables calculated using SMT guidance");
         } else {
             // No SMT model available, use traditional approach
-            println!("⚠️  No SMT model available, using traditional dispatch calculation");
             self.calculate_dispatch_tables(collection, order)?;
         }
 
@@ -1885,41 +1807,21 @@ impl CompilerEnvironment {
                 } else {
                     // Check if this is a trait name that should resolve to concrete implementers
                     let potential_trait_type = StructuredType::Simple(type_id.clone());
-                    eprintln!("🔍 Checking if '{type_name}' is a trait...");
                     if self.is_trait(&potential_trait_type) {
-                        eprintln!(
-                            "🎯 Type annotation '{type_name}' is a trait, resolving to implementers"
-                        );
-
-                        // Find all concrete types that implement this trait
                         let implementations = self.get_trait_implementations(&potential_trait_type);
-                        eprintln!(
-                            "🎯 Found {} implementations for trait '{}'",
-                            implementations.len(),
-                            type_name
-                        );
 
                         if implementations.is_empty() {
-                            eprintln!("❌ No implementations found for trait '{type_name}'");
                             Err(TypeError::UndefinedType {
                                 span: (0, 0).into(), // TODO: Get actual span from type annotation
                                 name: format!("{type_name} (no concrete implementations found)"),
                             })
                         } else if implementations.len() == 1 {
-                            // Single implementer - resolve to that concrete type
                             let concrete_type = implementations[0].clone();
-                            eprintln!(
-                                "✅ Resolved trait '{type_name}' to concrete type: {concrete_type:?}"
-                            );
+
                             Ok(concrete_type)
                         } else {
-                            // Multiple implementers - for now, use the first one
-                            // TODO: This might need more sophisticated resolution logic
                             let concrete_type = implementations[0].clone();
-                            eprintln!(
-                                "⚠️  Multiple implementations for trait '{type_name}', using first: {concrete_type:?}"
-                            );
-                            eprintln!("📋 All implementations: {implementations:?}");
+
                             Ok(concrete_type)
                         }
                     } else {
@@ -1974,25 +1876,10 @@ impl CompilerEnvironment {
         collection: &ProgramCollection,
         compilation_order: &[String],
     ) -> Result<(), Vec<TypeError>> {
-        eprintln!("🚀 CALCULATING dispatch tables for runtime function calls");
-
-        // This phase processes all function calls that will need runtime dispatch
-        // and pre-calculates the dispatch tables to avoid complex lookups during execution.
-        //
-        // Key responsibilities:
-        // 1. Identify all trait function calls in the desugared code
-        // 2. Resolve concrete implementations for each call site
-        // 3. Build dispatch tables mapping (trait_type, impl_type, function_name) -> implementation
-        // 4. Validate that all required implementations exist
-
         let mut dispatch_entries = 0;
 
         for file_path in compilation_order {
             if let Some(program) = collection.programs.get(file_path) {
-                eprintln!("📋 Processing dispatch for program: {file_path}");
-
-                // Walk through all expressions in the program and identify function calls
-                // that require trait dispatch (these will be the desugared operator calls)
                 dispatch_entries += self.process_program_for_dispatch(program)?;
             }
         }
@@ -2002,18 +1889,6 @@ impl CompilerEnvironment {
             let state = self.compilation_state.read().unwrap();
             state.dispatch_table.stats()
         };
-
-        eprintln!(
-            "✅ Successfully calculated {dispatch_entries} dispatch table entries"
-        );
-        eprintln!("📊 Dispatch Table Statistics:");
-        eprintln!(
-            "   • Trait implementations: {}",
-            stats.trait_implementations
-        );
-        eprintln!("   • Static functions: {}", stats.static_functions);
-        eprintln!("   • Binary operators: {}", stats.binary_operators);
-        eprintln!("   • Unary operators: {}", stats.unary_operators);
 
         Ok(())
     }
@@ -2025,9 +1900,6 @@ impl CompilerEnvironment {
     ) -> Result<u32, Vec<TypeError>> {
         let mut dispatch_count = 0;
 
-        eprintln!("  🔍 Walking AST to identify trait function calls...");
-
-        // Walk through all items in the program
         for item in &program.items {
             match &item.kind {
                 outrun_parser::ItemKind::FunctionDefinition(func_def) => {
@@ -2050,7 +1922,6 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!("  📊 Found {dispatch_count} dispatch sites in program");
         Ok(dispatch_count)
     }
 
@@ -2095,14 +1966,7 @@ impl CompilerEnvironment {
 
                 let trait_type_id = self.intern_type_name(trait_name);
                 if self.get_trait(&trait_type_id).is_some() {
-                    eprintln!(
-                        "    🎯 Found trait reference: {trait_name}.{function_name}"
-                    );
                     dispatch_count += 1;
-                } else {
-                    eprintln!(
-                        "    📋 Found non-trait qualified identifier: {trait_name}.{function_name}"
-                    );
                 }
             }
             outrun_parser::ExpressionKind::IfExpression(if_expr) => {
@@ -2200,8 +2064,7 @@ impl CompilerEnvironment {
                 // These expressions don't contain function calls
             }
             _ => {
-                // For any other expression types we haven't handled yet
-                eprintln!("    ⚠️ Unhandled expression type in dispatch calculation");
+                panic!("⚠️ Unhandled expression type in dispatch calculation");
             }
         }
 
@@ -2218,18 +2081,9 @@ impl CompilerEnvironment {
             let trait_name = &module.name;
             let function_name = &name.name;
 
-            eprintln!(
-                "    🎯 Found trait function call: {trait_name}.{function_name}"
-            );
-
             // Check if this is a call to a known trait
             let trait_type_id = self.intern_type_name(trait_name);
             if self.get_trait(&trait_type_id).is_some() {
-                eprintln!(
-                    "    ✅ Confirmed trait function call: {trait_name}.{function_name}"
-                );
-
-                // Create trait structured type for lookup
                 let trait_structured = StructuredType::Simple(trait_type_id.clone());
 
                 // Try to resolve the dispatch entry for this trait function call
@@ -2241,22 +2095,7 @@ impl CompilerEnvironment {
                     };
 
                     if let Some(concrete_type) = self.try_resolve_argument_type(arg_expression) {
-                        eprintln!(
-                            "    📝 Attempting to register dispatch: {trait_name}.{function_name} for type {concrete_type:?}"
-                        );
-                        eprintln!(
-                            "    🔍 Debug: trait_type={trait_structured:?}, resolved_concrete_type={concrete_type:?}"
-                        );
-
-                        // Check if we have an implementation of this trait for this type
                         if self.implements_trait(&concrete_type, &trait_structured) {
-                            eprintln!(
-                                "    ✅ Found implementation: {} implements {}",
-                                concrete_type.to_string_representation(),
-                                trait_name
-                            );
-
-                            // Generate a dispatch ID for this call
                             let dispatch_id = self.generate_dispatch_id();
 
                             // Register the dispatch table entry
@@ -2269,25 +2108,38 @@ impl CompilerEnvironment {
 
                             return Ok(1);
                         } else {
-                            eprintln!(
-                                "    ❌ No implementation found: {} does not implement {}",
-                                concrete_type.to_string_representation(),
-                                trait_name
-                            );
+                            // Type checking should have caught this, but dispatch generation found an inconsistency
+                            return Err(vec![TypeError::TraitNotImplemented {
+                                span: call.span.to_source_span(),
+                                trait_name: trait_name.clone(),
+                                type_name: concrete_type.to_string_representation(),
+                            }]);
                         }
                     } else {
-                        eprintln!("    ⚠️ Could not resolve type for first argument in trait call");
+                        // Could not resolve argument type - this indicates a problem with dispatch generation
+                        return Err(vec![TypeError::internal_with_span(
+                            format!(
+                                "Could not resolve argument type for trait function call {}.{}",
+                                trait_name, function_name
+                            ),
+                            call.span.to_source_span(),
+                        )]);
                     }
                 } else {
-                    eprintln!("    ⚠️ Trait function call has no arguments");
+                    // Trait function calls should have arguments for dispatch resolution
+                    return Err(vec![TypeError::internal_with_span(
+                        format!(
+                            "Trait function call {}.{} has no arguments for dispatch resolution",
+                            trait_name, function_name
+                        ),
+                        call.span.to_source_span(),
+                    )]);
                 }
-
-                return Ok(1);
             }
         }
 
-        eprintln!("    🎯 Found non-trait function call");
-        Ok(0) // Don't count non-trait function calls
+        // Not a trait function call - no dispatch entry needed
+        Ok(0)
     }
 
     /// Try to resolve the concrete type of an argument expression
@@ -2380,15 +2232,6 @@ impl CompilerEnvironment {
             let module_id = state
                 .dispatch_table
                 .register_trait_impl(trait_id.clone(), impl_id.clone());
-
-            eprintln!(
-                "    ✅ Registered dispatch entry {}: {}.{} for {} -> module {}",
-                dispatch_id,
-                trait_type.to_string_representation(),
-                function_name,
-                impl_type.to_string_representation(),
-                module_id.0
-            );
         } else {
             eprintln!(
                 "    ⚠️ Cannot register dispatch for complex types: {}.{} for {}",
@@ -2615,29 +2458,13 @@ impl CompilerEnvironment {
         // Step 1: Resolve TypeVariable constraints using SMT system
         let resolved_impl_type = self.resolve_type_variables(impl_type);
         let resolved_trait_type = self.resolve_type_variables(trait_type);
-
-        eprintln!(
-            "🔍 SMT trait check: {:?} implements {:?}",
-            resolved_impl_type.to_string_representation(),
-            resolved_trait_type.to_string_representation()
-        );
-
         // Step 2: Special case - a trait implements itself for type compatibility
         if resolved_trait_type == resolved_impl_type {
-            eprintln!(
-                "✅ TRAIT SELF-COMPATIBILITY: {:?} implements itself",
-                resolved_trait_type.to_string_representation()
-            );
             return true;
         }
 
         // Step 3: Use SMT constraint system to check trait implementation
         if let Ok(result) = self.smt_implements_trait(&resolved_impl_type, &resolved_trait_type) {
-            eprintln!(
-                "✅ SMT constraint satisfiable: {} implements {}",
-                resolved_impl_type.to_string_representation(),
-                resolved_trait_type.to_string_representation()
-            );
             return result;
         }
 
@@ -2648,24 +2475,13 @@ impl CompilerEnvironment {
         );
 
         if self.has_module(&impl_key) {
-            eprintln!(
-                "✅ Structural match: found registered implementation {} for {}",
-                resolved_impl_type.to_string_representation(),
-                resolved_trait_type.to_string_representation()
-            );
             return true;
         }
 
         // Step 5: Use SMT constraint generation and solving - no manual type checking
         let result = self.smt_check_trait_implementation(&resolved_impl_type, &resolved_trait_type);
 
-        if result {
-            eprintln!(
-                "✅ Generic match: found generic implementation {} for {}",
-                resolved_impl_type.to_string_representation(),
-                resolved_trait_type.to_string_representation()
-            );
-        } else {
+        if !result {
             eprintln!(
                 "❌ No implementation: {} does not implement {}",
                 resolved_impl_type.to_string_representation(),
@@ -2683,13 +2499,6 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         trait_type: &StructuredType,
     ) -> bool {
-        eprintln!(
-            "🧠 SMT trait check: \"{}\" implements \"{}\"",
-            impl_type.to_string_representation(),
-            trait_type.to_string_representation()
-        );
-
-        // Generate SMT constraint for trait implementation
         let constraint = crate::smt::constraints::SMTConstraint::TraitImplemented {
             impl_type: impl_type.clone(),
             trait_type: trait_type.clone(),
@@ -2708,31 +2517,9 @@ impl CompilerEnvironment {
 
         // Solve and check result
         match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_model) => {
-                eprintln!(
-                    "✅ SMT satisfiable: {} implements {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation()
-                );
-                true
-            }
-            crate::smt::solver::SolverResult::Unsatisfiable(_conflicts) => {
-                eprintln!(
-                    "❌ SMT unsatisfiable: {} does not implement {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation()
-                );
-                false
-            }
-            crate::smt::solver::SolverResult::Unknown(reason) => {
-                eprintln!(
-                    "⚠️ SMT unknown for {} implements {}: {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation(),
-                    reason
-                );
-                false
-            }
+            crate::smt::solver::SolverResult::Satisfiable(_model) => true,
+            crate::smt::solver::SolverResult::Unsatisfiable(_conflicts) => false,
+            crate::smt::solver::SolverResult::Unknown(_reason) => false,
         }
     }
 
@@ -2753,11 +2540,6 @@ impl CompilerEnvironment {
                     } = constraint
                     {
                         if variable_id == var_id {
-                            eprintln!(
-                                "🔗 Resolved TypeVariable {:?} -> {}",
-                                var_id,
-                                bound_type.to_string_representation()
-                            );
                             return bound_type.clone();
                         }
                     }
@@ -2778,12 +2560,6 @@ impl CompilerEnvironment {
                                 if let Ok(concrete_type) =
                                     self.resolve_trait_to_concrete_type(trait_type)
                                 {
-                                    eprintln!(
-                                        "🔗 Resolved TypeVariable {:?} via trait {} -> {}",
-                                        var_id,
-                                        trait_type.to_string_representation(),
-                                        concrete_type.to_string_representation()
-                                    );
                                     return concrete_type;
                                 }
                             }
@@ -2869,14 +2645,7 @@ impl CompilerEnvironment {
 
         // Solve and return result
         match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_) => {
-                eprintln!(
-                    "✅ SMT satisfiable: {} implements {}",
-                    impl_type.to_string_representation(),
-                    trait_type.to_string_representation()
-                );
-                Ok(true)
-            }
+            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
             crate::smt::solver::SolverResult::Unsatisfiable(_) => {
                 eprintln!(
                     "❌ SMT unsatisfiable: {} does not implement {}",
@@ -2917,15 +2686,7 @@ impl CompilerEnvironment {
             )));
         }
 
-        // For now, choose the first available implementation
-        // TODO: In the future, this could use additional context or SMT solver to choose the best one
         let chosen_impl = &implementations[0];
-
-        eprintln!(
-            "🎯 Chose implementation {} for trait {}",
-            chosen_impl.to_string_representation(),
-            trait_type.to_string_representation()
-        );
 
         Ok(chosen_impl.clone())
     }
@@ -2978,20 +2739,10 @@ impl CompilerEnvironment {
 
                 if impl_trait_name == trait_name {
                     implementations.push((**impl_type).clone());
-                    eprintln!(
-                        "🔍 Found implementation: {} implements {}",
-                        impl_type.to_string_representation(),
-                        trait_name
-                    );
                 }
             }
         }
 
-        eprintln!(
-            "🔍 Found {} implementations for trait {}",
-            implementations.len(),
-            trait_name
-        );
         implementations
     }
 
@@ -3003,12 +2754,6 @@ impl CompilerEnvironment {
         trait_type: &StructuredType,
         concrete_type: &StructuredType,
     ) -> Vec<StructuredType> {
-        eprintln!(
-            "🔍 Finding generic trait implementations for {} on concrete type {}",
-            trait_type.to_string_representation(),
-            concrete_type.to_string_representation()
-        );
-
         let mut implementations = Vec::new();
 
         // Extract the base trait name
@@ -3067,12 +2812,6 @@ impl CompilerEnvironment {
                                     args: vec![concrete_type.clone()],
                                 };
 
-                                eprintln!(
-                                    "✅ Found generic implementation: {} can be instantiated as {}",
-                                    impl_type.to_string_representation(),
-                                    instantiated_type.to_string_representation()
-                                );
-
                                 implementations.push(instantiated_type);
                             }
                         }
@@ -3080,13 +2819,6 @@ impl CompilerEnvironment {
                 }
             }
         }
-
-        eprintln!(
-            "🔍 Found {} generic implementations for trait {} on concrete type {}",
-            implementations.len(),
-            trait_name,
-            concrete_type.to_string_representation()
-        );
 
         implementations
     }
@@ -3098,12 +2830,8 @@ impl CompilerEnvironment {
         &self,
         self_type_id: &TypeNameId,
     ) -> Result<StructuredType, crate::smt::solver::SMTError> {
-        eprintln!("🧠 SMT resolving Self type: {self_type_id:?}");
-
-        // Get all constraints from unification context
         let context = self.unification_context();
 
-        // Filter SelfTypeInference constraints for this Self variable
         let self_constraints: Vec<_> = context
             .smt_constraints
             .iter()
@@ -3136,11 +2864,6 @@ impl CompilerEnvironment {
             )));
         }
 
-        eprintln!(
-            "🔍 Found {} Self inference constraints",
-            self_constraints.len()
-        );
-
         // Use actual SMT solving to resolve Self type - no fallbacks!
         let z3_context = crate::smt::solver::Z3Context::new();
         let mut solver = z3_context.create_solver();
@@ -3159,10 +2882,6 @@ impl CompilerEnvironment {
                 if let Some(resolved_type) =
                     self.extract_self_type_from_model(&model, &self_var_name)
                 {
-                    eprintln!(
-                        "✅ SMT resolved Self to {} (mathematically proven)",
-                        resolved_type.to_string_representation()
-                    );
                     Ok(resolved_type)
                 } else {
                     // If SMT says satisfiable but we can't extract the type, this is a bug
@@ -3172,17 +2891,13 @@ impl CompilerEnvironment {
                 }
             }
             crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
-                eprintln!(
-                    "❌ SMT constraints unsatisfiable for Self resolution: {conflicting:?}"
-                );
+                eprintln!("❌ SMT constraints unsatisfiable for Self resolution: {conflicting:?}");
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
                     "Conflicting Self type constraints - this indicates a type error: {conflicting:?}"
                 )))
             }
             crate::smt::solver::SolverResult::Unknown(reason) => {
-                eprintln!(
-                    "❓ SMT solver returned unknown for Self resolution: {reason}"
-                );
+                eprintln!("❓ SMT solver returned unknown for Self resolution: {reason}");
                 // Unknown means we can't prove satisfiability OR unsatisfiability
                 // This should be treated as a solver limitation, not a fallback opportunity
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
@@ -3201,28 +2916,13 @@ impl CompilerEnvironment {
     ) -> Option<StructuredType> {
         // Look for the Self type assignment in the model
         if let Some(assigned_type) = model.type_assignments.get(self_var_name) {
-            eprintln!(
-                "🎯 Found Self assignment in model: {} = {}",
-                self_var_name,
-                assigned_type.to_string_representation()
-            );
-
-            // CRITICAL FIX: Apply SMT model to resolve type variables like $TraitImpl_Integer
             let resolved_type = self.apply_smt_model_to_type(assigned_type, model);
-            eprintln!(
-                "🔧 Resolved Self type: {} -> {}",
-                assigned_type.to_string_representation(),
-                resolved_type.to_string_representation()
-            );
 
             Some(resolved_type)
         } else {
             // Check if there are any boolean assignments that tell us about Self
             for (var_name, is_true) in &model.boolean_assignments {
                 if var_name.contains(self_var_name) && *is_true {
-                    eprintln!("🔍 Found boolean assignment for Self: {var_name} = true");
-                    // Try to extract type information from the boolean variable name
-                    // Format is typically "Self_123_equals_SomeType" or similar
                     if let Some(type_info) = self.extract_type_from_boolean_var(var_name) {
                         return Some(type_info);
                     }
@@ -3253,9 +2953,7 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!(
-            "⚠️ Could not extract type from boolean variable: {var_name}"
-        );
+        eprintln!("⚠️ Could not extract type from boolean variable: {var_name}");
         None
     }
 
@@ -3435,11 +3133,6 @@ impl CompilerEnvironment {
         let module_key =
             ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()));
 
-        eprintln!(
-            "🔧 Registering trait implementation: {trait_type:?} for {impl_type:?}"
-        );
-
-        // Create trait implementation module if it doesn't exist
         self.get_or_create_module(
             module_key,
             ModuleKind::TraitImpl,
@@ -3447,24 +3140,16 @@ impl CompilerEnvironment {
             impl_type.clone(),
         );
 
-        // CRITICAL FIX: Add SMT constraint for this trait implementation
-        // This provides the base fact that the SMT solver needs to prove concrete instances
         let trait_impl_constraint = crate::smt::constraints::SMTConstraint::TraitImplemented {
             impl_type: impl_type.clone(),
             trait_type: trait_type.clone(),
         };
 
-        // Add to global SMT constraints using interior mutability
         if let Ok(mut compilation_state) = self.compilation_state.write() {
             compilation_state
                 .unification_context
                 .smt_constraints
                 .push(trait_impl_constraint);
-            eprintln!(
-                "✅ Added SMT constraint: {} implements {}",
-                impl_type.to_string_representation(),
-                trait_type.to_string_representation()
-            );
         } else {
             eprintln!(
                 "⚠️ Failed to add SMT constraint for {} implements {}",
@@ -3512,11 +3197,6 @@ impl CompilerEnvironment {
             StructuredType::Simple(trait_type_id.clone())
         };
 
-        eprintln!(
-            "🔧 Registering trait definition: {trait_name} as {trait_type:?}"
-        );
-
-        // Create or get the trait module
         let module_key = ModuleKey::Module(trait_type_id.hash);
         self.get_or_create_module(
             module_key.clone(),
@@ -3525,12 +3205,8 @@ impl CompilerEnvironment {
             trait_type.clone(),
         );
 
-        // Add trait constraints to the module if any
         if let Ok(mut modules) = self.modules.write() {
             if let Some(module) = modules.get_mut(&module_key) {
-                // Convert trait constraints to TraitConstraint format
-                // This would need to be implemented based on the trait definition structure
-                // For now, we'll set empty constraints
                 module.set_trait_constraints(Vec::new());
             }
         }
@@ -3748,25 +3424,14 @@ impl CompilerEnvironment {
 
         if let Some(type_name) = self.resolve_type(base_type_id.clone()) {
             let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
-            eprintln!(
-                "🔍 Looking up qualified function: {type_name}.{function_name_str} (base type: {type_name})"
-            );
 
             let module_key = ModuleKey::Module(base_type_id.hash);
 
             if let Ok(modules) = self.modules.read() {
                 if let Some(module) = modules.get(&module_key) {
-                    eprintln!(
-                        "✅ Found module for {type_name}, checking for function {function_name_str}"
-                    );
                     let function_entry = module.get_function_by_name(function_name).cloned();
                     if let Some(ref entry) = function_entry {
-                        eprintln!(
-                            "✅ Found function {}.{} with type {:?}",
-                            type_name,
-                            function_name_str,
-                            entry.function_type()
-                        );
+                        ()
                     } else {
                         eprintln!(
                             "❌ Function {type_name}.{function_name_str} not found in module"
@@ -3786,9 +3451,7 @@ impl CompilerEnvironment {
                 }
             }
         }
-        eprintln!(
-            "❌ Qualified function lookup failed for {module_type:?}.{function_name:?}"
-        );
+        eprintln!("❌ Qualified function lookup failed for {module_type:?}.{function_name:?}");
         None
     }
 
@@ -3801,35 +3464,20 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         function_name: AtomId,
     ) -> Option<UnifiedFunctionEntry> {
-        // NEW: Resolve TypeVariable constraints first using SMT system
         let resolved_trait_type = self.resolve_type_variables(trait_type);
         let resolved_impl_type = self.resolve_type_variables(impl_type);
 
-        eprintln!(
-            "🔍 Function lookup: {}::{} on {} (resolved: {} on {})",
-            resolved_trait_type.to_string_representation(),
-            function_name,
-            resolved_impl_type.to_string_representation(),
-            resolved_trait_type.to_string_representation(),
-            resolved_impl_type.to_string_representation()
-        );
-
         if let Ok(modules) = self.modules.read() {
-            // Simple direct lookup: trait implementation should have been expanded by our preprocessing
-            // Use RESOLVED types for the lookup
             let module_key = ModuleKey::TraitImpl(
                 Box::new(resolved_trait_type.clone()),
                 Box::new(resolved_impl_type.clone()),
             );
 
             if let Some(impl_module) = modules.get(&module_key) {
-                eprintln!("✅ Found exact module match for trait implementation");
                 if let Some(function) = impl_module.get_function_by_name(function_name.clone()) {
-                    // With our trait default expansion, this should NEVER be a trait signature
                     if matches!(function.function_type(), FunctionType::TraitSignature) {
                         panic!("CRITICAL: Found TraitSignature after trait default expansion for trait {trait_type:?} on type {impl_type:?} function {function_name:?}");
                     }
-                    eprintln!("✅ Found exact function match in trait implementation module");
                     return Some(function.clone());
                 } else {
                     eprintln!(
@@ -3841,15 +3489,12 @@ impl CompilerEnvironment {
                 eprintln!("❌ No exact module match found, proceeding to SMT-based search");
             }
 
-            // CRITICAL FIX: Use SMT to find compatible generic implementations
-            // Check if there's a generic implementation that can be instantiated for these concrete types
             if let Some(generic_function) = self.find_compatible_generic_implementation(
                 &resolved_trait_type,
                 &resolved_impl_type,
                 function_name.clone(),
                 &modules,
             ) {
-                eprintln!("✅ Found compatible generic trait implementation via SMT");
                 return Some(generic_function);
             }
         }
@@ -3875,60 +3520,23 @@ impl CompilerEnvironment {
         function_name: AtomId,
         modules: &std::collections::HashMap<ModuleKey, Module>,
     ) -> Option<UnifiedFunctionEntry> {
-        eprintln!(
-            "🔍 SMT-based search for generic implementation: trait {} on type {}",
-            concrete_trait_type.to_string_representation(),
-            concrete_impl_type.to_string_representation()
-        );
-
-        // Search through all TraitImpl modules to find SMT-compatible implementations
         for (module_key, module) in modules.iter() {
             if let ModuleKey::TraitImpl(generic_trait_type, generic_impl_type) = module_key {
-                eprintln!(
-                    "🔍 Checking generic module: trait {} on type {}",
-                    generic_trait_type.to_string_representation(),
-                    generic_impl_type.to_string_representation()
-                );
-
-                // Special debug for Option trait
                 if generic_trait_type
                     .to_string_representation()
                     .contains("Option")
                 {
-                    eprintln!(
-                        "🎯 FOUND OPTION TRAIT IMPL: {} for {}",
-                        generic_trait_type.to_string_representation(),
-                        generic_impl_type.to_string_representation()
-                    );
-
-                    // Debug the compatibility check for Option specifically
                     let trait_compatible =
                         self.smt_types_are_compatible(concrete_trait_type, generic_trait_type);
                     let impl_compatible =
                         self.smt_types_are_compatible(concrete_impl_type, generic_impl_type);
-                    eprintln!(
-                        "🔍 Option compatibility: trait {} ↔ {} = {}, impl {} ↔ {} = {}",
-                        concrete_trait_type.to_string_representation(),
-                        generic_trait_type.to_string_representation(),
-                        trait_compatible,
-                        concrete_impl_type.to_string_representation(),
-                        generic_impl_type.to_string_representation(),
-                        impl_compatible
-                    );
                 }
 
                 // Use SMT to check if concrete types are compatible with this generic implementation
                 if self.smt_types_are_compatible(concrete_trait_type, generic_trait_type)
                     && self.smt_types_are_compatible(concrete_impl_type, generic_impl_type)
                 {
-                    eprintln!("✅ SMT confirmed compatibility for generic implementation");
-
-                    // Look for the function in this compatible implementation
                     if let Some(function) = module.get_function_by_name(function_name.clone()) {
-                        eprintln!(
-                            "✅ Found function {} in SMT-compatible generic implementation",
-                            self.resolve_atom_name(&function_name).unwrap_or_default()
-                        );
                         return Some(function.clone());
                     }
                 }
@@ -3966,23 +3574,11 @@ impl CompilerEnvironment {
         concrete_type: &StructuredType,
         generic_type: &StructuredType,
     ) -> Option<Vec<crate::smt::constraints::SMTConstraint>> {
-        eprintln!(
-            "🔍 Generating constraints for: {} ↔ {}",
-            concrete_type.to_string_representation(),
-            generic_type.to_string_representation()
-        );
-
         let mut constraints = Vec::new();
 
         let result = match (concrete_type, generic_type) {
             // Simple types must match exactly - no unification needed
             (StructuredType::Simple(concrete_id), StructuredType::Simple(generic_id)) => {
-                eprintln!(
-                    "🔍 Simple type match: {} ↔ {} = {}",
-                    concrete_id,
-                    generic_id,
-                    concrete_id == generic_id
-                );
                 if concrete_id == generic_id {
                     Some(constraints) // Empty constraints = trivially satisfiable
                 } else {
@@ -3993,11 +3589,6 @@ impl CompilerEnvironment {
             // Concrete type can unify with type variable through TypeParameterUnification
             (concrete, StructuredType::TypeVariable(var_id)) => {
                 let type_name = self.resolve_type_name(var_id).unwrap_or_default();
-                eprintln!(
-                    "🔍 Type variable unification: {} ↔ TypeVariable({})",
-                    concrete.to_string_representation(),
-                    type_name
-                );
                 constraints.push(
                     crate::smt::constraints::SMTConstraint::TypeParameterUnification {
                         parameter_name: type_name,
@@ -4008,7 +3599,6 @@ impl CompilerEnvironment {
                 Some(constraints)
             }
 
-            // Generic types: same base, compatible arguments
             (
                 StructuredType::Generic {
                     base: concrete_base,
@@ -4054,10 +3644,6 @@ impl CompilerEnvironment {
             }
         };
 
-        eprintln!(
-            "🔍 Constraint generation result: {:?}",
-            result.as_ref().map(|c| c.len())
-        );
         result
     }
 
@@ -4105,8 +3691,6 @@ impl CompilerEnvironment {
         &mut self,
         collection: &ProgramCollection,
     ) -> Result<ProgramCollection, Vec<TypeError>> {
-        eprintln!("🔄 EXPANDING trait default implementations into concrete impl blocks");
-
         use outrun_parser::{ItemKind, TraitFunction};
         use std::collections::HashMap;
 
@@ -4129,10 +3713,6 @@ impl CompilerEnvironment {
                         if let TraitFunction::Definition(func_def) = trait_function {
                             // This is a default implementation
                             defaults.push(func_def.clone());
-                            eprintln!(
-                                "📝 Found default implementation: {}.{}",
-                                trait_name, func_def.name.name
-                            );
                         }
                     }
 
@@ -4143,12 +3723,6 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!(
-            "📊 Found {} traits with default implementations",
-            trait_defaults.len()
-        );
-
-        // Step 2: Create a new collection with expanded impl blocks
         let mut expanded_programs = HashMap::new();
 
         for (file_path, program) in &collection.programs {
@@ -4186,7 +3760,6 @@ impl CompilerEnvironment {
             sources: collection.sources.clone(),
         };
 
-        eprintln!("✅ Successfully expanded trait default implementations");
         Ok(expanded_collection)
     }
 
@@ -4224,12 +3797,7 @@ impl CompilerEnvironment {
 
         for default_func in defaults {
             if !existing_functions.contains(&default_func.name.name) {
-                // This function is missing from the impl block, copy the default
-
-                // IMPORTANT: Preserve original spans and source locations
-                // The copied function maintains its original location for go-to-definition
                 let copied_func = outrun_parser::FunctionDefinition {
-                    // Keep all original metadata for IDE features
                     attributes: default_func.attributes.clone(),
                     visibility: default_func.visibility.clone(),
                     name: default_func.name.clone(), // Preserves original span
@@ -4243,24 +3811,7 @@ impl CompilerEnvironment {
 
                 expanded_functions.push(copied_func);
                 additions_count += 1;
-
-                eprintln!(
-                    "🔄 Copied default implementation: {}.{} -> impl {} for {}",
-                    trait_name,
-                    default_func.name.name,
-                    trait_name,
-                    format!("{:?}", impl_block.type_spec)
-                        .chars()
-                        .take(50)
-                        .collect::<String>()
-                );
             }
-        }
-
-        if additions_count > 0 {
-            eprintln!(
-                "📦 Expanded impl block with {additions_count} default trait functions"
-            );
         }
 
         Ok(outrun_parser::ImplBlock {
@@ -5046,29 +4597,13 @@ impl CompilerEnvironment {
     ///
     /// Look up trait implementation using full StructuredType
     pub fn find_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
-        eprintln!("🔍 Finding trait implementations for: {trait_type:?}");
         let result = match trait_type {
-            StructuredType::Simple(trait_id) => {
-                eprintln!(
-                    "🔍 Taking SIMPLE path for trait: {:?}",
-                    self.resolve_type_name(trait_id).unwrap_or_default()
-                );
-                self.find_simple_trait_implementations(trait_id)
-            }
+            StructuredType::Simple(trait_id) => self.find_simple_trait_implementations(trait_id),
             StructuredType::Generic { base, args } => {
-                eprintln!(
-                    "🔍 Taking GENERIC path for trait: {:?} with {} args",
-                    self.resolve_type_name(base).unwrap_or_default(),
-                    args.len()
-                );
                 self.find_generic_trait_implementations(base, args)
             }
-            _ => {
-                eprintln!("🔍 Taking OTHER path for trait: {trait_type:?}");
-                Vec::new()
-            }
+            _ => Vec::new(),
         };
-        eprintln!("🔍 Found {} implementations total", result.len());
         result
     }
 
@@ -5143,22 +4678,8 @@ impl CompilerEnvironment {
                 }
             }
             _ => {
-                eprintln!(
-                    "ℹ️  No known core implementations for trait: {trait_name}"
-                );
+                eprintln!("ℹ️  No known core implementations for trait: {trait_name}");
             }
-        }
-
-        if !implementations.is_empty() {
-            eprintln!(
-                "🔍 Found {} core implementations for trait {}: {:?}",
-                implementations.len(),
-                trait_name,
-                implementations
-                    .iter()
-                    .map(|t| self.format_structured_type(t))
-                    .collect::<Vec<_>>()
-            );
         }
 
         implementations
@@ -5196,14 +4717,8 @@ impl CompilerEnvironment {
         let expanded_args: Vec<Vec<StructuredType>> = args
             .iter()
             .map(|arg_type| {
-                eprintln!("🔄 Recursively expanding generic argument: {arg_type:?}");
                 let impls = self.find_trait_implementations(arg_type);
-                eprintln!(
-                    "🔄 Argument {:?} expanded to {} implementations: {:?}",
-                    arg_type,
-                    impls.len(),
-                    impls
-                );
+
                 if impls.is_empty() {
                     vec![arg_type.clone()]
                 } else {
@@ -5214,40 +4729,21 @@ impl CompilerEnvironment {
 
         // Get base trait implementations and create combinations
         let base_implementations = self.find_simple_trait_implementations(base_trait);
-        eprintln!(
-            "🔄 Base trait {:?} has {} implementations: {:?}",
-            self.resolve_type_name(base_trait).unwrap_or_default(),
-            base_implementations.len(),
-            base_implementations
-                .iter()
-                .map(|t| self.format_structured_type(t))
-                .collect::<Vec<_>>()
-        );
 
         for base_impl in &base_implementations {
             if let StructuredType::Simple(base_impl_id) = base_impl {
                 let arg_combinations = self.cartesian_product(&expanded_args);
-                eprintln!(
-                    "🔄 Creating {} argument combinations for base {:?}",
-                    arg_combinations.len(),
-                    self.resolve_type_name(base_impl_id).unwrap_or_default()
-                );
 
                 for arg_combination in arg_combinations {
                     let generic_type = StructuredType::Generic {
                         base: base_impl_id.clone(),
                         args: arg_combination.clone(),
                     };
-                    eprintln!("🎯 Created concrete implementation: {generic_type:?}");
                     concrete_implementations.push(generic_type);
                 }
             }
         }
 
-        eprintln!(
-            "🎯 Total concrete implementations generated: {}",
-            concrete_implementations.len()
-        );
         concrete_implementations
     }
 
@@ -5291,18 +4787,8 @@ impl CompilerEnvironment {
             return Some(entry);
         }
 
-        eprintln!(
-            "🧠 SMT function lookup: trait {trait_type:?}, impl {impl_type:?}, function {function_name:?}"
-        );
-
-        // CRITICAL FIX: Find the actual generic trait definition and create proper constraints
         let (actual_trait_type, type_parameter_constraints) =
             self.resolve_generic_trait_with_parameters(trait_type, impl_type);
-
-        eprintln!("🎯 Resolved trait type: {actual_trait_type:?}");
-        eprintln!(
-            "🎯 Type parameter constraints: {type_parameter_constraints:?}"
-        );
 
         // Create all constraints needed for this lookup
         let mut constraints = Vec::new();
@@ -5330,21 +4816,14 @@ impl CompilerEnvironment {
         // Solve the constraints
         match solver.solve() {
             crate::smt::solver::SolverResult::Satisfiable(model) => {
-                eprintln!("✅ SMT constraint satisfiable - trait implementation exists");
-
-                // SMT-FIRST: Use the constraint model to resolve type parameters and find concrete function
                 let resolved_types = self.apply_smt_model_to_types(&model, trait_type, impl_type);
 
-                // Use the resolved types to find the concrete function implementation
                 if let Some(concrete_function) = self.lookup_concrete_function_with_resolved_types(
                     &resolved_types.trait_type,
                     &resolved_types.impl_type,
                     function_name.clone(),
                     &model,
                 ) {
-                    eprintln!(
-                        "🎯 SMT-guided dispatch: function {function_name:?} resolved using constraint model"
-                    );
                     return Some(concrete_function);
                 }
 
@@ -5481,22 +4960,12 @@ impl CompilerEnvironment {
         trait_type: &StructuredType,
         impl_type: &StructuredType,
     ) -> ResolvedTypes {
-        eprintln!("🔍 Applying SMT model to resolve type parameters");
-
-        // Extract type parameter assignments from the SMT model
-        // For example: T -> Integer, K -> String, etc.
         let mut type_parameter_map = std::collections::HashMap::new();
 
         for (var_name, concrete_type) in &model.type_assignments {
-            eprintln!("📝 SMT assignment: {var_name} = {concrete_type:?}");
-
-            // Handle parameter assignments with "param_" prefix
             if var_name.starts_with("param_") {
                 let param_name = var_name.strip_prefix("param_").unwrap();
                 type_parameter_map.insert(param_name.to_string(), concrete_type.clone());
-                eprintln!(
-                    "🎯 Extracted parameter: {param_name} = {concrete_type:?}"
-                );
             } else {
                 type_parameter_map.insert(var_name.clone(), concrete_type.clone());
             }
@@ -5505,13 +4974,6 @@ impl CompilerEnvironment {
         // Apply the type parameter assignments to resolve generic types
         let resolved_trait_type = self.substitute_type_parameters(trait_type, &type_parameter_map);
         let resolved_impl_type = self.substitute_type_parameters(impl_type, &type_parameter_map);
-
-        eprintln!(
-            "🎯 Resolved trait type: {trait_type:?} -> {resolved_trait_type:?}"
-        );
-        eprintln!(
-            "🎯 Resolved impl type: {impl_type:?} -> {resolved_impl_type:?}"
-        );
 
         ResolvedTypes {
             trait_type: resolved_trait_type,
@@ -5531,9 +4993,6 @@ impl CompilerEnvironment {
 
                 // Check if this is a type parameter that needs substitution
                 if let Some(concrete_type) = type_parameter_map.get(&type_name) {
-                    eprintln!(
-                        "🔄 Substituting type parameter {type_name} -> {concrete_type:?}"
-                    );
                     concrete_type.clone()
                 } else {
                     structured_type.clone()
@@ -5554,11 +5013,7 @@ impl CompilerEnvironment {
             StructuredType::TypeVariable(var_id) => {
                 let var_name = var_id.to_string();
 
-                // TypeVariable should definitely be in the SMT model if it was part of constraints
                 if let Some(concrete_type) = type_parameter_map.get(&var_name) {
-                    eprintln!(
-                        "🔄 Resolving TypeVariable {var_name} -> {concrete_type:?}"
-                    );
                     concrete_type.clone()
                 } else {
                     eprintln!("⚠️ TypeVariable {var_name} not found in SMT model");
@@ -5586,13 +5041,6 @@ impl CompilerEnvironment {
         function_name: AtomId,
         model: &crate::smt::solver::ConstraintModel,
     ) -> Option<UnifiedFunctionEntry> {
-        eprintln!("🔍 Looking up concrete function with resolved types");
-        eprintln!("  📋 Trait: {resolved_trait_type:?}");
-        eprintln!("  🏗️ Impl: {resolved_impl_type:?}");
-        eprintln!("  ⚙️ Function: {function_name:?}");
-
-        // SMT-guided lookup: Search through all registered TraitImpl modules
-        // and find ones that match after applying SMT type variable resolution
         let modules = self.modules().read().unwrap();
 
         for (module_key, module) in modules.iter() {
@@ -5603,23 +5051,11 @@ impl CompilerEnvironment {
                 let resolved_registered_impl =
                     self.apply_smt_model_to_type(registered_impl_type, model);
 
-                eprintln!("🧪 Testing module key:");
-                eprintln!(
-                    "  📋 Registered trait: {registered_trait_type:?} -> {resolved_registered_trait:?}"
-                );
-                eprintln!(
-                    "  🏗️ Registered impl: {registered_impl_type:?} -> {resolved_registered_impl:?}"
-                );
-
                 // Check if the SMT-resolved registered types match our target types
                 if resolved_registered_trait == *resolved_trait_type
                     && resolved_registered_impl == *resolved_impl_type
                 {
-                    eprintln!("✅ Found matching module after SMT resolution!");
-
-                    // Look up the function in this module
                     if let Some(function_entry) = module.functions_by_name.get(&function_name) {
-                        eprintln!("✅ Found function in matching module");
                         return Some(function_entry.clone());
                     }
                 }
@@ -5632,7 +5068,6 @@ impl CompilerEnvironment {
             resolved_impl_type,
             function_name.clone(),
         ) {
-            eprintln!("✅ Found concrete function implementation via direct lookup");
             return Some(entry);
         }
 
@@ -5656,8 +5091,6 @@ impl CompilerEnvironment {
                 if type_name.starts_with("Self") {
                     let self_var_name = format!("Self_{}", type_name_id.hash);
                     if let Some(resolved_type) = model.get_type_assignment(&self_var_name) {
-                        eprintln!("🎯 SMT resolved {type_name} -> {resolved_type:?}");
-                        // Recursively apply model to the resolved type in case it contains more variables
                         return self.apply_smt_model_to_type(resolved_type, model);
                     }
                 }
@@ -5665,8 +5098,6 @@ impl CompilerEnvironment {
                 // Check for other type variables (T, E, K, V, etc.)
                 let var_name = format!("TypeVar_{type_name}");
                 if let Some(resolved_type) = model.get_type_assignment(&var_name) {
-                    eprintln!("🎯 SMT resolved {type_name} -> {resolved_type:?}");
-                    // Recursively apply model to the resolved type in case it contains more variables
                     return self.apply_smt_model_to_type(resolved_type, model);
                 }
 
@@ -5674,22 +5105,15 @@ impl CompilerEnvironment {
                 if type_name.starts_with("TraitImpl_") {
                     let trait_impl_var_name = format!("TypeVar_{type_name}");
                     if let Some(resolved_type) = model.get_type_assignment(&trait_impl_var_name) {
-                        eprintln!(
-                            "🎯 SMT resolved trait impl {type_name} -> {resolved_type:?}"
-                        );
                         return self.apply_smt_model_to_type(resolved_type, model);
                     }
                 }
 
-                // ADDITIONAL: Try to resolve trait implementation variables through the trait system
                 if type_name.starts_with("TraitImpl_") {
                     if let Some(trait_name) = type_name.strip_prefix("TraitImpl_") {
                         if let Some(resolved_concrete_type) =
                             self.resolve_trait_impl_variable(trait_name)
                         {
-                            eprintln!(
-                                "🎯 Trait system resolved {type_name} -> {resolved_concrete_type:?}"
-                            );
                             return self.apply_smt_model_to_type(&resolved_concrete_type, model);
                         }
                     }
@@ -5760,18 +5184,13 @@ impl CompilerEnvironment {
         for impl_type in implementations {
             match impl_type {
                 StructuredType::Simple(_) => {
-                    eprintln!(
-                        "🎯 Found concrete implementation for {trait_name}: {impl_type:?}"
-                    );
                     return Some(impl_type);
                 }
                 _ => continue, // Skip non-concrete implementations
             }
         }
 
-        eprintln!(
-            "⚠️ No concrete implementation found for trait {trait_name}"
-        );
+        eprintln!("⚠️ No concrete implementation found for trait {trait_name}");
         None
     }
 
@@ -5795,20 +5214,11 @@ impl CompilerEnvironment {
             return Ok(structured_type.clone());
         }
 
-        eprintln!(
-            "🧠 Resolving type variables with {} SMT constraints",
-            constraints.len()
-        );
-
-        // Add all constraints to solver
         solver.add_constraints(&constraints, self)?;
 
         // Solve constraints
         match solver.solve() {
             SolverResult::Satisfiable(model) => {
-                eprintln!("✅ SMT constraints satisfiable, applying model to type");
-
-                // Apply the SMT model to resolve type variables in the structured type
                 let resolved_type = self.apply_smt_model_to_type(structured_type, &model);
 
                 Ok(resolved_type)
@@ -5862,19 +5272,9 @@ impl CompilerEnvironment {
                 // We need to find the trait definition to get the parameter names
 
                 let base_name = self.resolve_type_name(base).unwrap_or_default();
-                eprintln!("🔍 Looking for trait definition: {base_name}");
 
                 // Look up the trait definition to get parameter names
                 if let Some(trait_def) = self.find_trait_definition(&base_name) {
-                    eprintln!(
-                        "✅ Found trait definition with {} parameters",
-                        trait_def
-                            .generic_params
-                            .as_ref()
-                            .map(|p| p.params.len())
-                            .unwrap_or(0)
-                    );
-
                     if let Some(ref generic_params) = trait_def.generic_params {
                         // Create type parameter constraints by matching concrete args with parameter names
                         let mut constraints = Vec::new();
@@ -5892,11 +5292,6 @@ impl CompilerEnvironment {
                             self.add_type_variable_resolution_constraints_to_list(
                                 concrete_arg,
                                 &mut constraints,
-                            );
-
-                            eprintln!(
-                                "🎯 Created constraint: {} = {:?}",
-                                param.name.name, concrete_arg
                             );
                         }
 
@@ -5920,9 +5315,7 @@ impl CompilerEnvironment {
                 }
 
                 // Fallback: no trait definition found, use the concrete type as-is
-                eprintln!(
-                    "⚠️ No trait definition found for {base_name}, using concrete type"
-                );
+                eprintln!("⚠️ No trait definition found for {base_name}, using concrete type");
                 (concrete_trait_type.clone(), Vec::new())
             }
             StructuredType::Simple(type_id) => {
