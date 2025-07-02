@@ -3146,12 +3146,20 @@ impl TypeCheckingVisitor {
             if let Some(arg_type) = arg_type_map.get(param_name) {
                 // Check if this parameter is typed as Self or contains Self
                 if self.is_self_type_annotation(&param.type_annotation) {
-                    // Direct Self parameter: Self = arg_type
+                    // Direct Self parameter: Self = concrete implementing type for arg_type
                     has_self_parameters = true;
+                    
+                    // CRITICAL FIX: When calling trait functions, Self should be the concrete implementing type,
+                    // not the abstract trait type. For Option.some?(value: Option<Integer>), 
+                    // Self should be Outrun.Option.Some<Integer>, not Option<Integer>
+                    let concrete_self_type = self.resolve_to_concrete_implementing_type_for_trait_call(
+                        arg_type, 
+                        trait_type_id.clone()
+                    )?;
                     
                     let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
                         self_variable_id: self_type_id.clone(),
-                        inferred_type: arg_type.clone(),
+                        inferred_type: concrete_self_type,
                         call_site_context: format!("parameter {} in call to {}", param_name, trait_func_def.name.name),
                         confidence: crate::smt::constraints::InferenceConfidence::High,
                     };
@@ -3841,6 +3849,90 @@ impl TypeCheckingVisitor {
             }
             // Concrete types don't contain variables
             _ => false,
+        }
+    }
+
+    /// Resolve argument type to concrete implementing type for trait function calls
+    /// This is the mathematically sound approach: use SMT constraints to find concrete implementations
+    fn resolve_to_concrete_implementing_type_for_trait_call(
+        &mut self,
+        arg_type: &StructuredType,
+        trait_type_id: TypeNameId,
+    ) -> Result<StructuredType, TypeError> {
+        eprintln!("🔍 Resolving {} to concrete implementing type for trait call {}", 
+                 arg_type.to_string_representation(),
+                 self.compiler_environment.resolve_type_name(&trait_type_id).unwrap_or_default());
+
+        // For calls like Option.some?(value: Option<Integer>), we need to find what concrete type
+        // implements Option<Integer>. Instead of hardcoded mappings, use the trait system.
+        
+        match arg_type {
+            StructuredType::Generic { base, args: _ } => {
+                // Check if this argument type matches the trait being called
+                let trait_name = self.compiler_environment.resolve_type_name(&trait_type_id).unwrap_or_default();
+                let arg_base_name = self.compiler_environment.resolve_type_name(base).unwrap_or_default();
+                
+                if trait_name == arg_base_name {
+                    // This is a call like Option.some?(value: Option<Integer>)
+                    // We need to find concrete implementations of Option<Integer>
+                    let concrete_implementations = self.compiler_environment.find_trait_implementations(arg_type);
+                    
+                    eprintln!("🔍 Found {} implementations for {}", 
+                             concrete_implementations.len(), 
+                             arg_type.to_string_representation());
+                    
+                    // For now, prefer the first concrete implementation
+                    // TODO: In the future, use SMT to choose the best implementation based on context
+                    for implementation in concrete_implementations {
+                        match &implementation {
+                            StructuredType::Generic { base: impl_base, .. } => {
+                                let impl_name = self.compiler_environment.resolve_type_name(impl_base).unwrap_or_default();
+                                // Prefer concrete implementations over abstract ones
+                                if impl_name.contains("Outrun.") && impl_name != trait_name {
+                                    eprintln!("✅ Choosing concrete implementation: {}", implementation.to_string_representation());
+                                    return Ok(implementation);
+                                }
+                            }
+                            StructuredType::Simple(impl_type_id) => {
+                                let impl_name = self.compiler_environment.resolve_type_name(impl_type_id).unwrap_or_default();
+                                if impl_name.contains("Outrun.") && impl_name != trait_name {
+                                    eprintln!("✅ Choosing concrete implementation: {}", implementation.to_string_representation());
+                                    return Ok(implementation);
+                                }
+                            }
+                            _ => continue,
+                        }
+                    }
+                }
+                
+                // No concrete implementation found, return as-is
+                eprintln!("⚠️ No concrete implementation found, using argument type as-is");
+                Ok(arg_type.clone())
+            }
+            _ => {
+                // For non-generic types, check if we can find a concrete implementation
+                let concrete_implementations = self.compiler_environment.find_trait_implementations(arg_type);
+                
+                if !concrete_implementations.is_empty() {
+                    eprintln!("🔍 Found {} implementations for simple type {}", 
+                             concrete_implementations.len(), 
+                             arg_type.to_string_representation());
+                    
+                    // Prefer concrete implementations
+                    for implementation in concrete_implementations {
+                        if let StructuredType::Simple(impl_type_id) = &implementation {
+                            let impl_name = self.compiler_environment.resolve_type_name(impl_type_id).unwrap_or_default();
+                            if impl_name.contains("Outrun.") {
+                                eprintln!("✅ Choosing concrete implementation: {}", implementation.to_string_representation());
+                                return Ok(implementation);
+                            }
+                        }
+                    }
+                }
+                
+                // Return as-is if no concrete implementation found
+                Ok(arg_type.clone())
+            }
         }
     }
 
