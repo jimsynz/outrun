@@ -15,7 +15,7 @@ pub mod translator;
 pub use cache::ConstraintCache;
 pub use constraints::{ConstraintPriority, ConstraintSet, SMTConstraint};
 pub use solver::{SolverResult, Z3ConstraintSolver, Z3Context};
-pub use solver_pool::{with_solver, check_constraints_satisfiable};
+pub use solver_pool::{with_solver, check_constraints_satisfiable, check_constraints_satisfiable_cached, solve_constraints_cached, get_cache_stats, clear_cache};
 pub use suggestions::ErrorSuggestionGenerator;
 pub use translator::SMTTranslator;
 

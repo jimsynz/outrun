@@ -6,22 +6,20 @@
 use crate::compilation::compiler_environment::TypeNameId;
 use crate::smt::constraints::SMTConstraint;
 use crate::smt::solver::SolverResult;
-use std::collections::HashMap;
+use lru::LruCache;
 use std::hash::{Hash, Hasher};
+use std::num::NonZeroUsize;
 
 /// Cache for SMT constraint solving results
 pub struct ConstraintCache {
-    /// Cache for solved constraint sets
-    solved_constraints: HashMap<ConstraintSetHash, SolverResult>,
+    /// LRU cache for solved constraint sets
+    solved_constraints: LruCache<ConstraintSetHash, SolverResult>,
 
-    /// Cache for type hierarchies (which types implement which traits)
-    type_hierarchies: HashMap<TypeNameId, Vec<TypeNameId>>,
+    /// LRU cache for type hierarchies (which types implement which traits)
+    type_hierarchies: LruCache<TypeNameId, Vec<TypeNameId>>,
 
-    /// Cache for trait implementation lookups
-    implementation_cache: HashMap<(TypeNameId, TypeNameId), bool>,
-
-    /// Maximum cache size before eviction
-    max_cache_size: usize,
+    /// LRU cache for trait implementation lookups
+    implementation_cache: LruCache<(TypeNameId, TypeNameId), bool>,
 
     /// Statistics for cache performance
     stats: CacheStats,
@@ -53,11 +51,11 @@ impl ConstraintCache {
 
     /// Create a new constraint cache with specified capacity
     pub fn with_capacity(max_size: usize) -> Self {
+        let capacity = NonZeroUsize::new(max_size).unwrap_or(NonZeroUsize::new(1000).unwrap());
         Self {
-            solved_constraints: HashMap::new(),
-            type_hierarchies: HashMap::new(),
-            implementation_cache: HashMap::new(),
-            max_cache_size: max_size,
+            solved_constraints: LruCache::new(capacity),
+            type_hierarchies: LruCache::new(capacity),
+            implementation_cache: LruCache::new(capacity),
             stats: CacheStats::default(),
         }
     }
@@ -80,29 +78,27 @@ impl ConstraintCache {
     pub fn cache_solution(&mut self, constraints: Vec<SMTConstraint>, result: SolverResult) {
         let hash = self.compute_constraint_hash(&constraints);
 
-        // Check if we need to evict entries
-        if self.solved_constraints.len() >= self.max_cache_size {
-            self.evict_oldest_entry();
+        // LRU cache handles eviction automatically
+        if let Some(_evicted) = self.solved_constraints.push(hash, result) {
+            self.stats.evictions += 1;
         }
-
-        self.solved_constraints.insert(hash, result);
     }
 
     /// Invalidate cache entries related to a specific type
     pub fn invalidate_type_cache(&mut self, type_id: TypeNameId) {
         // Remove type hierarchy entries
-        self.type_hierarchies.remove(&type_id);
+        self.type_hierarchies.pop(&type_id);
 
         // Remove implementation cache entries involving this type
         let keys_to_remove: Vec<_> = self
             .implementation_cache
-            .keys()
-            .filter(|(trait_id, impl_id)| *trait_id == type_id || *impl_id == type_id)
-            .cloned()
+            .iter()
+            .filter(|(key, _)| key.0 == type_id || key.1 == type_id)
+            .map(|(key, _)| key.clone())
             .collect();
 
         for key in keys_to_remove {
-            self.implementation_cache.remove(&key);
+            self.implementation_cache.pop(&key);
         }
 
         // For constraint cache, we could be more aggressive and clear all entries
@@ -116,11 +112,11 @@ impl ConstraintCache {
         trait_id: TypeNameId,
         implementing_types: Vec<TypeNameId>,
     ) {
-        self.type_hierarchies.insert(trait_id, implementing_types);
+        self.type_hierarchies.push(trait_id, implementing_types);
     }
 
     /// Get cached type hierarchy
-    pub fn get_type_hierarchy(&self, trait_id: &TypeNameId) -> Option<&Vec<TypeNameId>> {
+    pub fn get_type_hierarchy(&mut self, trait_id: &TypeNameId) -> Option<&Vec<TypeNameId>> {
         self.type_hierarchies.get(trait_id)
     }
 
@@ -132,11 +128,11 @@ impl ConstraintCache {
         implements: bool,
     ) {
         self.implementation_cache
-            .insert((trait_id, impl_id), implements);
+            .push((trait_id, impl_id), implements);
     }
 
     /// Get cached implementation check result
-    pub fn get_implementation(&self, trait_id: &TypeNameId, impl_id: &TypeNameId) -> Option<bool> {
+    pub fn get_implementation(&mut self, trait_id: &TypeNameId, impl_id: &TypeNameId) -> Option<bool> {
         self.implementation_cache
             .get(&(trait_id.clone(), impl_id.clone()))
             .copied()
@@ -202,15 +198,6 @@ impl ConstraintCache {
         }
     }
 
-    /// Evict the oldest entry from the cache
-    fn evict_oldest_entry(&mut self) {
-        // Simple eviction strategy: remove one arbitrary entry
-        // TODO: Implement LRU or other sophisticated eviction strategy
-        if let Some(key) = self.solved_constraints.keys().next().cloned() {
-            self.solved_constraints.remove(&key);
-            self.stats.evictions += 1;
-        }
-    }
 }
 
 impl Default for ConstraintCache {

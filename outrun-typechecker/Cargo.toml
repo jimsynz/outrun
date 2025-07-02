@@ -25,6 +25,9 @@ rustsat-cadical = "0.7.2"
 # SMT solver for type constraint solving
 z3 = "0.12"
 
+# LRU cache for SMT constraint solving optimization
+lru = "0.12"
+
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"
