@@ -70,9 +70,38 @@ pub struct Z3Context {
 
 impl Z3Context {
     pub fn new() -> Self {
-        let config = Config::new();
+        let mut config = Config::new();
+        
+        // Optimize Z3 configuration for Outrun's constraint patterns
+        Self::configure_for_performance(&mut config);
+        
         let context = Context::new(&config);
         Self { context }
+    }
+    
+    /// Configure Z3 for optimal performance on Outrun type constraints
+    fn configure_for_performance(config: &mut Config) {
+        // Set timeout for individual solver calls (5 seconds)
+        config.set_param_value("timeout", "5000");
+        
+        // Enable model generation for extracting type assignments
+        config.set_model_generation(true);
+        
+        // Optimize for satisfiability checking (vs proof generation)
+        config.set_proof_generation(false);
+        config.set_param_value("unsat_core", "false");
+        
+        // Disable auto configuration to use our custom settings
+        config.set_param_value("auto_config", "false");
+        
+        // Set resource limit to prevent runaway queries
+        config.set_param_value("rlimit", "100000");
+        
+        // Only use binary API compatible parameters
+        config.set_param_value("type_check", "true");
+        
+        // Note: model_validate and well_sorted_check are shell-only parameters
+        // and cannot be set via the binary API
     }
 
     pub fn create_solver(&self) -> Z3ConstraintSolver {

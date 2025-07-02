@@ -5156,7 +5156,7 @@ impl CompilerEnvironment {
         &self,
         structured_type: &StructuredType,
     ) -> Result<StructuredType, crate::smt::solver::SMTError> {
-        use crate::smt::solver::{SolverResult, Z3Context};
+        use crate::smt::solver::SolverResult;
 
         // Get existing SMT constraints from unification context
         let constraints = self.unification_context().smt_constraints.clone();

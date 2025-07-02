@@ -8,7 +8,6 @@ use crate::smt::constraints::SMTConstraint;
 use crate::smt::cache::ConstraintCache;
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use std::cell::RefCell;
-use std::collections::HashSet;
 
 /// Execute a function with a fresh Z3 solver
 /// 
@@ -57,8 +56,8 @@ pub fn check_constraints_satisfiable_cached(
     THREAD_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         
-        // Step 1: Skip all preprocessing - even deduplication can break core library
-        let simplified_constraints = constraints.to_vec();
+        // Step 1: Order constraints for better Z3 performance (safe optimization)
+        let simplified_constraints = order_constraints_for_solving(constraints);
         
         // Step 2: Check cache with simplified constraints
         if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
@@ -99,8 +98,8 @@ pub fn solve_constraints_cached(
     THREAD_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         
-        // Step 1: Skip all preprocessing - even deduplication can break core library
-        let simplified_constraints = constraints.to_vec();
+        // Step 1: Order constraints for better Z3 performance (safe optimization)
+        let simplified_constraints = order_constraints_for_solving(constraints);
         
         // Step 2: Check cache with simplified constraints
         if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
@@ -134,20 +133,38 @@ pub fn clear_cache() {
     });
 }
 
-/// Safely deduplicate constraints without changing semantics
-/// Only removes exact duplicates to avoid breaking constraint logic
-fn deduplicate_constraints(constraints: &[SMTConstraint]) -> Vec<SMTConstraint> {
-    let mut unique_constraints = Vec::new();
-    let mut seen_constraints = HashSet::new();
+/// Order constraints to help Z3 solve more efficiently
+/// This is a safe optimization that doesn't change constraint semantics
+fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstraint> {
+    let mut ordered_constraints = constraints.to_vec();
     
-    for constraint in constraints {
-        // Use the built-in Hash implementation for SMTConstraint
-        if seen_constraints.insert(constraint.clone()) {
-            unique_constraints.push(constraint.clone());
-        }
-    }
+    // Sort by constraint priority for Z3 solving efficiency:
+    // 1. Concrete type bindings first (most constraining)
+    // 2. Type parameter unifications next 
+    // 3. Trait implementations third
+    // 4. More complex constraints last
+    ordered_constraints.sort_by_key(|constraint| match constraint {
+        // Highest priority: Concrete bindings constrain the solution space most
+        SMTConstraint::ConcreteSelfBinding { .. } => 0,
+        SMTConstraint::TypeParameterUnification { .. } => 1,
+        
+        // Medium priority: Type variable constraints 
+        SMTConstraint::TypeVariableConstraint { .. } => 2,
+        SMTConstraint::SelfTypeInference { .. } => 3,
+        
+        // Lower priority: Trait compatibility checks
+        SMTConstraint::TraitImplemented { .. } => 4,
+        SMTConstraint::TraitCompatibility { .. } => 5,
+        
+        // Lowest priority: Complex constraints that depend on other solutions
+        SMTConstraint::TypeUnification { .. } => 6,
+        SMTConstraint::GenericInstantiation { .. } => 7,
+        SMTConstraint::FunctionSignatureMatch { .. } => 8,
+        SMTConstraint::GuardCondition { .. } => 9,
+        SMTConstraint::UniversalSelfConstraint { .. } => 10,
+    });
     
-    unique_constraints
+    ordered_constraints
 }
 
 
