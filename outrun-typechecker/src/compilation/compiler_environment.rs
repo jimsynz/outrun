@@ -15,7 +15,7 @@ use crate::compilation::visitors::{
 use crate::dependency_graph::DependencyGraph;
 use crate::desugaring::DesugaringVisitor;
 use crate::error::{SpanExt, TypeError};
-use miette::{SourceOffset, SourceSpan};
+use miette::SourceSpan;
 use crate::types::traits::TraitConstraint;
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::Visitor;
@@ -1851,6 +1851,19 @@ impl CompilerEnvironment {
                         arg_types.push(arg_type);
                     }
 
+                    // Check if this is a generic trait type annotation (e.g., Option<Integer>)
+                    let base_trait_type = StructuredType::Simple(type_id.clone());
+                    eprintln!("🔍 Checking if '{}' with generic args is a trait...", type_name);
+                    if self.is_trait(&base_trait_type) {
+                        eprintln!("🎯 Found generic trait annotation: {}< ... >", type_name);
+                        eprintln!("🎯 This represents: {}< T > when T: < ... >", type_name);
+                        
+                        // Generate SMT constraints for Option<Integer> as Option<T> when T: Integer
+                        self.generate_generic_trait_constraints(&base_trait_type, &arg_types, &type_name)?;
+                    } else {
+                        eprintln!("❌ '{}' is not a trait, treating as concrete generic type", type_name);
+                    }
+
                     Ok(StructuredType::Generic {
                         base: type_id,
                         args: arg_types,
@@ -1868,10 +1881,10 @@ impl CompilerEnvironment {
                         
                         if implementations.is_empty() {
                             eprintln!("❌ No implementations found for trait '{}'", type_name);
-                            return Err(TypeError::UndefinedType { 
+                            Err(TypeError::UndefinedType { 
                                 span: (0, 0).into(), // TODO: Get actual span from type annotation
                                 name: format!("{} (no concrete implementations found)", type_name),
-                            });
+                            })
                         } else if implementations.len() == 1 {
                             // Single implementer - resolve to that concrete type
                             let concrete_type = implementations[0].clone();
@@ -2954,6 +2967,102 @@ impl CompilerEnvironment {
         implementations
     }
 
+    /// Find generic trait implementations that can be instantiated for a concrete type
+    /// This handles the cartesian product case where Option<Integer> represents
+    /// the product of all Option<T> implementations × all Integer implementations
+    pub fn find_generic_trait_implementations_for_concrete_type(
+        &self,
+        trait_type: &StructuredType,
+        concrete_type: &StructuredType,
+    ) -> Vec<StructuredType> {
+        eprintln!(
+            "🔍 Finding generic trait implementations for {} on concrete type {}",
+            trait_type.to_string_representation(),
+            concrete_type.to_string_representation()
+        );
+
+        let mut implementations = Vec::new();
+
+        // Extract the base trait name
+        let trait_name = match trait_type {
+            StructuredType::Simple(trait_id) => {
+                if let Some(name) = self.resolve_type(trait_id.clone()) {
+                    name
+                } else {
+                    eprintln!("❌ Could not resolve trait name for {:?}", trait_id);
+                    return implementations;
+                }
+            }
+            StructuredType::Generic { base, .. } => {
+                if let Some(name) = self.resolve_type(base.clone()) {
+                    name
+                } else {
+                    eprintln!("❌ Could not resolve generic trait name for {:?}", base);
+                    return implementations;
+                }
+            }
+            _ => {
+                eprintln!(
+                    "❌ Unsupported trait type: {}",
+                    trait_type.to_string_representation()
+                );
+                return implementations;
+            }
+        };
+
+        let modules = self.modules.read().unwrap();
+
+        // Search for generic trait implementations that can be instantiated
+        for (module_key, _module) in modules.iter() {
+            if let ModuleKey::TraitImpl(impl_trait_type, impl_type) = module_key {
+                // Check if this implementation is for our target trait
+                let impl_trait_name = match impl_trait_type.as_ref() {
+                    StructuredType::Simple(trait_id) => {
+                        self.resolve_type(trait_id.clone()).unwrap_or_default()
+                    }
+                    StructuredType::Generic { base, .. } => {
+                        self.resolve_type(base.clone()).unwrap_or_default()
+                    }
+                    _ => String::new(),
+                };
+
+                if impl_trait_name == trait_name {
+                    // Check if this implementation can be instantiated for the concrete type
+                    if let StructuredType::Generic { base, args } = impl_type.as_ref() {
+                        // This is a generic implementation like Option<T>
+                        // We need to check if T can be unified with the concrete type
+                        if args.len() == 1 {
+                            if let StructuredType::TypeVariable(_) = &args[0] {
+                                // Create instantiated type like Option<Integer> from Option<T>
+                                let instantiated_type = StructuredType::Generic {
+                                    base: base.clone(),
+                                    args: vec![concrete_type.clone()],
+                                };
+                                
+                                eprintln!(
+                                    "✅ Found generic implementation: {} can be instantiated as {}",
+                                    impl_type.to_string_representation(),
+                                    instantiated_type.to_string_representation()
+                                );
+                                
+                                implementations.push(instantiated_type);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        eprintln!(
+            "🔍 Found {} generic implementations for trait {} on concrete type {}",
+            implementations.len(),
+            trait_name,
+            concrete_type.to_string_representation()
+        );
+
+        implementations
+    }
+
     /// Resolve a Self type variable using SMT constraint solving
     /// This method uses the accumulated SelfTypeInference constraints to determine
     /// the concrete type that Self should be bound to
@@ -3223,6 +3332,55 @@ impl CompilerEnvironment {
         }
 
         implementations
+    }
+
+    /// Generate SMT constraints for generic trait type annotations
+    /// Example: Option<Integer> generates constraints equivalent to Option<T> when T: Integer
+    fn generate_generic_trait_constraints(
+        &self,
+        _base_trait: &StructuredType, 
+        arg_types: &[StructuredType],
+        type_name: &str
+    ) -> Result<(), TypeError> {
+        eprintln!("🔧 Generating constraints for generic trait: {}", type_name);
+        
+        // For each argument type, generate constraint that it must implement the corresponding trait
+        for (i, arg_type) in arg_types.iter().enumerate() {
+            eprintln!("🔧 Processing type argument {}: {:?}", i, arg_type);
+            
+            // Check if the argument is a trait name that needs constraint generation
+            match arg_type {
+                StructuredType::Simple(arg_trait_id) => {
+                    if self.is_trait(arg_type) {
+                        eprintln!("✅ Argument {} is a trait - will generate when T: {} constraint", i, arg_trait_id);
+                        
+                        // Create type variable for this parameter position
+                        let param_var_name = format!("T_{}", i);
+                        let param_type_id = self.intern_type_name(&param_var_name);
+                        let param_type_var = StructuredType::TypeVariable(param_type_id);
+                        
+                        // Generate constraint: T_i implements ArgTrait
+                        let trait_constraint = crate::smt::constraints::SMTConstraint::TraitImplemented {
+                            impl_type: param_type_var.clone(),
+                            trait_type: arg_type.clone(),
+                        };
+                        
+                        // Add constraint to SMT context
+                        if let Ok(mut compilation_state) = self.compilation_state.write() {
+                            compilation_state.unification_context.smt_constraints.push(trait_constraint);
+                            eprintln!("✅ Added constraint: {} implements {}", param_var_name, arg_trait_id);
+                        }
+                    } else {
+                        eprintln!("ℹ️  Argument {} is concrete type - no constraint needed", i);
+                    }
+                },
+                _ => {
+                    eprintln!("ℹ️  Argument {} is complex type - skipping for now", i);
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Check if a type is a trait (has a trait module)

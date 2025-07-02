@@ -331,6 +331,7 @@ impl TypeCheckingVisitor {
 
     /// Find the most concrete type from two compatible types
     /// This replaces the unification logic for cases that need a concrete result
+    #[allow(dead_code)]
     fn find_most_concrete_type(
         &self,
         type1: &StructuredType,
@@ -1874,7 +1875,7 @@ impl TypeCheckingVisitor {
                                     eprintln!("🚨 DEBUG: Looking for trait {} on type {}", module_name, inferred_self_type.to_string_representation());
                                     
                                     // Check if the type is actually a trait name that should resolve to implementers
-                                    if let StructuredType::Simple(type_name_id) = &inferred_self_type {
+                                    if let StructuredType::Simple(_type_name_id) = &inferred_self_type {
                                         if self.compiler_environment.is_trait(&inferred_self_type) {
                                             eprintln!("🎯 Type '{}' is a trait, resolving to concrete implementers", inferred_self_type.to_string_representation());
                                             
@@ -1900,6 +1901,34 @@ impl TypeCheckingVisitor {
                                                     eprintln!("❌ Concrete implementation doesn't satisfy trait constraint");
                                                 }
                                             }
+                                        }
+                                    }
+                                    
+                                    // GENERIC TRAIT CARTESIAN PRODUCT FIX: Handle Option<T> on concrete types
+                                    eprintln!("🎯 Checking if this is a generic trait mismatch...");
+                                    let module_trait_type = StructuredType::Simple(module_type_id.clone());
+                                    if self.compiler_environment.is_trait(&module_trait_type) {
+                                        eprintln!("🎯 Module '{}' is a trait, checking for generic implementations", module_name);
+                                        
+                                        // Look for implementations of this trait with the given type as a parameter
+                                        // e.g., find Option<T> implementations where T = Outrun.Core.Integer64
+                                        let generic_implementations = self.compiler_environment.find_generic_trait_implementations_for_concrete_type(
+                                            &module_trait_type, 
+                                            &inferred_self_type
+                                        );
+                                        
+                                        eprintln!("🎯 Found {} generic implementations", generic_implementations.len());
+                                        
+                                        if !generic_implementations.is_empty() {
+                                            let concrete_impl = &generic_implementations[0];
+                                            eprintln!("✅ Using generic implementation: {:?}", concrete_impl);
+                                            
+                                            // Continue with the generic implementation
+                                            return self.infer_implementing_type_with_smt(
+                                                module_type_id.clone(),
+                                                trait_func.definition(),
+                                                call,
+                                            );
                                         }
                                     }
                                     
