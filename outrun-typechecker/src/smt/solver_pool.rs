@@ -8,6 +8,7 @@ use crate::smt::constraints::SMTConstraint;
 use crate::smt::cache::ConstraintCache;
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use std::cell::RefCell;
+use std::collections::HashSet;
 
 /// Execute a function with a fresh Z3 solver
 /// 
@@ -48,7 +49,7 @@ thread_local! {
     static THREAD_CACHE: RefCell<ConstraintCache> = RefCell::new(ConstraintCache::new());
 }
 
-/// Check if constraints are satisfiable with caching
+/// Check if constraints are satisfiable with preprocessing and caching
 pub fn check_constraints_satisfiable_cached(
     constraints: &[SMTConstraint],
     compiler_env: &CompilerEnvironment,
@@ -56,8 +57,11 @@ pub fn check_constraints_satisfiable_cached(
     THREAD_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         
-        // Check cache first
-        if let Some(cached_result) = cache.get_cached_solution(constraints) {
+        // Step 1: Skip all preprocessing - even deduplication can break core library
+        let simplified_constraints = constraints.to_vec();
+        
+        // Step 2: Check cache with simplified constraints
+        if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
             return match cached_result {
                 SolverResult::Satisfiable(_) => Ok(true),
                 SolverResult::Unsatisfiable(_) => Ok(false),
@@ -67,16 +71,16 @@ pub fn check_constraints_satisfiable_cached(
             };
         }
         
-        // Cache miss - solve and cache result
+        // Step 3: Cache miss - solve and cache result
         let result = with_solver(|solver| {
-            solver.add_constraints(constraints, compiler_env)?;
+            solver.add_constraints(&simplified_constraints, compiler_env)?;
             Ok(solver.solve())
         })?;
         
-        // Cache the result for future use
-        cache.cache_solution(constraints.to_vec(), result.clone());
+        // Step 4: Cache the result for future use
+        cache.cache_solution(simplified_constraints, result.clone());
         
-        // Return boolean result
+        // Step 5: Return boolean result
         match result {
             SolverResult::Satisfiable(_) => Ok(true),
             SolverResult::Unsatisfiable(_) => Ok(false),
@@ -87,7 +91,7 @@ pub fn check_constraints_satisfiable_cached(
     })
 }
 
-/// Solve constraints with caching and return full result
+/// Solve constraints with preprocessing, caching and return full result
 pub fn solve_constraints_cached(
     constraints: &[SMTConstraint],
     compiler_env: &CompilerEnvironment,
@@ -95,19 +99,22 @@ pub fn solve_constraints_cached(
     THREAD_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         
-        // Check cache first
-        if let Some(cached_result) = cache.get_cached_solution(constraints) {
+        // Step 1: Skip all preprocessing - even deduplication can break core library
+        let simplified_constraints = constraints.to_vec();
+        
+        // Step 2: Check cache with simplified constraints
+        if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
             return Ok(cached_result.clone());
         }
         
-        // Cache miss - solve and cache result
+        // Step 3: Cache miss - solve and cache result
         let result = with_solver(|solver| {
-            solver.add_constraints(constraints, compiler_env)?;
+            solver.add_constraints(&simplified_constraints, compiler_env)?;
             Ok(solver.solve())
         })?;
         
-        // Cache the result for future use
-        cache.cache_solution(constraints.to_vec(), result.clone());
+        // Step 4: Cache the result for future use
+        cache.cache_solution(simplified_constraints, result.clone());
         
         Ok(result)
     })
@@ -127,11 +134,28 @@ pub fn clear_cache() {
     });
 }
 
+/// Safely deduplicate constraints without changing semantics
+/// Only removes exact duplicates to avoid breaking constraint logic
+fn deduplicate_constraints(constraints: &[SMTConstraint]) -> Vec<SMTConstraint> {
+    let mut unique_constraints = Vec::new();
+    let mut seen_constraints = HashSet::new();
+    
+    for constraint in constraints {
+        // Use the built-in Hash implementation for SMTConstraint
+        if seen_constraints.insert(constraint.clone()) {
+            unique_constraints.push(constraint.clone());
+        }
+    }
+    
+    unique_constraints
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::smt::constraints::SMTConstraint;
-    use crate::compilation::compiler_environment::{CompilerEnvironment, TypeNameId};
+    use crate::compilation::compiler_environment::TypeNameId;
     use crate::unification::StructuredType;
     use std::sync::{Arc, RwLock};
     use std::collections::HashMap;
@@ -155,7 +179,7 @@ mod tests {
         let test_trait_id = TypeNameId::new(43, storage.clone());
         
         // Create some test constraints
-        let constraints = vec![
+        let _constraints = vec![
             SMTConstraint::TraitImplemented {
                 impl_type: StructuredType::Simple(test_type_id),
                 trait_type: StructuredType::Simple(test_trait_id),

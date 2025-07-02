@@ -2517,7 +2517,7 @@ impl CompilerEnvironment {
     }
 
     /// Fast check for obviously incompatible types to avoid SMT calls
-    fn definitely_incompatible_types(&self, impl_type: &StructuredType, trait_type: &StructuredType) -> bool {
+    pub fn definitely_incompatible_types(&self, impl_type: &StructuredType, trait_type: &StructuredType) -> bool {
         match (impl_type, trait_type) {
             // Simple type mismatches that can never be compatible
             (StructuredType::Simple(impl_id), StructuredType::Simple(trait_id)) => {
