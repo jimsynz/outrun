@@ -2512,7 +2512,7 @@ impl CompilerEnvironment {
         solver
             .add_constraints(&[constraint], self)
             .unwrap_or_else(|e| {
-                eprintln!("⚠️ Failed to add constraint: {e:?}");
+                // Failed to add constraint
             });
 
         // Solve and check result
@@ -2569,7 +2569,7 @@ impl CompilerEnvironment {
 
                 // If no constraint found, return the TypeVariable as-is
                 // This allows the SMT solver to handle it
-                eprintln!("⚠️ Unresolved TypeVariable: {var_id:?}");
+                // Unresolved TypeVariable
                 structured_type.clone()
             }
             StructuredType::Generic { base, args } => {
@@ -2639,7 +2639,7 @@ impl CompilerEnvironment {
 
         // Add all constraints to the solver
         if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
-            eprintln!("❌ SMT solver error: {e:?}");
+            // SMT solver error
             return Err(e);
         }
 
@@ -2870,7 +2870,7 @@ impl CompilerEnvironment {
 
         // Add all constraints to the solver (including the Self inference constraints)
         if let Err(e) = solver.add_constraints(&context.smt_constraints, self) {
-            eprintln!("❌ SMT solver error when resolving Self: {e:?}");
+            // SMT solver error when resolving Self
             return Err(e);
         }
 
@@ -2891,13 +2891,13 @@ impl CompilerEnvironment {
                 }
             }
             crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
-                eprintln!("❌ SMT constraints unsatisfiable for Self resolution: {conflicting:?}");
+                // SMT constraints unsatisfiable for Self resolution
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
                     "Conflicting Self type constraints - this indicates a type error: {conflicting:?}"
                 )))
             }
             crate::smt::solver::SolverResult::Unknown(reason) => {
-                eprintln!("❓ SMT solver returned unknown for Self resolution: {reason}");
+                // SMT solver returned unknown for Self resolution
                 // Unknown means we can't prove satisfiability OR unsatisfiability
                 // This should be treated as a solver limitation, not a fallback opportunity
                 Err(crate::smt::solver::SMTError::SolvingFailed(format!(
@@ -2953,7 +2953,7 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!("⚠️ Could not extract type from boolean variable: {var_name}");
+        // Could not extract type from boolean variable
         None
     }
 
@@ -3443,15 +3443,12 @@ impl CompilerEnvironment {
                     }
                     return function_entry;
                 } else {
-                    eprintln!("❌ Module {type_name} not found in registry");
-                    eprintln!(
-                        "📋 Available modules: {:?}",
-                        modules.keys().collect::<Vec<_>>()
-                    );
+                    // Module not found in registry
+                    // Available modules logged for debugging
                 }
             }
         }
-        eprintln!("❌ Qualified function lookup failed for {module_type:?}.{function_name:?}");
+        // Qualified function lookup failed
         None
     }
 
@@ -3486,7 +3483,7 @@ impl CompilerEnvironment {
                     );
                 }
             } else {
-                eprintln!("❌ No exact module match found, proceeding to SMT-based search");
+                // No exact module match found, proceeding to SMT-based search
             }
 
             if let Some(generic_function) = self.find_compatible_generic_implementation(
@@ -3543,7 +3540,7 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!("❌ No SMT-compatible generic implementation found");
+        // No SMT-compatible generic implementation found
         None
     }
 
@@ -4809,7 +4806,7 @@ impl CompilerEnvironment {
 
         // Add all constraints to the solver
         if let Err(e) = solver.add_constraints(&constraints, self) {
-            eprintln!("⚠️ Failed to add SMT constraints: {e}");
+            // Failed to add SMT constraints
             return None;
         }
 
@@ -4829,15 +4826,15 @@ impl CompilerEnvironment {
 
                 // If SMT-guided lookup fails, this indicates a problem with our SMT model application
                 // In an SMT-first system, if constraints are satisfiable, we should find the function
-                eprintln!("❌ CRITICAL: SMT constraints satisfiable but concrete function not found - indicates SMT model application issue");
+                // CRITICAL: SMT constraints satisfiable but concrete function not found
                 None
             }
             crate::smt::solver::SolverResult::Unsatisfiable(_) => {
-                eprintln!("❌ SMT constraint unsatisfiable - trait not implemented");
+                // SMT constraint unsatisfiable - trait not implemented
                 None
             }
             crate::smt::solver::SolverResult::Unknown(reason) => {
-                eprintln!("❓ SMT solver unknown result: {reason}");
+                // SMT solver unknown result
                 None
             }
         }
@@ -5016,7 +5013,7 @@ impl CompilerEnvironment {
                 if let Some(concrete_type) = type_parameter_map.get(&var_name) {
                     concrete_type.clone()
                 } else {
-                    eprintln!("⚠️ TypeVariable {var_name} not found in SMT model");
+                    // TypeVariable not found in SMT model
                     structured_type.clone()
                 }
             }
@@ -5071,7 +5068,7 @@ impl CompilerEnvironment {
             return Some(entry);
         }
 
-        eprintln!("❌ No concrete function found even with SMT-guided lookup");
+        // No concrete function found even with SMT-guided lookup
         None
     }
 
@@ -5190,7 +5187,7 @@ impl CompilerEnvironment {
             }
         }
 
-        eprintln!("⚠️ No concrete implementation found for trait {trait_name}");
+        // No concrete implementation found for trait
         None
     }
 
@@ -5210,7 +5207,7 @@ impl CompilerEnvironment {
         let constraints = self.unification_context().smt_constraints.clone();
 
         if constraints.is_empty() {
-            eprintln!("⚠️ No SMT constraints available for type variable resolution");
+            // No SMT constraints available for type variable resolution
             return Ok(structured_type.clone());
         }
 
