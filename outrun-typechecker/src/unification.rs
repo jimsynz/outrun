@@ -512,7 +512,7 @@ impl StructuredType {
     pub fn to_string_representation(&self) -> String {
         match self {
             StructuredType::Simple(type_name_id) => type_name_id.to_string(),
-            StructuredType::TypeVariable(type_name_id) => format!("${}", type_name_id.to_string()),
+            StructuredType::TypeVariable(type_name_id) => format!("${type_name_id}"),
             StructuredType::Generic { base, args } => {
                 let arg_names: Vec<String> = args
                     .iter()
@@ -1079,7 +1079,7 @@ impl UnificationContext {
             || self
                 .constraint_collector
                 .as_ref()
-                .map_or(false, |collector| !collector.constraints.is_empty())
+                .is_some_and(|collector| !collector.constraints.is_empty())
     }
 
     /// Initialize constraint collector for complex constraint scenarios

@@ -11,7 +11,7 @@ Option.some(value: "test")
     let program = match outrun_parser::parse_program(source) {
         Ok(program) => program,
         Err(err) => {
-            panic!("Parse error: {:?}", err);
+            panic!("Parse error: {err:?}");
         }
     };
 
@@ -25,7 +25,7 @@ Option.some(value: "test")
         Err(errors) => {
             println!("❌ Type checking failed:");
             for error in errors {
-                println!("  - {:?}", error);
+                println!("  - {error:?}");
             }
             // This might fail due to missing Option trait functions, but should exercise SMT system
         }
@@ -41,7 +41,7 @@ Integer.abs(value: 42)
     let program = match outrun_parser::parse_program(source) {
         Ok(program) => program,
         Err(err) => {
-            panic!("Parse error: {:?}", err);
+            panic!("Parse error: {err:?}");
         }
     };
 
@@ -55,7 +55,7 @@ Integer.abs(value: 42)
         Err(errors) => {
             println!("❌ Type checking failed:");
             for error in &errors {
-                println!("  - {:?}", error);
+                println!("  - {error:?}");
             }
             
             // Check if we're getting the trait constraint validation errors

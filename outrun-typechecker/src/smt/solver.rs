@@ -27,12 +27,12 @@ pub enum SMTError {
 impl std::fmt::Display for SMTError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SMTError::SolverError(msg) => write!(f, "SMT solver error: {}", msg),
-            SMTError::TranslationError(msg) => write!(f, "SMT translation error: {}", msg),
+            SMTError::SolverError(msg) => write!(f, "SMT solver error: {msg}"),
+            SMTError::TranslationError(msg) => write!(f, "SMT translation error: {msg}"),
             SMTError::TimeoutError => write!(f, "SMT solver timeout"),
             SMTError::ResourceLimitError => write!(f, "SMT solver resource limit exceeded"),
-            SMTError::NoConstraintsFound(msg) => write!(f, "No constraints found: {}", msg),
-            SMTError::SolvingFailed(msg) => write!(f, "SMT solving failed: {}", msg),
+            SMTError::NoConstraintsFound(msg) => write!(f, "No constraints found: {msg}"),
+            SMTError::SolvingFailed(msg) => write!(f, "SMT solving failed: {msg}"),
         }
     }
 }
@@ -125,7 +125,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(trait_type, compiler_env);
 
                     // Create a boolean assertion
-                    let var_name = format!("implements_{}_{}", impl_sort, trait_sort);
+                    let var_name = format!("implements_{impl_sort}_{trait_sort}");
                     let bool_var = Bool::new_const(self.context, var_name);
                     self.solver.assert(&bool_var);
                 }
@@ -139,8 +139,8 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(type2, compiler_env);
 
                     // For now, create boolean variables for each type and assert equality
-                    let var1 = Bool::new_const(self.context, format!("type_{}", type1_sort));
-                    let var2 = Bool::new_const(self.context, format!("type_{}", type2_sort));
+                    let var1 = Bool::new_const(self.context, format!("type_{type1_sort}"));
+                    let var2 = Bool::new_const(self.context, format!("type_{type2_sort}"));
                     let equality = var1._eq(&var2);
                     self.solver.assert(&equality);
                 }
@@ -153,7 +153,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translator
                         .translate_structured_type(generic_type, compiler_env);
                     let generic_var =
-                        Bool::new_const(self.context, format!("type_{}", generic_sort));
+                        Bool::new_const(self.context, format!("type_{generic_sort}"));
 
                     let mut disjuncts = Vec::new();
                     for candidate in concrete_candidates {
@@ -161,7 +161,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                             .translator
                             .translate_structured_type(candidate, compiler_env);
                         let candidate_var =
-                            Bool::new_const(self.context, format!("type_{}", candidate_sort));
+                            Bool::new_const(self.context, format!("type_{candidate_sort}"));
                         disjuncts.push(generic_var._eq(&candidate_var));
                     }
 
@@ -192,8 +192,8 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(concrete_type, compiler_env);
                     
                     // Create variables for the parameter and concrete type
-                    let param_var = Bool::new_const(self.context, format!("param_{}", parameter_name));
-                    let concrete_var = Bool::new_const(self.context, format!("type_{}", concrete_sort));
+                    let param_var = Bool::new_const(self.context, format!("param_{parameter_name}"));
+                    let concrete_var = Bool::new_const(self.context, format!("type_{concrete_sort}"));
                     
                     // Assert they are equal
                     let equality = param_var._eq(&concrete_var);
@@ -210,14 +210,14 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(bound_type, compiler_env);
                     
                     let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
-                        format!("TypeVar_{}", type_name)
+                        format!("TypeVar_{type_name}")
                     } else {
                         format!("TypeVar_unknown_{}", variable_id.hash)
                     };
                     
                     // Create variables for the TypeVariable and bound type
                     let type_var = Bool::new_const(self.context, var_name);
-                    let bound_var = Bool::new_const(self.context, format!("type_{}", bound_sort));
+                    let bound_var = Bool::new_const(self.context, format!("type_{bound_sort}"));
                     
                     // Assert they are equal
                     let equality = type_var._eq(&bound_var);
@@ -237,7 +237,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(trait_type, compiler_env);
 
                     // Create a boolean assertion
-                    let var_name = format!("implements_{}_{}", impl_sort, trait_sort);
+                    let var_name = format!("implements_{impl_sort}_{trait_sort}");
                     let bool_var = Bool::new_const(self.context, var_name);
                     self.solver.assert(&bool_var);
                 }
@@ -262,11 +262,11 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         
                         let implements_defined = Bool::new_const(
                             self.context, 
-                            format!("implements_{}_{}", self_var_name, trait_defined_sort)
+                            format!("implements_{self_var_name}_{trait_defined_sort}")
                         );
                         let implements_bound = Bool::new_const(
                             self.context, 
-                            format!("implements_{}_{}", self_var_name, bound_sort)
+                            format!("implements_{self_var_name}_{bound_sort}")
                         );
                         
                         // Assert: implements_defined → implements_bound
@@ -286,7 +286,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(concrete_type, compiler_env);
                     
                     let self_var = Bool::new_const(self.context, self_var_name);
-                    let concrete_var = Bool::new_const(self.context, format!("type_{}", concrete_sort));
+                    let concrete_var = Bool::new_const(self.context, format!("type_{concrete_sort}"));
                     
                     // Assert Self = ConcreteType
                     let equality = self_var._eq(&concrete_var);
@@ -305,7 +305,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translate_structured_type(inferred_type, compiler_env);
                     
                     let self_var = Bool::new_const(self.context, self_var_name);
-                    let inferred_var = Bool::new_const(self.context, format!("type_{}", inferred_sort));
+                    let inferred_var = Bool::new_const(self.context, format!("type_{inferred_sort}"));
                     
                     // Create a weighted constraint based on confidence
                     let equality = self_var._eq(&inferred_var);
@@ -371,7 +371,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let trait_sort = self
                         .translator
                         .translate_structured_type(trait_type, &CompilerEnvironment::new());
-                    let var_name = format!("implements_{}_{}", impl_sort, trait_sort);
+                    let var_name = format!("implements_{impl_sort}_{trait_sort}");
 
                     // Try to get the boolean value from the model
                     let bool_var = Bool::new_const(self.context, var_name.clone());
@@ -391,9 +391,9 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
 
                     // Store type assignments
                     constraint_model
-                        .add_type_assignment(format!("type_{}", type1_sort), type1.clone());
+                        .add_type_assignment(format!("type_{type1_sort}"), type1.clone());
                     constraint_model
-                        .add_type_assignment(format!("type_{}", type2_sort), type2.clone());
+                        .add_type_assignment(format!("type_{type2_sort}"), type2.clone());
                 }
                 SMTConstraint::TypeParameterUnification {
                     parameter_name,
@@ -402,7 +402,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                 } => {
                     // Store the type parameter assignment in the model
                     constraint_model.add_type_assignment(
-                        format!("param_{}", parameter_name),
+                        format!("param_{parameter_name}"),
                         concrete_type.clone(),
                     );
                     
@@ -411,7 +411,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         .translator
                         .translate_structured_type(concrete_type, &CompilerEnvironment::new());
                     constraint_model.add_type_assignment(
-                        format!("type_{}", concrete_sort),
+                        format!("type_{concrete_sort}"),
                         concrete_type.clone(),
                     );
                 }
@@ -479,7 +479,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
     /// Set a timeout for solving (in milliseconds)
     pub fn set_timeout(&mut self, timeout_ms: u64) {
         // Z3 timeout is set via parameters
-        let _timeout_param = format!("timeout={}", timeout_ms);
+        let _timeout_param = format!("timeout={timeout_ms}");
         // Note: Z3 Rust API might handle this differently, this is a placeholder
         // TODO: Implement proper timeout setting through Z3 parameters
     }
@@ -556,7 +556,7 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
         compiler_env: &CompilerEnvironment,
     ) -> SolverResult {
         self.reset();
-        if let Err(_) = self.add_constraints(&constraint_set.constraints, compiler_env) {
+        if self.add_constraints(&constraint_set.constraints, compiler_env).is_err() {
             return SolverResult::Unknown("Failed to add constraints".to_string());
         }
         self.solve()

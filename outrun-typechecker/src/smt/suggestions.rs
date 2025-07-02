@@ -287,7 +287,7 @@ impl ErrorSuggestionGenerator {
                 suggestions.push(SuggestionType::AddTraitImplementation {
                     trait_type: assigned_type.clone(),
                     impl_type: assigned_type.clone(), // Placeholder
-                    reasoning: format!("SMT model suggests {} trait implementation", var_name),
+                    reasoning: format!("SMT model suggests {var_name} trait implementation"),
                 });
             }
         }
@@ -296,7 +296,7 @@ impl ErrorSuggestionGenerator {
         for (constraint_id, selected_function) in &model.function_selections {
             suggestions.push(SuggestionType::AddFunctionOverload {
                 function_name: selected_function.clone(),
-                suggested_signature: format!("Based on constraint {}", constraint_id),
+                suggested_signature: format!("Based on constraint {constraint_id}"),
                 reasoning: "SMT solver identified this as a viable function signature".to_string(),
             });
         }
@@ -325,7 +325,7 @@ impl ErrorSuggestionGenerator {
                 {
                     if let SolverResult::Satisfiable(_) = solver.solve() {
                         relaxations.push(ConstraintRelaxation {
-                            description: format!("Remove conflicting constraints {} and {}", i, j),
+                            description: format!("Remove conflicting constraints {i} and {j}"),
                             relaxed_constraints: relaxed_constraints.clone(),
                             confidence: 0.5, // Lower confidence for pairwise relaxation
                         });
@@ -341,7 +341,7 @@ impl ErrorSuggestionGenerator {
     fn type_to_string(&self, structured_type: &StructuredType) -> String {
         // TODO: Implement proper StructuredType to string conversion
         // For now, use debug formatting
-        format!("{:?}", structured_type)
+        format!("{structured_type:?}")
     }
 
     /// Reset the suggestion generator state
@@ -402,8 +402,7 @@ impl SuggestionType {
                 reasoning,
             } => {
                 format!(
-                    "Add trait implementation: implement {:?} for {:?}. {}",
-                    trait_type, impl_type, reasoning
+                    "Add trait implementation: implement {trait_type:?} for {impl_type:?}. {reasoning}"
                 )
             }
             SuggestionType::ChangeTypeAnnotation {
@@ -412,8 +411,7 @@ impl SuggestionType {
                 location,
             } => {
                 format!(
-                    "Change type annotation at {}: {:?} -> {:?}",
-                    location, current_type, suggested_type
+                    "Change type annotation at {location}: {current_type:?} -> {suggested_type:?}"
                 )
             }
             SuggestionType::AddFunctionOverload {
@@ -422,8 +420,7 @@ impl SuggestionType {
                 reasoning,
             } => {
                 format!(
-                    "Add function overload: {} with signature {}. {}",
-                    function_name, suggested_signature, reasoning
+                    "Add function overload: {function_name} with signature {suggested_signature}. {reasoning}"
                 )
             }
             SuggestionType::RelaxConstraint {
@@ -432,8 +429,7 @@ impl SuggestionType {
                 reasoning,
             } => {
                 format!(
-                    "Relax constraint: {:?} -> {:?}. {}",
-                    original_constraint, relaxed_constraint, reasoning
+                    "Relax constraint: {original_constraint:?} -> {relaxed_constraint:?}. {reasoning}"
                 )
             }
         }

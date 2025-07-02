@@ -202,7 +202,7 @@ impl Hash for SMTConstraint {
                 4u8.hash(state);
                 // Note: BooleanExpression and HashMap don't implement Hash
                 // For now, we'll use a simplified hash
-                format!("{:?}", condition).hash(state);
+                format!("{condition:?}").hash(state);
                 variables.len().hash(state);
             }
             SMTConstraint::TypeParameterUnification {

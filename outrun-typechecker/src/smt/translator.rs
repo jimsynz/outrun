@@ -46,7 +46,7 @@ impl SMTTranslator {
             StructuredType::TypeVariable(type_name_id) => {
                 // TypeVariable gets converted to an SMT variable
                 if let Some(type_name) = compiler_env.resolve_type(type_name_id.clone()) {
-                    self.get_or_create_type_variable(&format!("TypeVar_{}", type_name))
+                    self.get_or_create_type_variable(&format!("TypeVar_{type_name}"))
                 } else {
                     self.get_or_create_type_variable(&format!("TypeVar_unknown_{}", type_name_id.hash))
                 }
@@ -99,7 +99,7 @@ impl SMTTranslator {
             // Handle concrete collection types
             StructuredType::List { element_type } => {
                 let element_sort = self.translate_structured_type(element_type, compiler_env);
-                let list_name = format!("List_{}", element_sort);
+                let list_name = format!("List_{element_sort}");
                 self.get_or_create_type_variable(&list_name)
             }
             StructuredType::Map {
@@ -108,18 +108,18 @@ impl SMTTranslator {
             } => {
                 let key_sort = self.translate_structured_type(key_type, compiler_env);
                 let value_sort = self.translate_structured_type(value_type, compiler_env);
-                let map_name = format!("Map_{}_{}", key_sort, value_sort);
+                let map_name = format!("Map_{key_sort}_{value_sort}");
                 self.get_or_create_type_variable(&map_name)
             }
             StructuredType::Option { inner_type } => {
                 let inner_sort = self.translate_structured_type(inner_type, compiler_env);
-                let option_name = format!("Option_{}", inner_sort);
+                let option_name = format!("Option_{inner_sort}");
                 self.get_or_create_type_variable(&option_name)
             }
             StructuredType::Result { ok_type, err_type } => {
                 let ok_sort = self.translate_structured_type(ok_type, compiler_env);
                 let err_sort = self.translate_structured_type(err_type, compiler_env);
-                let result_name = format!("Result_{}_{}", ok_sort, err_sort);
+                let result_name = format!("Result_{ok_sort}_{err_sort}");
                 self.get_or_create_type_variable(&result_name)
             }
             StructuredType::Struct { name, .. } => {
@@ -158,7 +158,7 @@ impl SMTTranslator {
         let trait_sort = self.translate_structured_type(trait_type, compiler_env);
 
         // Create SMT predicate: implements(impl_type, trait_type)
-        let predicate_name = format!("implements_{}_{}", impl_sort, trait_sort);
+        let predicate_name = format!("implements_{impl_sort}_{trait_sort}");
         self.get_or_create_predicate(&predicate_name)
     }
 
@@ -176,7 +176,7 @@ impl SMTTranslator {
             SMTConstraint::TypeUnification { type1, type2, .. } => {
                 let type1_sort = self.translate_structured_type(type1, compiler_env);
                 let type2_sort = self.translate_structured_type(type2, compiler_env);
-                format!("(= {} {})", type1_sort, type2_sort)
+                format!("(= {type1_sort} {type2_sort})")
             }
             SMTConstraint::GenericInstantiation {
                 generic_type,
@@ -189,13 +189,13 @@ impl SMTTranslator {
                     .collect();
 
                 if candidate_sorts.is_empty() {
-                    format!("false") // No valid instantiations
+                    "false".to_string() // No valid instantiations
                 } else if candidate_sorts.len() == 1 {
                     format!("(= {} {})", generic_sort, candidate_sorts[0])
                 } else {
                     let or_clauses: Vec<String> = candidate_sorts
                         .iter()
-                        .map(|candidate| format!("(= {} {})", generic_sort, candidate))
+                        .map(|candidate| format!("(= {generic_sort} {candidate})"))
                         .collect();
                     format!("(or {})", or_clauses.join(" "))
                 }
@@ -209,11 +209,11 @@ impl SMTTranslator {
                     self.translate_structured_type(&expected.return_type, compiler_env);
                 let actual_return =
                     self.translate_structured_type(&actual.return_type, compiler_env);
-                format!("(= {} {})", expected_return, actual_return)
+                format!("(= {expected_return} {actual_return})")
             }
             SMTConstraint::GuardCondition { .. } => {
                 // TODO: Implement guard condition translation
-                format!("true") // Placeholder
+                "true".to_string() // Placeholder
             }
             SMTConstraint::TypeParameterUnification {
                 parameter_name,
@@ -222,7 +222,7 @@ impl SMTTranslator {
             } => {
                 // Create an equality constraint between the parameter and concrete type
                 let concrete_sort = self.translate_structured_type(concrete_type, compiler_env);
-                format!("(= {} {})", parameter_name, concrete_sort)
+                format!("(= {parameter_name} {concrete_sort})")
             }
             SMTConstraint::TypeVariableConstraint {
                 variable_id,
@@ -231,12 +231,12 @@ impl SMTTranslator {
             } => {
                 // TypeVariable = concrete type constraint
                 let var_name = if let Some(type_name) = compiler_env.resolve_type(variable_id.clone()) {
-                    format!("TypeVar_{}", type_name)
+                    format!("TypeVar_{type_name}")
                 } else {
                     format!("TypeVar_unknown_{}", variable_id.hash)
                 };
                 let bound_sort = self.translate_structured_type(bound_type, compiler_env);
-                format!("(= {} {})", var_name, bound_sort)
+                format!("(= {var_name} {bound_sort})")
             }
             SMTConstraint::TraitCompatibility {
                 trait_type,
@@ -262,8 +262,7 @@ impl SMTTranslator {
                     let bound_sort = self.translate_structured_type(bound_trait, compiler_env);
                     // implements(Self, TraitBeingDefined) → implements(Self, BoundTrait)
                     implications.push(format!(
-                        "(=> (implements {} {}) (implements {} {}))",
-                        self_var_name, trait_defined_sort, self_var_name, bound_sort
+                        "(=> (implements {self_var_name} {trait_defined_sort}) (implements {self_var_name} {bound_sort}))"
                     ));
                 }
                 
@@ -283,7 +282,7 @@ impl SMTTranslator {
                 // Concrete Self binding: Self = ConcreteType
                 let self_var_name = format!("Self_{}", self_variable_id.hash);
                 let concrete_sort = self.translate_structured_type(concrete_type, compiler_env);
-                format!("(= {} {})", self_var_name, concrete_sort)
+                format!("(= {self_var_name} {concrete_sort})")
             }
             SMTConstraint::SelfTypeInference {
                 self_variable_id,
@@ -293,7 +292,7 @@ impl SMTTranslator {
                 // Self type inference: Self should equal inferred type
                 let self_var_name = format!("Self_{}", self_variable_id.hash);
                 let inferred_sort = self.translate_structured_type(inferred_type, compiler_env);
-                format!("(= {} {})", self_var_name, inferred_sort)
+                format!("(= {self_var_name} {inferred_sort})")
             }
         }
     }
@@ -307,7 +306,7 @@ impl SMTTranslator {
     ) -> String {
         let type1_sort = self.translate_structured_type(type1, compiler_env);
         let type2_sort = self.translate_structured_type(type2, compiler_env);
-        format!("(= {} {})", type1_sort, type2_sort)
+        format!("(= {type1_sort} {type2_sort})")
     }
 
     /// Generate SMT declarations for all types in scope
@@ -318,16 +317,16 @@ impl SMTTranslator {
         declarations.push("(declare-sort Type 0)".to_string());
 
         // Declare all type variables
-        for (_type_name, smt_var) in &self.type_variables {
-            declarations.push(format!("(declare-const {} Type)", smt_var));
+        for smt_var in self.type_variables.values() {
+            declarations.push(format!("(declare-const {smt_var} Type)"));
         }
 
         // Declare implements predicate
         declarations.push("(declare-fun implements (Type Type) Bool)".to_string());
 
         // Declare all trait predicates
-        for (_predicate_name, smt_predicate) in &self.trait_predicates {
-            declarations.push(format!("(declare-const {} Bool)", smt_predicate));
+        for smt_predicate in self.trait_predicates.values() {
+            declarations.push(format!("(declare-const {smt_predicate} Bool)"));
         }
 
         declarations.join("\n")

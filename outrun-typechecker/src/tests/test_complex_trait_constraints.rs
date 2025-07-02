@@ -13,7 +13,7 @@ Integer.abs(value: 42)
     let program = match outrun_parser::parse_program(source) {
         Ok(program) => program,
         Err(err) => {
-            panic!("Parse error: {:?}", err);
+            panic!("Parse error: {err:?}");
         }
     };
 
@@ -27,7 +27,7 @@ Integer.abs(value: 42)
         Err(errors) => {
             println!("❌ Integer trait constraint validation results:");
             for error in &errors {
-                println!("  - {:?}", error);
+                println!("  - {error:?}");
             }
             
             // Look for specific constraint-related errors vs missing implementation errors
@@ -53,7 +53,7 @@ Integer.abs(value: 42)
     let program = match outrun_parser::parse_program(source) {
         Ok(program) => program,
         Err(err) => {
-            panic!("Parse error: {:?}", err);
+            panic!("Parse error: {err:?}");
         }
     };
 
@@ -67,7 +67,7 @@ Integer.abs(value: 42)
         Err(errors) => {
             println!("❌ Integer trait constraint validation results:");
             for error in &errors {
-                println!("  - {:?}", error);
+                println!("  - {error:?}");
             }
             
             // We expect this to have errors due to missing implementations,
@@ -86,7 +86,7 @@ Float.abs(value: 3.14)
     let program = match outrun_parser::parse_program(source) {
         Ok(program) => program,
         Err(err) => {
-            panic!("Parse error: {:?}", err);
+            panic!("Parse error: {err:?}");
         }
     };
 
@@ -100,7 +100,7 @@ Float.abs(value: 3.14)
         Err(errors) => {
             println!("❌ Float trait constraint validation results:");
             for error in &errors {
-                println!("  - {:?}", error);
+                println!("  - {error:?}");
             }
             
             // We expect this to have errors due to missing implementations,
