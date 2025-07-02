@@ -15,6 +15,7 @@ use crate::compilation::visitors::{
 use crate::dependency_graph::DependencyGraph;
 use crate::desugaring::DesugaringVisitor;
 use crate::error::{SpanExt, TypeError};
+use miette::{SourceOffset, SourceSpan};
 use crate::types::traits::TraitConstraint;
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::Visitor;
@@ -1855,7 +1856,39 @@ impl CompilerEnvironment {
                         args: arg_types,
                     })
                 } else {
-                    Ok(StructuredType::Simple(type_id))
+                    // Check if this is a trait name that should resolve to concrete implementers
+                    let potential_trait_type = StructuredType::Simple(type_id.clone());
+                    eprintln!("🔍 Checking if '{}' is a trait...", type_name);
+                    if self.is_trait(&potential_trait_type) {
+                        eprintln!("🎯 Type annotation '{}' is a trait, resolving to implementers", type_name);
+                        
+                        // Find all concrete types that implement this trait
+                        let implementations = self.get_trait_implementations(&potential_trait_type);
+                        eprintln!("🎯 Found {} implementations for trait '{}'", implementations.len(), type_name);
+                        
+                        if implementations.is_empty() {
+                            eprintln!("❌ No implementations found for trait '{}'", type_name);
+                            return Err(TypeError::UndefinedType { 
+                                span: (0, 0).into(), // TODO: Get actual span from type annotation
+                                name: format!("{} (no concrete implementations found)", type_name),
+                            });
+                        } else if implementations.len() == 1 {
+                            // Single implementer - resolve to that concrete type
+                            let concrete_type = implementations[0].clone();
+                            eprintln!("✅ Resolved trait '{}' to concrete type: {:?}", type_name, concrete_type);
+                            Ok(concrete_type)
+                        } else {
+                            // Multiple implementers - for now, use the first one
+                            // TODO: This might need more sophisticated resolution logic
+                            let concrete_type = implementations[0].clone();
+                            eprintln!("⚠️  Multiple implementations for trait '{}', using first: {:?}", type_name, concrete_type);
+                            eprintln!("📋 All implementations: {:?}", implementations);
+                            Ok(concrete_type)
+                        }
+                    } else {
+                        // Not a trait, treat as concrete type
+                        Ok(StructuredType::Simple(type_id))
+                    }
                 }
             }
             outrun_parser::TypeAnnotation::Tuple { types, span: _ } => {

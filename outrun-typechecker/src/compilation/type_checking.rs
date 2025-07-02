@@ -1870,6 +1870,39 @@ impl TypeCheckingVisitor {
                                             trait_func.definition(),
                                             call,
                                         )?;
+                                    // CRITICAL FIX: Check if inferred_self_type is a trait that needs concrete resolution
+                                    eprintln!("🚨 DEBUG: Looking for trait {} on type {}", module_name, inferred_self_type.to_string_representation());
+                                    
+                                    // Check if the type is actually a trait name that should resolve to implementers
+                                    if let StructuredType::Simple(type_name_id) = &inferred_self_type {
+                                        if self.compiler_environment.is_trait(&inferred_self_type) {
+                                            eprintln!("🎯 Type '{}' is a trait, resolving to concrete implementers", inferred_self_type.to_string_representation());
+                                            
+                                            let implementations = self.compiler_environment.get_trait_implementations(&inferred_self_type);
+                                            eprintln!("🎯 Found {} implementations for trait '{}'", implementations.len(), inferred_self_type.to_string_representation());
+                                            
+                                            if !implementations.is_empty() {
+                                                // Try the first implementation
+                                                let concrete_impl = &implementations[0];
+                                                eprintln!("✅ Using concrete implementation: {:?}", concrete_impl);
+                                                
+                                                // Check if this concrete type implements the required trait
+                                                let module_trait_type = StructuredType::Simple(module_type_id.clone());
+                                                if self.compiler_environment.implements_trait(concrete_impl, &module_trait_type) {
+                                                    eprintln!("✅ Concrete implementation satisfies trait constraint");
+                                                    // Continue with the concrete implementation instead of erroring
+                                                    return self.infer_implementing_type_with_smt(
+                                                        module_type_id.clone(),
+                                                        trait_func.definition(),
+                                                        call,
+                                                    );
+                                                } else {
+                                                    eprintln!("❌ Concrete implementation doesn't satisfy trait constraint");
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
                                     Err(TypeError::TraitNotImplemented {
                                         span: call.span.to_source_span(),
                                         trait_name: module_name.clone(),
