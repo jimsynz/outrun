@@ -80,6 +80,7 @@ impl Z3Context {
     }
 
     /// Configure Z3 for optimal performance on Outrun type constraints
+    /// Based on optimization strategies from Z3 performance literature
     fn configure_for_performance(config: &mut Config) {
         // Set timeout for individual solver calls (5 seconds)
         config.set_param_value("timeout", "5000");
@@ -97,8 +98,11 @@ impl Z3Context {
         // Set resource limit to prevent runaway queries
         config.set_param_value("rlimit", "100000");
 
-        // Only use binary API compatible parameters
-        config.set_param_value("type_check", "true");
+        // Z3 OPTIMIZATION: Only use parameters that work with binary API
+        // Many Z3 parameters are shell-only and not available via binary API
+        
+        // The key performance benefit comes from our subproblem optimization
+        // and constraint ordering, not Z3 parameter tuning
 
         // Note: model_validate and well_sorted_check are shell-only parameters
         // and cannot be set via the binary API

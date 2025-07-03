@@ -706,7 +706,6 @@ impl CompilerEnvironment {
         collection: ProgramCollection,
         external_variables: HashMap<String, StructuredType>,
     ) -> Result<CompilationResult, Vec<TypeError>> {
-        let total_start = std::time::Instant::now();
         eprintln!("🔄 Starting compilation pipeline...");
         
         // Store external variables in CompilerEnvironment
