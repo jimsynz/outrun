@@ -8,7 +8,8 @@ use crate::smt::cache::{ConstraintCache, SelfResolutionKey};
 use crate::smt::constraints::SMTConstraint;
 use crate::smt::solver::{SMTError, SolverResult, Z3ConstraintSolver, Z3Context};
 use crate::unification::StructuredType;
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex, OnceLock};
+use tokio::task;
 
 /// Execute a function with a fresh Z3 solver
 ///
@@ -44,8 +45,14 @@ pub fn check_constraints_satisfiable(
     })
 }
 
-thread_local! {
-    static THREAD_CACHE: RefCell<ConstraintCache> = RefCell::new(ConstraintCache::new());
+/// Global SMT constraint cache shared across all threads for async compatibility
+static GLOBAL_SMT_CACHE: OnceLock<Arc<Mutex<ConstraintCache>>> = OnceLock::new();
+
+/// Get the global SMT cache instance
+fn get_global_cache() -> &'static Arc<Mutex<ConstraintCache>> {
+    GLOBAL_SMT_CACHE.get_or_init(|| {
+        Arc::new(Mutex::new(ConstraintCache::new()))
+    })
 }
 
 /// Check if constraints are satisfiable with preprocessing and caching
@@ -53,41 +60,52 @@ pub fn check_constraints_satisfiable_cached(
     constraints: &[SMTConstraint],
     compiler_env: &CompilerEnvironment,
 ) -> Result<bool, SMTError> {
-    THREAD_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
+    let cache = get_global_cache();
 
-        // Step 1: Order constraints for better Z3 performance (safe optimization)
-        let simplified_constraints = order_constraints_for_solving(constraints);
+    // Step 1: Order constraints for better Z3 performance (safe optimization)
+    let simplified_constraints = order_constraints_for_solving(constraints);
 
-        // Step 2: Check cache with simplified constraints
-        if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
-            return match cached_result {
-                SolverResult::Satisfiable(_) => Ok(true),
-                SolverResult::Unsatisfiable(_) => Ok(false),
-                SolverResult::Unknown(reason) => Err(SMTError::SolvingFailed(format!(
-                    "SMT solver returned unknown (cached): {reason}"
-                ))),
-            };
+    // Step 2: Check cache with simplified constraints (mutex lock)
+    {
+        match cache.lock() {
+            Ok(mut cache_guard) => {
+                if let Some(cached_result) = cache_guard.get_cached_solution(&simplified_constraints) {
+                    return match cached_result {
+                        SolverResult::Satisfiable(_) => Ok(true),
+                        SolverResult::Unsatisfiable(_) => Ok(false),
+                        SolverResult::Unknown(reason) => Err(SMTError::SolvingFailed(format!(
+                            "SMT solver returned unknown (cached): {reason}"
+                        ))),
+                    };
+                }
+            }
+            Err(_) => {
+                // Cache lock failed - skip cache and solve directly
+                eprintln!("⚠️  Cache lock failed, bypassing cache");
+            }
         }
+    }
 
-        // Step 3: Cache miss - solve and cache result
-        let result = with_solver(|solver| {
-            solver.add_constraints(&simplified_constraints, compiler_env)?;
-            Ok(solver.solve())
-        })?;
+    // Step 3: Cache miss - solve and cache result
+    let result = with_solver(|solver| {
+        solver.add_constraints(&simplified_constraints, compiler_env)?;
+        Ok(solver.solve())
+    })?;
 
-        // Step 4: Cache the result for future use
-        cache.cache_solution(simplified_constraints, result.clone());
+    // Step 4: Cache the result for future use (mutex lock)
+    {
+        let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+        cache_guard.cache_solution(simplified_constraints, result.clone());
+    }
 
-        // Step 5: Return boolean result
-        match result {
-            SolverResult::Satisfiable(_) => Ok(true),
-            SolverResult::Unsatisfiable(_) => Ok(false),
-            SolverResult::Unknown(reason) => Err(SMTError::SolvingFailed(format!(
-                "SMT solver returned unknown: {reason}"
-            ))),
-        }
-    })
+    // Step 5: Return boolean result
+    match result {
+        SolverResult::Satisfiable(_) => Ok(true),
+        SolverResult::Unsatisfiable(_) => Ok(false),
+        SolverResult::Unknown(reason) => Err(SMTError::SolvingFailed(format!(
+            "SMT solver returned unknown: {reason}"
+        ))),
+    }
 }
 
 /// Solve constraints with preprocessing, caching and return full result
@@ -95,46 +113,53 @@ pub fn solve_constraints_cached(
     constraints: &[SMTConstraint],
     compiler_env: &CompilerEnvironment,
 ) -> Result<SolverResult, SMTError> {
-    THREAD_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
+    let cache = get_global_cache();
 
-        // Step 1: Order constraints for better Z3 performance (safe optimization)
-        let simplified_constraints = order_constraints_for_solving(constraints);
+    // Step 1: Order constraints for better Z3 performance (safe optimization)
+    let simplified_constraints = order_constraints_for_solving(constraints);
 
-        // Step 2: Check cache with simplified constraints
-        if let Some(cached_result) = cache.get_cached_solution(&simplified_constraints) {
+    // Step 2: Check cache with simplified constraints (mutex lock)
+    {
+        let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+        if let Some(cached_result) = cache_guard.get_cached_solution(&simplified_constraints) {
             return Ok(cached_result.clone());
         }
+    }
 
-        // Step 3: SUBPROBLEM OPTIMIZATION (from John D. Cook article)
-        // Try to solve simpler subproblems first to constrain the solution space
-        if let Some(quick_result) = try_solve_subproblems(&simplified_constraints, compiler_env, &mut cache)? {
-            return Ok(quick_result);
-        }
+    // Step 3: SUBPROBLEM OPTIMIZATION (from John D. Cook article)
+    // Try to solve simpler subproblems first to constrain the solution space
+    if let Some(quick_result) = try_solve_subproblems(&simplified_constraints, compiler_env, cache)? {
+        return Ok(quick_result);
+    }
 
-        // Step 4: Cache miss - solve full problem
-        let result = with_solver(|solver| {
-            solver.add_constraints(&simplified_constraints, compiler_env)?;
-            Ok(solver.solve())
-        })?;
+    // Step 4: Cache miss - solve full problem
+    let result = with_solver(|solver| {
+        solver.add_constraints(&simplified_constraints, compiler_env)?;
+        Ok(solver.solve())
+    })?;
 
-        // Step 5: Cache the result for future use
-        cache.cache_solution(simplified_constraints, result.clone());
+    // Step 5: Cache the result for future use (mutex lock)
+    {
+        let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+        cache_guard.cache_solution(simplified_constraints, result.clone());
+    }
 
-        Ok(result)
-    })
+    Ok(result)
 }
 
 /// Get cache statistics for performance monitoring
 pub fn get_cache_stats() -> crate::smt::cache::CacheStats {
-    THREAD_CACHE.with(|cache| cache.borrow().get_stats().clone())
+    let cache = get_global_cache();
+    cache.lock().map(|cache_guard| cache_guard.get_stats().clone())
+        .unwrap_or_else(|_| crate::smt::cache::CacheStats::default())
 }
 
-/// Clear the thread-local cache
+/// Clear the global cache
 pub fn clear_cache() {
-    THREAD_CACHE.with(|cache| {
-        cache.borrow_mut().clear();
-    });
+    let cache = get_global_cache();
+    if let Ok(mut cache_guard) = cache.lock() {
+        cache_guard.clear();
+    }
 }
 
 /// Order constraints to help Z3 solve more efficiently
@@ -189,7 +214,7 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
 fn try_solve_subproblems(
     constraints: &[SMTConstraint],
     compiler_env: &CompilerEnvironment,
-    cache: &mut crate::smt::cache::ConstraintCache,
+    cache: &Arc<Mutex<crate::smt::cache::ConstraintCache>>,
 ) -> Result<Option<SolverResult>, SMTError> {
     // Strategy 1: Try concrete type bindings first (highest constraining power)
     let concrete_constraints: Vec<_> = constraints
@@ -202,39 +227,53 @@ fn try_solve_subproblems(
         .collect();
 
     if !concrete_constraints.is_empty() && concrete_constraints.len() < constraints.len() {
-        // Check cache for this subproblem
-        if let Some(cached_subresult) = cache.get_cached_solution(&concrete_constraints) {
-            match cached_subresult {
-                SolverResult::Unsatisfiable(_) => {
-                    // If concrete constraints are unsatisfiable, full problem is too
-                    return Ok(Some(cached_subresult.clone()));
+        // Check cache for this subproblem (mutex lock)
+        {
+            let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+            if let Some(cached_subresult) = cache_guard.get_cached_solution(&concrete_constraints) {
+                match cached_subresult {
+                    SolverResult::Unsatisfiable(_) => {
+                        // If concrete constraints are unsatisfiable, full problem is too
+                        return Ok(Some(cached_subresult.clone()));
+                    }
+                    SolverResult::Satisfiable(_) => {
+                        // Concrete constraints satisfiable - continue with full problem
+                        // but this gives Z3 a good starting point
+                    }
+                    SolverResult::Unknown(_) => {
+                        // Subproblem unknown - try full problem
+                    }
                 }
-                SolverResult::Satisfiable(_) => {
-                    // Concrete constraints satisfiable - continue with full problem
-                    // but this gives Z3 a good starting point
-                }
-                SolverResult::Unknown(_) => {
-                    // Subproblem unknown - try full problem
-                }
-            }
-        } else {
-            // Solve concrete subproblem first
-            let subresult = with_solver(|solver| {
-                solver.add_constraints(&concrete_constraints, compiler_env)?;
-                Ok(solver.solve())
-            })?;
+            } else {
+                // Cache miss - solve concrete subproblem first
+                let subresult = with_solver(|solver| {
+                    solver.add_constraints(&concrete_constraints, compiler_env)?;
+                    Ok(solver.solve())
+                })?;
 
-            // Cache the subproblem result
-            cache.cache_solution(concrete_constraints, subresult.clone());
-
-            match subresult {
-                SolverResult::Unsatisfiable(_) => {
-                    // If concrete constraints are unsatisfiable, full problem is too
-                    cache.cache_solution(constraints.to_vec(), subresult.clone());
-                    return Ok(Some(subresult));
+                // Cache the subproblem result (mutex lock)
+                {
+                    let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+                    cache_guard.cache_solution(concrete_constraints, subresult.clone());
+                    
+                    match subresult {
+                        SolverResult::Unsatisfiable(_) => {
+                            // If concrete constraints are unsatisfiable, full problem is too
+                            cache_guard.cache_solution(constraints.to_vec(), subresult.clone());
+                        }
+                        _ => {
+                            // Continue with full problem
+                        }
+                    }
                 }
-                _ => {
-                    // Continue with full problem
+                
+                match subresult {
+                    SolverResult::Unsatisfiable(_) => {
+                        return Ok(Some(subresult));
+                    }
+                    _ => {
+                        // Continue with full problem
+                    }
                 }
             }
         }
@@ -248,8 +287,9 @@ fn try_solve_subproblems(
         .collect();
 
     if simple_trait_constraints.len() <= 3 && simple_trait_constraints.len() < constraints.len() {
-        // For small numbers of trait constraints, solve them first
-        if let Some(cached_trait_result) = cache.get_cached_solution(&simple_trait_constraints) {
+        // For small numbers of trait constraints, solve them first (mutex lock)
+        let mut cache_guard = cache.lock().map_err(|e| SMTError::SolverError(format!("Cache lock failed: {}", e)))?;
+        if let Some(cached_trait_result) = cache_guard.get_cached_solution(&simple_trait_constraints) {
             if matches!(cached_trait_result, SolverResult::Unsatisfiable(_)) {
                 return Ok(Some(cached_trait_result.clone()));
             }
@@ -262,18 +302,18 @@ fn try_solve_subproblems(
 
 /// Get cached Self type resolution result
 pub fn get_cached_self_resolution(key: &SelfResolutionKey) -> Option<StructuredType> {
-    THREAD_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.get_cached_self_resolution(key).cloned()
+    let cache = get_global_cache();
+    cache.lock().ok().and_then(|mut cache_guard| {
+        cache_guard.get_cached_self_resolution(key).cloned()
     })
 }
 
 /// Cache a Self type resolution result
 pub fn cache_self_resolution(key: SelfResolutionKey, resolved_type: StructuredType) {
-    THREAD_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.cache_self_resolution(key, resolved_type);
-    })
+    let cache = get_global_cache();
+    if let Ok(mut cache_guard) = cache.lock() {
+        cache_guard.cache_self_resolution(key, resolved_type);
+    }
 }
 
 /// Solve Self type resolution with caching
@@ -327,6 +367,101 @@ pub fn solve_self_resolution_cached(
     }
 }
 
+/// Async SMT solver functions for Tokio compatibility
+
+/// Check if constraints are satisfiable with async Z3 solving using spawn_blocking
+pub async fn check_constraints_satisfiable_async(
+    constraints: Vec<SMTConstraint>,
+    compiler_env: CompilerEnvironment,
+) -> Result<bool, SMTError> {
+    task::spawn_blocking(move || {
+        check_constraints_satisfiable_cached(&constraints, &compiler_env)
+    })
+    .await
+    .map_err(|e| SMTError::SolverError(format!("Async task failed: {}", e)))?
+}
+
+/// Solve constraints with full result using async Z3 solving
+pub async fn solve_constraints_cached_async(
+    constraints: Vec<SMTConstraint>,
+    compiler_env: CompilerEnvironment,
+) -> Result<SolverResult, SMTError> {
+    task::spawn_blocking(move || {
+        solve_constraints_cached(&constraints, &compiler_env)
+    })
+    .await
+    .map_err(|e| SMTError::SolverError(format!("Async task failed: {}", e)))?
+}
+
+/// Async Self type resolution using spawn_blocking for CPU-intensive SMT operations
+pub async fn solve_self_resolution_cached_async(
+    trait_type_id: crate::compilation::compiler_environment::TypeNameId,
+    function_name: String,
+    argument_types: Vec<StructuredType>,
+    constraints: Vec<SMTConstraint>,
+    compiler_env: CompilerEnvironment,
+    self_type_id: crate::compilation::compiler_environment::TypeNameId,
+) -> Result<StructuredType, SMTError> {
+    task::spawn_blocking(move || {
+        solve_self_resolution_cached(
+            &trait_type_id,
+            &function_name,
+            &argument_types,
+            &constraints,
+            &compiler_env,
+            &self_type_id,
+        )
+    })
+    .await
+    .map_err(|e| SMTError::SolverError(format!("Async task failed: {}", e)))?
+}
+
+/// Process multiple independent constraint sets in parallel
+pub async fn solve_constraint_batches_async(
+    constraint_batches: Vec<(Vec<SMTConstraint>, CompilerEnvironment)>,
+) -> Vec<Result<SolverResult, SMTError>> {
+    let handles: Vec<_> = constraint_batches
+        .into_iter()
+        .map(|(constraints, compiler_env)| {
+            task::spawn_blocking(move || {
+                solve_constraints_cached(&constraints, &compiler_env)
+            })
+        })
+        .collect();
+
+    let mut results = Vec::new();
+    for handle in handles {
+        match handle.await {
+            Ok(result) => results.push(result),
+            Err(e) => results.push(Err(SMTError::SolverError(format!("Async task failed: {}", e)))),
+        }
+    }
+    results
+}
+
+/// Check multiple constraint sets for satisfiability in parallel
+pub async fn check_constraint_batches_satisfiable_async(
+    constraint_batches: Vec<(Vec<SMTConstraint>, CompilerEnvironment)>,
+) -> Vec<Result<bool, SMTError>> {
+    let handles: Vec<_> = constraint_batches
+        .into_iter()
+        .map(|(constraints, compiler_env)| {
+            task::spawn_blocking(move || {
+                check_constraints_satisfiable_cached(&constraints, &compiler_env)
+            })
+        })
+        .collect();
+
+    let mut results = Vec::new();
+    for handle in handles {
+        match handle.await {
+            Ok(result) => results.push(result),
+            Err(e) => results.push(Err(SMTError::SolverError(format!("Async task failed: {}", e)))),
+        }
+    }
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,7 +469,7 @@ mod tests {
     use crate::smt::constraints::SMTConstraint;
     use crate::unification::StructuredType;
     use std::collections::HashMap;
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_with_solver() {
@@ -386,5 +521,77 @@ mod tests {
         assert!(formatted.contains("Cache Stats"));
         assert!(formatted.contains("0 hits"));
         assert!(formatted.contains("0 misses"));
+    }
+
+    #[tokio::test]
+    async fn test_async_smt_solving() {
+        // Test that async SMT solving works with Tokio runtime
+        use crate::compilation::compiler_environment::CompilerEnvironment;
+        
+        // Create proper TypeNameId instances with storage
+        let storage = Arc::new(RwLock::new(HashMap::new()));
+        let test_type_id = TypeNameId::new(42, storage.clone());
+        let test_trait_id = TypeNameId::new(43, storage.clone());
+
+        // Create test constraints
+        let constraints = vec![SMTConstraint::TraitImplemented {
+            impl_type: StructuredType::Simple(test_type_id),
+            trait_type: StructuredType::Simple(test_trait_id),
+        }];
+
+        let compiler_env = CompilerEnvironment::new();
+
+        // Test async constraint solving
+        let result = check_constraints_satisfiable_async(constraints, compiler_env).await;
+        
+        // Should succeed (or fail gracefully) - the important thing is no panics
+        match result {
+            Ok(_) => {
+                // Great! Async solving worked
+            }
+            Err(SMTError::SolverError(_)) => {
+                // Expected for minimal test setup
+            }
+            Err(other) => {
+                // Other errors are acceptable as long as we don't panic
+                println!("Async SMT test got error: {:?}", other);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parallel_constraint_batches() {
+        // Test parallel processing of multiple constraint sets
+        use crate::compilation::compiler_environment::CompilerEnvironment;
+        
+        let storage = Arc::new(RwLock::new(HashMap::new()));
+        
+        // Create multiple independent constraint sets
+        let mut batches = Vec::new();
+        for i in 0..3 {
+            let type_id = TypeNameId::new(100 + i, storage.clone());
+            let trait_id = TypeNameId::new(200 + i, storage.clone());
+            
+            let constraints = vec![SMTConstraint::TraitImplemented {
+                impl_type: StructuredType::Simple(type_id),
+                trait_type: StructuredType::Simple(trait_id),
+            }];
+            
+            batches.push((constraints, CompilerEnvironment::new()));
+        }
+        
+        // Process batches in parallel
+        let results = check_constraint_batches_satisfiable_async(batches).await;
+        
+        // Should get 3 results
+        assert_eq!(results.len(), 3);
+        
+        // Each result should be a proper Result type (not panic)
+        for result in results {
+            match result {
+                Ok(_) => {}, // Success
+                Err(_) => {}, // Acceptable error 
+            }
+        }
     }
 }

@@ -91,6 +91,14 @@ impl ConstraintCache {
         }
     }
 
+    /// Get a cached solution without updating statistics (async-safe)
+    /// Note: This doesn't update LRU order to maintain immutability
+    pub fn get_cached_solution_readonly(&self, constraints: &[SMTConstraint]) -> Option<SolverResult> {
+        let hash = self.compute_constraint_hash(constraints);
+        // Use peek instead of get to avoid LRU updates (immutable access)
+        self.solved_constraints.peek(&hash).cloned()
+    }
+
     /// Cache a constraint solving result
     pub fn cache_solution(&mut self, constraints: Vec<SMTConstraint>, result: SolverResult) {
         let hash = self.compute_constraint_hash(&constraints);
@@ -112,6 +120,13 @@ impl ConstraintCache {
             self.stats.cache_misses += 1;
             None
         }
+    }
+
+    /// Get cached Self type resolution result without updating statistics (async-safe)
+    /// Note: This doesn't update LRU order to maintain immutability
+    pub fn get_cached_self_resolution_readonly(&self, key: &SelfResolutionKey) -> Option<StructuredType> {
+        // Use peek instead of get to avoid LRU updates (immutable access)
+        self.self_resolution_cache.peek(key).cloned()
     }
 
     /// Cache a Self type resolution result

@@ -951,16 +951,8 @@ impl UnificationContext {
             context,
         };
 
-        // Solve with a temporary solver
-        let system = crate::smt::SMTConstraintSystem::new();
-        let mut solver = system.create_solver();
-        solver.add_constraints(&[constraint], compiler_env)?;
-
-        match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
-            crate::smt::solver::SolverResult::Unsatisfiable(_) => Ok(false),
-            crate::smt::solver::SolverResult::Unknown(_) => Ok(false), // Conservative: assume incompatible
-        }
+        // Use cached solver for better performance
+        crate::smt::solver_pool::check_constraints_satisfiable_cached(&[constraint], compiler_env)
     }
 
     /// NEW: SMT-based trait implementation checking
@@ -976,16 +968,8 @@ impl UnificationContext {
             trait_type: trait_type.clone(),
         };
 
-        // Solve with a temporary solver
-        let system = crate::smt::SMTConstraintSystem::new();
-        let mut solver = system.create_solver();
-        solver.add_constraints(&[constraint], compiler_env)?;
-
-        match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(_) => Ok(true),
-            crate::smt::solver::SolverResult::Unsatisfiable(_) => Ok(false),
-            crate::smt::solver::SolverResult::Unknown(_) => Ok(false), // Conservative: assume not implemented
-        }
+        // Use cached solver for better performance
+        crate::smt::solver_pool::check_constraints_satisfiable_cached(&[constraint], compiler_env)
     }
 
     /// NEW: SMT-based function dispatch resolution
@@ -1008,12 +992,9 @@ impl UnificationContext {
                 call_site,
             };
 
-            let system = crate::smt::SMTConstraintSystem::new();
-            let mut solver = system.create_solver();
-            solver.add_constraints(&[constraint], compiler_env)?;
-
-            match solver.solve() {
-                crate::smt::solver::SolverResult::Satisfiable(_) => Ok(Some(0)),
+            // Use cached solver for better performance
+            match crate::smt::solver_pool::check_constraints_satisfiable_cached(&[constraint], compiler_env) {
+                Ok(true) => Ok(Some(0)),
                 _ => Ok(None),
             }
         } else {
@@ -1030,11 +1011,8 @@ impl UnificationContext {
 
             // Try each constraint individually to find the first satisfiable one
             for (index, constraint) in constraints {
-                let system = crate::smt::SMTConstraintSystem::new();
-                let mut solver = system.create_solver();
-                solver.add_constraints(&[constraint], compiler_env)?;
-
-                if let crate::smt::solver::SolverResult::Satisfiable(_) = solver.solve() {
+                // Use cached solver for better performance
+                if let Ok(true) = crate::smt::solver_pool::check_constraints_satisfiable_cached(&[constraint], compiler_env) {
                     return Ok(Some(index));
                 }
             }
@@ -1052,14 +1030,8 @@ impl UnificationContext {
             return Ok(crate::smt::solver::ConstraintModel::empty());
         }
 
-        let system = crate::smt::SMTConstraintSystem::new();
-        let mut solver = system.create_solver();
-
-        // Add all constraints to the solver
-        solver.add_constraints(&self.smt_constraints, compiler_env)?;
-
-        // Solve constraints
-        match solver.solve() {
+        // Use cached solver for better performance
+        match crate::smt::solver_pool::solve_constraints_cached(&self.smt_constraints, compiler_env)? {
             crate::smt::solver::SolverResult::Satisfiable(model) => Ok(model),
             crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
                 Err(crate::smt::solver::SMTError::SolverError(format!(

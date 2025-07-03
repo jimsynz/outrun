@@ -5275,18 +5275,13 @@ impl CompilerEnvironment {
         };
         constraints.push(trait_constraint);
 
-        // Create a temporary SMT solver to check if this constraint is satisfiable
-        let constraint_system = crate::smt::SMTConstraintSystem::new();
-        let mut solver = constraint_system.create_solver();
-
-        // Add all constraints to the solver
-        if let Err(_e) = solver.add_constraints(&constraints, self) {
-            // Failed to add SMT constraints
-            return None;
-        }
-
-        // Solve the constraints
-        match solver.solve() {
+        // Use direct SMT for function lookup to avoid recursive cache access
+        // This function can be called during SMT constraint solving, so we bypass the cache
+        // to prevent potential deadlocks while still benefiting from caching in other contexts
+        let system = crate::smt::SMTConstraintSystem::new();
+        let mut solver = system.create_solver();
+        match solver.add_constraints(&constraints, self) {
+            Ok(()) => match solver.solve() {
             crate::smt::solver::SolverResult::Satisfiable(model) => {
                 let resolved_types = self.apply_smt_model_to_types(&model, trait_type, impl_type);
 
@@ -5310,6 +5305,11 @@ impl CompilerEnvironment {
             }
             crate::smt::solver::SolverResult::Unknown(_reason) => {
                 // SMT solver unknown result
+                None
+            }
+            }
+            Err(_e) => {
+                // Failed to add constraints
                 None
             }
         }

@@ -100,6 +100,9 @@ mod test_complex_trait_constraints;
 mod test_smt_integration;
 mod test_smt_typevariable_resolution;
 
+// Async SMT performance tests
+mod test_async_smt_performance;
+
 // Function clause debugging tests
 mod test_function_clause_debugging;
 mod test_function_clause_detailed_debug;

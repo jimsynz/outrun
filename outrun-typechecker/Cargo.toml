@@ -24,6 +24,9 @@ z3 = "0.12"
 # LRU cache for SMT constraint solving optimization
 lru = "0.12"
 
+# Async runtime for parallel SMT solving
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync"] }
+
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"
@@ -31,3 +34,23 @@ pretty_assertions = "1.4"
 [[bin]]
 name = "profile-core-lib"
 path = "src/bin/profile-core-lib.rs"
+
+[[bin]]
+name = "profile-detailed"
+path = "src/bin/profile-detailed.rs"
+
+[[bin]]
+name = "profile-phases"
+path = "src/bin/profile-phases.rs"
+
+[[bin]]
+name = "profile-direct"
+path = "src/bin/profile-direct.rs"
+
+[[bin]]
+name = "profile-smt-trace"
+path = "src/bin/profile-smt-trace.rs"
+
+[[bin]]
+name = "profile-smt-debug"
+path = "src/bin/profile-smt-debug.rs"
