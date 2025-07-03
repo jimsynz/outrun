@@ -7,10 +7,21 @@ use crate::compilation::compiler_environment::{
     CompilerEnvironment, ModuleKey, ModuleKind, SourceLocation, UnifiedFunctionEntry,
 };
 use crate::unification::StructuredType;
+use lazy_static::lazy_static;
 use outrun_parser::{
     Block, FunctionDefinition, FunctionVisibility, GenericArgs, Identifier, Parameter, Span,
     TypeAnnotation, TypeIdentifier,
 };
+
+// Lazy static cache of all intrinsic function definitions
+// This avoids recreating 85 complex FunctionDefinition structures on every bootstrap
+lazy_static! {
+    static ref INTRINSIC_FUNCTIONS: Vec<FunctionDefinition> = build_intrinsic_function_definitions();
+    
+    // Also cache the typed definitions to avoid recreating them every time
+    static ref TYPED_INTRINSIC_FUNCTIONS: Vec<crate::checker::TypedFunctionDefinition> = 
+        INTRINSIC_FUNCTIONS.iter().map(create_typed_definition_for_intrinsic).collect();
+}
 
 /// Bootstrap intrinsic functions into a CompilerEnvironment
 /// Returns the updated environment with Outrun.Intrinsic module populated
@@ -27,16 +38,13 @@ pub fn bootstrap_intrinsics(env: CompilerEnvironment) -> CompilerEnvironment {
         structured_type.clone(),
     );
 
-    // Add all intrinsic function definitions and create their typed definitions
-    for func_def in get_intrinsic_function_definitions() {
+    // Add all intrinsic function definitions using cached data
+    for (func_def, typed_definition) in INTRINSIC_FUNCTIONS.iter().zip(TYPED_INTRINSIC_FUNCTIONS.iter()) {
         let function_name = env.intern_atom_name(&func_def.name.name);
-
-        // Create typed definition for the intrinsic function
-        let typed_definition = create_typed_definition_for_intrinsic(&func_def);
 
         let function_entry = UnifiedFunctionEntry::Intrinsic {
             definition: func_def.clone(),
-            typed_definition: Some(typed_definition),
+            typed_definition: Some(typed_definition.clone()),
             function_id: format!("Outrun.Intrinsic.{}", func_def.name.name),
             is_guard: func_def.name.name.ends_with('?'),
         };
@@ -52,30 +60,29 @@ pub fn bootstrap_intrinsics(env: CompilerEnvironment) -> CompilerEnvironment {
     env
 }
 
-/// Create a typed definition for an intrinsic function
+/// Create a lightweight typed definition for an intrinsic function with minimal allocations
 fn create_typed_definition_for_intrinsic(
     func_def: &FunctionDefinition,
 ) -> crate::checker::TypedFunctionDefinition {
     use crate::checker::*;
+    
+    const ZERO_SPAN: Span = Span { start: 0, end: 0, start_line_col: Some((0, 0)), end_line_col: Some((0, 0)) };
 
-    // Convert parameters to typed parameters
-    let typed_parameters: Vec<TypedParameter> = func_def
-        .parameters
-        .iter()
-        .map(|param| {
-            TypedParameter {
-                name: param.name.name.clone(),
-                param_type: None, // TODO: Convert type annotations properly
-                span: param.span,
-            }
-        })
-        .collect();
+    // Pre-allocate typed parameters with exact capacity for performance
+    let mut typed_parameters = Vec::with_capacity(func_def.parameters.len());
+    for param in &func_def.parameters {
+        typed_parameters.push(TypedParameter {
+            name: param.name.name.clone(),
+            param_type: None, // TODO: Convert type annotations properly
+            span: ZERO_SPAN,
+        });
+    }
 
-    // Create empty body for intrinsics
+    // Create minimal empty body for intrinsics
     let empty_body = TypedBlock {
-        statements: Vec::new(),
+        statements: Vec::new(), // Empty statements for intrinsics
         result_type: None,
-        span: func_def.span,
+        span: ZERO_SPAN,
     };
 
     TypedFunctionDefinition {
@@ -85,13 +92,13 @@ fn create_typed_definition_for_intrinsic(
         guard: None,       // Intrinsics don't have guards
         body: empty_body,
         function_id: format!("Outrun.Intrinsic.{}", func_def.name.name),
-        span: func_def.span,
+        span: ZERO_SPAN,
     }
 }
 
-/// Get all intrinsic function definitions
-/// These reuse the existing FunctionDefinition structure from the parser
-pub fn get_intrinsic_function_definitions() -> Vec<FunctionDefinition> {
+/// Build all intrinsic function definitions (called once via lazy_static)
+/// These reuse the existing FunctionDefinition structure from the parser  
+fn build_intrinsic_function_definitions() -> Vec<FunctionDefinition> {
     vec![
         // List operations
         create_function_def(
@@ -701,71 +708,80 @@ pub fn get_intrinsic_function_definitions() -> Vec<FunctionDefinition> {
     ]
 }
 
-/// Create a FunctionDefinition struct with the given name, parameters, and return type
+/// Create a lightweight FunctionDefinition struct for intrinsics with minimal allocations
 fn create_function_def(
     name: &str,
     params: Vec<(&str, TypeAnnotation)>,
     return_type: TypeAnnotation,
 ) -> FunctionDefinition {
-    let span = Span::new(0, 0); // Dummy span for intrinsics
+    // Use zero span for all intrinsics to minimize memory usage  
+    const ZERO_SPAN: Span = Span { start: 0, end: 0, start_line_col: Some((0, 0)), end_line_col: Some((0, 0)) };
+    
+    // Pre-allocate parameters vector with exact capacity to avoid reallocations
+    let mut parameters = Vec::with_capacity(params.len());
+    for (param_name, param_type) in params {
+        parameters.push(Parameter {
+            name: Identifier {
+                name: param_name.to_string(),
+                span: ZERO_SPAN,
+            },
+            type_annotation: param_type,
+            span: ZERO_SPAN,
+        });
+    }
 
     FunctionDefinition {
-        attributes: vec![],
+        attributes: Vec::new(), // Use Vec::new() instead of vec![] macro for empty vector
         visibility: FunctionVisibility::Public,
         name: Identifier {
             name: name.to_string(),
-            span,
+            span: ZERO_SPAN,
         },
-        parameters: params
-            .into_iter()
-            .map(|(param_name, param_type)| Parameter {
-                name: Identifier {
-                    name: param_name.to_string(),
-                    span,
-                },
-                type_annotation: param_type,
-                span,
-            })
-            .collect(),
+        parameters,
         return_type,
         guard: None,
         body: Block {
-            statements: vec![], // Empty body for intrinsics
-            span,
+            statements: Vec::new(), // Empty body for intrinsics - use Vec::new() for performance
+            span: ZERO_SPAN,
         },
-        span,
+        span: ZERO_SPAN,
     }
 }
 
-/// Create a simple type annotation (e.g., "String", "T")
+/// Create a simple type annotation (e.g., "String", "T") with minimal allocations
 fn create_simple_type(type_name: &str) -> TypeAnnotation {
-    let span = Span::new(0, 0);
+    const ZERO_SPAN: Span = Span { start: 0, end: 0, start_line_col: Some((0, 0)), end_line_col: Some((0, 0)) };
     TypeAnnotation::Simple {
         path: vec![TypeIdentifier {
             name: type_name.to_string(),
-            span,
+            span: ZERO_SPAN,
         }],
         generic_args: None,
-        span,
+        span: ZERO_SPAN,
     }
 }
 
-/// Create a generic type annotation (e.g., "Option<T>", "Map<K, V>")
+/// Create a generic type annotation (e.g., "Option<T>", "Map<K, V>") with minimal allocations
 fn create_generic_type(base_type: &str, type_args: Vec<&str>) -> TypeAnnotation {
-    let span = Span::new(0, 0);
+    const ZERO_SPAN: Span = Span { start: 0, end: 0, start_line_col: Some((0, 0)), end_line_col: Some((0, 0)) };
     TypeAnnotation::Simple {
         path: vec![TypeIdentifier {
             name: base_type.to_string(),
-            span,
+            span: ZERO_SPAN,
         }],
         generic_args: if type_args.is_empty() {
             None
         } else {
+            // Pre-allocate with exact capacity for performance
+            let mut args = Vec::with_capacity(type_args.len());
+            for type_arg in type_args {
+                args.push(create_simple_type(type_arg));
+            }
             Some(GenericArgs {
-                args: type_args.into_iter().map(create_simple_type).collect(),
-                span,
+                args,
+                span: ZERO_SPAN,
             })
         },
-        span,
+        span: ZERO_SPAN,
     }
 }

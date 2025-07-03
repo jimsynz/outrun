@@ -217,10 +217,13 @@ impl ConstraintCache {
 
     /// Compute hash for a set of constraints
     fn compute_constraint_hash(&self, constraints: &[SMTConstraint]) -> ConstraintSetHash {
+        // Step 1: Deduplicate and normalize constraints for better cache hit ratios
+        let normalized_constraints = self.normalize_and_deduplicate_constraints(constraints);
+        
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
         // Sort constraints by their hash to ensure consistent ordering
-        let mut constraint_hashes: Vec<u64> = constraints
+        let mut constraint_hashes: Vec<u64> = normalized_constraints
             .iter()
             .map(|constraint| {
                 let mut constraint_hasher = std::collections::hash_map::DefaultHasher::new();
@@ -237,8 +240,151 @@ impl ConstraintCache {
 
         ConstraintSetHash {
             content_hash: hasher.finish(),
-            constraint_count: constraints.len(),
+            constraint_count: normalized_constraints.len(), // Use deduplicated count
         }
+    }
+    
+    /// Normalize and deduplicate constraints to improve cache hit ratios
+    /// This removes duplicate constraints and normalizes variable names for better caching
+    fn normalize_and_deduplicate_constraints(&self, constraints: &[SMTConstraint]) -> Vec<SMTConstraint> {
+        use std::collections::HashSet;
+        
+        // Step 1: Deduplicate identical constraints
+        let mut unique_constraints = HashSet::new();
+        let mut deduplicated = Vec::new();
+        
+        for constraint in constraints {
+            // Normalize Self variable names to improve cache hits
+            let normalized_constraint = self.normalize_constraint_variables(constraint);
+            
+            if unique_constraints.insert(normalized_constraint.clone()) {
+                deduplicated.push(normalized_constraint);
+            }
+        }
+        
+        // Step 2: Sort for consistent ordering (improves cache hit ratio)
+        deduplicated.sort_by_key(|constraint| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            constraint.hash(&mut hasher);
+            hasher.finish()
+        });
+        
+        deduplicated
+    }
+    
+    /// Normalize constraint variable names to improve cache hit ratios
+    /// This converts unique Self_call_X variables to canonical names where possible
+    fn normalize_constraint_variables(&self, constraint: &SMTConstraint) -> SMTConstraint {
+        // For now, implement basic normalization - this can be extended
+        match constraint {
+            SMTConstraint::SelfTypeInference { 
+                self_variable_id: _, 
+                inferred_type, 
+                call_site_context: _, 
+                confidence 
+            } => {
+                // Normalize Self variable names based on the inferred type
+                // This allows multiple calls with the same inferred type to share cache entries
+                let normalized_var_name = format!("Self_normalized_{}", 
+                    self.normalize_type_for_caching(inferred_type));
+                let normalized_var_id = self.create_normalized_type_id(&normalized_var_name);
+                
+                SMTConstraint::SelfTypeInference {
+                    self_variable_id: normalized_var_id,
+                    inferred_type: inferred_type.clone(),
+                    call_site_context: "normalized_call_site".to_string(), // Normalize context for caching
+                    confidence: confidence.clone(),
+                }
+            }
+            SMTConstraint::ConcreteSelfBinding {
+                self_variable_id: _,
+                concrete_type,
+                context: _
+            } => {
+                // Normalize concrete Self bindings
+                let normalized_var_name = format!("Self_concrete_{}", 
+                    self.normalize_type_for_caching(concrete_type));
+                let normalized_var_id = self.create_normalized_type_id(&normalized_var_name);
+                
+                SMTConstraint::ConcreteSelfBinding {
+                    self_variable_id: normalized_var_id,
+                    concrete_type: concrete_type.clone(),
+                    context: "normalized_context".to_string(),
+                }
+            }
+            // For other constraint types, return as-is for now
+            // This can be extended to normalize more constraint types
+            _ => constraint.clone(),
+        }
+    }
+    
+    /// Create a normalized type string for caching purposes
+    fn normalize_type_for_caching(&self, structured_type: &StructuredType) -> String {
+        match structured_type {
+            StructuredType::Simple(type_id) => format!("Simple_{}", type_id.hash),
+            StructuredType::Generic { base, args } => {
+                let arg_strs: Vec<String> = args.iter()
+                    .map(|arg| self.normalize_type_for_caching(arg))
+                    .collect();
+                format!("Generic_{}_{}", base.hash, arg_strs.join("_"))
+            }
+            StructuredType::Tuple(types) => {
+                let type_strs: Vec<String> = types.iter()
+                    .map(|t| self.normalize_type_for_caching(t))
+                    .collect();
+                format!("Tuple_{}", type_strs.join("_"))
+            }
+            StructuredType::Function { params, return_type } => {
+                let param_strs: Vec<String> = params.iter()
+                    .map(|p| self.normalize_type_for_caching(&p.param_type))
+                    .collect();
+                format!("Function_{}_to_{}", 
+                    param_strs.join("_"), 
+                    self.normalize_type_for_caching(return_type))
+            }
+            StructuredType::TypeVariable(var_id) => format!("TypeVar_{}", var_id.hash),
+            StructuredType::Integer64 => "Integer64".to_string(),
+            StructuredType::Float64 => "Float64".to_string(),
+            StructuredType::Boolean => "Boolean".to_string(),
+            StructuredType::String => "String".to_string(),
+            StructuredType::Atom => "Atom".to_string(),
+            StructuredType::List { element_type } => {
+                format!("List_{}", self.normalize_type_for_caching(element_type))
+            }
+            StructuredType::Map { key_type, value_type } => {
+                format!("Map_{}_{}", 
+                    self.normalize_type_for_caching(key_type),
+                    self.normalize_type_for_caching(value_type))
+            }
+            StructuredType::Option { inner_type } => {
+                format!("Option_{}", self.normalize_type_for_caching(inner_type))
+            }
+            StructuredType::Result { ok_type, err_type } => {
+                format!("Result_{}_{}", 
+                    self.normalize_type_for_caching(ok_type),
+                    self.normalize_type_for_caching(err_type))
+            }
+            StructuredType::Struct { name, .. } => {
+                format!("Struct_{}", name.hash)
+            }
+            StructuredType::Trait { name, .. } => {
+                format!("Trait_{}", name.hash)
+            }
+            StructuredType::TypeError { .. } => "TypeError".to_string(),
+        }
+    }
+    
+    /// Create a normalized TypeNameId for caching
+    fn create_normalized_type_id(&self, name: &str) -> TypeNameId {
+        // Create a hash-based ID for the normalized name
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        name.hash(&mut hasher);
+        let hash = hasher.finish();
+        
+        // Use a dummy storage since this is just for caching normalization
+        use std::sync::{Arc, RwLock};
+        let dummy_storage = Arc::new(RwLock::new(std::collections::HashMap::new()));
+        TypeNameId::new(hash, dummy_storage)
     }
 }
 
