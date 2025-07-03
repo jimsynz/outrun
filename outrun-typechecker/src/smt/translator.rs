@@ -299,6 +299,48 @@ impl SMTTranslator {
                 let inferred_sort = self.translate_structured_type(inferred_type, compiler_env);
                 format!("(= {self_var_name} {inferred_sort})")
             }
+            SMTConstraint::ArgumentTypeMatch {
+                clause_id,
+                parameter_name,
+                expected_type,
+                actual_type,
+                ..
+            } => {
+                // Argument type matching: clause is applicable if expected = actual
+                let expected_sort = self.translate_structured_type(expected_type, compiler_env);
+                let actual_sort = self.translate_structured_type(actual_type, compiler_env);
+                let clause_var = format!("clause_applicable_{clause_id}_{parameter_name}");
+                format!("(=> (= {expected_sort} {actual_sort}) {clause_var})")
+            }
+            SMTConstraint::GuardApplicable {
+                clause_id,
+                guard_expression: _,
+                guard_variables: _,
+                ..
+            } => {
+                // Guard applicability: for now, just assert applicability
+                // TODO: Implement proper guard expression analysis
+                let guard_var = format!("guard_applicable_{clause_id}");
+                guard_var
+            }
+            SMTConstraint::ClausePriority {
+                clause_id,
+                priority,
+                ..
+            } => {
+                // Clause priority: assert priority relationship
+                let priority_var = format!("clause_priority_{clause_id}_{priority}");
+                priority_var
+            }
+            SMTConstraint::GuardStaticallyEvaluated {
+                clause_id,
+                static_result,
+                ..
+            } => {
+                // Static guard evaluation: guard result is compile-time constant
+                let guard_static_var = format!("guard_static_{clause_id}");
+                format!("(= {guard_static_var} {static_result})")
+            }
         }
     }
 

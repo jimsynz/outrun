@@ -958,3 +958,121 @@ impl TypeChecker {
         })
     }
 }
+
+// === Function Clause Dispatch System ===
+
+/// Set of function clauses with the same name but different signatures/guards
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionClauseSet {
+    pub function_name: String,
+    pub clauses: Vec<FunctionClause>,
+    pub clause_resolution_cache: HashMap<u64, Vec<ApplicableClause>>,
+}
+
+/// Individual function clause with guard conditions and priority
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionClause {
+    pub clause_id: String,
+    pub base_function: TypedFunctionDefinition,
+    pub priority: u32,
+    pub applicability_constraints: Vec<crate::smt::constraints::SMTConstraint>,
+    pub from_guard: bool,
+    pub span: Span,
+}
+
+/// Result of SMT-based clause analysis
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApplicableClause {
+    pub clause_id: String,
+    pub confidence: ClauseConfidence,
+    pub type_assignments: HashMap<String, StructuredType>,
+    pub guard_result: Option<bool>, // Some(true/false) if statically evaluable, None if runtime
+}
+
+/// Confidence level for clause applicability
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClauseConfidence {
+    Definite,   // SMT proves this clause always applies
+    Likely,     // SMT suggests this clause is applicable
+    Possible,   // Clause could apply but requires runtime checks
+    Unlikely,   // Clause probably won't apply but still possible
+}
+
+impl FunctionClauseSet {
+    /// Create a new function clause set
+    pub fn new(function_name: String) -> Self {
+        Self {
+            function_name,
+            clauses: Vec::new(),
+            clause_resolution_cache: HashMap::new(),
+        }
+    }
+
+    /// Add a clause to the set
+    pub fn add_clause(&mut self, clause: FunctionClause) {
+        self.clauses.push(clause);
+        // Clear cache when clauses change
+        self.clause_resolution_cache.clear();
+    }
+
+    /// Get all clauses sorted by priority (lower number = higher priority)
+    pub fn get_clauses_by_priority(&self) -> Vec<&FunctionClause> {
+        let mut clauses: Vec<&FunctionClause> = self.clauses.iter().collect();
+        clauses.sort_by_key(|c| c.priority);
+        clauses
+    }
+
+    /// Check if this clause set has any guards
+    pub fn has_guards(&self) -> bool {
+        self.clauses.iter().any(|c| c.base_function.guard.is_some())
+    }
+}
+
+impl FunctionClause {
+    /// Create a new function clause
+    pub fn new(
+        clause_id: String,
+        base_function: TypedFunctionDefinition,
+        priority: u32,
+        span: Span,
+    ) -> Self {
+        let from_guard = base_function.guard.is_some();
+        Self {
+            clause_id,
+            base_function,
+            priority,
+            applicability_constraints: Vec::new(),
+            from_guard,
+            span,
+        }
+    }
+
+    /// Add an SMT constraint for this clause
+    pub fn add_constraint(&mut self, constraint: crate::smt::constraints::SMTConstraint) {
+        self.applicability_constraints.push(constraint);
+    }
+
+    /// Get the function signature for this clause
+    pub fn get_signature(&self) -> String {
+        let param_types: Vec<String> = self
+            .base_function
+            .parameters
+            .iter()
+            .map(|p| {
+                p.param_type
+                    .as_ref()
+                    .map(|t| format!("{t:?}"))
+                    .unwrap_or_else(|| "unknown".to_string())
+            })
+            .collect();
+        
+        let return_type = self
+            .base_function
+            .return_type
+            .as_ref()
+            .map(|t| format!("{t:?}"))
+            .unwrap_or_else(|| "unknown".to_string());
+        
+        format!("({}) -> {}", param_types.join(", "), return_type)
+    }
+}

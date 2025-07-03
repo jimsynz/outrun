@@ -2765,7 +2765,7 @@ impl CompilerEnvironment {
     pub fn find_generic_trait_implementations_for_concrete_type(
         &self,
         trait_type: &StructuredType,
-        concrete_type: &StructuredType,
+        _concrete_type: &StructuredType,
     ) -> Vec<StructuredType> {
         let mut implementations = Vec::new();
 

@@ -97,6 +97,44 @@ pub enum SMTConstraint {
         call_site_context: String,     // Description of the function call
         confidence: InferenceConfidence, // How confident we are in this inference
     },
+
+    // === Function Clause Dispatch Constraints ===
+
+    /// Argument type must match function clause parameter
+    /// Used for function clause selection based on argument types
+    ArgumentTypeMatch {
+        clause_id: String,              // Unique identifier for the function clause
+        parameter_name: String,         // Name of the parameter being matched
+        expected_type: StructuredType,  // Expected parameter type from clause definition
+        actual_type: StructuredType,    // Actual argument type from call site
+        call_site: Span,               // Location of the function call
+    },
+
+    /// Guard expression must be applicable (side-effect free and Boolean-valued)
+    /// Guards in Outrun must be pure functions that return Boolean
+    GuardApplicable {
+        clause_id: String,              // Unique identifier for the function clause
+        guard_expression: String,       // String representation of guard (for now)
+        guard_variables: std::collections::HashMap<String, StructuredType>, // Variables in scope
+        context: String,                // For error reporting
+    },
+
+    /// Priority ordering between function clauses
+    /// Lower priority number = higher precedence
+    ClausePriority {
+        clause_id: String,              // Unique identifier for the function clause  
+        priority: u32,                  // Numeric priority (0 = highest)
+        context: String,                // Function name and location context
+    },
+
+    /// Guard expression can be statically evaluated at compile time
+    /// Enables constant folding optimization for guard conditions
+    GuardStaticallyEvaluated {
+        clause_id: String,              // Unique identifier for the function clause
+        guard_expression: String,       // String representation of guard
+        static_result: bool,            // Compile-time evaluation result
+        optimization_context: String,  // Description of the optimization applied
+    },
 }
 
 /// Confidence level for Self type inference
@@ -268,6 +306,54 @@ impl Hash for SMTConstraint {
                 inferred_type.hash(state);
                 call_site_context.hash(state);
                 confidence.hash(state);
+            }
+            SMTConstraint::ArgumentTypeMatch {
+                clause_id,
+                parameter_name,
+                expected_type,
+                actual_type,
+                call_site,
+            } => {
+                11u8.hash(state);
+                clause_id.hash(state);
+                parameter_name.hash(state);
+                expected_type.hash(state);
+                actual_type.hash(state);
+                call_site.start.hash(state);
+            }
+            SMTConstraint::GuardApplicable {
+                clause_id,
+                guard_expression,
+                guard_variables,
+                context,
+            } => {
+                12u8.hash(state);
+                clause_id.hash(state);
+                guard_expression.hash(state);
+                guard_variables.len().hash(state); // HashMap doesn't implement Hash
+                context.hash(state);
+            }
+            SMTConstraint::ClausePriority {
+                clause_id,
+                priority,
+                context,
+            } => {
+                13u8.hash(state);
+                clause_id.hash(state);
+                priority.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::GuardStaticallyEvaluated {
+                clause_id,
+                guard_expression,
+                static_result,
+                optimization_context,
+            } => {
+                14u8.hash(state);
+                clause_id.hash(state);
+                guard_expression.hash(state);
+                static_result.hash(state);
+                optimization_context.hash(state);
             }
         }
     }

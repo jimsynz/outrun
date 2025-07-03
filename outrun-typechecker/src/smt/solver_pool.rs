@@ -159,6 +159,12 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
         SMTConstraint::FunctionSignatureMatch { .. } => 8,
         SMTConstraint::GuardCondition { .. } => 9,
         SMTConstraint::UniversalSelfConstraint { .. } => 10,
+        
+        // Function clause dispatch constraints
+        SMTConstraint::ArgumentTypeMatch { .. } => 11,
+        SMTConstraint::GuardApplicable { .. } => 12,
+        SMTConstraint::ClausePriority { .. } => 13,
+        SMTConstraint::GuardStaticallyEvaluated { .. } => 14,
     });
 
     ordered_constraints

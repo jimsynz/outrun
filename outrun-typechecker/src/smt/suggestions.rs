@@ -249,6 +249,49 @@ impl ErrorSuggestionGenerator {
                                     call_site_context
                                 )
                             }
+                            SMTConstraint::ArgumentTypeMatch {
+                                clause_id,
+                                parameter_name,
+                                expected_type,
+                                actual_type,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove argument type constraint for clause {}: {} expects {} but got {}",
+                                    clause_id,
+                                    parameter_name,
+                                    self.type_to_string(expected_type),
+                                    self.type_to_string(actual_type)
+                                )
+                            }
+                            SMTConstraint::GuardApplicable {
+                                clause_id,
+                                guard_expression,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove guard applicability constraint for clause {clause_id}: {guard_expression}"
+                                )
+                            }
+                            SMTConstraint::ClausePriority {
+                                clause_id,
+                                priority,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove clause priority constraint: {clause_id} (priority {priority})"
+                                )
+                            }
+                            SMTConstraint::GuardStaticallyEvaluated {
+                                clause_id,
+                                guard_expression,
+                                static_result,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove static guard evaluation for clause {clause_id}: {guard_expression} = {static_result}"
+                                )
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

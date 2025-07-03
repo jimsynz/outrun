@@ -357,6 +357,65 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         }
                     }
                 }
+                SMTConstraint::ArgumentTypeMatch {
+                    clause_id,
+                    parameter_name,
+                    expected_type,
+                    actual_type,
+                    ..
+                } => {
+                    // Argument type matching: expected_type = actual_type
+                    let expected_sort = self
+                        .translator
+                        .translate_structured_type(expected_type, compiler_env);
+                    let actual_sort = self
+                        .translator
+                        .translate_structured_type(actual_type, compiler_env);
+                    
+                    let expected_var = Bool::new_const(self.context, format!("type_{expected_sort}"));
+                    let actual_var = Bool::new_const(self.context, format!("type_{actual_sort}"));
+                    
+                    // Create clause applicability variable
+                    let clause_var = Bool::new_const(self.context, format!("clause_applicable_{clause_id}_{parameter_name}"));
+                    
+                    // Assert: clause is applicable if types match
+                    let type_match = expected_var._eq(&actual_var);
+                    let implication = Bool::implies(&type_match, &clause_var);
+                    self.solver.assert(&implication);
+                }
+                SMTConstraint::GuardApplicable {
+                    clause_id,
+                    guard_expression: _,
+                    guard_variables: _,
+                    ..
+                } => {
+                    // Guard applicability: for now, just assert that guard can be evaluated
+                    // TODO: Implement proper guard expression analysis
+                    let guard_var = Bool::new_const(self.context, format!("guard_applicable_{clause_id}"));
+                    self.solver.assert(&guard_var);
+                }
+                SMTConstraint::ClausePriority {
+                    clause_id,
+                    priority,
+                    ..
+                } => {
+                    // Clause priority: lower number = higher priority
+                    // For now, just record the priority value
+                    let priority_var = Bool::new_const(self.context, format!("clause_priority_{clause_id}_{priority}"));
+                    self.solver.assert(&priority_var);
+                }
+                SMTConstraint::GuardStaticallyEvaluated {
+                    clause_id,
+                    guard_expression: _,
+                    static_result,
+                    ..
+                } => {
+                    // Static guard evaluation: guard result is known at compile time
+                    let guard_result_var = Bool::new_const(self.context, format!("guard_static_{clause_id}"));
+                    let static_bool = Bool::from_bool(self.context, *static_result);
+                    let equality = guard_result_var._eq(&static_bool);
+                    self.solver.assert(&equality);
+                }
             }
         }
 
@@ -477,6 +536,80 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let self_var_name = format!("Self_{}", self_variable_id.hash);
                     constraint_model
                         .add_type_assignment(self_var_name, trait_being_defined.clone());
+                }
+                SMTConstraint::ArgumentTypeMatch {
+                    clause_id,
+                    parameter_name,
+                    expected_type,
+                    actual_type,
+                    ..
+                } => {
+                    // Store clause applicability based on argument type matching
+                    let clause_var_name = format!("clause_applicable_{clause_id}_{parameter_name}");
+                    let clause_var = Bool::new_const(self.context, clause_var_name.clone());
+                    if let Some(value) = z3_model.eval(&clause_var, true) {
+                        if let Some(bool_value) = value.as_bool() {
+                            constraint_model.add_boolean_assignment(clause_var_name, bool_value);
+                        }
+                    }
+                    
+                    // Store the type assignments
+                    let expected_sort = self
+                        .translator
+                        .translate_structured_type(expected_type, &CompilerEnvironment::new());
+                    let actual_sort = self
+                        .translator
+                        .translate_structured_type(actual_type, &CompilerEnvironment::new());
+                    constraint_model.add_type_assignment(format!("type_{expected_sort}"), expected_type.clone());
+                    constraint_model.add_type_assignment(format!("type_{actual_sort}"), actual_type.clone());
+                }
+                SMTConstraint::GuardApplicable {
+                    clause_id,
+                    ..
+                } => {
+                    // Store guard applicability result
+                    let guard_var_name = format!("guard_applicable_{clause_id}");
+                    let guard_var = Bool::new_const(self.context, guard_var_name.clone());
+                    if let Some(value) = z3_model.eval(&guard_var, true) {
+                        if let Some(bool_value) = value.as_bool() {
+                            constraint_model.add_boolean_assignment(guard_var_name, bool_value);
+                        }
+                    }
+                }
+                SMTConstraint::ClausePriority {
+                    clause_id,
+                    priority,
+                    ..
+                } => {
+                    // Store clause priority information
+                    let priority_var_name = format!("clause_priority_{clause_id}_{priority}");
+                    let priority_var = Bool::new_const(self.context, priority_var_name.clone());
+                    if let Some(value) = z3_model.eval(&priority_var, true) {
+                        if let Some(bool_value) = value.as_bool() {
+                            constraint_model.add_boolean_assignment(priority_var_name, bool_value);
+                        }
+                    }
+                    
+                    // Store the function selection based on priority
+                    constraint_model.add_function_selection(
+                        format!("priority_{priority}"),
+                        clause_id.clone(),
+                    );
+                }
+                SMTConstraint::GuardStaticallyEvaluated {
+                    clause_id,
+                    static_result,
+                    ..
+                } => {
+                    // Store static guard evaluation result
+                    let guard_static_var_name = format!("guard_static_{clause_id}");
+                    constraint_model.add_boolean_assignment(guard_static_var_name, *static_result);
+                    
+                    // Store the clause as statically evaluable
+                    constraint_model.add_function_selection(
+                        format!("static_guard_{clause_id}"),
+                        clause_id.clone(),
+                    );
                 }
                 _ => {
                     // Handle other constraint types as needed
