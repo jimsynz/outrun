@@ -29,11 +29,15 @@ lazy_static! {
 
 
 /// Load and compile the entire core library using the multi-program compiler (no caching)
+/// NOTE: This is kept synchronous for lazy_static compatibility - uses blocking executor
 fn load_and_compile_core_library() -> CompilationResult {
     let collection = load_core_library_collection();
 
     let mut compiler_env = CompilerEnvironment::new();
-    load_and_compile_core_library_with_environment(&mut compiler_env, collection)
+    
+    // Use blocking executor for lazy_static compatibility
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(load_and_compile_core_library_with_environment(&mut compiler_env, collection))
 }
 
 /// Load and compile the entire core library using parallel file loading (async version)
@@ -41,18 +45,18 @@ pub async fn load_and_compile_core_library_parallel() -> CompilationResult {
     let collection = load_core_library_collection_parallel().await;
 
     let mut compiler_env = CompilerEnvironment::new();
-    load_and_compile_core_library_with_environment(&mut compiler_env, collection)
+    load_and_compile_core_library_with_environment(&mut compiler_env, collection).await
 }
 
 /// Load and compile the entire core library using a shared compiler environment
-pub fn load_and_compile_core_library_with_environment(
+pub async fn load_and_compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
     collection: ProgramCollection,
 ) -> CompilationResult {
     // NOTE: Removed cache clearing for performance - cache reuse significantly speeds up compilation
     // crate::smt::solver_pool::clear_cache();
 
-    match compiler_env.compile_collection(collection.clone()) {
+    match compiler_env.compile_collection_async(collection.clone()).await {
         Ok(result) => result,
         Err(errors) => {
             eprintln!("🚨 Core Library Compilation Errors:");
@@ -337,11 +341,20 @@ pub fn get_core_library_compilation() -> &'static CompilationResult {
 ///
 /// # Returns
 /// * `CompilationResult` - Core library compilation with all types, traits, and implementations
+/// NOTE: This is the blocking version for backward compatibility
 pub fn compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
 ) -> CompilationResult {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(compile_core_library_with_environment_async(compiler_env))
+}
+
+/// Async version of compile_core_library_with_environment for parallel compilation
+pub async fn compile_core_library_with_environment_async(
+    compiler_env: &mut CompilerEnvironment,
+) -> CompilationResult {
     let collection = load_core_library_collection();
-    load_and_compile_core_library_with_environment(compiler_env, collection)
+    load_and_compile_core_library_with_environment(compiler_env, collection).await
 }
 
 /// Get source code for a specific core library file
@@ -391,7 +404,7 @@ impl std::fmt::Display for CoreLibraryStats {
 
 /// Load and compile core library for testing, returning errors instead of exiting
 /// This function is used by tests to examine compilation errors in detail
-pub fn load_and_compile_core_library_for_test(
+pub async fn load_and_compile_core_library_for_test(
     core_lib_path: &Path,
 ) -> Result<CompilationResult, Vec<crate::error::TypeError>> {
     let mut collection = ProgramCollection::new();
@@ -431,7 +444,7 @@ pub fn load_and_compile_core_library_for_test(
     }
 
     let mut compiler_env = CompilerEnvironment::new();
-    compiler_env.compile_collection(collection)
+    compiler_env.compile_collection_async(collection).await
 }
 
 #[cfg(test)]

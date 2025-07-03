@@ -642,25 +642,46 @@ impl CompilerEnvironment {
     // REMOVED: bootstrap_intrinsic_functions() - intrinsics are now automatically bootstrapped in new()
 
     /// Compile a single program
-    pub fn compile_program(
+    pub async fn compile_program(
         &mut self,
         program: Program,
     ) -> Result<CompilationResult, Vec<TypeError>> {
         let mut collection = ProgramCollection::new();
         collection.add_program("main".to_string(), program, "".to_string());
-        self.compile_collection(collection)
+        self.compile_collection_async(collection).await
     }
 
     /// Compile a collection of programs
+    /// NOTE: This is the blocking version for backward compatibility  
     pub fn compile_collection(
         &mut self,
         collection: ProgramCollection,
     ) -> Result<CompilationResult, Vec<TypeError>> {
-        self.compile_collection_with_external_variables(collection, HashMap::new())
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(self.compile_collection_async(collection))
+    }
+
+    /// Async version of compile_collection for parallel compilation
+    pub async fn compile_collection_async(
+        &mut self,
+        collection: ProgramCollection,
+    ) -> Result<CompilationResult, Vec<TypeError>> {
+        self.compile_collection_with_external_variables_async(collection, HashMap::new()).await
     }
 
     /// Compile a collection of programs with external variables (for REPL usage)
+    /// NOTE: This is the blocking version for backward compatibility
     pub fn compile_collection_with_external_variables(
+        &mut self,
+        collection: ProgramCollection,
+        external_variables: HashMap<String, StructuredType>,
+    ) -> Result<CompilationResult, Vec<TypeError>> {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(self.compile_collection_with_external_variables_async(collection, external_variables))
+    }
+
+    /// Async version of compile_collection_with_external_variables for parallel compilation
+    pub async fn compile_collection_with_external_variables_async(
         &mut self,
         collection: ProgramCollection,
         external_variables: HashMap<String, StructuredType>,
@@ -671,12 +692,12 @@ impl CompilerEnvironment {
         self.set_external_variables(external_variables.clone());
 
         // Use our internal compilation implementation
-        self.internal_compile_collection(&collection, external_variables)
+        self.internal_compile_collection(&collection, external_variables).await
     }
 
     /// Internal compilation implementation
     /// This contains the main compilation logic moved from MultiProgramCompiler
-    fn internal_compile_collection(
+    async fn internal_compile_collection(
         &mut self,
         collection: &ProgramCollection,
         external_variables: HashMap<String, StructuredType>,
@@ -694,8 +715,8 @@ impl CompilerEnvironment {
         // This must happen BEFORE trait/struct/function extraction so we're working with canonical form
         let desugared_collection = self.desugar_programs(collection, &compilation_order)?;
 
-        // Step 2: Phase 2 - Extract all traits (from desugared code)
-        let traits = self.extract_traits(&desugared_collection, &compilation_order)?;
+        // Step 2: Phase 2 - Extract all traits (from desugared code) - PARALLEL
+        let traits = self.extract_traits_parallel(&desugared_collection, &compilation_order).await?;
 
         // Store traits in CompilerEnvironment
         for (type_id, trait_def) in &traits {
@@ -742,8 +763,8 @@ impl CompilerEnvironment {
             }
         }
 
-        // Step 3: Phase 3 - Extract all structs (from desugared code)
-        let structs = self.extract_structs(&desugared_collection, &compilation_order)?;
+        // Step 3: Phase 3 - Extract all structs (from desugared code) - PARALLEL
+        let structs = self.extract_structs_parallel(&desugared_collection, &compilation_order).await?;
 
         // Store structs in CompilerEnvironment
         for (type_id, struct_def) in &structs {
@@ -786,9 +807,9 @@ impl CompilerEnvironment {
         // Step 3.5: Generate auto-implementations for traits that support it
         self.generate_auto_implementations(&structs)?;
 
-        // Step 4: Phase 4 - Extract all implementations (from desugared code)
+        // Step 4: Phase 4 - Extract all implementations (from desugared code) - PARALLEL
         let implementations =
-            self.extract_implementations(&desugared_collection, &compilation_order)?;
+            self.extract_impls_parallel(&desugared_collection, &compilation_order).await?;
 
         // Store implementations in CompilerEnvironment
         self.set_implementations(implementations.clone());

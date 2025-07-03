@@ -291,7 +291,14 @@ use outrun_parser::Program;
 /// # Returns
 /// * `Ok(TypedProgram)` - Successfully typed program with complete type information and dispatch tables
 /// * `Err(Vec<TypeError>)` - Collection of type errors encountered during checking
+/// NOTE: This is the blocking version for backward compatibility
 pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError>> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(typecheck_program_async(program))
+}
+
+/// Async version of typecheck_program for parallel compilation
+pub async fn typecheck_program_async(program: Program) -> Result<TypedProgram, Vec<TypeError>> {
     // First desugar the program to transform operators into trait function calls
     let program_source = format!("{program}"); // Get source before move
     let desugared_program = DesugaringVisitor::desugar_program(program);
@@ -305,9 +312,8 @@ pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError
     collection.add_program("<program>".to_string(), desugared_program, program_source);
 
     // Compile without core library (original behavior)
-    compiler_env
-        .compile_collection(collection)
-        .and_then(|result| {
+    match compiler_env.compile_collection_async(collection).await {
+        Ok(result) => {
             // Extract TypedProgram from the result
             if let Some(typed_program) = result.typed_programs.get("<program>") {
                 Ok(typed_program.clone())
@@ -317,8 +323,11 @@ pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError
                     "Failed to extract typed program from compilation result".to_string(),
                 )])
             }
-        })
+        }
+        Err(errors) => Err(errors),
+    }
 }
+
 
 /// Type check a parsed program with enhanced error reporting that includes source context
 ///
@@ -367,7 +376,18 @@ pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError
 ///     }
 /// }
 /// ```
+/// NOTE: This is the blocking version for backward compatibility
 pub fn typecheck_program_with_source(
+    program: Program,
+    source: &str,
+    filename: &str,
+) -> Result<TypedProgram, TypeErrorReport> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(typecheck_program_with_source_async(program, source, filename))
+}
+
+/// Async version of typecheck_program_with_source for parallel compilation
+pub async fn typecheck_program_with_source_async(
     program: Program,
     source: &str,
     filename: &str,
@@ -376,7 +396,7 @@ pub fn typecheck_program_with_source(
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
     // Use the modern multi-program API with core library
-    match typecheck_with_core_library(desugared_program, source, filename) {
+    match typecheck_with_core_library(desugared_program, source, filename).await {
         Ok(compilation_result) => {
             // Extract the TypedProgram from the compilation result
             if let Some(typed_program) = compilation_result.typed_programs.get(filename) {
@@ -476,11 +496,11 @@ pub fn typecheck_program_with_source(
 ///     }
 /// }
 /// ```
-pub fn typecheck_program_collection(
+pub async fn typecheck_program_collection(
     compiler_env: &mut CompilerEnvironment,
     collection: ProgramCollection,
 ) -> Result<CompilationResult, TypeErrorReport> {
-    match compiler_env.compile_collection(collection.clone()) {
+    match compiler_env.compile_collection_async(collection.clone()).await {
         Ok(result) => Ok(result),
         Err(errors) => {
             // Create individual error reports with proper source context
@@ -540,7 +560,7 @@ pub fn typecheck_program_collection(
 ///     Err(error_report) => eprintln!("✗ Type checking failed: {:?}", error_report),
 /// }
 /// ```
-pub fn typecheck_with_core_library(
+pub async fn typecheck_with_core_library(
     program: Program,
     source: &str,
     filename: &str,
@@ -550,7 +570,7 @@ pub fn typecheck_with_core_library(
 
     // First, compile the core library into the shared environment
     let _core_result =
-        crate::core_library::compile_core_library_with_environment(&mut compiler_env);
+        crate::core_library::compile_core_library_with_environment_async(&mut compiler_env).await;
 
     // Create collection with just the user program
     let mut collection = ProgramCollection::new();
@@ -560,7 +580,7 @@ pub fn typecheck_with_core_library(
     collection.add_program(filename.to_string(), desugared_program, source.to_string());
 
     // Compile the user program with the shared environment that already has core library
-    typecheck_program_collection(&mut compiler_env, collection)
+    typecheck_program_collection(&mut compiler_env, collection).await
 }
 
 /// Type check a collection of programs with a fresh CompilerEnvironment (convenience function)
@@ -575,11 +595,11 @@ pub fn typecheck_with_core_library(
 /// # Returns
 /// * `Ok(CompilationResult)` - Successfully compiled programs with full type information
 /// * `Err(TypeErrorReport)` - Enhanced error report with source context from all programs
-pub fn typecheck_program_collection_simple(
+pub async fn typecheck_program_collection_simple(
     collection: ProgramCollection,
 ) -> Result<CompilationResult, TypeErrorReport> {
     let mut compiler_env = create_compiler_environment();
-    typecheck_program_collection(&mut compiler_env, collection)
+    typecheck_program_collection(&mut compiler_env, collection).await
 }
 
 /// Create a new CompilerEnvironment for advanced usage scenarios
@@ -624,8 +644,8 @@ pub fn create_compiler_environment() -> CompilerEnvironment {
 ///
 /// # Returns
 /// `Ok(())` if type checking succeeded, `Err(error_count)` if it failed
-pub fn typecheck_status(program: Program, source: &str, filename: &str) -> Result<(), usize> {
-    match typecheck_program_with_source(program, source, filename) {
+pub async fn typecheck_status(program: Program, source: &str, filename: &str) -> Result<(), usize> {
+    match typecheck_program_with_source_async(program, source, filename).await {
         Ok(_) => Ok(()),
         Err(error_report) => Err(error_report.error_count()),
     }

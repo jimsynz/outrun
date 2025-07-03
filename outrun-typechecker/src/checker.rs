@@ -755,7 +755,7 @@ impl TypeChecker {
     }
 
     /// Type check a single program using the new architecture
-    pub fn check_program(&mut self, program: &Program) -> Result<TypedProgram, Vec<TypeError>> {
+    pub async fn check_program(&mut self, program: &Program) -> Result<TypedProgram, Vec<TypeError>> {
         // Load the core library collection
         let mut collection = crate::core_library::load_core_library_collection();
 
@@ -767,7 +767,7 @@ impl TypeChecker {
         );
 
         // Compile using the compiler environment
-        match self.compiler_env.compile_collection(collection) {
+        match self.compiler_env.compile_collection_async(collection).await {
             Ok(result) => {
                 // Use the comprehensive TypedProgram created by TypedASTBuilder
                 // instead of creating a simplified one
