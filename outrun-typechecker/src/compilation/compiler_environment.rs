@@ -475,7 +475,7 @@ impl Module {
                 let clause = crate::checker::FunctionClause {
                     clause_id: format!("{}_{}", function_name_str, existing_clause_set.clauses.len()),
                     base_function: typed_def.clone(),
-                    priority: if typed_def.guard.is_some() { 1 } else { 2 }, // Guards have higher priority
+                    source_order: typed_def.span.start as u32, // Source order based on span position
                     applicability_constraints: Vec::new(), // Will be filled during SMT analysis
                     from_guard: typed_def.guard.is_some(),
                     span: typed_def.span,
@@ -1868,7 +1868,7 @@ impl CompilerEnvironment {
     fn generate_clause_priority_constraints(&mut self, call_site: &FunctionCallSite, clause: &crate::checker::FunctionClause) -> Result<(), Vec<TypeError>> {
         let constraint = crate::smt::constraints::SMTConstraint::ClausePriority {
             clause_id: format!("{}::{}", call_site.trait_name, clause.clause_id),
-            priority: clause.priority,
+            priority: clause.source_order,
             context: format!("Priority for {} in {}", call_site.function_name, call_site.trait_name),
         };
         
@@ -1943,7 +1943,7 @@ impl CompilerEnvironment {
                             impl_type: Box::new(impl_type.clone()),
                             selected_clause_id: selected_clause_id.clone(),
                             guard_pre_evaluated: *guard_pre_evaluated,
-                            clause_priority: 0, // TODO: Extract from clause metadata
+                            clause_source_order: 0, // TODO: Extract from clause metadata
                         });
                     }
                 }
@@ -2700,14 +2700,15 @@ impl CompilerEnvironment {
                                     // need to be available for clause-based dispatch
                                     let function_name = self.intern_atom_name(&definition.name.name);
                                     
-                                    // Determine priority: functions with guards get higher priority (lower number)
-                                    let priority = if definition.guard.is_some() { 0 } else { 1 };
+                                    // Use source order for clause priority - earlier functions have higher priority (lower number)
+                                    // This matches developer expectations from functional programming languages like Elixir
+                                    let source_order = definition.span.start as u32;
                                     
                                     // Create a function clause for this impl function
                                     let clause = crate::checker::FunctionClause {
                                         clause_id: format!("impl_{:?}_{}", module_key, definition.name.name),
                                         base_function: _typed_def.clone(),
-                                        priority,
+                                        source_order,
                                         applicability_constraints: Vec::new(),
                                         from_guard: definition.guard.is_some(),
                                         span: definition.span,
@@ -5815,20 +5816,16 @@ impl CompilerEnvironment {
         // Convert FunctionDefinition to TypedFunctionDefinition (simplified)
         let typed_function = self.convert_function_to_typed(func_def)?;
         
-        // Assign priority based on presence of guard and position
-        let priority = if func_def.guard.is_some() {
-            // Guard functions have higher priority (lower number)
-            func_def.span.start as u32  // Use source position as tie-breaker
-        } else {
-            // Non-guard functions have lower priority (higher number)
-            1000000 + func_def.span.start as u32
-        };
+        // Use source order for clause priority - earlier functions have higher priority (lower number)
+        // This matches developer expectations from functional programming languages like Elixir
+        // Functions are checked in the order they're defined, regardless of guards
+        let source_order = func_def.span.start as u32;
 
         // Create the function clause
         let clause = crate::checker::FunctionClause::new(
             clause_id,
             typed_function,
-            priority,
+            source_order,
             func_def.span,
         );
 
@@ -5965,7 +5962,7 @@ impl CompilerEnvironment {
             // Generate clause priority constraints
             let constraint = SMTConstraint::ClausePriority {
                 clause_id: clause.clause_id.clone(),
-                priority: clause.priority,
+                priority: clause.source_order,
                 context: format!("Priority for function {}", clause.base_function.name),
             };
             

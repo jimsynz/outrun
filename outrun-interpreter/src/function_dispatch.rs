@@ -104,7 +104,7 @@ impl FunctionDispatcher {
                 impl_type,
                 selected_clause_id,
                 guard_pre_evaluated,
-                clause_priority: _,
+                clause_source_order: _,
             } => self.dispatch_pre_resolved_clause(
                 interpreter_context,
                 evaluator,
@@ -280,162 +280,14 @@ impl FunctionDispatcher {
                 });
         }
 
-        if let Some(function_entry) = self.compiler_environment.lookup_impl_function(
-            &trait_type,
-            impl_type,
-            function_name_atom,
-        ) {
-            // Check if this is a trait signature (which should not be executed)
-            match function_entry.function_type() {
-                outrun_typechecker::compilation::FunctionType::TraitSignature => {
-                    // Trait signatures should never be executed - this indicates a dispatch error
-                    let impl_type_name = match impl_type {
-                        outrun_typechecker::unification::StructuredType::Simple(type_id) => self
-                            .compiler_environment
-                            .resolve_type(type_id.clone())
-                            .unwrap_or_else(|| format!("TypeNameId {type_id:?} not found")),
-                        outrun_typechecker::unification::StructuredType::Generic { base, args } => {
-                            let base_name = self
-                                .compiler_environment
-                                .resolve_type(base.clone())
-                                .unwrap_or_else(|| format!("TypeNameId {base:?} not found"));
-                            format!("{}<{} args>", base_name, args.len())
-                        }
-                        _ => format!("{impl_type:?}"),
-                    };
-                    return Err(DispatchError::NoTraitImplementation {
-                        trait_name: trait_name.to_string(),
-                        type_name: impl_type_name,
-                        _span: call_context.span,
-                    });
-                }
-                _ => {
-                    // Check if we have a typed function definition
-                    if let Some(typed_function) = function_entry.typed_definition() {
-                        // Execute the typed function (no conversion needed!)
-                        let function_executor =
-                            FunctionExecutor::new(self.compiler_environment.clone());
-
-                        // Check if this is a trait default implementation that needs Self type context
-                        // We need to check both the function type and whether this is actually a default implementation
-                        let self_type_for_execution = match function_entry.function_type() {
-                            outrun_typechecker::compilation::FunctionType::TraitDefault => {
-                                // This is a trait default implementation - pass the impl_type as Self context
-                                Some(impl_type)
-                            }
-                            _ => {
-                                // Check if this is a default implementation being called through trait dispatch
-                                // If we're calling not_equal? on a type that doesn't explicitly implement it,
-                                // it must be using the default implementation
-                                if function_name == "not_equal?" && trait_name == "Equality" {
-                                    Some(impl_type)
-                                } else {
-                                    None
-                                }
-                            }
-                        };
-
-                        return function_executor
-                            .execute_typed_function_with_self_type(
-                                interpreter_context,
-                                evaluator,
-                                typed_function,
-                                call_context.arguments.clone(),
-                                call_context.span,
-                                self_type_for_execution,
-                            )
-                            .map_err(|e| DispatchError::FunctionExecution {
-                                message: format!("{e:?}"),
-                                span: call_context.span,
-                            });
-                    } else {
-                        // Handle the case where we found a generic implementation without typed definition
-                        // For inspect functions on structs, fall back to default struct intrinsic
-                        if function_name == "inspect" {
-                            // Check if this is a struct type
-                            if let outrun_typechecker::unification::StructuredType::Generic {
-                                base,
-                                ..
-                            } = impl_type
-                            {
-                                let base_name = self
-                                    .compiler_environment
-                                    .resolve_type(base.clone())
-                                    .unwrap_or_else(|| "Unknown".to_string());
-
-                                // For struct types like Option.Some, use struct_inspect intrinsic
-                                if base_name.contains('.')
-                                    && (base_name.contains("Some")
-                                        || base_name.contains("None")
-                                        || base_name.contains("Ok")
-                                        || base_name.contains("Error"))
-                                {
-                                    return Ok(self.intrinsics.execute_intrinsic_with_types(
-                                        "Outrun.Intrinsic.struct_inspect",
-                                        call_context.arguments.clone(),
-                                        Some(call_context.typed_expr),
-                                        call_context.span,
-                                    )?);
-                                }
-                            }
-
-                            // For simple struct types
-                            if let outrun_typechecker::unification::StructuredType::Simple(
-                                type_id,
-                            ) = impl_type
-                            {
-                                let type_name = self
-                                    .compiler_environment
-                                    .resolve_type(type_id.clone())
-                                    .unwrap_or_else(|| "Unknown".to_string());
-
-                                // For struct types, use struct_inspect intrinsic
-                                if type_name.contains('.') {
-                                    return Ok(self.intrinsics.execute_intrinsic_with_types(
-                                        "Outrun.Intrinsic.struct_inspect",
-                                        call_context.arguments.clone(),
-                                        Some(call_context.typed_expr),
-                                        call_context.span,
-                                    )?);
-                                }
-                            }
-                        }
-
-                        // For other cases, return the original error
-                        return Err(DispatchError::Internal {
-                            message: format!(
-                                "Impl function '{function_name}' found in registry but missing typed definition. This indicates a TypeInterner synchronization issue."
-                            ),
-                            span: call_context.span,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Get proper type name for error message
-        let type_name = match impl_type {
-            outrun_typechecker::unification::StructuredType::Simple(type_id) => self
-                .compiler_environment
-                .resolve_type(type_id.clone())
-                .unwrap_or_else(|| format!("TypeNameId {type_id:?} not found")),
-            outrun_typechecker::unification::StructuredType::Generic { base, args } => {
-                let base_name = self
-                    .compiler_environment
-                    .resolve_type(base.clone())
-                    .unwrap_or_else(|| format!("TypeNameId {base:?} not found"));
-                format!("{}<{} args>", base_name, args.len())
-            }
-            _ => format!("{impl_type:?}"),
-        };
-
-        Err(DispatchError::Internal {
-            message: format!(
-                "INTERPRETER BUG: Trait implementation for '{trait_name}' on type '{type_name}' was not loaded into trait registry. \
-                 Since typechecking passed, this implementation must exist but was not properly loaded by the interpreter."
-            ),
-            span: call_context.span,
-        })
+        // If we reach here, the SMT-first clause lookup failed
+        // This indicates a bug in the typechecker - all functions should have clause sets
+        panic!(
+            "TYPECHECKER BUG: No function clause set found for {}.{} on type {:?}. \
+            All functions should be converted to clause sets during compilation. \
+            This is a critical failure in the SMT-first architecture.",
+            trait_name, function_name, impl_type
+        );
     }
 
     /// 🚀 SMT-FIRST DISPATCH: Execute pre-resolved function clause

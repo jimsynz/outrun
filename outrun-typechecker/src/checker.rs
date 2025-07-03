@@ -44,7 +44,7 @@ pub enum DispatchMethod {
         impl_type: Box<StructuredType>,
         selected_clause_id: String,     // SMT-selected clause ID
         guard_pre_evaluated: Option<bool>, // SMT pre-computed guard result
-        clause_priority: u32,           // Clause priority for verification
+        clause_source_order: u32,       // Clause source order (span.start) for verification
     },
 }
 
@@ -978,12 +978,12 @@ pub struct FunctionClauseSet {
     pub clause_resolution_cache: HashMap<u64, Vec<ApplicableClause>>,
 }
 
-/// Individual function clause with guard conditions and priority
+/// Individual function clause with guard conditions and source ordering
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionClause {
     pub clause_id: String,
     pub base_function: TypedFunctionDefinition,
-    pub priority: u32,
+    pub source_order: u32, // Source order (span.start) - lower numbers = earlier in source = higher priority
     pub applicability_constraints: Vec<crate::smt::constraints::SMTConstraint>,
     pub from_guard: bool,
     pub span: Span,
@@ -1024,10 +1024,11 @@ impl FunctionClauseSet {
         self.clause_resolution_cache.clear();
     }
 
-    /// Get all clauses sorted by priority (lower number = higher priority)
+    /// Get all clauses sorted by source order (lower span = earlier in source = higher priority)
+    /// This matches developer expectations from functional programming languages like Elixir
     pub fn get_clauses_by_priority(&self) -> Vec<&FunctionClause> {
         let mut clauses: Vec<&FunctionClause> = self.clauses.iter().collect();
-        clauses.sort_by_key(|c| c.priority);
+        clauses.sort_by_key(|c| c.source_order);
         clauses
     }
 
@@ -1042,14 +1043,14 @@ impl FunctionClause {
     pub fn new(
         clause_id: String,
         base_function: TypedFunctionDefinition,
-        priority: u32,
+        source_order: u32,
         span: Span,
     ) -> Self {
         let from_guard = base_function.guard.is_some();
         Self {
             clause_id,
             base_function,
-            priority,
+            source_order,
             applicability_constraints: Vec::new(),
             from_guard,
             span,
