@@ -1116,8 +1116,8 @@ impl CompilerEnvironment {
         Ok(all_traits)
     }
 
-    /// Extract struct definitions (Phase 2)
-    fn extract_structs(
+    /// Extract struct definitions (Phase 3)
+    pub fn extract_structs(
         &mut self,
         collection: &ProgramCollection,
         order: &[String],
@@ -1145,8 +1145,182 @@ impl CompilerEnvironment {
         Ok(structs)
     }
 
-    /// Extract implementation blocks (Phase 3)
-    fn extract_implementations(
+    /// Extract struct definitions in parallel (Phase 3 - Parallel Version)
+    /// Each program is processed independently using spawn_blocking for CPU-intensive struct extraction
+    pub async fn extract_structs_parallel(
+        &self,
+        collection: &ProgramCollection,
+        order: &[String],
+    ) -> Result<HashMap<TypeNameId, StructDefinition>, Vec<TypeError>> {
+        use crate::compilation::visitors::StructExtractionVisitor;
+        use crate::visitor::Visitor;
+
+        println!("🔧 Extracting structs from {} programs in parallel...", order.len());
+        let start_time = std::time::Instant::now();
+
+        // Create parallel tasks for struct extraction from each program
+        let extraction_tasks: Vec<_> = order
+            .iter()
+            .filter_map(|file_path| {
+                // Get the program for this file path
+                collection.programs.get(file_path).map(|program| {
+                    let program = program.clone(); // Clone for move into async task
+                    let file_path = file_path.clone();
+                    
+                    tokio::task::spawn_blocking(move || {
+                        // Create a visitor for this specific program
+                        let mut visitor = StructExtractionVisitor::default();
+                        
+                        // Extract structs from this program
+                        match <StructExtractionVisitor as Visitor<()>>::visit_program(&mut visitor, &program) {
+                            Ok(()) => {
+                                // Success: return the extracted structs
+                                Ok((file_path, visitor.structs))
+                            }
+                            Err(err) => {
+                                // Error during struct extraction
+                                Err((file_path, err))
+                            }
+                        }
+                    })
+                })
+            })
+            .collect();
+
+        // Wait for all struct extraction tasks to complete
+        let results = futures::future::join_all(extraction_tasks).await;
+        
+        let extraction_duration = start_time.elapsed();
+        println!("⚡ Parallel struct extraction completed in {:.3}s", extraction_duration.as_secs_f64());
+
+        // Process results and handle errors
+        let mut all_structs = HashMap::new();
+        let mut extraction_errors = Vec::new();
+        let mut successful_programs = 0;
+
+        for task_result in results {
+            match task_result {
+                Ok(Ok((_file_path, program_structs))) => {
+                    // Successfully extracted structs from this program
+                    for (struct_name, struct_def) in program_structs {
+                        let type_name_id = self.intern_type_name(&struct_name);
+                        all_structs.insert(type_name_id, struct_def);
+                    }
+                    successful_programs += 1;
+                }
+                Ok(Err((file_path, type_error))) => {
+                    // Struct extraction error for this program
+                    println!("❌ Struct extraction failed for {}: {:?}", file_path, type_error);
+                    extraction_errors.push(type_error);
+                }
+                Err(join_error) => {
+                    // Task join error (panic or cancellation)
+                    println!("❌ Task join error during struct extraction: {:?}", join_error);
+                    extraction_errors.push(TypeError::internal(format!(
+                        "Parallel struct extraction task failed: {}", join_error
+                    )));
+                }
+            }
+        }
+
+        println!("✅ Successfully extracted structs from {} programs", successful_programs);
+        println!("📊 Found {} total struct definitions", all_structs.len());
+        
+        if !extraction_errors.is_empty() {
+            println!("❌ {} programs had struct extraction errors", extraction_errors.len());
+            return Err(extraction_errors);
+        }
+
+        Ok(all_structs)
+    }
+
+    /// Extract implementation blocks in parallel using per-program spawn_blocking
+    pub async fn extract_impls_parallel(
+        &self,
+        collection: &ProgramCollection,
+        order: &[String],
+    ) -> Result<Vec<ImplBlock>, Vec<TypeError>> {
+        use crate::compilation::visitors::ImplExtractionVisitor;
+        use crate::visitor::Visitor;
+
+        println!("🔧 Extracting impls from {} programs in parallel...", order.len());
+        let start_time = std::time::Instant::now();
+
+        // Create parallel tasks for impl extraction from each program
+        let extraction_tasks: Vec<_> = order
+            .iter()
+            .filter_map(|file_path| {
+                // Get the program for this file path
+                collection.programs.get(file_path).map(|program| {
+                    let program = program.clone(); // Clone for move into async task
+                    let file_path = file_path.clone();
+                    
+                    tokio::task::spawn_blocking(move || {
+                        // Create a visitor for this specific program
+                        let mut visitor = ImplExtractionVisitor::default();
+                        
+                        // Extract impls from this program
+                        match <ImplExtractionVisitor as Visitor<()>>::visit_program(&mut visitor, &program) {
+                            Ok(()) => {
+                                // Success: return the extracted impls
+                                Ok((file_path, visitor.implementations))
+                            }
+                            Err(err) => {
+                                // Error during impl extraction
+                                Err((file_path, err))
+                            }
+                        }
+                    })
+                })
+            })
+            .collect();
+
+        // Wait for all impl extraction tasks to complete
+        let results = futures::future::join_all(extraction_tasks).await;
+        
+        let extraction_duration = start_time.elapsed();
+        println!("⚡ Parallel impl extraction completed in {:.3}s", extraction_duration.as_secs_f64());
+
+        // Process results and handle errors
+        let mut all_impls = Vec::new();
+        let mut extraction_errors = Vec::new();
+        let mut successful_programs = 0;
+
+        for task_result in results {
+            match task_result {
+                Ok(Ok((_file_path, program_impls))) => {
+                    // Successfully extracted impls from this program
+                    all_impls.extend(program_impls);
+                    successful_programs += 1;
+                }
+                Ok(Err((file_path, type_error))) => {
+                    // Impl extraction error for this program
+                    println!("❌ Impl extraction failed for {}: {:?}", file_path, type_error);
+                    extraction_errors.push(type_error);
+                }
+                Err(join_error) => {
+                    // Task join error (panic or cancellation)
+                    println!("❌ Task join error during impl extraction: {:?}", join_error);
+                    extraction_errors.push(TypeError::internal(format!(
+                        "Parallel impl extraction task failed: {}", join_error
+                    )));
+                }
+            }
+        }
+
+        println!("✅ Successfully extracted impls from {} programs", successful_programs);
+        println!("📊 Found {} total impl blocks", all_impls.len());
+        
+        if !extraction_errors.is_empty() {
+            println!("❌ {} programs had impl extraction errors", extraction_errors.len());
+            return Err(extraction_errors);
+        }
+
+        Ok(all_impls)
+    }
+
+    /// Extract implementation blocks (Phase 4)
+    pub fn extract_implementations(
         &mut self,
         collection: &ProgramCollection,
         order: &[String],
