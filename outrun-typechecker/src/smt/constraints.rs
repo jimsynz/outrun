@@ -359,14 +359,40 @@ impl Hash for SMTConstraint {
             SMTConstraint::GuardStaticallyEvaluated {
                 clause_id,
                 guard_expression,
-                static_result,
-                optimization_context,
+                when_arguments,
+                evaluation_result,
+                context,
             } => {
                 14u8.hash(state);
                 clause_id.hash(state);
                 guard_expression.hash(state);
-                static_result.hash(state);
-                optimization_context.hash(state);
+                // HashMap doesn't implement Hash, so hash the sorted entries
+                let mut sorted_args: Vec<_> = when_arguments.iter().collect();
+                sorted_args.sort_by_key(|(k, _)| *k);
+                for (key, value) in sorted_args {
+                    key.hash(state);
+                    value.hash(state);
+                }
+                evaluation_result.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::PreResolvedClause {
+                call_site,
+                trait_type,
+                impl_type,
+                function_name,
+                selected_clause_id,
+                guard_pre_evaluated,
+                argument_types,
+            } => {
+                15u8.hash(state);
+                call_site.hash(state);
+                trait_type.hash(state);
+                impl_type.hash(state);
+                function_name.hash(state);
+                selected_clause_id.hash(state);
+                guard_pre_evaluated.hash(state);
+                argument_types.hash(state);
             }
         }
     }

@@ -406,6 +406,17 @@ impl Module {
     /// Add a function to this module by name
     /// Handles multiple functions with the same name (function clauses) automatically
     pub fn add_function_by_name(&mut self, function_name: AtomId, entry: UnifiedFunctionEntry) {
+        // Only debug the specific function we're interested in to avoid spam
+        if function_name.hash == 8473386916263487618 {
+            eprintln!("DEBUG: Adding DIVIDE function with AtomId hash={} to module: {:?}", function_name.hash, self.module_kind);
+            eprintln!("DEBUG: Module structured_type: {:?}", self.structured_type);
+            eprintln!("DEBUG: Current functions_by_name registry has {} entries", self.functions_by_name.len());
+            
+            for (existing_atom_id, _) in &self.functions_by_name {
+                eprintln!("DEBUG: Registry contains AtomId hash={}", existing_atom_id.hash);
+            }
+        }
+        
         // Always add to the all_functions_by_name list
         self.all_functions_by_name
             .entry(function_name.clone())
@@ -414,9 +425,15 @@ impl Module {
         
         // Check if a function with this name already exists in the primary registry
         if let Some(existing_entry) = self.functions_by_name.get(&function_name) {
+            if function_name.hash == 8473386916263487618 {
+                eprintln!("DEBUG: Found existing DIVIDE function with same AtomId - creating clause set!");
+            }
             // Multiple functions with same name - create or update function clause set
             self.create_or_update_function_clause_set(function_name.clone(), existing_entry.clone(), entry);
         } else {
+            if function_name.hash == 8473386916263487618 {
+                eprintln!("DEBUG: No existing DIVIDE function found with this AtomId - storing as first function");
+            }
             // First function with this name - store in primary registry
             self.functions_by_name.insert(function_name, entry);
         }
@@ -440,14 +457,19 @@ impl Module {
         existing_entry: UnifiedFunctionEntry,
         new_entry: UnifiedFunctionEntry,
     ) {
+        if function_name.hash == 8473386916263487618 {
+            eprintln!("DEBUG: Creating/updating clause set for DIVIDE function!");
+        }
+        
         // Get function name as string for the clause set
-        let function_name_str = match self.resolve_atom_name(&function_name) {
-            Some(name) => name,
-            None => format!("unknown_function_{}", function_name.hash),
-        };
+        // Note: This is a placeholder - the atom name should be passed from CompilerEnvironment
+        let function_name_str = format!("function_{}", function_name.hash);
 
         // Check if we already have a clause set for this function
         if let Some(existing_clause_set) = self.function_clauses.get_mut(&function_name) {
+            if function_name.hash == 8473386916263487618 {
+                eprintln!("DEBUG: Adding to existing clause set (currently has {} clauses)", existing_clause_set.clauses.len());
+            }
             // Add the new function to the existing clause set
             if let Some(typed_def) = new_entry.typed_definition() {
                 let clause = crate::checker::FunctionClause {
@@ -459,8 +481,15 @@ impl Module {
                     span: typed_def.span,
                 };
                 existing_clause_set.clauses.push(clause);
+                
+                if function_name.hash == 8473386916263487618 {
+                    eprintln!("DEBUG: Clause set now has {} clauses", existing_clause_set.clauses.len());
+                }
             }
         } else {
+            if function_name.hash == 8473386916263487618 {
+                eprintln!("DEBUG: Creating new empty clause set (to be populated later)");
+            }
             // Create a new function clause set with both functions
             let clauses = Vec::new();
 
@@ -470,13 +499,17 @@ impl Module {
 
             // Create the function clause set
             let clause_set = crate::checker::FunctionClauseSet {
-                function_name: function_name_str,
+                function_name: function_name_str.clone(),
                 clauses,
                 clause_resolution_cache: std::collections::HashMap::new(),
             };
 
             // Store the clause set
             self.function_clauses.insert(function_name.clone(), clause_set);
+            
+            if function_name.hash == 8473386916263487618 {
+                eprintln!("DEBUG: Created empty clause set '{}' (will be populated later)", function_name_str);
+            }
         }
 
         // Update the main function registry to point to the most specific (guard-based) function
@@ -827,10 +860,7 @@ impl CompilerEnvironment {
             }
         }
 
-        // Step 6.5: Phase 6.5 - SMT-based function clause analysis
-        self.phase_6_5_smt_function_clause_analysis(&expanded_collection)?;
-
-        // Step 7: Phase 7 - SMT constraint solving
+        // Step 7: Phase 7 - SMT constraint solving (moved before clause analysis)
         self.phase_7_smt_constraint_solving()?;
 
         // Check for errors accumulated during type checking
@@ -845,6 +875,9 @@ impl CompilerEnvironment {
         // Step 9: Phase 9 - Build comprehensive typed AST
         let typed_programs =
             self.build_typed_ast(&expanded_collection, &compilation_order, &structs)?;
+
+        // Step 6.5: Phase 6.5 - SMT-based function clause analysis (moved here after clause sets are populated)
+        self.phase_6_5_smt_function_clause_analysis(&expanded_collection)?;
 
         // Create the final compilation result
         let result = CompilationResult {
@@ -1722,6 +1755,7 @@ impl CompilerEnvironment {
         Ok(())
     }
 
+
     /// NEW: Phase 6.5 - SMT-based function clause analysis
     /// Analyzes function clauses during compilation and generates SMT constraints for clause selection
     fn phase_6_5_smt_function_clause_analysis(&mut self, collection: &ProgramCollection) -> Result<(), Vec<TypeError>> {
@@ -1846,7 +1880,8 @@ impl CompilerEnvironment {
     fn generate_pre_resolved_clause_constraint(&mut self, call_site: &FunctionCallSite, clause_set: &crate::checker::FunctionClauseSet) -> Result<(), Vec<TypeError>> {
         // For now, stub this to select the highest priority clause
         // In reality, SMT would solve all the constraints to determine the best clause
-        let selected_clause = clause_set.get_clauses_by_priority()
+        let clauses = clause_set.get_clauses_by_priority();
+        let selected_clause = clauses
             .first()
             .ok_or_else(|| vec![TypeError::internal("No clauses found in clause set".to_string())])?;
         
@@ -1862,6 +1897,60 @@ impl CompilerEnvironment {
         
         self.unification_context().add_smt_constraint(constraint);
         Ok(())
+    }
+
+    /// Check if SMT has pre-resolved a function clause for a specific call site
+    /// This is called during type checking to determine dispatch method
+    pub fn get_smt_pre_resolved_clause(
+        &self,
+        trait_name: &str,
+        function_name: &str, 
+        impl_type: &StructuredType,
+        call_span: outrun_parser::Span
+    ) -> Option<crate::checker::DispatchMethod> {
+        // Check if we have any PreResolvedClause constraints that match this call site
+        let constraints = &self.unification_context().smt_constraints;
+        
+        for constraint in constraints {
+            if let crate::smt::constraints::SMTConstraint::PreResolvedClause { 
+                call_site,
+                trait_type: constraint_trait,
+                impl_type: constraint_impl,
+                function_name: constraint_function,
+                selected_clause_id,
+                guard_pre_evaluated,
+                ..
+            } = constraint {
+                // Check if this constraint matches our call site
+                if call_site.start == call_span.start 
+                    && call_site.end == call_span.end
+                    && *constraint_function == function_name
+                    && constraint_impl == impl_type {
+                    
+                    // Extract trait name from constraint_trait
+                    let constraint_trait_name = match constraint_trait {
+                        StructuredType::Simple(type_id) => {
+                            self.resolve_type(type_id.clone()).unwrap_or_default()
+                        }
+                        _ => continue,
+                    };
+                    
+                    if constraint_trait_name == trait_name {
+                        // Found a matching pre-resolved clause!
+                        return Some(crate::checker::DispatchMethod::PreResolvedClause {
+                            trait_name: trait_name.to_string(),
+                            function_name: function_name.to_string(), 
+                            impl_type: Box::new(impl_type.clone()),
+                            selected_clause_id: selected_clause_id.clone(),
+                            guard_pre_evaluated: *guard_pre_evaluated,
+                            clause_priority: 0, // TODO: Extract from clause metadata
+                        });
+                    }
+                }
+            }
+        }
+        
+        None
     }
 
     /// NEW: Phase 7 - SMT constraint solving
@@ -2579,6 +2668,7 @@ impl CompilerEnvironment {
         &mut self,
         typed_ast_builder: &mut crate::typed_ast_builder::TypedASTBuilder,
     ) -> Result<(), Vec<TypeError>> {
+        eprintln!("DEBUG: process_registered_impl_functions called - populating clause sets");
         let mut errors = Vec::new();
 
         // Get all modules and their functions
@@ -5900,8 +5990,9 @@ impl CompilerEnvironment {
                     let constraint = SMTConstraint::GuardStaticallyEvaluated {
                         clause_id: clause.clause_id.clone(),
                         guard_expression: "static_guard".to_string(), // TODO: Actual guard text
-                        static_result,
-                        optimization_context: format!("Static evaluation for {}", clause.base_function.name),
+                        when_arguments: std::collections::HashMap::new(), // TODO: Extract from call site
+                        evaluation_result: true, // Stub - SMT would determine this
+                        context: format!("Static evaluation for {}", clause.base_function.name),
                     };
                     
                     self.add_smt_constraint(constraint);

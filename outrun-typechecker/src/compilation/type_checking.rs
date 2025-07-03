@@ -1858,11 +1858,20 @@ impl TypeCheckingVisitor {
                             let mut context = self.compiler_environment.unification_context();
                             context.add_dispatch_strategy(
                                 call.span,
-                                crate::checker::DispatchMethod::Trait {
-                                    trait_name: module_name.clone(),
-                                    function_name: function_name.clone(),
-                                    impl_type: Box::new(implementing_structured_type.clone()),
-                                },
+                                // CRITICAL: Check if SMT has pre-resolved a function clause for this call
+                                self.compiler_environment.get_smt_pre_resolved_clause(
+                                    &module_name,
+                                    &function_name,
+                                    &implementing_structured_type,
+                                    call.span
+                                ).unwrap_or_else(|| {
+                                    // Fallback to traditional trait dispatch if no SMT pre-resolution
+                                    crate::checker::DispatchMethod::Trait {
+                                        trait_name: module_name.clone(),
+                                        function_name: function_name.clone(),
+                                        impl_type: Box::new(implementing_structured_type.clone()),
+                                    }
+                                }),
                             );
                             self.compiler_environment.set_unification_context(context);
 
@@ -1965,11 +1974,19 @@ impl TypeCheckingVisitor {
                                         self.compiler_environment.unification_context();
                                     context.add_dispatch_strategy(
                                         call.span,
-                                        crate::checker::DispatchMethod::Trait {
-                                            trait_name: module_name.clone(),
-                                            function_name: function_name.clone(),
-                                            impl_type: Box::new(inferred_self_type.clone()),
-                                        },
+                                        // CRITICAL: Check for SMT pre-resolved clause for default implementation calls
+                                        self.compiler_environment.get_smt_pre_resolved_clause(
+                                            &module_name,
+                                            &function_name,
+                                            &inferred_self_type,
+                                            call.span
+                                        ).unwrap_or_else(|| {
+                                            crate::checker::DispatchMethod::Trait {
+                                                trait_name: module_name.clone(),
+                                                function_name: function_name.clone(),
+                                                impl_type: Box::new(inferred_self_type.clone()),
+                                            }
+                                        }),
                                     );
                                     self.compiler_environment.set_unification_context(context);
 
@@ -3842,11 +3859,19 @@ impl TypeCheckingVisitor {
             let mut context = self.compiler_environment.unification_context();
             context.add_dispatch_strategy(
                 call.span,
-                crate::checker::DispatchMethod::Trait {
-                    trait_name,
-                    function_name,
-                    impl_type: Box::new(impl_type.clone()),
-                },
+                // CRITICAL: Check for SMT pre-resolved clause for qualified function calls
+                self.compiler_environment.get_smt_pre_resolved_clause(
+                    &trait_name,
+                    &function_name,
+                    &impl_type,
+                    call.span
+                ).unwrap_or_else(|| {
+                    crate::checker::DispatchMethod::Trait {
+                        trait_name,
+                        function_name,
+                        impl_type: Box::new(impl_type.clone()),
+                    }
+                }),
             );
             self.compiler_environment.set_unification_context(context);
 

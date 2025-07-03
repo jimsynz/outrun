@@ -165,6 +165,7 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
         SMTConstraint::GuardApplicable { .. } => 12,
         SMTConstraint::ClausePriority { .. } => 13,
         SMTConstraint::GuardStaticallyEvaluated { .. } => 14,
+        SMTConstraint::PreResolvedClause { .. } => 15, // Highest priority - final resolved constraints
     });
 
     ordered_constraints

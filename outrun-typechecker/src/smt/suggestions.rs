@@ -285,11 +285,23 @@ impl ErrorSuggestionGenerator {
                             SMTConstraint::GuardStaticallyEvaluated {
                                 clause_id,
                                 guard_expression,
-                                static_result,
+                                evaluation_result,
                                 ..
                             } => {
                                 format!(
-                                    "Remove static guard evaluation for clause {clause_id}: {guard_expression} = {static_result}"
+                                    "Remove static guard evaluation for clause {clause_id}: {guard_expression} = {evaluation_result}"
+                                )
+                            }
+                            SMTConstraint::PreResolvedClause {
+                                call_site: _,
+                                trait_type,
+                                impl_type,
+                                function_name,
+                                selected_clause_id,
+                                ..
+                            } => {
+                                format!(
+                                    "Remove pre-resolved clause selection for {function_name} on {impl_type:?} (trait: {trait_type:?}, clause: {selected_clause_id})"
                                 )
                             }
                         };

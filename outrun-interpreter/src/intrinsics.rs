@@ -641,7 +641,9 @@ impl IntrinsicsHandler {
         if rhs == 0 {
             return Err(IntrinsicError::DivisionByZero { span });
         }
-        Ok(Value::integer(lhs / rhs))
+        // Return Option.some(value: result) to match BinaryDivision trait signature
+        let result = Value::integer(lhs / rhs);
+        self.create_option_some(result, span)
     }
 
     fn integer_modulo(
@@ -2295,7 +2297,22 @@ mod tests {
         let result = handler
             .execute_intrinsic("Outrun.Intrinsic.i64_div", args, span)
             .unwrap();
-        assert_eq!(result, Value::integer(5));
+        
+        // Division should return Option.some(value: 5)
+        if let Value::Struct { type_id, fields, .. } = &result {
+            // Check it's an Option.Some type
+            assert_eq!(type_id.to_string(), "Outrun.Option.Some");
+            
+            // Check it has a "value" field with integer 5
+            let value_atom = handler.compiler_environment.intern_atom_name("value");
+            if let Some(field_value) = fields.get(&value_atom) {
+                assert_eq!(*field_value, Value::integer(5));
+            } else {
+                panic!("Option.some should have a 'value' field");
+            }
+        } else {
+            panic!("Expected Option.some structure, got: {:?}", result);
+        }
     }
 
     #[test]

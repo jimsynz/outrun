@@ -407,14 +407,36 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                 SMTConstraint::GuardStaticallyEvaluated {
                     clause_id,
                     guard_expression: _,
-                    static_result,
+                    evaluation_result,
                     ..
                 } => {
                     // Static guard evaluation: guard result is known at compile time
                     let guard_result_var = Bool::new_const(self.context, format!("guard_static_{clause_id}"));
-                    let static_bool = Bool::from_bool(self.context, *static_result);
+                    let static_bool = Bool::from_bool(self.context, *evaluation_result);
                     let equality = guard_result_var._eq(&static_bool);
                     self.solver.assert(&equality);
+                }
+                SMTConstraint::PreResolvedClause {
+                    call_site: _,
+                    trait_type: _,
+                    impl_type: _,
+                    function_name: _,
+                    selected_clause_id,
+                    guard_pre_evaluated,
+                    argument_types: _,
+                } => {
+                    // Pre-resolved clause: specific clause was selected by SMT at compile time
+                    // Create constraint that this clause is selected
+                    let clause_selected_var = Bool::new_const(self.context, format!("clause_selected_{selected_clause_id}"));
+                    self.solver.assert(&clause_selected_var);
+                    
+                    // If guard was pre-evaluated, add that constraint
+                    if let Some(guard_result) = guard_pre_evaluated {
+                        let guard_var = Bool::new_const(self.context, format!("guard_preresolve_{selected_clause_id}"));
+                        let guard_bool = Bool::from_bool(self.context, *guard_result);
+                        let guard_equality = guard_var._eq(&guard_bool);
+                        self.solver.assert(&guard_equality);
+                    }
                 }
             }
         }
@@ -598,12 +620,12 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                 }
                 SMTConstraint::GuardStaticallyEvaluated {
                     clause_id,
-                    static_result,
+                    evaluation_result,
                     ..
                 } => {
                     // Store static guard evaluation result
                     let guard_static_var_name = format!("guard_static_{clause_id}");
-                    constraint_model.add_boolean_assignment(guard_static_var_name, *static_result);
+                    constraint_model.add_boolean_assignment(guard_static_var_name, *evaluation_result);
                     
                     // Store the clause as statically evaluable
                     constraint_model.add_function_selection(

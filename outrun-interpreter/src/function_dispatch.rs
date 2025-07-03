@@ -98,6 +98,23 @@ impl FunctionDispatcher {
                 impl_type.as_ref(),
                 &call_context,
             ),
+            DispatchMethod::PreResolvedClause {
+                trait_name,
+                function_name,
+                impl_type,
+                selected_clause_id,
+                guard_pre_evaluated,
+                clause_priority: _,
+            } => self.dispatch_pre_resolved_clause(
+                interpreter_context,
+                evaluator,
+                trait_name,
+                function_name,
+                impl_type.as_ref(),
+                selected_clause_id,
+                *guard_pre_evaluated,
+                &call_context,
+            ),
         }
     }
 
@@ -418,6 +435,98 @@ impl FunctionDispatcher {
                  Since typechecking passed, this implementation must exist but was not properly loaded by the interpreter."
             ),
             span: call_context.span,
+        })
+    }
+
+    /// 🚀 SMT-FIRST DISPATCH: Execute pre-resolved function clause
+    /// This replaces all runtime SMT solving and guard evaluation with direct execution
+    fn dispatch_pre_resolved_clause(
+        &mut self,
+        interpreter_context: &mut InterpreterContext,
+        evaluator: &mut crate::evaluator::ExpressionEvaluator,
+        trait_name: &str,
+        function_name: &str,
+        impl_type: &outrun_typechecker::unification::StructuredType,
+        selected_clause_id: &str,
+        guard_pre_evaluated: Option<bool>,
+        call_context: &FunctionCallContext,
+    ) -> Result<Value, DispatchError> {
+        // 🎯 CRITICAL INSIGHT: SMT has already solved everything at compile time!
+        // - Which clause to use: selected_clause_id
+        // - Whether guard passes: guard_pre_evaluated
+        // - Argument compatibility: already verified by SMT constraints
+        
+        // Step 1: Look up the specific pre-resolved clause by ID
+        let function_clause = self.lookup_clause_by_id(selected_clause_id, trait_name, impl_type)?;
+        
+        // Step 2: Verify guard pre-evaluation result (if applicable)
+        if let Some(guard_result) = guard_pre_evaluated {
+            if !guard_result {
+                // SMT determined guard would fail - this shouldn't happen if SMT is correct
+                return Err(DispatchError::Internal {
+                    message: format!(
+                        "SMT pre-evaluated guard as false for clause {}, but clause was selected. \
+                        This indicates an SMT constraint solving bug.", 
+                        selected_clause_id
+                    ),
+                    span: call_context.span,
+                });
+            }
+            // Guard passes - continue execution
+        }
+        
+        // Step 3: Execute the function clause directly (no runtime evaluation needed!)
+        let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
+        function_executor
+            .execute_typed_function(
+                interpreter_context,
+                evaluator,
+                &function_clause,
+                call_context.arguments.clone(),
+                call_context.span,
+            )
+            .map_err(|e| DispatchError::FunctionExecution {
+                message: format!("{e:?}"),
+                span: call_context.span,
+            })
+    }
+
+    /// Look up a specific function clause by its unique ID within a trait implementation
+    fn lookup_clause_by_id(
+        &self,
+        clause_id: &str,
+        trait_name: &str,
+        impl_type: &outrun_typechecker::unification::StructuredType,
+    ) -> Result<outrun_typechecker::checker::TypedFunctionDefinition, DispatchError> {
+        // Create the trait type for module lookup
+        let trait_type_id = self.compiler_environment.intern_type_name(trait_name);
+        let trait_type = outrun_typechecker::unification::StructuredType::Simple(trait_type_id);
+        
+        // Look up the trait implementation module
+        let modules = self.compiler_environment.modules().read().unwrap();
+        let module_key = outrun_typechecker::compilation::compiler_environment::ModuleKey::TraitImpl(
+            Box::new(trait_type),
+            Box::new(impl_type.clone()),
+        );
+        
+        if let Some(trait_impl_module) = modules.get(&module_key) {
+            // Search through all function clauses in this module
+            for clause_set in trait_impl_module.function_clauses.values() {
+                for clause in clause_set.get_clauses_by_priority() {
+                    if clause.clause_id == clause_id {
+                        return Ok(clause.base_function.clone());
+                    }
+                }
+            }
+        }
+        
+        Err(DispatchError::Internal {
+            message: format!(
+                "Pre-resolved clause '{}' not found in trait implementation '{}' for type '{:?}'. \
+                This indicates a mismatch between SMT analysis and interpreter state.",
+                clause_id, trait_name, impl_type
+            ),
+            span: outrun_parser::Span::new(0, 0),
         })
     }
 

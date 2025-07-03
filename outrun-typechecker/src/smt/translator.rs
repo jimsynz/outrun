@@ -334,12 +334,37 @@ impl SMTTranslator {
             }
             SMTConstraint::GuardStaticallyEvaluated {
                 clause_id,
-                static_result,
+                evaluation_result,
                 ..
             } => {
                 // Static guard evaluation: guard result is compile-time constant
                 let guard_static_var = format!("guard_static_{clause_id}");
-                format!("(= {guard_static_var} {static_result})")
+                format!("(= {guard_static_var} {evaluation_result})")
+            }
+            SMTConstraint::PreResolvedClause {
+                call_site: _,
+                trait_type: _,
+                impl_type: _,
+                function_name: _,
+                selected_clause_id,
+                guard_pre_evaluated,
+                argument_types: _,
+            } => {
+                // Pre-resolved clause: specific clause was selected by SMT at compile time
+                let clause_var = format!("clause_selected_{selected_clause_id}");
+                let mut constraints = vec![format!("(= {clause_var} true)")];
+                
+                // If guard was pre-evaluated, add that constraint
+                if let Some(guard_result) = guard_pre_evaluated {
+                    let guard_var = format!("guard_preresolve_{selected_clause_id}");
+                    constraints.push(format!("(= {guard_var} {guard_result})"));
+                }
+                
+                if constraints.len() == 1 {
+                    constraints[0].clone()
+                } else {
+                    format!("(and {})", constraints.join(" "))
+                }
             }
         }
     }
