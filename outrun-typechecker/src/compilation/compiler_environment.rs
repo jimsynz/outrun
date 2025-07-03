@@ -2724,8 +2724,6 @@ impl CompilerEnvironment {
     ) -> Result<(), Vec<TypeError>> {
         eprintln!("DEBUG: process_registered_impl_functions called - populating clause sets");
         let mut errors = Vec::new();
-        let mut function_count = 0;
-        let mut simple_function_count = 0;
 
         // Get all modules and their functions
         let modules = self.modules.read().unwrap().clone();

@@ -67,7 +67,7 @@ impl OutrunTestHarness {
     pub fn new() -> Result<Self, TestHarnessError> {
         // Use cached core library compilation for dramatically faster test execution
         // This avoids recompiling the entire core library for every test case
-        let mut compiler_environment = CompilerEnvironment::new();
+        let compiler_environment = CompilerEnvironment::new();
         let core_result = core_library::get_core_library_compilation();
 
         // Load the compilation result to populate structs and traits
