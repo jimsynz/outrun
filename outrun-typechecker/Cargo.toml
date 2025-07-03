@@ -63,3 +63,7 @@ path = "src/bin/benchmark-parallel-loading.rs"
 [[bin]]
 name = "test-parallel-trait-extraction"
 path = "src/bin/test-parallel-trait-extraction.rs"
+
+[[bin]]
+name = "benchmark-parallel-ast-extraction"
+path = "src/bin/benchmark-parallel-ast-extraction.rs"
