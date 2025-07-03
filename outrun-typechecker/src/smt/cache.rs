@@ -217,13 +217,13 @@ impl ConstraintCache {
 
     /// Compute hash for a set of constraints
     fn compute_constraint_hash(&self, constraints: &[SMTConstraint]) -> ConstraintSetHash {
-        // Step 1: Deduplicate and normalize constraints for better cache hit ratios
-        let normalized_constraints = self.normalize_and_deduplicate_constraints(constraints);
+        // TODO: Re-enable constraint normalization after async implementation
+        // For now, use simple hashing to avoid semantic interference
         
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
         // Sort constraints by their hash to ensure consistent ordering
-        let mut constraint_hashes: Vec<u64> = normalized_constraints
+        let mut constraint_hashes: Vec<u64> = constraints
             .iter()
             .map(|constraint| {
                 let mut constraint_hasher = std::collections::hash_map::DefaultHasher::new();
@@ -240,7 +240,7 @@ impl ConstraintCache {
 
         ConstraintSetHash {
             content_hash: hasher.finish(),
-            constraint_count: normalized_constraints.len(), // Use deduplicated count
+            constraint_count: constraints.len(),
         }
     }
     
