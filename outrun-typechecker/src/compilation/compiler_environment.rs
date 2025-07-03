@@ -999,7 +999,7 @@ impl CompilerEnvironment {
     }
 
     /// Extract trait definitions (Phase 1)
-    fn extract_traits(
+    pub fn extract_traits(
         &mut self,
         collection: &ProgramCollection,
         order: &[String],
@@ -1025,6 +1025,95 @@ impl CompilerEnvironment {
         }
 
         Ok(traits)
+    }
+
+    /// Extract trait definitions in parallel (Phase 2 - Parallel Version)
+    /// Each program is processed independently using spawn_blocking for CPU-intensive trait extraction
+    pub async fn extract_traits_parallel(
+        &self,
+        collection: &ProgramCollection,
+        order: &[String],
+    ) -> Result<HashMap<TypeNameId, TraitDefinition>, Vec<TypeError>> {
+        use crate::compilation::visitors::TraitExtractionVisitor;
+        use crate::visitor::Visitor;
+
+        println!("🔧 Extracting traits from {} programs in parallel...", order.len());
+        let start_time = std::time::Instant::now();
+
+        // Create parallel tasks for trait extraction from each program
+        let extraction_tasks: Vec<_> = order
+            .iter()
+            .filter_map(|file_path| {
+                // Get the program for this file path
+                collection.programs.get(file_path).map(|program| {
+                    let program = program.clone(); // Clone for move into async task
+                    let file_path = file_path.clone();
+                    
+                    tokio::task::spawn_blocking(move || {
+                        // Create a visitor for this specific program
+                        let mut visitor = TraitExtractionVisitor::default();
+                        
+                        // Extract traits from this program
+                        match <TraitExtractionVisitor as Visitor<()>>::visit_program(&mut visitor, &program) {
+                            Ok(()) => {
+                                // Success: return the extracted traits
+                                Ok((file_path, visitor.traits))
+                            }
+                            Err(err) => {
+                                // Error during trait extraction
+                                Err((file_path, err))
+                            }
+                        }
+                    })
+                })
+            })
+            .collect();
+
+        // Wait for all trait extraction tasks to complete
+        let results = futures::future::join_all(extraction_tasks).await;
+        
+        let extraction_duration = start_time.elapsed();
+        println!("⚡ Parallel trait extraction completed in {:.3}s", extraction_duration.as_secs_f64());
+
+        // Process results and handle errors
+        let mut all_traits = HashMap::new();
+        let mut extraction_errors = Vec::new();
+        let mut successful_programs = 0;
+
+        for task_result in results {
+            match task_result {
+                Ok(Ok((_file_path, program_traits))) => {
+                    // Successfully extracted traits from this program
+                    for (trait_name, trait_def) in program_traits {
+                        let type_name_id = self.intern_type_name(&trait_name);
+                        all_traits.insert(type_name_id, trait_def);
+                    }
+                    successful_programs += 1;
+                }
+                Ok(Err((file_path, type_error))) => {
+                    // Trait extraction error for this program
+                    println!("❌ Trait extraction failed for {}: {:?}", file_path, type_error);
+                    extraction_errors.push(type_error);
+                }
+                Err(join_error) => {
+                    // Task join error (panic or cancellation)
+                    println!("❌ Task join error during trait extraction: {:?}", join_error);
+                    extraction_errors.push(TypeError::internal(format!(
+                        "Parallel trait extraction task failed: {}", join_error
+                    )));
+                }
+            }
+        }
+
+        println!("✅ Successfully extracted traits from {} programs", successful_programs);
+        println!("📊 Found {} total trait definitions", all_traits.len());
+        
+        if !extraction_errors.is_empty() {
+            println!("❌ {} programs had trait extraction errors", extraction_errors.len());
+            return Err(extraction_errors);
+        }
+
+        Ok(all_traits)
     }
 
     /// Extract struct definitions (Phase 2)

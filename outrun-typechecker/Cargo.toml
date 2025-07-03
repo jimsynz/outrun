@@ -59,3 +59,7 @@ path = "src/bin/profile-smt-debug.rs"
 [[bin]]
 name = "benchmark-parallel-loading"
 path = "src/bin/benchmark-parallel-loading.rs"
+
+[[bin]]
+name = "test-parallel-trait-extraction"
+path = "src/bin/test-parallel-trait-extraction.rs"
