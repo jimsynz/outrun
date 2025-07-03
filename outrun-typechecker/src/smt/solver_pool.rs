@@ -166,6 +166,12 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
         SMTConstraint::ClausePriority { .. } => 13,
         SMTConstraint::GuardStaticallyEvaluated { .. } => 14,
         SMTConstraint::PreResolvedClause { .. } => 15, // Highest priority - final resolved constraints
+        
+        // Exhaustiveness analysis constraints - lower priority as they're typically analysis-only
+        SMTConstraint::FunctionClauseSetExhaustive { .. } => 16,
+        SMTConstraint::FunctionClauseReachable { .. } => 17,
+        SMTConstraint::GuardCoverageComplete { .. } => 18,
+        SMTConstraint::GuardConditionSatisfiable { .. } => 19,
     });
 
     ordered_constraints

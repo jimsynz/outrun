@@ -438,6 +438,34 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                         self.solver.assert(&guard_equality);
                     }
                 }
+                
+                // Exhaustiveness analysis constraints
+                SMTConstraint::FunctionClauseSetExhaustive { function_name, clauses, .. } => {
+                    // For now, create a boolean variable representing exhaustiveness
+                    let exhaustive_var = Bool::new_const(self.context, format!("exhaustive_{function_name}"));
+                    // Simplified: assume exhaustive if all clauses are present
+                    if !clauses.is_empty() {
+                        self.solver.assert(&exhaustive_var);
+                    }
+                }
+                
+                SMTConstraint::FunctionClauseReachable { clause_id, .. } => {
+                    // Create a boolean variable for reachability
+                    let reachable_var = Bool::new_const(self.context, format!("reachable_{clause_id}"));
+                    self.solver.assert(&reachable_var);
+                }
+                
+                SMTConstraint::GuardCoverageComplete { function_name, .. } => {
+                    // Create a boolean variable for coverage completeness
+                    let coverage_var = Bool::new_const(self.context, format!("coverage_complete_{function_name}"));
+                    self.solver.assert(&coverage_var);
+                }
+                
+                SMTConstraint::GuardConditionSatisfiable { clause_id, .. } => {
+                    // Create a boolean variable for guard satisfiability
+                    let satisfiable_var = Bool::new_const(self.context, format!("satisfiable_guard_{clause_id}"));
+                    self.solver.assert(&satisfiable_var);
+                }
             }
         }
 

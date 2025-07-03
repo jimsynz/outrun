@@ -366,6 +366,21 @@ impl SMTTranslator {
                     format!("(and {})", constraints.join(" "))
                 }
             }
+            
+            // Exhaustiveness analysis constraints
+            SMTConstraint::FunctionClauseSetExhaustive { function_name, clauses, .. } => {
+                format!("(exhaustive_{} {})", function_name, clauses.join(" "))
+            }
+            SMTConstraint::FunctionClauseReachable { clause_id, earlier_clauses, .. } => {
+                format!("(reachable_{} {})", clause_id, earlier_clauses.join(" "))
+            }
+            SMTConstraint::GuardCoverageComplete { function_name, guard_clauses, has_default_clause, .. } => {
+                let guards: Vec<String> = guard_clauses.iter().map(|g| g.clause_id.clone()).collect();
+                format!("(coverage_complete_{} {} {})", function_name, guards.join(" "), has_default_clause)
+            }
+            SMTConstraint::GuardConditionSatisfiable { clause_id, guard_expression, .. } => {
+                format!("(satisfiable_guard_{} {})", clause_id, guard_expression.replace(' ', "_"))
+            }
         }
     }
 

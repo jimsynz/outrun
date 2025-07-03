@@ -6,6 +6,7 @@
 
 pub mod cache;
 pub mod constraints;
+pub mod exhaustiveness;
 pub mod solver;
 pub mod solver_pool;
 pub mod suggestions;
@@ -14,6 +15,7 @@ pub mod translator;
 // Re-export key types for convenience
 pub use cache::ConstraintCache;
 pub use constraints::{ConstraintPriority, ConstraintSet, SMTConstraint};
+pub use exhaustiveness::{ExhaustivenessAnalysis, FunctionClauseExhaustivenessAnalyzer, MissingPattern};
 pub use solver::{SolverResult, Z3ConstraintSolver, Z3Context};
 pub use solver_pool::{
     check_constraints_satisfiable, check_constraints_satisfiable_cached, clear_cache,

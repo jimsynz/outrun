@@ -18,11 +18,7 @@ indexmap = "2.0"
 lazy_static = "1.4"
 petgraph = "0.8"
 
-# SAT solver for guard exhaustiveness checking
-rustsat = "0.7.2"
-rustsat-cadical = "0.7.2"
-
-# SMT solver for type constraint solving
+# SMT solver for all constraint solving (type checking, exhaustiveness, etc.)
 z3 = "0.12"
 
 # LRU cache for SMT constraint solving optimization

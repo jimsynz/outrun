@@ -304,6 +304,19 @@ impl ErrorSuggestionGenerator {
                                     "Remove pre-resolved clause selection for {function_name} on {impl_type:?} (trait: {trait_type:?}, clause: {selected_clause_id})"
                                 )
                             }
+                            // Exhaustiveness analysis constraints
+                            SMTConstraint::FunctionClauseSetExhaustive { function_name, .. } => {
+                                format!("Relax exhaustiveness requirement for function {function_name}")
+                            }
+                            SMTConstraint::FunctionClauseReachable { clause_id, .. } => {
+                                format!("Allow unreachable clause {clause_id}")
+                            }
+                            SMTConstraint::GuardCoverageComplete { function_name, .. } => {
+                                format!("Relax guard coverage requirement for function {function_name}")
+                            }
+                            SMTConstraint::GuardConditionSatisfiable { clause_id, .. } => {
+                                format!("Allow unsatisfiable guard in clause {clause_id}")
+                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

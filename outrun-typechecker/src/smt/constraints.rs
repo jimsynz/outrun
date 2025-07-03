@@ -148,6 +148,63 @@ pub enum SMTConstraint {
         evaluation_result: bool,        // SMT-computed result (true/false)
         context: String,                // For debugging
     },
+
+    // === Exhaustiveness Analysis Constraints ===
+
+    /// Function clause set must be exhaustive for its parameter types
+    /// This ensures that for all possible input values, at least one clause will match
+    FunctionClauseSetExhaustive {
+        function_name: String,          // Function being analyzed
+        clauses: Vec<String>,           // Clause IDs in the set
+        parameter_types: Vec<StructuredType>, // Parameter types to check exhaustiveness over
+        context: String,                // For error reporting
+    },
+
+    /// Specific clause is reachable (not shadowed by earlier clauses)
+    /// This ensures that source-order clause selection doesn't make later clauses unreachable
+    FunctionClauseReachable {
+        clause_id: String,              // Clause being checked for reachability
+        earlier_clauses: Vec<String>,   // Clauses that appear earlier in source order
+        parameter_types: Vec<StructuredType>, // Parameter types for analysis
+        context: String,                // For error reporting
+    },
+
+    /// Guard coverage analysis - all possible parameter values are covered
+    /// This constraint ensures that guard conditions cover the complete parameter space
+    GuardCoverageComplete {
+        function_name: String,          // Function with guards
+        guard_clauses: Vec<GuardClauseInfo>, // Guard clauses with their conditions
+        parameter_types: Vec<StructuredType>, // Parameter types being guarded
+        has_default_clause: bool,       // Whether there's a clause without guards
+        context: String,                // For error reporting
+    },
+
+    /// Guard condition is satisfiable (not contradictory)
+    /// This ensures individual guard expressions can actually be true for some inputs
+    GuardConditionSatisfiable {
+        clause_id: String,              // Clause with the guard
+        guard_expression: String,       // Guard condition (e.g., "rhs != 0 && lhs > 0")
+        parameter_constraints: HashMap<String, ParameterConstraint>, // Type constraints on parameters
+        context: String,                // For error reporting
+    },
+}
+
+/// Information about a guard clause for exhaustiveness analysis
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GuardClauseInfo {
+    pub clause_id: String,              // Unique identifier for the clause
+    pub guard_expression: String,       // Guard condition (e.g., "rhs == 0")
+    pub parameter_names: Vec<String>,   // Parameter names referenced in guard
+    pub source_order: u32,              // Source order position
+}
+
+/// Parameter constraint for guard analysis
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ParameterConstraint {
+    TypeConstraint(StructuredType),     // Parameter must be of this type
+    ValueConstraint(String),            // Parameter must have specific value (e.g., "0", "true")
+    RangeConstraint { min: Option<String>, max: Option<String> }, // Parameter in range
+    NotEqualConstraint(String),         // Parameter must not equal this value
 }
 
 /// Confidence level for Self type inference
@@ -393,6 +450,62 @@ impl Hash for SMTConstraint {
                 selected_clause_id.hash(state);
                 guard_pre_evaluated.hash(state);
                 argument_types.hash(state);
+            }
+            SMTConstraint::FunctionClauseSetExhaustive {
+                function_name,
+                clauses,
+                parameter_types,
+                context,
+            } => {
+                16u8.hash(state);
+                function_name.hash(state);
+                clauses.hash(state);
+                parameter_types.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::FunctionClauseReachable {
+                clause_id,
+                earlier_clauses,
+                parameter_types,
+                context,
+            } => {
+                17u8.hash(state);
+                clause_id.hash(state);
+                earlier_clauses.hash(state);
+                parameter_types.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::GuardCoverageComplete {
+                function_name,
+                guard_clauses,
+                parameter_types,
+                has_default_clause,
+                context,
+            } => {
+                18u8.hash(state);
+                function_name.hash(state);
+                guard_clauses.hash(state);
+                parameter_types.hash(state);
+                has_default_clause.hash(state);
+                context.hash(state);
+            }
+            SMTConstraint::GuardConditionSatisfiable {
+                clause_id,
+                guard_expression,
+                parameter_constraints,
+                context,
+            } => {
+                19u8.hash(state);
+                clause_id.hash(state);
+                guard_expression.hash(state);
+                // HashMap doesn't implement Hash, so hash the sorted entries
+                let mut sorted_constraints: Vec<_> = parameter_constraints.iter().collect();
+                sorted_constraints.sort_by_key(|(k, _)| *k);
+                for (key, value) in sorted_constraints {
+                    key.hash(state);
+                    value.hash(state);
+                }
+                context.hash(state);
             }
         }
     }
