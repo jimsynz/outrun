@@ -37,6 +37,15 @@ pub enum DispatchMethod {
         function_name: String,
         impl_type: Box<StructuredType>,
     },
+    /// Pre-resolved function clause - SMT selected specific clause at compile time
+    PreResolvedClause {
+        trait_name: String,
+        function_name: String,
+        impl_type: Box<StructuredType>,
+        selected_clause_id: String,     // SMT-selected clause ID
+        guard_pre_evaluated: Option<bool>, // SMT pre-computed guard result
+        clause_priority: u32,           // Clause priority for verification
+    },
 }
 
 /// Typed map entry with resolved types

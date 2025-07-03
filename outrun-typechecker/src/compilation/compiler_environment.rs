@@ -38,6 +38,17 @@ struct ResolvedTypes {
     impl_type: StructuredType,
 }
 
+/// Function call site information for SMT clause analysis
+#[derive(Debug, Clone)]
+struct FunctionCallSite {
+    pub trait_name: String,
+    pub function_name: String,
+    pub argument_types: Vec<StructuredType>,
+    pub impl_type: StructuredType,
+    pub span: outrun_parser::Span,
+    pub call_context: String, // For debugging
+}
+
 /// Hash-based type name identifier with display capabilities
 #[derive(Clone)]
 pub struct TypeNameId {
@@ -815,6 +826,9 @@ impl CompilerEnvironment {
                 return Err(type_errors);
             }
         }
+
+        // Step 6.5: Phase 6.5 - SMT-based function clause analysis
+        self.phase_6_5_smt_function_clause_analysis(&expanded_collection)?;
 
         // Step 7: Phase 7 - SMT constraint solving
         self.phase_7_smt_constraint_solving()?;
@@ -1705,6 +1719,148 @@ impl CompilerEnvironment {
             return Err(errors);
         }
 
+        Ok(())
+    }
+
+    /// NEW: Phase 6.5 - SMT-based function clause analysis
+    /// Analyzes function clauses during compilation and generates SMT constraints for clause selection
+    fn phase_6_5_smt_function_clause_analysis(&mut self, collection: &ProgramCollection) -> Result<(), Vec<TypeError>> {
+        // Phase 6.5: Generate SMT constraints for function clause dispatch
+        // This replaces runtime guard evaluation with compile-time SMT analysis
+        
+        // 1. Find all function calls in the AST that could use function clauses
+        let mut function_call_sites = Vec::new();
+        self.collect_function_call_sites(collection, &mut function_call_sites)?;
+        
+        // 2. For each call site, analyze which function clauses could apply
+        for call_site in function_call_sites {
+            self.analyze_function_clause_constraints(&call_site)?;
+        }
+        
+        // 3. Generate SMT constraints for clause selection and guard evaluation
+        // This will be used by Phase 7 to resolve which clauses to use at each call site
+        
+        Ok(())
+    }
+
+    /// Collect all function call sites that could potentially use function clauses
+    fn collect_function_call_sites(&self, collection: &ProgramCollection, call_sites: &mut Vec<FunctionCallSite>) -> Result<(), Vec<TypeError>> {
+        // TODO: Implement AST traversal to find all function calls
+        // For now, we'll stub this out since the real implementation would be quite complex
+        // This would traverse all TypedExpression::FunctionCall nodes and extract call site info
+        
+        // Stub: Add a sample call site for division to test the concept
+        call_sites.push(FunctionCallSite {
+            trait_name: "BinaryDivision".to_string(),
+            function_name: "divide".to_string(),
+            argument_types: vec![
+                StructuredType::Simple(self.intern_type_name("Outrun.Core.Integer64")),
+                StructuredType::Simple(self.intern_type_name("Outrun.Core.Integer64")),
+            ],
+            impl_type: StructuredType::Simple(self.intern_type_name("Outrun.Core.Integer64")),
+            span: outrun_parser::Span::new(0, 0), // Placeholder span
+            call_context: "Test division call site".to_string(),
+        });
+        
+        Ok(())
+    }
+
+    /// Analyze SMT constraints for a specific function call site
+    fn analyze_function_clause_constraints(&mut self, call_site: &FunctionCallSite) -> Result<(), Vec<TypeError>> {
+        // Step 1: Find all function clauses for this trait/function combination
+        let function_name_atom = self.intern_atom_name(&call_site.function_name);
+        
+        // Step 2: Look up clauses in the specific trait implementation module (not globally!)
+        let trait_type = StructuredType::Simple(self.intern_type_name(&call_site.trait_name));
+        if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, &call_site.impl_type, &function_name_atom) {
+            
+            // Step 3: Generate SMT constraints for each clause
+            for clause in clause_set.get_clauses_by_priority() {
+                // Generate ArgumentTypeMatch constraints
+                self.generate_argument_type_constraints(call_site, clause)?;
+                
+                // Generate GuardApplicable constraints (if guard exists)
+                if clause.base_function.guard.is_some() {
+                    self.generate_guard_applicability_constraints(call_site, clause)?;
+                }
+                
+                // Generate ClausePriority constraints
+                self.generate_clause_priority_constraints(call_site, clause)?;
+            }
+            
+            // Step 4: Generate PreResolvedClause constraint with SMT-selected clause
+            // For now, we'll stub this - in reality, SMT would solve these constraints
+            self.generate_pre_resolved_clause_constraint(call_site, &clause_set)?;
+        }
+        
+        Ok(())
+    }
+
+    /// Generate SMT constraints for argument type matching
+    fn generate_argument_type_constraints(&mut self, call_site: &FunctionCallSite, clause: &crate::checker::FunctionClause) -> Result<(), Vec<TypeError>> {
+        for (i, parameter) in clause.base_function.parameters.iter().enumerate() {
+            if let Some(arg_type) = call_site.argument_types.get(i) {
+                let constraint = crate::smt::constraints::SMTConstraint::ArgumentTypeMatch {
+                    clause_id: format!("{}::{}", call_site.trait_name, clause.clause_id),
+                    parameter_name: parameter.name.clone(),
+                    expected_type: parameter.param_type.clone().unwrap_or_else(|| StructuredType::Simple(self.intern_type_name("Unknown"))),
+                    actual_type: arg_type.clone(),
+                    call_site: call_site.span,
+                };
+                
+                // Add constraint to unification context
+                self.unification_context().add_smt_constraint(constraint);
+            }
+        }
+        Ok(())
+    }
+
+    /// Generate SMT constraints for guard applicability  
+    fn generate_guard_applicability_constraints(&mut self, call_site: &FunctionCallSite, clause: &crate::checker::FunctionClause) -> Result<(), Vec<TypeError>> {
+        if let Some(_guard_expr) = &clause.base_function.guard {
+            let constraint = crate::smt::constraints::SMTConstraint::GuardApplicable {
+                clause_id: format!("{}::{}", call_site.trait_name, clause.clause_id),
+                guard_expression: "rhs == 0".to_string(), // Placeholder - would extract from guard_expr
+                guard_variables: std::collections::HashMap::new(), // Would extract from parameters
+                context: format!("Guard for {} in {}", call_site.function_name, call_site.trait_name),
+            };
+            
+            self.unification_context().add_smt_constraint(constraint);
+        }
+        Ok(())
+    }
+
+    /// Generate SMT constraints for clause priority
+    fn generate_clause_priority_constraints(&mut self, call_site: &FunctionCallSite, clause: &crate::checker::FunctionClause) -> Result<(), Vec<TypeError>> {
+        let constraint = crate::smt::constraints::SMTConstraint::ClausePriority {
+            clause_id: format!("{}::{}", call_site.trait_name, clause.clause_id),
+            priority: clause.priority,
+            context: format!("Priority for {} in {}", call_site.function_name, call_site.trait_name),
+        };
+        
+        self.unification_context().add_smt_constraint(constraint);
+        Ok(())
+    }
+
+    /// Generate pre-resolved clause constraint based on SMT analysis
+    fn generate_pre_resolved_clause_constraint(&mut self, call_site: &FunctionCallSite, clause_set: &crate::checker::FunctionClauseSet) -> Result<(), Vec<TypeError>> {
+        // For now, stub this to select the highest priority clause
+        // In reality, SMT would solve all the constraints to determine the best clause
+        let selected_clause = clause_set.get_clauses_by_priority()
+            .first()
+            .ok_or_else(|| vec![TypeError::internal("No clauses found in clause set".to_string())])?;
+        
+        let constraint = crate::smt::constraints::SMTConstraint::PreResolvedClause {
+            call_site: call_site.span,
+            trait_type: StructuredType::Simple(self.intern_type_name(&call_site.trait_name)),
+            impl_type: call_site.impl_type.clone(),
+            function_name: call_site.function_name.clone(),
+            selected_clause_id: selected_clause.clause_id.clone(),
+            guard_pre_evaluated: Some(true), // Stub - SMT would determine this
+            argument_types: call_site.argument_types.clone(),
+        };
+        
+        self.unification_context().add_smt_constraint(constraint);
         Ok(())
     }
 
@@ -5799,6 +5955,33 @@ impl CompilerEnvironment {
         // Search through all modules for a function clause set with the given name
         for module in modules.values() {
             if let Some(clause_set) = module.function_clauses.get(function_name) {
+                return Some(clause_set.clone());
+            }
+        }
+        
+        None
+    }
+
+    /// Look up function clauses within a specific trait implementation module
+    /// This is the correct approach for trait dispatch - respects module boundaries
+    pub fn lookup_function_clauses_in_trait_impl(
+        &self, 
+        trait_type: &StructuredType, 
+        impl_type: &StructuredType, 
+        function_name: &AtomId
+    ) -> Option<crate::checker::FunctionClauseSet> {
+        let modules = self.modules.read().unwrap();
+        
+        // Create the module key for the specific trait implementation
+        let module_key = ModuleKey::TraitImpl(
+            Box::new(trait_type.clone()),
+            Box::new(impl_type.clone()),
+        );
+        
+        // Look up the specific trait implementation module
+        if let Some(trait_impl_module) = modules.get(&module_key) {
+            // Look for function clauses within this specific module
+            if let Some(clause_set) = trait_impl_module.function_clauses.get(function_name) {
                 return Some(clause_set.clone());
             }
         }

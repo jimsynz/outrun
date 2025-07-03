@@ -127,13 +127,26 @@ pub enum SMTConstraint {
         context: String,                // Function name and location context
     },
 
-    /// Guard expression can be statically evaluated at compile time
-    /// Enables constant folding optimization for guard conditions
+    /// Pre-resolved function clause selection
+    /// This represents the SMT solver's decision about which clause to use for a specific call
+    PreResolvedClause {
+        call_site: Span,                // Location of the function call
+        trait_type: StructuredType,     // Trait being called (e.g., BinaryDivision)
+        impl_type: StructuredType,      // Implementation type (e.g., Integer64)
+        function_name: String,          // Function name (e.g., "divide")
+        selected_clause_id: String,     // SMT-selected clause ID
+        guard_pre_evaluated: Option<bool>, // SMT pre-computed guard result (if applicable)
+        argument_types: Vec<StructuredType>, // Call site argument types
+    },
+
+    /// Guard static evaluation result
+    /// SMT pre-computed guard expression results for specific argument patterns
     GuardStaticallyEvaluated {
-        clause_id: String,              // Unique identifier for the function clause
-        guard_expression: String,       // String representation of guard
-        static_result: bool,            // Compile-time evaluation result
-        optimization_context: String,  // Description of the optimization applied
+        clause_id: String,              // Function clause containing the guard
+        guard_expression: String,       // Guard expression (e.g., "rhs == 0")
+        when_arguments: std::collections::HashMap<String, String>, // Argument patterns (e.g., "rhs" -> "0")
+        evaluation_result: bool,        // SMT-computed result (true/false)
+        context: String,                // For debugging
     },
 }
 

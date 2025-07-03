@@ -238,9 +238,9 @@ impl FunctionDispatcher {
         let trait_type = outrun_typechecker::unification::StructuredType::Simple(trait_type_id);
         let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
-        // CRITICAL FIX: Check for function clauses (guard clauses) before doing normal trait dispatch
-        // This is the same logic as in dispatch_static_function_with_context (lines 151-173)
-        if let Some(clause_set) = self.lookup_function_clauses(&function_name_atom) {
+        // CRITICAL FIX: Check for function clauses (guard clauses) within the specific trait implementation
+        // We must look up clauses in the correct trait implementation module, not globally
+        if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, impl_type, &function_name_atom) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
                 &clause_set,
@@ -423,13 +423,25 @@ impl FunctionDispatcher {
 
     // === Function Clause Dispatch with SMT Analysis ===
 
-    /// Look up function clauses for a given function name
+    /// Look up function clauses for a given function name (global search - used for static functions)
     fn lookup_function_clauses(
         &self,
         function_name: &outrun_typechecker::compilation::compiler_environment::AtomId,
     ) -> Option<outrun_typechecker::checker::FunctionClauseSet> {
         // Use the new public method on CompilerEnvironment
         self.compiler_environment.lookup_function_clauses_by_name(function_name)
+    }
+
+    /// Look up function clauses within a specific trait implementation module
+    /// This is the correct approach for trait dispatch - we must respect module boundaries
+    fn lookup_function_clauses_in_trait_impl(
+        &self,
+        trait_type: &outrun_typechecker::unification::StructuredType,
+        impl_type: &outrun_typechecker::unification::StructuredType,
+        function_name: &outrun_typechecker::compilation::compiler_environment::AtomId,
+    ) -> Option<outrun_typechecker::checker::FunctionClauseSet> {
+        // Look up function clauses in the specific trait implementation module
+        self.compiler_environment.lookup_function_clauses_in_trait_impl(trait_type, impl_type, function_name)
     }
 
     /// Select the appropriate function clause using SMT analysis
@@ -502,8 +514,9 @@ impl FunctionDispatcher {
         // Create a temporary evaluation context with function parameters
         let mut guard_context = self.create_guard_evaluation_context(arguments)?;
         
-        // Create an expression evaluator for guard evaluation
-        let mut evaluator = crate::evaluator::ExpressionEvaluator::new(self.compiler_environment.clone());
+        // CRITICAL FIX: Create evaluator with proper dispatch context to ensure correct trait resolution
+        let dispatch_context = outrun_typechecker::context::FunctionDispatchContext::new(Some(self.compiler_environment.clone()));
+        let mut evaluator = crate::evaluator::ExpressionEvaluator::from_dispatch_context(dispatch_context);
         
         // Evaluate the guard expression
         match evaluator.evaluate(&mut guard_context, guard_expr) {
