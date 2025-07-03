@@ -36,6 +36,14 @@ fn load_and_compile_core_library() -> CompilationResult {
     load_and_compile_core_library_with_environment(&mut compiler_env, collection)
 }
 
+/// Load and compile the entire core library using parallel file loading (async version)
+pub async fn load_and_compile_core_library_parallel() -> CompilationResult {
+    let collection = load_core_library_collection_parallel().await;
+
+    let mut compiler_env = CompilerEnvironment::new();
+    load_and_compile_core_library_with_environment(&mut compiler_env, collection)
+}
+
 /// Load and compile the entire core library using a shared compiler environment
 pub fn load_and_compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
@@ -123,7 +131,7 @@ fn find_source_for_error(
     None
 }
 
-/// Load core library programs into a ProgramCollection
+/// Load core library programs into a ProgramCollection (sequential version)
 pub fn load_core_library_collection() -> ProgramCollection {
     let mut collection = ProgramCollection::new();
     let core_lib_path = get_core_library_path();
@@ -164,6 +172,108 @@ pub fn load_core_library_collection() -> ProgramCollection {
         }
 
         eprintln!("💡 Fix the parse errors above and try again.");
+        eprintln!("The core library must parse successfully for the type checker to work.");
+        std::process::exit(1);
+    }
+
+    collection
+}
+
+/// Load core library programs into a ProgramCollection (parallel version using Tokio)
+pub async fn load_core_library_collection_parallel() -> ProgramCollection {
+    let mut collection = ProgramCollection::new();
+    let core_lib_path = get_core_library_path();
+    let outrun_files = find_outrun_files(&core_lib_path);
+
+    println!("📁 Loading {} core library files in parallel...", outrun_files.len());
+    let start_time = std::time::Instant::now();
+
+    // Create tasks for parallel file reading and parsing
+    let tasks: Vec<_> = outrun_files
+        .into_iter()
+        .map(|(relative_path, absolute_path)| {
+            tokio::spawn(async move {
+                // Step 1: Read file content asynchronously
+                let source_code = match tokio::fs::read_to_string(&absolute_path).await {
+                    Ok(content) => content,
+                    Err(io_error) => {
+                        return Err((relative_path, format!("Failed to read file: {io_error}")));
+                    }
+                };
+
+                // Step 2: Parse the program using spawn_blocking for CPU-intensive work
+                let source_code_clone = source_code.clone();
+                let parse_result = tokio::task::spawn_blocking(move || {
+                    outrun_parser::parse_program(&source_code_clone)
+                })
+                .await;
+
+                match parse_result {
+                    Ok(Ok(program)) => {
+                        // Success: return the parsed program with metadata
+                        Ok((relative_path, program, source_code))
+                    }
+                    Ok(Err(parse_error)) => {
+                        // Parse error: return error with source for reporting
+                        Err((relative_path, format!("Parse error: {parse_error:?}")))
+                    }
+                    Err(join_error) => {
+                        // Task join error
+                        Err((relative_path, format!("Task join error: {join_error}")))
+                    }
+                }
+            })
+        })
+        .collect();
+
+    // Wait for all tasks to complete
+    let results = futures::future::join_all(tasks).await;
+    
+    let load_duration = start_time.elapsed();
+    println!("⚡ Parallel loading completed in {:.3}s", load_duration.as_secs_f64());
+
+    // Process results
+    let mut parse_errors = Vec::new();
+    let mut successful_files = 0;
+
+    for task_result in results {
+        match task_result {
+            Ok(Ok((relative_path, program, source_code))) => {
+                // Successfully parsed file
+                collection.add_program(relative_path, program, source_code);
+                successful_files += 1;
+            }
+            Ok(Err((relative_path, error_msg))) => {
+                // Parse or IO error
+                parse_errors.push((relative_path, error_msg));
+            }
+            Err(join_error) => {
+                // Task panicked or was cancelled
+                parse_errors.push(("unknown".to_string(), format!("Task error: {join_error}")));
+            }
+        }
+    }
+
+    println!("✅ Successfully parsed {} files", successful_files);
+    
+    if !parse_errors.is_empty() {
+        println!("❌ {} files had errors", parse_errors.len());
+    }
+
+    // Handle parse errors (same as sequential version)
+    if !parse_errors.is_empty() {
+        eprintln!("🚨 Core Library Parse Errors:");
+        eprintln!("============================");
+        eprintln!(
+            "Found {} errors in core library files.\n",
+            parse_errors.len()
+        );
+
+        for (file_path, error_msg) in parse_errors {
+            eprintln!("📄 {file_path}: {error_msg}");
+        }
+
+        eprintln!("💡 Fix the errors above and try again.");
         eprintln!("The core library must parse successfully for the type checker to work.");
         std::process::exit(1);
     }
