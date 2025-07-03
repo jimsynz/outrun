@@ -65,14 +65,13 @@ pub struct OutrunTestHarness {
 impl OutrunTestHarness {
     /// Create a new test harness with core library loaded
     pub fn new() -> Result<Self, TestHarnessError> {
-        // Use the same pattern as the working test to avoid TypeInterner synchronization issues
-        // Create a fresh CompilerEnvironment and load the core library into it
+        // Use cached core library compilation for dramatically faster test execution
+        // This avoids recompiling the entire core library for every test case
         let mut compiler_environment = CompilerEnvironment::new();
-        let core_result =
-            core_library::compile_core_library_with_environment(&mut compiler_environment);
+        let core_result = core_library::get_core_library_compilation();
 
         // Load the compilation result to populate structs and traits
-        compiler_environment.load_structs_and_traits(&core_result);
+        compiler_environment.load_structs_and_traits(core_result);
 
         // Create dispatch context and evaluator using the environment with core library loaded
         let dispatch_context = FunctionDispatchContext::new(Some(compiler_environment.clone()));

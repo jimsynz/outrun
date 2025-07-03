@@ -27,3 +27,7 @@ lru = "0.12"
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"
+
+[[bin]]
+name = "profile-core-lib"
+path = "src/bin/profile-core-lib.rs"

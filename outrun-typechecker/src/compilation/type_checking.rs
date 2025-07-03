@@ -3300,13 +3300,26 @@ impl TypeCheckingVisitor {
             trait_type: trait_type.clone(),
         };
         context.add_smt_constraint(self_implements_trait);
+        
+        // Extract argument types for caching key
+        let argument_types: Vec<crate::unification::StructuredType> = arg_type_map.values().cloned().collect();
+        
+        // NOTE: Compile-time Self resolution was removed to preserve trait extensibility
+        // Users must be able to implement their own versions of core traits
+        
+        // Clone constraints before moving context
+        let constraints = context.smt_constraints.clone();
         self.compiler_environment.set_unification_context(context);
-
-        // Use SMT to solve for the Self type - this must succeed for type safety
-        match self
-            .compiler_environment
-            .smt_resolve_self_type(&self_type_id)
-        {
+        
+        // Use cached SMT solver to resolve Self type - this significantly improves performance
+        match crate::smt::solver_pool::solve_self_resolution_cached(
+            &trait_type_id,
+            &trait_func_def.name.name,
+            &argument_types,
+            &constraints,
+            &self.compiler_environment,
+            &self_type_id,
+        ) {
             Ok(resolved_type) => Ok(resolved_type),
             Err(smt_error) => {
                 // SMT solving failed - this indicates a real type error, not a fallback situation
@@ -3990,6 +4003,197 @@ impl TypeCheckingVisitor {
             // Concrete types don't contain variables
             _ => false,
         }
+    }
+
+    /// Try to resolve Self type at compile-time for common patterns
+    /// This avoids SMT calls for simple, unambiguous cases
+    fn try_compile_time_self_resolution(
+        &mut self,
+        trait_type_id: &TypeNameId,
+        trait_func_def: &outrun_parser::FunctionDefinition,
+        arg_type_map: &std::collections::HashMap<String, crate::unification::StructuredType>,
+    ) -> Result<Option<crate::unification::StructuredType>, TypeError> {
+        // Pattern 1: Direct concrete type match
+        // e.g., Integer.add(left: 42, right: 24) -> Self = Integer
+        for param in &trait_func_def.parameters {
+            let param_name = &param.name.name;
+            if let Some(arg_type) = arg_type_map.get(param_name) {
+                if self.is_self_type_annotation(&param.type_annotation) {
+                    // Check if argument type is a concrete implementation of the trait
+                    if let Some(concrete_type) = self.try_resolve_concrete_implementation(
+                        arg_type,
+                        trait_type_id,
+                    )? {
+                        return Ok(Some(concrete_type));
+                    }
+                }
+            }
+        }
+
+        // Pattern 2: Generic type with concrete arguments
+        // e.g., Option.some?(value: Option<Integer>) -> Self = Outrun.Option.Some<Integer>
+        for param in &trait_func_def.parameters {
+            let param_name = &param.name.name;
+            if let Some(arg_type) = arg_type_map.get(param_name) {
+                if self.is_self_type_annotation(&param.type_annotation) {
+                    if let crate::unification::StructuredType::Generic { base, args } = arg_type {
+                        let trait_name = self
+                            .compiler_environment
+                            .resolve_type_name(trait_type_id)
+                            .unwrap_or_default();
+                        let arg_base_name = self
+                            .compiler_environment
+                            .resolve_type_name(base)
+                            .unwrap_or_default();
+
+                        // If the argument type matches the trait, find concrete implementation
+                        if trait_name == arg_base_name {
+                            // Look for a unique concrete implementation
+                            let concrete_impls = self
+                                .compiler_environment
+                                .find_trait_implementations(arg_type);
+                            
+                            // Filter to concrete (Outrun.*) implementations
+                            let concrete_outrun_impls: Vec<_> = concrete_impls
+                                .into_iter()
+                                .filter(|impl_type| {
+                                    if let crate::unification::StructuredType::Generic { base: impl_base, .. } = impl_type {
+                                        let impl_name = self
+                                            .compiler_environment
+                                            .resolve_type_name(impl_base)
+                                            .unwrap_or_default();
+                                        impl_name.starts_with("Outrun.") && impl_name != trait_name
+                                    } else {
+                                        false
+                                    }
+                                })
+                                .collect();
+
+                            // If there's exactly one concrete implementation, use it
+                            if concrete_outrun_impls.len() == 1 {
+                                return Ok(Some(concrete_outrun_impls[0].clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pattern 3: Concrete type arguments that already specify the implementation
+        // e.g., SomeStruct.trait_method(value: SomeStruct{...}) -> Self = SomeStruct
+        for param in &trait_func_def.parameters {
+            let param_name = &param.name.name;
+            if let Some(arg_type) = arg_type_map.get(param_name) {
+                if self.is_self_type_annotation(&param.type_annotation) {
+                    // If the argument is already a concrete implementation, use it directly
+                    if let Some(concrete_type) = self.extract_concrete_implementation(arg_type) {
+                        return Ok(Some(concrete_type));
+                    }
+                }
+            }
+        }
+
+        // No compile-time resolution possible - fall back to SMT
+        Ok(None)
+    }
+
+    /// Try to resolve a concrete implementation for an argument type
+    fn try_resolve_concrete_implementation(
+        &mut self,
+        arg_type: &crate::unification::StructuredType,
+        trait_type_id: &TypeNameId,
+    ) -> Result<Option<crate::unification::StructuredType>, TypeError> {
+        match arg_type {
+            crate::unification::StructuredType::Simple(type_id) => {
+                let type_name = self
+                    .compiler_environment
+                    .resolve_type_name(type_id)
+                    .unwrap_or_default();
+                
+                // If it's already a concrete implementation, use it
+                if type_name.starts_with("Outrun.") {
+                    return Ok(Some(arg_type.clone()));
+                }
+            }
+            crate::unification::StructuredType::Generic { base, args } => {
+                let base_name = self
+                    .compiler_environment
+                    .resolve_type_name(base)
+                    .unwrap_or_default();
+                
+                // If it's already a concrete implementation, use it
+                if base_name.starts_with("Outrun.") {
+                    return Ok(Some(arg_type.clone()));
+                }
+            }
+            _ => {}
+        }
+
+        Ok(None)
+    }
+
+    /// Check if a type is a simple concrete type (no generics, no Self)
+    fn is_simple_concrete_type(&self, arg_type: &crate::unification::StructuredType) -> bool {
+        match arg_type {
+            crate::unification::StructuredType::Simple(type_id) => {
+                let type_name = self
+                    .compiler_environment
+                    .resolve_type_name(type_id)
+                    .unwrap_or_default();
+                !type_name.contains("Self") && type_name.chars().all(|c| c.is_alphanumeric() || c == '.')
+            }
+            _ => false,
+        }
+    }
+
+    /// Extract concrete implementation type if the argument is already concrete
+    fn extract_concrete_implementation(
+        &self,
+        arg_type: &crate::unification::StructuredType,
+    ) -> Option<crate::unification::StructuredType> {
+        match arg_type {
+            crate::unification::StructuredType::Simple(type_id) => {
+                let type_name = self
+                    .compiler_environment
+                    .resolve_type_name(type_id)
+                    .unwrap_or_default();
+                
+                // If it's a concrete struct type (not a trait), use it as the Self type
+                if !type_name.is_empty() && 
+                   !type_name.contains("Self") && 
+                   self.is_concrete_struct_type(&type_name) {
+                    Some(arg_type.clone())
+                } else {
+                    None
+                }
+            }
+            crate::unification::StructuredType::Generic { base, .. } => {
+                let base_name = self
+                    .compiler_environment
+                    .resolve_type_name(base)
+                    .unwrap_or_default();
+                
+                // If it's a concrete generic struct type, use it as the Self type
+                if !base_name.is_empty() && 
+                   !base_name.contains("Self") && 
+                   self.is_concrete_struct_type(&base_name) {
+                    Some(arg_type.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Check if a type name represents a concrete struct (not a trait)
+    fn is_concrete_struct_type(&self, type_name: &str) -> bool {
+        // This is a heuristic - in practice we'd check the compiler environment
+        // for whether this is registered as a struct vs trait
+        // For now, assume Outrun.* types are concrete implementations
+        type_name.starts_with("Outrun.") || 
+        // User-defined structs typically don't contain dots
+        (!type_name.contains('.') && type_name.chars().next().map_or(false, |c| c.is_uppercase()))
     }
 
     /// Resolve argument type to concrete implementing type for trait function calls

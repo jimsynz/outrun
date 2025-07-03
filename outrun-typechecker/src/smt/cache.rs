@@ -6,6 +6,7 @@
 use crate::compilation::compiler_environment::TypeNameId;
 use crate::smt::constraints::SMTConstraint;
 use crate::smt::solver::SolverResult;
+use crate::unification::StructuredType;
 use lru::LruCache;
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
@@ -21,6 +22,9 @@ pub struct ConstraintCache {
     /// LRU cache for trait implementation lookups
     implementation_cache: LruCache<(TypeNameId, TypeNameId), bool>,
 
+    /// LRU cache for Self type resolution based on function signatures
+    self_resolution_cache: LruCache<SelfResolutionKey, StructuredType>,
+
     /// Statistics for cache performance
     stats: CacheStats,
 }
@@ -32,6 +36,18 @@ pub struct ConstraintSetHash {
     content_hash: u64,
     /// Number of constraints (for quick differentiation)
     constraint_count: usize,
+}
+
+/// Key for Self type resolution caching
+/// This normalizes function calls to avoid unique Self_call_X variables
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SelfResolutionKey {
+    /// The trait being called
+    pub trait_type: TypeNameId,
+    /// The function name being called
+    pub function_name: String,
+    /// The argument types (normalized, no Self variables)
+    pub argument_types: Vec<StructuredType>,
 }
 
 /// Cache performance statistics
@@ -56,6 +72,7 @@ impl ConstraintCache {
             solved_constraints: LruCache::new(capacity),
             type_hierarchies: LruCache::new(capacity),
             implementation_cache: LruCache::new(capacity),
+            self_resolution_cache: LruCache::new(capacity),
             stats: CacheStats::default(),
         }
     }
@@ -80,6 +97,26 @@ impl ConstraintCache {
 
         // LRU cache handles eviction automatically
         if let Some(_evicted) = self.solved_constraints.push(hash, result) {
+            self.stats.evictions += 1;
+        }
+    }
+
+    /// Get cached Self type resolution result
+    pub fn get_cached_self_resolution(&mut self, key: &SelfResolutionKey) -> Option<&StructuredType> {
+        self.stats.total_queries += 1;
+        
+        if let Some(result) = self.self_resolution_cache.get(key) {
+            self.stats.cache_hits += 1;
+            Some(result)
+        } else {
+            self.stats.cache_misses += 1;
+            None
+        }
+    }
+
+    /// Cache a Self type resolution result
+    pub fn cache_self_resolution(&mut self, key: SelfResolutionKey, resolved_type: StructuredType) {
+        if let Some(_evicted) = self.self_resolution_cache.push(key, resolved_type) {
             self.stats.evictions += 1;
         }
     }
@@ -147,6 +184,7 @@ impl ConstraintCache {
         self.solved_constraints.clear();
         self.type_hierarchies.clear();
         self.implementation_cache.clear();
+        self.self_resolution_cache.clear();
         self.stats = CacheStats::default();
     }
 
@@ -174,6 +212,7 @@ impl ConstraintCache {
         self.solved_constraints.is_empty()
             && self.type_hierarchies.is_empty()
             && self.implementation_cache.is_empty()
+            && self.self_resolution_cache.is_empty()
     }
 
     /// Compute hash for a set of constraints

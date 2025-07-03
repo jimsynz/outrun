@@ -12,12 +12,23 @@ use std::path::{Path, PathBuf};
 
 lazy_static! {
     /// Core library compilation results cached at runtime
+    /// Note: This provides in-process caching but each test run still recompiles once
     pub static ref CORE_LIBRARY_COMPILATION: CompilationResult = {
-        load_and_compile_core_library()
+        eprintln!("⏳ Compiling core library (this is cached per process)...");
+        let start_time = std::time::Instant::now();
+        let result = load_and_compile_core_library();
+        let duration = start_time.elapsed();
+        
+        // Get SMT cache statistics to help diagnose performance
+        let cache_stats = crate::smt::solver_pool::get_cache_stats();
+        eprintln!("✅ Core library compiled in {:.2}s", duration.as_secs_f64());
+        eprintln!("📊 SMT Cache: {}", cache_stats);
+        result
     };
 }
 
-/// Load and compile the entire core library using the multi-program compiler
+
+/// Load and compile the entire core library using the multi-program compiler (no caching)
 fn load_and_compile_core_library() -> CompilationResult {
     let collection = load_core_library_collection();
 
@@ -30,8 +41,8 @@ pub fn load_and_compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
     collection: ProgramCollection,
 ) -> CompilationResult {
-    // Clear any existing cache to ensure we start fresh for core library
-    crate::smt::solver_pool::clear_cache();
+    // NOTE: Removed cache clearing for performance - cache reuse significantly speeds up compilation
+    // crate::smt::solver_pool::clear_cache();
 
     match compiler_env.compile_collection(collection.clone()) {
         Ok(result) => result,
@@ -266,6 +277,7 @@ impl std::fmt::Display for CoreLibraryStats {
         )
     }
 }
+
 
 /// Load and compile core library for testing, returning errors instead of exiting
 /// This function is used by tests to examine compilation errors in detail

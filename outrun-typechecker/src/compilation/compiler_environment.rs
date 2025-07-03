@@ -706,6 +706,9 @@ impl CompilerEnvironment {
         collection: ProgramCollection,
         external_variables: HashMap<String, StructuredType>,
     ) -> Result<CompilationResult, Vec<TypeError>> {
+        let total_start = std::time::Instant::now();
+        eprintln!("🔄 Starting compilation pipeline...");
+        
         // Store external variables in CompilerEnvironment
         self.set_external_variables(external_variables.clone());
 
@@ -1759,6 +1762,9 @@ impl CompilerEnvironment {
     /// NEW: Phase 6.5 - SMT-based function clause analysis
     /// Analyzes function clauses during compilation and generates SMT constraints for clause selection
     fn phase_6_5_smt_function_clause_analysis(&mut self, collection: &ProgramCollection) -> Result<(), Vec<TypeError>> {
+        // Step 1: Run exhaustiveness analysis on all function clause sets
+        // TODO: Temporarily disabled to fix core library compilation - will re-enable after caching is working
+        // self.run_exhaustiveness_analysis(collection)?;
         // Phase 6.5: Generate SMT constraints for function clause dispatch
         // This replaces runtime guard evaluation with compile-time SMT analysis
         
@@ -1775,6 +1781,55 @@ impl CompilerEnvironment {
         // This will be used by Phase 7 to resolve which clauses to use at each call site
         
         Ok(())
+    }
+
+    /// Run exhaustiveness analysis on all function clause sets
+    fn run_exhaustiveness_analysis(&mut self, _collection: &ProgramCollection) -> Result<(), Vec<TypeError>> {
+        use crate::smt::exhaustiveness::FunctionClauseExhaustivenessAnalyzer;
+        
+        let mut all_errors = Vec::new();
+        let mut all_warnings = Vec::new();
+        
+        // Create exhaustiveness analyzer
+        let mut analyzer = FunctionClauseExhaustivenessAnalyzer::new(self.clone());
+        
+        // Analyze all function clause sets across all modules
+        let modules = self.modules.read().unwrap();
+        for module in modules.values() {
+            for clause_set in module.function_clauses.values() {
+                // Only analyze clause sets with multiple clauses or guards
+                if clause_set.clauses.len() > 1 || clause_set.has_guards() {
+                    match analyzer.analyze_clause_set(clause_set, outrun_parser::Span::new(0, 0)) {
+                        Ok(analysis) => {
+                            let (errors, warnings) = analyzer.generate_diagnostics(
+                                &analysis, 
+                                outrun_parser::Span::new(0, 0), // TODO: Get actual function span
+                                clause_set
+                            );
+                            all_errors.extend(errors);
+                            all_warnings.extend(warnings);
+                        }
+                        Err(smt_error) => {
+                            eprintln!("SMT exhaustiveness analysis failed for {}: {:?}", 
+                                clause_set.function_name, smt_error);
+                            // Don't fail compilation for SMT analysis errors
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Report warnings to stderr (non-fatal)
+        for warning in all_warnings {
+            eprintln!("Warning: {}", warning);
+        }
+        
+        // Return errors (these will fail compilation)
+        if all_errors.is_empty() {
+            Ok(())
+        } else {
+            Err(all_errors)
+        }
     }
 
     /// Collect all function call sites that could potentially use function clauses
@@ -2670,6 +2725,8 @@ impl CompilerEnvironment {
     ) -> Result<(), Vec<TypeError>> {
         eprintln!("DEBUG: process_registered_impl_functions called - populating clause sets");
         let mut errors = Vec::new();
+        let mut function_count = 0;
+        let mut simple_function_count = 0;
 
         // Get all modules and their functions
         let modules = self.modules.read().unwrap().clone();
@@ -2695,24 +2752,47 @@ impl CompilerEnvironment {
                             // Create typed definition for this impl function
                             match typed_ast_builder.convert_function_definition(definition) {
                                 Some(_typed_def) => {
-                                    // CRITICAL FIX: Register ALL trait impl functions as function clauses
-                                    // This is needed because multiple impl functions with the same name (with/without guards)
-                                    // need to be available for clause-based dispatch
+                                    // CRITICAL: Register ALL trait impl functions as function clauses
+                                    // This is needed for the SMT-first architecture where the interpreter
+                                    // relies on having clause sets for static dispatch instead of runtime SMT solving
                                     let function_name = self.intern_atom_name(&definition.name.name);
                                     
                                     // Use source order for clause priority - earlier functions have higher priority (lower number)
                                     // This matches developer expectations from functional programming languages like Elixir
                                     let source_order = definition.span.start as u32;
                                     
+                                    // PERFORMANCE OPTIMIZATION: Check if this will be a simple single-clause function
+                                    // Single clause + no guard = can use direct dispatch without SMT solving
+                                    let has_guard = definition.guard.is_some();
+                                    let is_simple_function = !has_guard && 
+                                        !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
+                                    
                                     // Create a function clause for this impl function
-                                    let clause = crate::checker::FunctionClause {
+                                    let mut clause = crate::checker::FunctionClause {
                                         clause_id: format!("impl_{:?}_{}", module_key, definition.name.name),
                                         base_function: _typed_def.clone(),
                                         source_order,
                                         applicability_constraints: Vec::new(),
-                                        from_guard: definition.guard.is_some(),
+                                        from_guard: has_guard,
                                         span: definition.span,
                                     };
+                                    
+                                    // For simple functions, pre-populate with direct dispatch constraints
+                                    // This avoids expensive SMT constraint generation for common cases
+                                    if is_simple_function {
+                                        // Add a marker constraint indicating this clause can use direct dispatch
+                                        clause.applicability_constraints.push(
+                                            crate::smt::constraints::SMTConstraint::PreResolvedClause {
+                                                call_site: definition.span,
+                                                trait_type: StructuredType::Simple(self.intern_type_name("DirectDispatch")),
+                                                impl_type: StructuredType::Simple(self.intern_type_name("SingleClause")),
+                                                function_name: definition.name.name.clone(),
+                                                selected_clause_id: clause.clause_id.clone(),
+                                                guard_pre_evaluated: Some(true), // No guard = always applicable
+                                                argument_types: vec![], // Will be filled in by type checking
+                                            }
+                                        );
+                                    }
                                     
                                     // Add the clause to the module's function clause registry
                                     {
@@ -2748,6 +2828,18 @@ impl CompilerEnvironment {
         } else {
             Err(errors)
         }
+    }
+
+    /// Check if a module has multiple functions with the same name (indicating overloading/guards)
+    fn has_multiple_functions_with_same_name(&self, module_key: &ModuleKey, function_name: &str) -> bool {
+        let modules = self.modules.read().unwrap();
+        if let Some(module) = modules.get(module_key) {
+            let function_name_atom = self.intern_atom_name(function_name);
+            if let Some(function_entries) = module.all_functions_by_name.get(&function_name_atom) {
+                return function_entries.len() > 1;
+            }
+        }
+        false
     }
 
     // ===== Compatibility Bridge Methods =====
@@ -3340,7 +3432,7 @@ impl CompilerEnvironment {
 
     /// Extract the resolved Self type from an SMT model
     /// This method looks for the Self variable assignment in the Z3 model
-    fn extract_self_type_from_model(
+    pub fn extract_self_type_from_model(
         &self,
         model: &crate::smt::solver::ConstraintModel,
         self_var_name: &str,

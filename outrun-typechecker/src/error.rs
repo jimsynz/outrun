@@ -9,6 +9,35 @@ use thiserror::Error;
 /// Result type for type checking operations
 pub type TypeResult<T> = Result<T, TypeError>;
 
+/// Type checking warnings (non-fatal issues)
+#[derive(Error, Diagnostic, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeWarning {
+    #[error("Unreachable function clause")]
+    #[diagnostic(
+        code(outrun::typechecker::unreachable_function_clause),
+        severity(Warning)
+    )]
+    UnreachableFunctionClause {
+        #[label("unreachable clause")]
+        span: SourceSpan,
+        clause_description: String,
+        #[help]
+        suggestion: String,
+    },
+
+    #[error("Dead code: this function clause is never executed")]
+    #[diagnostic(
+        code(outrun::typechecker::dead_code),
+        severity(Warning)
+    )]
+    DeadCode {
+        #[label("dead code")]
+        span: SourceSpan,
+        #[help("This clause is shadowed by earlier, more general clauses")]
+        description: String,
+    },
+}
+
 /// All possible type checking errors
 #[derive(Error, Diagnostic, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeError {
@@ -211,6 +240,45 @@ pub enum TypeError {
         span: SourceSpan,
         #[label("this pattern covers all cases")]
         covering_span: SourceSpan,
+    },
+
+    #[error("Function clauses are not exhaustive")]
+    #[diagnostic(
+        code(outrun::typechecker::non_exhaustive_function_clauses),
+        help("Add additional function clauses or a default case to handle all possible input combinations")
+    )]
+    NonExhaustiveFunctionClauses {
+        #[label("function with incomplete clause coverage")]
+        span: SourceSpan,
+        function_name: String,
+        missing_patterns: Vec<String>,
+        suggested_clauses: Vec<String>,
+    },
+
+    #[error("Unreachable function clause")]
+    #[diagnostic(
+        code(outrun::typechecker::unreachable_function_clause),
+        help("This function clause will never be reached because earlier clauses handle all matching cases")
+    )]
+    UnreachableFunctionClause {
+        #[label("unreachable clause")]
+        span: SourceSpan,
+        clause_description: String,
+        #[label("this clause shadows the unreachable one")]
+        shadowing_span: SourceSpan,
+        shadowing_clause: String,
+    },
+
+    #[error("Unsatisfiable guard condition")]
+    #[diagnostic(
+        code(outrun::typechecker::unsatisfiable_guard),
+        help("This guard condition can never be true for the given parameter types")
+    )]
+    UnsatisfiableGuard {
+        #[label("unsatisfiable guard")]
+        span: SourceSpan,
+        guard_expression: String,
+        reason: String,
     },
 
     #[error("Invalid arity for function {name}")]

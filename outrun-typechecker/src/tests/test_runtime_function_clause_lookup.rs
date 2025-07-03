@@ -60,7 +60,7 @@ impl DivideTrait for Integer {
                     
                     for (i, clause) in clause_set.clauses.iter().enumerate() {
                         println!("      Clause {}: {} (from_guard: {}, priority: {})", 
-                            i, clause.clause_id, clause.from_guard, clause.priority);
+                            i, clause.clause_id, clause.from_guard, clause.source_order);
                     }
                 }
             }

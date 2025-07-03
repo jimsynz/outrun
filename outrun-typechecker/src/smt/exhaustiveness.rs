@@ -9,9 +9,11 @@ use crate::compilation::compiler_environment::CompilerEnvironment;
 use crate::smt::constraints::{
     GuardClauseInfo, ParameterConstraint, SMTConstraint,
 };
-use crate::smt::solver::{SMTError, SolverResult, Z3ConstraintSolver, Z3Context};
+use crate::smt::solver::{SMTError, SolverResult, Z3Context};
+use crate::error::{TypeError, TypeWarning};
 use crate::types::traits::{ExhaustivenessResult, GuardCounterExample};
 use crate::unification::StructuredType;
+use miette::SourceSpan;
 use outrun_parser::Span;
 use std::collections::HashMap;
 
@@ -59,12 +61,75 @@ impl FunctionClauseExhaustivenessAnalyzer {
             compiler_env,
         }
     }
+    
+    /// Convert exhaustiveness analysis to compiler errors and warnings
+    pub fn generate_diagnostics(
+        &self,
+        analysis: &ExhaustivenessAnalysis,
+        function_span: Span,
+        clause_set: &FunctionClauseSet,
+    ) -> (Vec<TypeError>, Vec<TypeWarning>) {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        
+        match analysis {
+            ExhaustivenessAnalysis::Complete => {
+                // No issues - all good!
+            }
+            ExhaustivenessAnalysis::IncompleteExhaustiveness { missing_patterns, suggested_clauses } => {
+                // EXHAUSTIVENESS ISSUES ARE ERRORS ❌
+                let span_len = function_span.end.saturating_sub(function_span.start);
+                let error = TypeError::NonExhaustiveFunctionClauses {
+                    span: SourceSpan::new(function_span.start.into(), span_len.into()),
+                    function_name: clause_set.function_name.clone(),
+                    missing_patterns: missing_patterns.iter()
+                        .map(|p| p.constraint_description.clone())
+                        .collect(),
+                    suggested_clauses: suggested_clauses.clone(),
+                };
+                errors.push(error);
+            }
+            ExhaustivenessAnalysis::UnreachableClauses { unreachable_clauses, shadowing_clauses } => {
+                // REACHABILITY ISSUES ARE WARNINGS ⚠️
+                for clause_id in unreachable_clauses {
+                    if let Some(clause) = clause_set.clauses.iter().find(|c| &c.clause_id == clause_id) {
+                        let clause_span_len = clause.span.end.saturating_sub(clause.span.start);
+                        let warning = TypeWarning::UnreachableFunctionClause {
+                            span: SourceSpan::new(clause.span.start.into(), clause_span_len.into()),
+                            clause_description: format!("Clause {} with guard: {:?}", 
+                                clause_id, 
+                                clause.base_function.guard.as_ref().map(|g| format!("{:?}", g)).unwrap_or_else(|| "none".to_string())
+                            ),
+                            suggestion: format!("Consider reordering clauses or removing unreachable clause. Shadowed by: {}", 
+                                shadowing_clauses.join(", ")
+                            ),
+                        };
+                        warnings.push(warning);
+                    }
+                }
+            }
+            ExhaustivenessAnalysis::MultipleIssues { exhaustiveness_issues, reachability_issues } => {
+                // Recursively handle both types of issues
+                let (mut exhaustiveness_errors, exhaustiveness_warnings) = 
+                    self.generate_diagnostics(exhaustiveness_issues, function_span, clause_set);
+                let (reachability_errors, mut reachability_warnings) = 
+                    self.generate_diagnostics(reachability_issues, function_span, clause_set);
+                
+                errors.append(&mut exhaustiveness_errors);
+                errors.extend(reachability_errors);
+                warnings.extend(exhaustiveness_warnings);
+                warnings.append(&mut reachability_warnings);
+            }
+        }
+        
+        (errors, warnings)
+    }
 
     /// Analyze exhaustiveness and reachability for a function clause set
     pub fn analyze_clause_set(
         &mut self,
         clause_set: &FunctionClauseSet,
-        function_span: Span,
+        _function_span: Span,
     ) -> Result<ExhaustivenessAnalysis, SMTError> {
         // Step 1: Check exhaustiveness
         let exhaustiveness_result = self.check_exhaustiveness(clause_set)?;
@@ -370,7 +435,7 @@ impl From<ExhaustivenessAnalysis> for ExhaustivenessResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checker::{TypedFunctionDefinition, TypedFunctionParameter};
+    use crate::checker::{TypedFunctionDefinition, TypedParameter, TypedBlock};
     use crate::compilation::compiler_environment::CompilerEnvironment;
     use outrun_parser::Span;
 
@@ -381,21 +446,21 @@ mod tests {
         let guard_clause = FunctionClause::new(
             "test_clause_1".to_string(),
             TypedFunctionDefinition {
-                name: outrun_parser::ast::Identifier {
-                    name: "test_function".to_string(),
-                    span: Span::new(0, 0),
-                },
-                parameters: vec![TypedFunctionParameter {
+                name: "test_function".to_string(),
+                parameters: vec![TypedParameter {
                     name: "x".to_string(),
                     param_type: None,
                     span: Span::new(0, 0),
                 }],
                 return_type: None,
-                body: None,
+                body: TypedBlock {
+                    statements: vec![],
+                    result_type: None,
+                    span: Span::new(0, 0),
+                },
                 guard: None, // Would be Some(guard_expression) in real test
-                generic_context: None,
+                function_id: "test_function_1".to_string(),
                 span: Span::new(0, 0),
-                debug_info: None,
             },
             0, // source_order
             Span::new(0, 0),

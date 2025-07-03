@@ -4,9 +4,10 @@
 //! eliminating repetitive context creation patterns.
 
 use crate::compilation::compiler_environment::CompilerEnvironment;
-use crate::smt::cache::ConstraintCache;
+use crate::smt::cache::{ConstraintCache, SelfResolutionKey};
 use crate::smt::constraints::SMTConstraint;
 use crate::smt::solver::{SMTError, SolverResult, Z3ConstraintSolver, Z3Context};
+use crate::unification::StructuredType;
 use std::cell::RefCell;
 
 /// Execute a function with a fresh Z3 solver
@@ -175,6 +176,73 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
     });
 
     ordered_constraints
+}
+
+/// Get cached Self type resolution result
+pub fn get_cached_self_resolution(key: &SelfResolutionKey) -> Option<StructuredType> {
+    THREAD_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.get_cached_self_resolution(key).cloned()
+    })
+}
+
+/// Cache a Self type resolution result
+pub fn cache_self_resolution(key: SelfResolutionKey, resolved_type: StructuredType) {
+    THREAD_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.cache_self_resolution(key, resolved_type);
+    })
+}
+
+/// Solve Self type resolution with caching
+pub fn solve_self_resolution_cached(
+    trait_type_id: &crate::compilation::compiler_environment::TypeNameId,
+    function_name: &str,
+    argument_types: &[StructuredType],
+    constraints: &[SMTConstraint],
+    compiler_env: &CompilerEnvironment,
+    self_type_id: &crate::compilation::compiler_environment::TypeNameId,
+) -> Result<StructuredType, SMTError> {
+    // Create normalized cache key (without unique Self variables)
+    let cache_key = SelfResolutionKey {
+        trait_type: trait_type_id.clone(),
+        function_name: function_name.to_string(),
+        argument_types: argument_types.to_vec(),
+    };
+
+    // Check cache first
+    if let Some(cached_result) = get_cached_self_resolution(&cache_key) {
+        return Ok(cached_result);
+    }
+
+    // Cache miss - solve with SMT
+    let result = solve_constraints_cached(constraints, compiler_env)?;
+    
+    match result {
+        SolverResult::Satisfiable(model) => {
+            // Extract Self type from model using the actual Self variable ID we created
+            let self_var_name = format!("Self_{}", self_type_id.hash);
+            if let Some(resolved_type) = compiler_env.extract_self_type_from_model(&model, &self_var_name) {
+                // Cache the result for future use
+                cache_self_resolution(cache_key, resolved_type.clone());
+                Ok(resolved_type)
+            } else {
+                Err(SMTError::SolverError(format!(
+                    "SMT model missing Self variable {self_var_name}"
+                )))
+            }
+        }
+        SolverResult::Unsatisfiable(conflicts) => {
+            Err(SMTError::SolvingFailed(format!(
+                "Conflicting Self type constraints: {conflicts:?}"
+            )))
+        }
+        SolverResult::Unknown(reason) => {
+            Err(SMTError::SolvingFailed(format!(
+                "SMT solver limitation: {reason}"
+            )))
+        }
+    }
 }
 
 #[cfg(test)]
