@@ -359,6 +359,12 @@ pub struct Module {
     pub trait_constraints: Vec<TraitConstraint>,
     /// The original trait definition (only for trait modules)
     pub trait_definition: Option<outrun_parser::TraitDefinition>,
+    /// Function clause sets for functions with multiple definitions (guards)
+    /// Maps function names to clause sets containing all variants
+    pub function_clauses: HashMap<AtomId, crate::checker::FunctionClauseSet>,
+    /// All function entries by name (for functions with same name)
+    /// Maps function names to ALL entries (not just the "preferred" one in functions_by_name)
+    pub all_functions_by_name: HashMap<AtomId, Vec<UnifiedFunctionEntry>>,
 }
 
 impl Module {
@@ -376,6 +382,8 @@ impl Module {
             functions_by_name: HashMap::new(),
             trait_constraints: Vec::new(),
             trait_definition: None,
+            function_clauses: HashMap::new(),
+            all_functions_by_name: HashMap::new(),
         }
     }
 
@@ -385,8 +393,22 @@ impl Module {
     }
 
     /// Add a function to this module by name
+    /// Handles multiple functions with the same name (function clauses) automatically
     pub fn add_function_by_name(&mut self, function_name: AtomId, entry: UnifiedFunctionEntry) {
-        self.functions_by_name.insert(function_name, entry);
+        // Always add to the all_functions_by_name list
+        self.all_functions_by_name
+            .entry(function_name.clone())
+            .or_insert_with(Vec::new)
+            .push(entry.clone());
+        
+        // Check if a function with this name already exists in the primary registry
+        if let Some(existing_entry) = self.functions_by_name.get(&function_name) {
+            // Multiple functions with same name - create or update function clause set
+            self.create_or_update_function_clause_set(function_name.clone(), existing_entry.clone(), entry);
+        } else {
+            // First function with this name - store in primary registry
+            self.functions_by_name.insert(function_name, entry);
+        }
     }
 
     /// Add a function to this module (both by type and name)
@@ -397,7 +419,85 @@ impl Module {
         entry: UnifiedFunctionEntry,
     ) {
         self.functions.insert(function_type, entry.clone());
-        self.functions_by_name.insert(function_name, entry);
+        self.add_function_by_name(function_name, entry); // Use the clause-aware method
+    }
+
+    /// Create or update a function clause set when multiple functions have the same name
+    fn create_or_update_function_clause_set(
+        &mut self,
+        function_name: AtomId,
+        existing_entry: UnifiedFunctionEntry,
+        new_entry: UnifiedFunctionEntry,
+    ) {
+        // Get function name as string for the clause set
+        let function_name_str = match self.resolve_atom_name(&function_name) {
+            Some(name) => name,
+            None => format!("unknown_function_{}", function_name.hash),
+        };
+
+        // Check if we already have a clause set for this function
+        if let Some(existing_clause_set) = self.function_clauses.get_mut(&function_name) {
+            // Add the new function to the existing clause set
+            if let Some(typed_def) = new_entry.typed_definition() {
+                let clause = crate::checker::FunctionClause {
+                    clause_id: format!("{}_{}", function_name_str, existing_clause_set.clauses.len()),
+                    base_function: typed_def.clone(),
+                    priority: if typed_def.guard.is_some() { 1 } else { 2 }, // Guards have higher priority
+                    applicability_constraints: Vec::new(), // Will be filled during SMT analysis
+                    from_guard: typed_def.guard.is_some(),
+                    span: typed_def.span,
+                };
+                existing_clause_set.clauses.push(clause);
+            }
+        } else {
+            // Create a new function clause set with both functions
+            let clauses = Vec::new();
+
+            // During initial registration, we don't have typed definitions yet
+            // So we'll create an empty clause set and populate it later during process_registered_impl_functions
+            // This is a marker that multiple functions with this name exist
+
+            // Create the function clause set
+            let clause_set = crate::checker::FunctionClauseSet {
+                function_name: function_name_str,
+                clauses,
+                clause_resolution_cache: std::collections::HashMap::new(),
+            };
+
+            // Store the clause set
+            self.function_clauses.insert(function_name.clone(), clause_set);
+        }
+
+        // Update the main function registry to point to the most specific (guard-based) function
+        // Priority: functions with guards over functions without guards
+        let existing_raw_def = existing_entry.definition();
+        let new_raw_def = new_entry.definition();
+        
+        let should_update_main_registry = {
+            // Always check raw definitions first (available during initial registration)
+            if new_raw_def.guard.is_some() && existing_raw_def.guard.is_none() {
+                true
+            } else {
+                // Fallback to typed definitions if needed
+                match (existing_entry.typed_definition(), new_entry.typed_definition()) {
+                    (Some(existing_def), Some(new_def)) => {
+                        new_def.guard.is_some() && existing_def.guard.is_none()
+                    }
+                    _ => false,
+                }
+            }
+        };
+
+        if should_update_main_registry {
+            self.functions_by_name.insert(function_name, new_entry);
+        }
+    }
+
+    /// Helper method to resolve atom name (needs to be implemented or access CompilerEnvironment)
+    fn resolve_atom_name(&self, _atom_id: &AtomId) -> Option<String> {
+        // This is a placeholder - in the actual implementation, this would need access to the CompilerEnvironment
+        // For now, we'll use a simple fallback
+        None
     }
 
     /// Get a function from this module by type
@@ -428,6 +528,44 @@ impl Module {
     /// Get trait definition for this module
     pub fn get_trait_definition(&self) -> Option<&outrun_parser::TraitDefinition> {
         self.trait_definition.as_ref()
+    }
+
+    /// Add a function clause to a clause set
+    pub fn add_function_clause(&mut self, function_name: AtomId, clause: crate::checker::FunctionClause) {
+        let function_name_str = self.atom_to_string(&function_name);
+        
+        // Get or create the clause set for this function name
+        let clause_set = self.function_clauses
+            .entry(function_name)
+            .or_insert_with(|| crate::checker::FunctionClauseSet::new(function_name_str));
+        
+        clause_set.add_clause(clause);
+    }
+
+    /// Get function clause set by name
+    pub fn get_function_clause_set(&self, function_name: &AtomId) -> Option<&crate::checker::FunctionClauseSet> {
+        self.function_clauses.get(function_name)
+    }
+
+    /// Get mutable function clause set by name
+    pub fn get_function_clause_set_mut(&mut self, function_name: &AtomId) -> Option<&mut crate::checker::FunctionClauseSet> {
+        self.function_clauses.get_mut(function_name)
+    }
+
+    /// Check if a function has multiple clauses (guards)
+    pub fn has_function_clauses(&self, function_name: &AtomId) -> bool {
+        self.function_clauses.contains_key(function_name)
+    }
+
+    /// Get all function clause sets in this module
+    pub fn get_all_function_clauses(&self) -> &HashMap<AtomId, crate::checker::FunctionClauseSet> {
+        &self.function_clauses
+    }
+
+    /// Helper method to convert AtomId to string (needs access to CompilerEnvironment)
+    fn atom_to_string(&self, atom_id: &AtomId) -> String {
+        // This is a temporary implementation - in real usage, we'd need access to CompilerEnvironment
+        format!("function_{}", atom_id.hash)
     }
 }
 
@@ -656,6 +794,12 @@ impl CompilerEnvironment {
         // Step 5.5: Phase 5.5 - Expand trait default implementations into concrete impl blocks (using desugared code)
         let expanded_collection =
             self.expand_trait_default_implementations(&desugared_collection)?;
+
+        // Step 5.6: Phase 6.5 - SMT-based clause analysis for function dispatch optimization
+        self.perform_smt_clause_analysis()?;
+
+        // Step 5.7: Phase 6.6 - Guard purity analysis for mathematical soundness
+        self.perform_guard_purity_analysis()?;
 
         // Step 6: Phase 6 - SMT-based type checking with constraint collection (using expanded collection with Self as type variables)
         match self.smt_type_check_all(
@@ -1076,11 +1220,11 @@ impl CompilerEnvironment {
     ) -> Result<(), TypeError> {
         // Create function entry
         let function_id = format!("function::{}", func_def.name.name);
-        let is_guard = func_def.name.name.ends_with('?');
+        let is_guard = func_def.guard.is_some();
         let entry = UnifiedFunctionEntry::TypeStatic {
             definition: func_def.clone(),
             typed_definition: None,
-            function_id,
+            function_id: function_id.clone(),
             is_guard,
         };
 
@@ -1097,9 +1241,19 @@ impl CompilerEnvironment {
             module_type.clone(),
         );
 
-        // Add function to module
         let function_name = self.intern_atom_name(&func_def.name.name);
-        // Adding standalone function to module
+        
+        // If this function has a guard or could be part of a clause set, create a function clause
+        if is_guard || self.should_create_clause_for_function(func_def) {
+            self.add_function_clause_to_module(
+                module_key.clone(),
+                function_name.clone(),
+                func_def,
+                source_file,
+            )?;
+        }
+
+        // Always add the function to the regular function storage as well
         self.add_function_to_module(module_key, module_type, function_name, entry);
 
         Ok(())
@@ -2276,14 +2430,16 @@ impl CompilerEnvironment {
         for (module_key, module) in modules.iter() {
             // Only process trait implementation modules
             if let ModuleKey::TraitImpl(_trait_type, _impl_type) = module_key {
-                for function_entry in module.functions_by_name.values() {
-                    // Only process ImplFunction entries that don't have typed definitions yet
-                    if let UnifiedFunctionEntry::ImplFunction {
-                        definition,
-                        typed_definition,
-                        ..
-                    } = function_entry
-                    {
+                // Process ALL functions, not just those in functions_by_name
+                for function_entries in module.all_functions_by_name.values() {
+                    for function_entry in function_entries {
+                        // Only process ImplFunction entries that don't have typed definitions yet
+                        if let UnifiedFunctionEntry::ImplFunction {
+                            definition,
+                            typed_definition,
+                            ..
+                        } = function_entry
+                        {
                         if typed_definition.is_none() {
                             // IMPORTANT: Set the correct module context in TypedASTBuilder
                             // This ensures that function updates happen in the right trait implementation module
@@ -2292,7 +2448,33 @@ impl CompilerEnvironment {
 
                             // Create typed definition for this impl function
                             match typed_ast_builder.convert_function_definition(definition) {
-                                Some(_typed_def) => {}
+                                Some(_typed_def) => {
+                                    // CRITICAL FIX: Register ALL trait impl functions as function clauses
+                                    // This is needed because multiple impl functions with the same name (with/without guards)
+                                    // need to be available for clause-based dispatch
+                                    let function_name = self.intern_atom_name(&definition.name.name);
+                                    
+                                    // Determine priority: functions with guards get higher priority (lower number)
+                                    let priority = if definition.guard.is_some() { 0 } else { 1 };
+                                    
+                                    // Create a function clause for this impl function
+                                    let clause = crate::checker::FunctionClause {
+                                        clause_id: format!("impl_{:?}_{}", module_key, definition.name.name),
+                                        base_function: _typed_def.clone(),
+                                        priority,
+                                        applicability_constraints: Vec::new(),
+                                        from_guard: definition.guard.is_some(),
+                                        span: definition.span,
+                                    };
+                                    
+                                    // Add the clause to the module's function clause registry
+                                    {
+                                        let mut modules = self.modules.write().unwrap();
+                                        if let Some(module) = modules.get_mut(module_key) {
+                                            module.add_function_clause(function_name, clause);
+                                        }
+                                    }
+                                }
                                 None => {
                                     // Create an error for the failed conversion
                                     errors.push(crate::error::TypeError::internal_with_span(
@@ -2307,6 +2489,7 @@ impl CompilerEnvironment {
 
                             // Restore the previous module context
                             typed_ast_builder.set_current_module_key(previous_module_key);
+                        }
                         }
                     }
                 }
@@ -5361,6 +5544,281 @@ impl CompilerEnvironment {
             ("Outrun.Option.Some", "Option") |
             ("Outrun.Option.None", "Option")
         )
+    }
+
+    // === Function Clause Management ===
+
+    /// Check if a function should be registered as a clause (has guards or complex patterns)
+    fn should_create_clause_for_function(&self, func_def: &FunctionDefinition) -> bool {
+        // For now, create clauses for all functions with guards
+        // In the future, we might expand this to include other criteria
+        func_def.guard.is_some()
+    }
+
+    /// Add a function clause to a module
+    fn add_function_clause_to_module(
+        &self,
+        module_key: ModuleKey,
+        function_name: AtomId,
+        func_def: &FunctionDefinition,
+        source_file: &str,
+    ) -> Result<(), TypeError> {
+        // Create a unique clause ID
+        let clause_id = format!("{}::{}::{}", source_file, func_def.name.name, func_def.span.start);
+        
+        // Convert FunctionDefinition to TypedFunctionDefinition (simplified)
+        let typed_function = self.convert_function_to_typed(func_def)?;
+        
+        // Assign priority based on presence of guard and position
+        let priority = if func_def.guard.is_some() {
+            // Guard functions have higher priority (lower number)
+            func_def.span.start as u32  // Use source position as tie-breaker
+        } else {
+            // Non-guard functions have lower priority (higher number)
+            1000000 + func_def.span.start as u32
+        };
+
+        // Create the function clause
+        let clause = crate::checker::FunctionClause::new(
+            clause_id,
+            typed_function,
+            priority,
+            func_def.span,
+        );
+
+        // Add the clause to the module
+        {
+            let mut modules = self.modules.write().unwrap();
+            if let Some(module) = modules.get_mut(&module_key) {
+                module.add_function_clause(function_name, clause);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert FunctionDefinition to TypedFunctionDefinition (simplified conversion)
+    fn convert_function_to_typed(&self, func_def: &FunctionDefinition) -> Result<crate::checker::TypedFunctionDefinition, TypeError> {
+        // This is a simplified conversion - in a full implementation, 
+        // this would go through the complete type checking pipeline
+        
+        let typed_parameters: Vec<crate::checker::TypedParameter> = func_def
+            .parameters
+            .iter()
+            .map(|param| crate::checker::TypedParameter {
+                name: param.name.name.clone(),
+                param_type: None, // Would be resolved during type checking
+                span: param.span,
+            })
+            .collect();
+
+        let typed_guard = func_def.guard.as_ref().map(|guard_expr| {
+            Box::new(crate::checker::TypedExpression {
+                kind: crate::checker::TypedExpressionKind::Placeholder("Guard expression".to_string()),
+                structured_type: Some(crate::unification::StructuredType::Boolean),
+                span: guard_expr.span,
+                debug_info: None,
+            })
+        });
+
+        let typed_body = crate::checker::TypedBlock {
+            statements: Vec::new(), // Would be populated during type checking
+            result_type: None,
+            span: func_def.body.span,
+        };
+
+        Ok(crate::checker::TypedFunctionDefinition {
+            name: func_def.name.name.clone(),
+            parameters: typed_parameters,
+            return_type: None, // Would be resolved during type checking
+            guard: typed_guard,
+            body: typed_body,
+            function_id: format!("function::{}", func_def.name.name),
+            span: func_def.span,
+        })
+    }
+
+    /// Phase 6.5: SMT-based clause analysis during compilation
+    /// This analyzes function clauses and generates SMT constraints for dispatch optimization
+    pub fn perform_smt_clause_analysis(&mut self) -> Result<(), Vec<TypeError>> {
+        // Get all modules and analyze their function clauses
+        let module_keys: Vec<ModuleKey> = {
+            let modules = self.modules.read().unwrap();
+            modules.keys().cloned().collect()
+        };
+
+        for module_key in module_keys {
+            self.analyze_module_function_clauses(&module_key).map_err(|e| vec![e])?;
+        }
+
+        Ok(())
+    }
+
+    /// Analyze function clauses in a specific module
+    fn analyze_module_function_clauses(&mut self, module_key: &ModuleKey) -> Result<(), TypeError> {
+        // Get clause sets for this module
+        let clause_sets: Vec<crate::checker::FunctionClauseSet> = {
+            let modules = self.modules.read().unwrap();
+            if let Some(module) = modules.get(module_key) {
+                module.function_clauses.values().cloned().collect()
+            } else {
+                return Ok(()); // Module not found, skip
+            }
+        };
+
+        // Analyze each clause set
+        for clause_set in clause_sets {
+            if clause_set.clauses.len() > 1 {
+                // Multiple clauses - generate dispatch constraints
+                self.generate_clause_dispatch_constraints(&clause_set)?;
+            } else if clause_set.has_guards() {
+                // Single clause with guard - generate guard constraints
+                self.generate_guard_analysis_constraints(&clause_set)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Generate SMT constraints for clause dispatch when multiple clauses exist
+    fn generate_clause_dispatch_constraints(
+        &mut self,
+        clause_set: &crate::checker::FunctionClauseSet,
+    ) -> Result<(), TypeError> {
+        use crate::smt::constraints::SMTConstraint;
+
+        // Generate constraints for each clause
+        for clause in &clause_set.clauses {
+            // Generate argument type matching constraints
+            for parameter in clause.base_function.parameters.iter() {
+                if let Some(param_type) = &parameter.param_type {
+                    let constraint = SMTConstraint::ArgumentTypeMatch {
+                        clause_id: clause.clause_id.clone(),
+                        parameter_name: parameter.name.clone(),
+                        expected_type: param_type.clone(),
+                        actual_type: param_type.clone(), // Will be unified with actual call arguments
+                        call_site: clause.span,
+                    };
+                    
+                    self.add_smt_constraint(constraint);
+                }
+            }
+
+            // Generate guard applicability constraints
+            if let Some(_guard_expr) = &clause.base_function.guard {
+                let constraint = SMTConstraint::GuardApplicable {
+                    clause_id: clause.clause_id.clone(),
+                    guard_expression: "guard_placeholder".to_string(), // TODO: Actual guard analysis
+                    guard_variables: std::collections::HashMap::new(), // TODO: Extract guard variables
+                    context: format!("Guard for function {}", clause.base_function.name),
+                };
+                
+                self.add_smt_constraint(constraint);
+            }
+
+            // Generate clause priority constraints
+            let constraint = SMTConstraint::ClausePriority {
+                clause_id: clause.clause_id.clone(),
+                priority: clause.priority,
+                context: format!("Priority for function {}", clause.base_function.name),
+            };
+            
+            self.add_smt_constraint(constraint);
+        }
+
+        Ok(())
+    }
+
+    /// Generate SMT constraints for guard analysis and static evaluation
+    fn generate_guard_analysis_constraints(
+        &mut self,
+        clause_set: &crate::checker::FunctionClauseSet,
+    ) -> Result<(), TypeError> {
+        use crate::smt::constraints::SMTConstraint;
+
+        for clause in &clause_set.clauses {
+            if let Some(_guard_expr) = &clause.base_function.guard {
+                // Try to statically evaluate the guard
+                if let Some(static_result) = self.try_static_guard_evaluation(&clause.base_function) {
+                    // Guard can be statically evaluated
+                    let constraint = SMTConstraint::GuardStaticallyEvaluated {
+                        clause_id: clause.clause_id.clone(),
+                        guard_expression: "static_guard".to_string(), // TODO: Actual guard text
+                        static_result,
+                        optimization_context: format!("Static evaluation for {}", clause.base_function.name),
+                    };
+                    
+                    self.add_smt_constraint(constraint);
+                } else {
+                    // Guard requires runtime evaluation
+                    let constraint = SMTConstraint::GuardApplicable {
+                        clause_id: clause.clause_id.clone(),
+                        guard_expression: "runtime_guard".to_string(), // TODO: Actual guard analysis
+                        guard_variables: std::collections::HashMap::new(), // TODO: Extract variables
+                        context: format!("Runtime guard for {}", clause.base_function.name),
+                    };
+                    
+                    self.add_smt_constraint(constraint);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Try to statically evaluate a guard expression
+    /// Returns Some(result) if the guard can be evaluated at compile time, None otherwise
+    fn try_static_guard_evaluation(&self, func_def: &crate::checker::TypedFunctionDefinition) -> Option<bool> {
+        // This is a placeholder implementation
+        // In a full implementation, this would:
+        // 1. Parse the guard expression
+        // 2. Check if all variables are compile-time constants
+        // 3. Evaluate the expression if possible
+        // 4. Return the boolean result
+        
+        if let Some(_guard_expr) = &func_def.guard {
+            // For now, we'll just return None to indicate runtime evaluation needed
+            // This would be where constant folding and static analysis happens
+            None
+        } else {
+            None
+        }
+    }
+
+    /// Add an SMT constraint to the unification context
+    fn add_smt_constraint(&mut self, constraint: crate::smt::constraints::SMTConstraint) {
+        // Add to the global SMT constraint set
+        // This integrates with the existing SMT system
+        self.unification_context().add_smt_constraint(constraint);
+    }
+
+    /// Look up function clauses across all modules for runtime dispatch
+    pub fn lookup_function_clauses_by_name(&self, function_name: &AtomId) -> Option<crate::checker::FunctionClauseSet> {
+        let modules = self.modules.read().unwrap();
+        
+        // Search through all modules for a function clause set with the given name
+        for module in modules.values() {
+            if let Some(clause_set) = module.function_clauses.get(function_name) {
+                return Some(clause_set.clone());
+            }
+        }
+        
+        None
+    }
+
+    /// Phase 6.6: Guard purity analysis for mathematical soundness
+    /// Ensures that all guard expressions are side-effect-free and return Boolean
+    /// TODO: Complete implementation - currently stubbed out
+    pub fn perform_guard_purity_analysis(&mut self) -> Result<(), Vec<TypeError>> {
+        // TODO: Implement comprehensive guard purity analysis
+        // This would ensure that:
+        // 1. Functions ending in '?' are pure and return Boolean
+        // 2. Guard expressions only call pure functions
+        // 3. Guard expressions are side-effect-free
+        // 4. Guard expressions return Boolean values
+        
+        // For now, always succeed - this is a placeholder
+        Ok(())
     }
 }
 

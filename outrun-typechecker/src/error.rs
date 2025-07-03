@@ -743,6 +743,14 @@ impl TypeError {
         Self::InternalError { message, span }
     }
 
+    /// Create a purity violation error
+    pub fn purity_violation(message: String, span: outrun_parser::Span) -> Self {
+        Self::InternalError {
+            message: format!("Guard purity violation: {}", message),
+            span: SourceSpan::from(span.start..span.end),
+        }
+    }
+
     /// Create a string interpolation display error
     pub fn string_interpolation_display(type_name: String, span: SourceSpan) -> Self {
         Self::StringInterpolationDisplayError { span, type_name }

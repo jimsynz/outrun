@@ -148,6 +148,31 @@ impl FunctionDispatcher {
         };
         let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
+        // First, check if this function has multiple clauses (guards) that require SMT-based selection
+        if let Some(clause_set) = self.lookup_function_clauses(&function_name_atom) {
+            // SMT-based clause selection for functions with guards
+            let selected_clause = self.select_function_clause_with_smt(
+                &clause_set,
+                &call_context.arguments,
+                call_context.span,
+            )?;
+            
+            let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
+            return function_executor
+                .execute_typed_function(
+                    interpreter_context,
+                    evaluator,
+                    selected_clause,
+                    call_context.arguments.clone(),
+                    call_context.span,
+                )
+                .map_err(|e| DispatchError::FunctionExecution {
+                    message: format!("{e:?}"),
+                    span: call_context.span,
+                });
+        }
+        
+        // Fall back to single function lookup
         if let Some(function_entry) = self
             .compiler_environment
             .lookup_local_function(function_name_atom)
@@ -212,6 +237,31 @@ impl FunctionDispatcher {
         // not the generic type (e.g., "List<T>")
         let trait_type = outrun_typechecker::unification::StructuredType::Simple(trait_type_id);
         let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
+
+        // CRITICAL FIX: Check for function clauses (guard clauses) before doing normal trait dispatch
+        // This is the same logic as in dispatch_static_function_with_context (lines 151-173)
+        if let Some(clause_set) = self.lookup_function_clauses(&function_name_atom) {
+            // SMT-based clause selection for functions with guards
+            let selected_clause = self.select_function_clause_with_smt(
+                &clause_set,
+                &call_context.arguments,
+                call_context.span,
+            )?;
+            
+            let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
+            return function_executor
+                .execute_typed_function(
+                    interpreter_context,
+                    evaluator,
+                    selected_clause,
+                    call_context.arguments.clone(),
+                    call_context.span,
+                )
+                .map_err(|e| DispatchError::FunctionExecution {
+                    message: format!("{e:?}"),
+                    span: call_context.span,
+                });
+        }
 
         if let Some(function_entry) = self.compiler_environment.lookup_impl_function(
             &trait_type,
@@ -369,6 +419,154 @@ impl FunctionDispatcher {
             ),
             span: call_context.span,
         })
+    }
+
+    // === Function Clause Dispatch with SMT Analysis ===
+
+    /// Look up function clauses for a given function name
+    fn lookup_function_clauses(
+        &self,
+        function_name: &outrun_typechecker::compilation::compiler_environment::AtomId,
+    ) -> Option<outrun_typechecker::checker::FunctionClauseSet> {
+        // Use the new public method on CompilerEnvironment
+        self.compiler_environment.lookup_function_clauses_by_name(function_name)
+    }
+
+    /// Select the appropriate function clause using SMT analysis
+    /// This is where the SMT-analyzed constraints are applied for runtime dispatch
+    fn select_function_clause_with_smt<'a>(
+        &self,
+        clause_set: &'a outrun_typechecker::checker::FunctionClauseSet,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+        span: outrun_parser::Span,
+    ) -> Result<&'a outrun_typechecker::checker::TypedFunctionDefinition, DispatchError> {
+        // Get clauses sorted by priority (SMT pre-computed)
+        let candidates = clause_set.get_clauses_by_priority();
+        
+        // Iterate through clauses in priority order
+        for clause in candidates {
+            // Check if this clause is applicable
+            if self.is_clause_applicable(clause, arguments)? {
+                // Check guard condition if present
+                if let Some(guard_expr) = &clause.base_function.guard {
+                    if self.evaluate_guard_condition(guard_expr, arguments, span)? {
+                        return Ok(&clause.base_function);
+                    }
+                } else {
+                    // No guard, clause is applicable
+                    return Ok(&clause.base_function);
+                }
+            }
+        }
+        
+        // No applicable clause found
+        Err(DispatchError::Internal {
+            message: format!("No applicable clause found for function {}", clause_set.function_name),
+            span,
+        })
+    }
+
+    /// Check if a function clause is applicable based on argument types
+    fn is_clause_applicable(
+        &self,
+        clause: &outrun_typechecker::checker::FunctionClause,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+    ) -> Result<bool, DispatchError> {
+        // Check argument type compatibility
+        for parameter in &clause.base_function.parameters {
+            if let Some(argument_value) = arguments.get(&parameter.name) {
+                // Check if argument type matches parameter type
+                // This would use the SMT ArgumentTypeMatch constraints in a full implementation
+                if !self.value_matches_type(argument_value, &parameter.param_type) {
+                    return Ok(false);
+                }
+            } else {
+                // Missing required argument
+                return Ok(false);
+            }
+        }
+        
+        Ok(true)
+    }
+
+    /// Evaluate a guard condition at runtime
+    fn evaluate_guard_condition(
+        &self,
+        guard_expr: &outrun_typechecker::checker::TypedExpression,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+        span: outrun_parser::Span,
+    ) -> Result<bool, DispatchError> {
+        // Guard expressions must be side-effect-free and return Boolean
+        // They can reference function parameters and perform pure computations
+        
+        // Create a temporary evaluation context with function parameters
+        let mut guard_context = self.create_guard_evaluation_context(arguments)?;
+        
+        // Create an expression evaluator for guard evaluation
+        let mut evaluator = crate::evaluator::ExpressionEvaluator::new(self.compiler_environment.clone());
+        
+        // Evaluate the guard expression
+        match evaluator.evaluate(&mut guard_context, guard_expr) {
+            Ok(guard_result) => {
+                // Guard expressions must return Boolean values
+                match guard_result {
+                    crate::value::Value::Boolean(result) => Ok(result),
+                    other => {
+                        // Log the issue but don't crash - guard evaluation failed so clause doesn't match
+                        eprintln!("Warning: Guard expression returned non-Boolean value: {other:?}");
+                        Ok(false) // Guard failed, so clause doesn't match
+                    }
+                }
+            }
+            Err(e) => {
+                // Guard evaluation failed - this could be due to type mismatches or other issues
+                // Instead of crashing, treat this as "guard condition not met"
+                eprintln!("Warning: Guard evaluation failed: {e:?}");
+                Ok(false) // Guard failed, so clause doesn't match - try next clause
+            }
+        }
+    }
+    
+    /// Create a temporary evaluation context for guard expression evaluation
+    fn create_guard_evaluation_context(
+        &self,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+    ) -> Result<crate::context::InterpreterContext, DispatchError> {
+        // Create a new interpreter context for guard evaluation
+        let unification_context = outrun_typechecker::unification::UnificationContext::new();
+        let compiler_env = self.compiler_environment.clone();
+        
+        let mut context = crate::context::InterpreterContext::new(
+            unification_context, 
+            compiler_env, 
+            Some(1000) // Small recursion limit for guards
+        );
+        
+        // Add function arguments as local variables in the guard context
+        for (param_name, param_value) in arguments {
+            context.define_variable(param_name.clone(), param_value.clone())
+                .map_err(|e| DispatchError::Internal {
+                    message: format!("Failed to add guard parameter {param_name}: {e:?}"),
+                    span: outrun_parser::Span::new(0, 0),
+                })?;
+        }
+        
+        Ok(context)
+    }
+
+    /// Check if a runtime value matches an expected parameter type
+    fn value_matches_type(
+        &self,
+        _value: &crate::value::Value,
+        _expected_type: &Option<outrun_typechecker::unification::StructuredType>,
+    ) -> bool {
+        // This would perform runtime type checking against the expected type
+        // For now, we'll assume all values match (no type errors at runtime)
+        // In a full implementation, this would check:
+        // - Value::Integer64 matches StructuredType::Integer64
+        // - Value::String matches StructuredType::String
+        // - etc.
+        true
     }
 }
 

@@ -35,6 +35,10 @@ impl BinaryMultiplication for Outrun.Core.Integer64 {
 }
 
 impl BinaryDivision for Outrun.Core.Integer64 {
+    def divide(lhs: Self, rhs: Self): Option<Self> when rhs == 0 {
+        Option.none()
+    }
+
     def divide(lhs: Self, rhs: Self): Option<Self> {
         Outrun.Intrinsic.i64_div(lhs: lhs, rhs: rhs)
     }

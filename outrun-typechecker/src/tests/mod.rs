@@ -100,6 +100,12 @@ mod test_complex_trait_constraints;
 mod test_smt_integration;
 mod test_smt_typevariable_resolution;
 
+// Function clause debugging tests
+mod test_function_clause_debugging;
+mod test_function_clause_detailed_debug;
+mod test_parsing_debug;
+mod test_runtime_function_clause_lookup;
+
 // Performance and edge case tests
 // TODO: Create these test files
 // mod test_compilation_performance;

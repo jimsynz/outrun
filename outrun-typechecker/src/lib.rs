@@ -240,6 +240,7 @@ pub mod intrinsics;
 // DEPRECATED: MultiProgramCompiler has been replaced by CompilerEnvironment
 // The file has been renamed to multi_program_compiler.rs.deprecated
 pub mod patterns;
+pub mod purity;
 pub mod shared_context;
 pub mod simple_context;
 pub mod smt;
