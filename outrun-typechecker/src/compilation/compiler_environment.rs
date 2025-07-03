@@ -406,17 +406,6 @@ impl Module {
     /// Add a function to this module by name
     /// Handles multiple functions with the same name (function clauses) automatically
     pub fn add_function_by_name(&mut self, function_name: AtomId, entry: UnifiedFunctionEntry) {
-        // Only debug the specific function we're interested in to avoid spam
-        if function_name.hash == 8473386916263487618 {
-            eprintln!("DEBUG: Adding DIVIDE function with AtomId hash={} to module: {:?}", function_name.hash, self.module_kind);
-            eprintln!("DEBUG: Module structured_type: {:?}", self.structured_type);
-            eprintln!("DEBUG: Current functions_by_name registry has {} entries", self.functions_by_name.len());
-            
-            for (existing_atom_id, _) in &self.functions_by_name {
-                eprintln!("DEBUG: Registry contains AtomId hash={}", existing_atom_id.hash);
-            }
-        }
-        
         // Always add to the all_functions_by_name list
         self.all_functions_by_name
             .entry(function_name.clone())
@@ -425,16 +414,8 @@ impl Module {
         
         // Check if a function with this name already exists in the primary registry
         if let Some(existing_entry) = self.functions_by_name.get(&function_name) {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Found existing DIVIDE function with same AtomId - creating clause set!");
-            }
-            // Multiple functions with same name - create or update function clause set
             self.create_or_update_function_clause_set(function_name.clone(), existing_entry.clone(), entry);
         } else {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: No existing DIVIDE function found with this AtomId - storing as first function");
-            }
-            // First function with this name - store in primary registry
             self.functions_by_name.insert(function_name, entry);
         }
     }
@@ -457,20 +438,10 @@ impl Module {
         existing_entry: UnifiedFunctionEntry,
         new_entry: UnifiedFunctionEntry,
     ) {
-        if function_name.hash == 8473386916263487618 {
-            eprintln!("DEBUG: Creating/updating clause set for DIVIDE function!");
-        }
-        
-        // Get function name as string for the clause set
-        // Note: This is a placeholder - the atom name should be passed from CompilerEnvironment
         let function_name_str = format!("function_{}", function_name.hash);
 
         // Check if we already have a clause set for this function
         if let Some(existing_clause_set) = self.function_clauses.get_mut(&function_name) {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Adding to existing clause set (currently has {} clauses)", existing_clause_set.clauses.len());
-            }
-            // Add the new function to the existing clause set
             if let Some(typed_def) = new_entry.typed_definition() {
                 let clause = crate::checker::FunctionClause {
                     clause_id: format!("{}_{}", function_name_str, existing_clause_set.clauses.len()),
@@ -481,16 +452,8 @@ impl Module {
                     span: typed_def.span,
                 };
                 existing_clause_set.clauses.push(clause);
-                
-                if function_name.hash == 8473386916263487618 {
-                    eprintln!("DEBUG: Clause set now has {} clauses", existing_clause_set.clauses.len());
-                }
             }
         } else {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Creating new empty clause set (to be populated later)");
-            }
-            // Create a new function clause set with both functions
             let clauses = Vec::new();
 
             // During initial registration, we don't have typed definitions yet
@@ -506,10 +469,6 @@ impl Module {
 
             // Store the clause set
             self.function_clauses.insert(function_name.clone(), clause_set);
-            
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Created empty clause set '{}' (will be populated later)", function_name_str);
-            }
         }
 
         // Update the main function registry to point to the most specific (guard-based) function
@@ -2722,7 +2681,6 @@ impl CompilerEnvironment {
         &mut self,
         typed_ast_builder: &mut crate::typed_ast_builder::TypedASTBuilder,
     ) -> Result<(), Vec<TypeError>> {
-        eprintln!("DEBUG: process_registered_impl_functions called - populating clause sets");
         let mut errors = Vec::new();
 
         // Get all modules and their functions
