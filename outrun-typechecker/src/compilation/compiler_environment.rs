@@ -569,7 +569,7 @@ impl CompilerEnvironment {
                     .iter()
                     .map(|param| {
                         let param_type_id = self.intern_type_name(&param.name.name);
-                        StructuredType::Simple(param_type_id)
+                        StructuredType::TypeVariable(param_type_id)  // ✅ Fix: Use TypeVariable for trait type parameters
                     })
                     .collect();
 
@@ -1374,7 +1374,7 @@ impl CompilerEnvironment {
                     let param_type_id = self.intern_type_name(&param.name.name);
                     type_params.insert(
                         param.name.name.clone(),
-                        StructuredType::Simple(param_type_id),
+                        StructuredType::TypeVariable(param_type_id),  // ✅ Fix: Use TypeVariable for type parameters
                     );
                 }
             }
@@ -2811,19 +2811,20 @@ impl CompilerEnvironment {
 
                 if impl_trait_name == trait_name {
                     // Check if this implementation can be instantiated for the concrete type
-                    if let StructuredType::Generic { base, args } = impl_type.as_ref() {
-                        // This is a generic implementation like Option<T>
-                        // We need to check if T can be unified with the concrete type
-                        if args.len() == 1 {
-                            if let StructuredType::TypeVariable(_) = &args[0] {
-                                // Create instantiated type like Option<Integer> from Option<T>
-                                let instantiated_type = StructuredType::Generic {
-                                    base: base.clone(),
-                                    args: vec![concrete_type.clone()],
-                                };
-
-                                implementations.push(instantiated_type);
-                            }
+                    if let StructuredType::Generic { base: _, args } = impl_type.as_ref() {
+                        // This is a generic implementation like Option<T> or Map<K, V>
+                        // We need to check if the type parameters can be unified with the concrete type
+                        
+                        // Check if this implementation could potentially match
+                        // We're more permissive here and let SMT do the precise unification
+                        let has_type_variables = args.iter().any(|arg| {
+                            matches!(arg, StructuredType::TypeVariable(_))
+                        });
+                        
+                        if has_type_variables {
+                            // This is a generic implementation with at least some type variables
+                            // Return it as a potential match - SMT will handle the precise unification
+                            implementations.push(impl_type.as_ref().clone());
                         }
                     }
                 }
@@ -3175,7 +3176,7 @@ impl CompilerEnvironment {
                 .iter()
                 .map(|param| {
                     let param_type_id = self.intern_type_name(&param.name.name);
-                    StructuredType::Simple(param_type_id)
+                    StructuredType::TypeVariable(param_type_id)  // ✅ Fix: Use TypeVariable for trait type parameters
                 })
                 .collect();
 
