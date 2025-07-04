@@ -2020,7 +2020,12 @@ impl CompilerEnvironment {
 
         match solve_result {
             Ok(model) => {
-                self.compilation_state.write().unwrap().smt_model = Some(model);
+                // Store model in compilation state for backward compatibility
+                self.compilation_state.write().unwrap().smt_model = Some(model.clone());
+                
+                // Also store model in unification context for Self type resolution
+                unification_context.latest_smt_model = Some(model);
+                self.set_unification_context(unification_context);
 
                 Ok(())
             }
@@ -5545,6 +5550,24 @@ impl CompilerEnvironment {
         None
     }
 
+    /// NEW: Resolve a TypeVariable using the most recent SMT model
+    /// This is used by TypedASTBuilder when dispatch strategies weren't stored during type checking
+    pub fn resolve_type_variable_with_latest_smt_model(
+        &self,
+        type_variable: &StructuredType,
+    ) -> Result<StructuredType, crate::smt::solver::SMTError> {
+        // Get the latest SMT model from unification context
+        let unification_context = self.unification_context();
+        
+        if let Some(latest_model) = unification_context.get_latest_smt_model() {
+            Ok(self.apply_smt_model_to_type(type_variable, &latest_model))
+        } else {
+            Err(crate::smt::solver::SMTError::SolverError(
+                "No SMT model available for type variable resolution".to_string(),
+            ))
+        }
+    }
+
     /// Apply SMT model variable assignments to a structured type
     /// This resolves type variables like $Self using the SMT model results
     fn apply_smt_model_to_type(
@@ -5560,8 +5583,18 @@ impl CompilerEnvironment {
                 // Check for Self variables
                 if type_name.starts_with("Self") {
                     let self_var_name = format!("Self_{}", type_name_id.hash);
+                    eprintln!("DEBUG: SMT resolution - looking for Self '{}' (type_name: '{}')", self_var_name, type_name);
+                    
                     if let Some(resolved_type) = model.get_type_assignment(&self_var_name) {
+                        eprintln!("DEBUG: SMT resolved '{}' to: {:?}", self_var_name, resolved_type);
                         return self.apply_smt_model_to_type(resolved_type, model);
+                    } else {
+                        eprintln!("DEBUG: No SMT assignment for '{}' - checking all Self assignments:", self_var_name);
+                        for (var_name, assignment) in &model.type_assignments {
+                            if var_name.starts_with("Self_") {
+                                eprintln!("  {} -> {:?}", var_name, assignment);
+                            }
+                        }
                     }
                 }
 

@@ -939,6 +939,18 @@ impl TypedASTBuilder {
             }
         }
 
+        // NEW: Apply SMT model results to resolve TypeVariable(Self) in arguments before failing
+        if let Some(compiler_env) = &self.compiler_environment {
+            if let Some(resolved_strategy) = self.resolve_dispatch_with_smt_model(
+                function_path,
+                arguments,
+                call_span,
+                compiler_env,
+            ) {
+                return resolved_strategy;
+            }
+        }
+
         // If no stored strategy found, this indicates a bug in the type checking process
         let function_name = match function_path {
             TypedFunctionPath::Simple { name } => name.clone(),
@@ -956,6 +968,44 @@ impl TypedASTBuilder {
              Call span: {call_span:?}\n\
              Arguments passed: {arguments:?}"
         );
+    }
+
+    /// NEW: Resolve dispatch strategy by applying SMT model to resolve TypeVariable(Self)
+    fn resolve_dispatch_with_smt_model(
+        &self,
+        function_path: &TypedFunctionPath,
+        arguments: &[TypedArgument],
+        _call_span: outrun_parser::Span,
+        compiler_env: &crate::compilation::compiler_environment::CompilerEnvironment,
+    ) -> Option<DispatchMethod> {
+        // Check if this is a trait function call with TypeVariable(Self) arguments
+        if let TypedFunctionPath::Qualified { module, name } = function_path {
+            // Look for arguments that have TypeVariable types that need resolution
+            let mut resolved_impl_type: Option<StructuredType> = None;
+
+            for arg in arguments {
+                if let Some(arg_type) = &arg.argument_type {
+                    if matches!(arg_type, StructuredType::TypeVariable(_)) {
+                        // Try to resolve this TypeVariable using the most recent SMT model
+                        if let Ok(resolved_type) = compiler_env.resolve_type_variable_with_latest_smt_model(arg_type) {
+                            resolved_impl_type = Some(resolved_type);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // If we found a resolved type, create a trait dispatch strategy
+            if let Some(impl_type) = resolved_impl_type {
+                return Some(DispatchMethod::Trait {
+                    trait_name: module.clone(),
+                    function_name: name.clone(),
+                    impl_type: Box::new(impl_type),
+                });
+            }
+        }
+
+        None
     }
 
     /// Get resolved type for an expression using type checking results

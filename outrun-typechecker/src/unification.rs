@@ -8,6 +8,7 @@ use crate::compilation::compiler_environment::{
     AtomId as CompilerAtomId, CompilerEnvironment, TypeNameId,
 };
 use crate::smt::constraints::SMTConstraint;
+use crate::smt::solver::ConstraintModel;
 use std::collections::HashMap;
 
 // Forward declaration for TypeContextSummary (defined in program_collection.rs)
@@ -164,6 +165,8 @@ pub struct UnificationContext {
     pub constraint_collector: Option<ConstraintCollector>,
     /// Cache for constraint solving results
     pub solver_cache: HashMap<ConstraintSetHash, crate::smt::solver::SolverResult>,
+    /// Latest SMT model from constraint solving for Self type resolution
+    pub latest_smt_model: Option<ConstraintModel>,
 }
 
 /// Constraint collector for building complex SMT constraint sets
@@ -627,6 +630,7 @@ impl UnificationContext {
             smt_constraints: Vec::new(),
             constraint_collector: None,
             solver_cache: HashMap::new(),
+            latest_smt_model: None,
         }
     }
 
@@ -936,6 +940,11 @@ impl UnificationContext {
         self.smt_constraints.push(constraint);
     }
 
+    /// Get the latest SMT model for Self type resolution
+    pub fn get_latest_smt_model(&self) -> Option<&ConstraintModel> {
+        self.latest_smt_model.as_ref()
+    }
+
     /// NEW: SMT-based type checking - check if two types are compatible
     pub fn smt_types_compatible(
         &mut self,
@@ -1060,7 +1069,11 @@ impl UnificationContext {
 
         // Solve constraints
         match solver.solve() {
-            crate::smt::solver::SolverResult::Satisfiable(model) => Ok(model),
+            crate::smt::solver::SolverResult::Satisfiable(model) => {
+                // Store the latest model for Self type resolution
+                self.latest_smt_model = Some(model.clone());
+                Ok(model)
+            }
             crate::smt::solver::SolverResult::Unsatisfiable(conflicting) => {
                 Err(crate::smt::solver::SMTError::SolverError(format!(
                     "Unsatisfiable constraints: {} conflicts",
