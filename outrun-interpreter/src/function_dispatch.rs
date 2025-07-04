@@ -335,7 +335,7 @@ impl FunctionDispatcher {
         interpreter_context: &mut InterpreterContext,
         evaluator: &mut crate::evaluator::ExpressionEvaluator,
         trait_name: &str,
-        function_name: &str,
+        _function_name: &str,
         impl_type: &outrun_typechecker::unification::StructuredType,
         selected_clause_id: &str,
         guard_pre_evaluated: Option<bool>,
@@ -505,7 +505,7 @@ impl FunctionDispatcher {
         &self,
         guard_expr: &outrun_typechecker::checker::TypedExpression,
         arguments: &std::collections::HashMap<String, crate::value::Value>,
-        span: outrun_parser::Span,
+        _span: outrun_parser::Span,
     ) -> Result<bool, DispatchError> {
         // Guard expressions must be side-effect-free and return Boolean
         // They can reference function parameters and perform pure computations

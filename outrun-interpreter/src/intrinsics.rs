@@ -2146,7 +2146,16 @@ impl IntrinsicsHandler {
             Value::Integer64(i) => i.to_string(),
             Value::Float64(f) => f.to_string(),
             Value::Boolean(b) => b.to_string(),
-            Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
+            Value::String(s) => {
+                // Properly escape string for inspect representation
+                let escaped = s
+                    .replace("\\", "\\\\")  // Escape backslashes first
+                    .replace("\"", "\\\"")  // Escape quotes
+                    .replace("\n", "\\n")   // Escape newlines
+                    .replace("\r", "\\r")   // Escape carriage returns
+                    .replace("\t", "\\t");  // Escape tabs
+                format!("\"{}\"", escaped)
+            }
             Value::Atom(a) => self.format_atom_for_inspect(a),
             Value::List { list, .. } => {
                 // Format as [elem1, elem2, ...]
