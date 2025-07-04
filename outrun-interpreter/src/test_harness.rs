@@ -68,7 +68,7 @@ impl OutrunTestHarness {
         // Use the same approach as REPL: compile core library directly into the environment
         // This ensures all function registries are properly populated for trait dispatch
         let mut compiler_environment = CompilerEnvironment::new();
-        let core_result = core_library::compile_core_library_with_environment(&mut compiler_environment);
+        let _core_result = core_library::compile_core_library_with_environment(&mut compiler_environment);
 
         // Create dispatch context and evaluator using the environment with core library loaded
         let dispatch_context = FunctionDispatchContext::new(Some(compiler_environment.clone()));
@@ -153,25 +153,6 @@ impl OutrunTestHarness {
         // Extract the typed expression (should be the only item)
         let typed_expr = if let Some(typed_item) = typed_program.items.first() {
             if let outrun_typechecker::checker::TypedItemKind::Expression(expr) = &typed_item.kind {
-                // Debug: Print the typed expression details
-                eprintln!("🔍 DEBUG: Typed expression created:");
-                eprintln!("  Kind: {:?}", expr.kind);
-                eprintln!("  Structured type: {:?}", expr.structured_type);
-                if let outrun_typechecker::checker::TypedExpressionKind::FunctionCall {
-                    arguments,
-                    dispatch_strategy,
-                    ..
-                } = &expr.kind
-                {
-                    eprintln!("  Function call arguments:");
-                    for arg in arguments {
-                        eprintln!(
-                            "    {} -> structured_type: {:?}",
-                            arg.name, arg.expression.structured_type
-                        );
-                    }
-                    eprintln!("  Dispatch strategy: {dispatch_strategy:?}");
-                }
                 expr.clone()
             } else {
                 return Err(TestHarnessError::Compilation {

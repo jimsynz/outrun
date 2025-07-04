@@ -1392,9 +1392,9 @@ impl IntrinsicsHandler {
         span: Span,
     ) -> Result<Value, IntrinsicError> {
         let string = self.get_string_arg(arguments, "value", span)?;
-        let substring = self.get_string_arg(arguments, "substring", span)?;
+        let search = self.get_string_arg(arguments, "search", span)?;
 
-        match string.find(substring) {
+        match string.find(search) {
             Some(index) => {
                 // Return Option.some(index)
                 self.create_option_some(Value::integer(index as i64), span)
@@ -1813,17 +1813,17 @@ impl IntrinsicsHandler {
         span: Span,
     ) -> Result<Value, IntrinsicError> {
         let value = self.get_string_arg(arguments, "value", span)?;
-        let pattern = self.get_string_arg(arguments, "pattern", span)?;
+        let search = self.get_string_arg(arguments, "search", span)?;
 
         let value_bytes = value.as_bytes();
-        let pattern_bytes = pattern.as_bytes();
+        let search_bytes = search.as_bytes();
 
-        if pattern_bytes.is_empty() {
+        if search_bytes.is_empty() {
             return self.create_option_some(Value::integer(0), span);
         }
 
-        for i in 0..=value_bytes.len().saturating_sub(pattern_bytes.len()) {
-            if &value_bytes[i..i + pattern_bytes.len()] == pattern_bytes {
+        for i in 0..=value_bytes.len().saturating_sub(search_bytes.len()) {
+            if &value_bytes[i..i + search_bytes.len()] == search_bytes {
                 return self.create_option_some(Value::integer(i as i64), span);
             }
         }
@@ -2146,7 +2146,16 @@ impl IntrinsicsHandler {
             Value::Integer64(i) => i.to_string(),
             Value::Float64(f) => f.to_string(),
             Value::Boolean(b) => b.to_string(),
-            Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
+            Value::String(s) => {
+                // Properly escape string for inspect representation
+                let escaped = s
+                    .replace("\\", "\\\\")  // Escape backslashes first
+                    .replace("\"", "\\\"")  // Escape quotes
+                    .replace("\n", "\\n")   // Escape newlines
+                    .replace("\r", "\\r")   // Escape carriage returns
+                    .replace("\t", "\\t");  // Escape tabs
+                format!("\"{}\"", escaped)
+            }
             Value::Atom(a) => self.format_atom_for_inspect(a),
             Value::List { list, .. } => {
                 // Format as [elem1, elem2, ...]
