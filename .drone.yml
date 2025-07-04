@@ -141,6 +141,43 @@ steps:
       - export PATH="$ASDF_DATA_DIR/shims:$PATH"
       - cargo fmt --check
 
+  - name: website check
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - install ASDF
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cd website
+      - zola check
+
+  - name: website build
+    image: harton.dev/james/asdf_container:latest
+    pull: never
+    depends_on:
+      - website check
+    commands:
+      - export PATH="$ASDF_DATA_DIR/shims:$PATH"
+      - cd website
+      - zola build
+
+  - name: website deploy
+    image: node:latest
+    when:
+      branch:
+        - main
+      event:
+        - push
+    depends_on:
+      - website build
+    environment:
+      CLOUDFLARE_ACCOUNT_ID:
+        from_secret: CLOUDFLARE_ACCOUNT_ID
+      CLOUDFLARE_API_TOKEN:
+        from_secret: CLOUDFLARE_API_TOKEN
+    commands:
+      - npx wrangler pages deploy website/public --project-name=outrunlang --commit-dirty --branch=prod
+
 
 volumes:
   - name: cache

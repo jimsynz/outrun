@@ -1,0 +1,26 @@
+base_url = "https://outrun.rocks"
+title = "Outrun Programming Language"
+description = "A modern programming language where everything is a protocol. Built for elegance, type safety, and synthwave aesthetics."
+compile_sass = true
+generate_feeds = true
+build_search_index = true
+
+[markdown]
+highlight_code = true
+highlight_theme = "base16-ocean-dark"
+external_links_target_blank = true
+
+[extra]
+author = "Outrun Team"
+logo = "images/outrun_logo.png"
+favicon = "images/outrun_icon_32.png"
+
+[extra.social]
+forgejo = "https://harton.dev/outrun/outrun"
+website = "https://outrun.rocks"
+
+[extra.synthwave]
+primary_color = "#ff6b9d"
+secondary_color = "#00d4ff"
+accent_color = "#ff9500"
+background_color = "#0a0a0a"

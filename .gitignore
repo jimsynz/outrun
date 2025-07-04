@@ -7,3 +7,5 @@ outrun/outrun_syntax.dump
 # REPL history
 .outrun_history
 
+.env*
+

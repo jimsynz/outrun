@@ -1,0 +1,293 @@
+/* Custom Synthwave Styles */
+
+/* Additional synthwave effects */
+.glow-text {
+    text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+}
+
+.glow-border {
+    box-shadow: 0 0 10px currentColor, 0 0 20px currentColor, inset 0 0 10px currentColor;
+}
+
+/* Pulsing glow animation */
+@keyframes pulse-glow {
+    0%, 100% {
+        filter: drop-shadow(0 0 8px rgba(255, 107, 157, 0.4));
+    }
+    50% {
+        filter: drop-shadow(0 0 16px rgba(255, 107, 157, 0.8));
+    }
+}
+
+/* Animated gradient background */
+.gradient-background {
+    background: linear-gradient(-45deg, #ff6b9d, #8b2cf7, #00d4ff, #ff9500);
+    background-size: 400% 400%;
+    animation: gradient 6s ease infinite;
+}
+
+@keyframes gradient {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+/* Neon button styles */
+.neon-button {
+    position: relative;
+    background: transparent;
+    border: 2px solid currentColor;
+    transition: all 0.3s ease;
+}
+
+.neon-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+}
+
+.neon-button:hover::before {
+    opacity: 0.1;
+}
+
+.neon-button:hover {
+    box-shadow: 0 0 20px currentColor;
+}
+
+/* CTA button glow effects */
+.cta-glow-primary {
+    box-shadow: 0 0 20px rgba(255, 107, 157, 0.3), 0 0 40px rgba(255, 107, 157, 0.1);
+    transition: all 0.3s ease;
+}
+
+.cta-glow-primary:hover {
+    box-shadow: 0 0 30px rgba(255, 107, 157, 0.5), 0 0 60px rgba(255, 107, 157, 0.2);
+    transform: scale(1.05) translateY(-2px);
+}
+
+.cta-glow-secondary {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.cta-glow-secondary:hover {
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.5), 0 0 60px rgba(0, 212, 255, 0.2);
+    transform: scale(1.05) translateY(-2px);
+}
+
+.cta-glow-purple {
+    box-shadow: 0 0 20px rgba(139, 44, 247, 0.3), 0 0 40px rgba(139, 44, 247, 0.1);
+    transition: all 0.3s ease;
+}
+
+.cta-glow-purple:hover {
+    box-shadow: 0 0 30px rgba(139, 44, 247, 0.5), 0 0 60px rgba(139, 44, 247, 0.2);
+    transform: scale(1.05) translateY(-2px);
+}
+
+/* Title text glow effect */
+.title-glow {
+    text-shadow: 
+        0 0 10px rgba(255, 107, 157, 0.5),
+        0 0 20px rgba(255, 107, 157, 0.3),
+        0 0 40px rgba(255, 107, 157, 0.2),
+        0 0 80px rgba(139, 44, 247, 0.1);
+    animation: title-pulse 3s ease-in-out infinite alternate;
+}
+
+@keyframes title-pulse {
+    0% {
+        text-shadow: 
+            0 0 10px rgba(255, 107, 157, 0.5),
+            0 0 20px rgba(255, 107, 157, 0.3),
+            0 0 40px rgba(255, 107, 157, 0.2),
+            0 0 80px rgba(139, 44, 247, 0.1);
+    }
+    100% {
+        text-shadow: 
+            0 0 15px rgba(255, 107, 157, 0.7),
+            0 0 30px rgba(255, 107, 157, 0.4),
+            0 0 60px rgba(255, 107, 157, 0.3),
+            0 0 120px rgba(139, 44, 247, 0.2);
+    }
+}
+
+/* Logo glow effect */
+.logo-glow {
+    filter: drop-shadow(0 0 20px rgba(255, 107, 157, 0.4))
+            drop-shadow(0 0 40px rgba(255, 107, 157, 0.2))
+            drop-shadow(0 0 80px rgba(139, 44, 247, 0.15));
+}
+
+/* Code syntax highlighting customization */
+pre[class*="language-"] {
+    background: rgba(10, 10, 10, 0.8) !important;
+    border: 1px solid rgba(255, 107, 157, 0.2);
+    border-radius: 0.5rem;
+}
+
+code[class*="language-"] {
+    color: #e2e8f0 !important;
+}
+
+/* Syntax highlighting colors for Outrun */
+.token.keyword,
+.token.synthwave-keyword {
+    color: #ff6b9d !important;
+    font-weight: bold;
+}
+
+.token.function,
+.token.synthwave-function {
+    color: #00d4ff !important;
+    font-weight: 600;
+}
+
+.token.string,
+.token.synthwave-string {
+    color: #ff9500 !important;
+}
+
+.token.comment {
+    color: #6b7280 !important;
+    font-style: italic;
+}
+
+.token.number,
+.token.synthwave-number {
+    color: #8b2cf7 !important;
+}
+
+.token.operator,
+.token.synthwave-operator {
+    color: #ff6b9d !important;
+    font-weight: bold;
+}
+
+.token.punctuation {
+    color: #9ca3af !important;
+}
+
+.token.synthwave-type {
+    color: #00d4ff !important;
+    font-weight: 600;
+}
+
+.token.synthwave-atom {
+    color: #ff9500 !important;
+    font-weight: 500;
+}
+
+.token.synthwave-attribute {
+    color: #8b2cf7 !important;
+    font-weight: 500;
+}
+
+.token.builtin {
+    color: #ff6b9d !important;
+    font-weight: bold;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #ff6b9d;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #ff9500;
+}
+
+/* Smooth scrolling for anchor links */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom focus styles */
+*:focus {
+    outline: 2px solid #ff6b9d;
+    outline-offset: 2px;
+}
+
+/* Loading animation for future use */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 107, 157, 0.3);
+    border-radius: 50%;
+    border-top-color: #ff6b9d;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive image handling */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Enhanced hover effects for cards */
+.feature-card {
+    transition: all 0.3s ease;
+    transform: translateY(0);
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+}
+
+/* Grid overlay pattern */
+.grid-overlay {
+    background-image: 
+        linear-gradient(rgba(255, 107, 157, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 107, 157, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    body {
+        background: white !important;
+        color: black !important;
+    }
+}
