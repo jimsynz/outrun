@@ -23,6 +23,12 @@ lazy_static! {
         INTRINSIC_FUNCTIONS.iter().map(create_typed_definition_for_intrinsic).collect();
 }
 
+/// Get all intrinsic function definitions 
+/// Returns a reference to the cached intrinsic function definitions
+pub fn get_intrinsic_function_definitions() -> &'static Vec<FunctionDefinition> {
+    &INTRINSIC_FUNCTIONS
+}
+
 /// Bootstrap intrinsic functions into a CompilerEnvironment
 /// Returns the updated environment with Outrun.Intrinsic module populated
 pub fn bootstrap_intrinsics(env: CompilerEnvironment) -> CompilerEnvironment {
