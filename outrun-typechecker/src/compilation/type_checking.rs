@@ -26,6 +26,10 @@ pub struct TypeCheckingVisitor {
     variable_scopes: Vec<HashMap<String, crate::unification::StructuredType>>,
     /// Type parameter scope stack for tracking generic type parameters (Self, T, E, K, V, etc.)
     type_parameter_scopes: Vec<HashMap<String, crate::unification::StructuredType>>,
+    /// Current trait context stack for tracking which trait we're inside (for default implementations)
+    current_trait_context: Vec<(String, StructuredType)>, // (trait_name, trait_type)
+    /// Current impl block context for tracking which impl block we're inside
+    current_impl_context: Option<(String, StructuredType)>, // (trait_name, impl_type)
 }
 
 impl<T> Visitor<T> for TypeCheckingVisitor {
@@ -187,6 +191,10 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
         let self_type_id = self.compiler_environment.intern_type_name("Self");
 
+        // Push trait context so function calls within default implementations know which trait they're in
+        let trait_type = crate::unification::StructuredType::Simple(trait_type_id.clone());
+        self.push_trait_context(trait_name.clone(), trait_type);
+
         // Register Self as a type variable that can be constrained
         self.register_type_parameter(
             "Self".to_string(),
@@ -250,7 +258,8 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
             }
         }
 
-        // Restore previous type parameter scope
+        // Restore previous trait context and type parameter scope
+        self.pop_trait_context();
         self.pop_type_parameter_scope();
 
         Ok(())
@@ -265,10 +274,20 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         // Establish type parameter scope for this impl block
         self.push_type_parameter_scope();
 
-        // Register Self parameter with full structured type
+        // Register Self parameter with full structured type and set impl context
         match self.resolve_type_spec(&impl_block.type_spec) {
             Ok(impl_type) => {
-                self.register_type_parameter("Self".to_string(), impl_type);
+                self.register_type_parameter("Self".to_string(), impl_type.clone());
+                
+                // Set impl context for trait function dispatch within default implementations
+                let trait_name = impl_block
+                    .trait_spec
+                    .path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                self.set_impl_context(trait_name, impl_type);
             }
             Err(error) => {
                 self.errors.push(error);
@@ -291,7 +310,8 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         // Continue traversing impl functions with Self context established
         let result = crate::visitor::walk_impl_block::<Self, ()>(self, impl_block);
 
-        // Restore previous type parameter scope
+        // Clear impl context and restore previous type parameter scope
+        self.clear_impl_context();
         self.pop_type_parameter_scope();
 
         result
@@ -393,6 +413,8 @@ impl TypeCheckingVisitor {
             errors: Vec::new(),
             variable_scopes: vec![HashMap::new()], // Start with global scope
             type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+            current_trait_context: Vec::new(), // Start with no trait context
+            current_impl_context: None, // Start with no impl context
         }
     }
 
@@ -403,6 +425,8 @@ impl TypeCheckingVisitor {
             errors: Vec::new(),
             variable_scopes: vec![HashMap::new()], // Start with global scope
             type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+            current_trait_context: Vec::new(), // Start with no trait context
+            current_impl_context: None, // Start with no impl context
         }
     }
 
@@ -426,6 +450,8 @@ impl TypeCheckingVisitor {
             errors: Vec::new(),
             variable_scopes: vec![HashMap::new()], // Start with global scope
             type_parameter_scopes: vec![HashMap::new()], // Start with global type parameter scope
+            current_trait_context: Vec::new(), // Start with no trait context
+            current_impl_context: None, // Start with no impl context
         }
     }
 
@@ -489,6 +515,36 @@ impl TypeCheckingVisitor {
             self.type_parameter_scopes.pop();
         }
         // Type parameter scope popped - no additional cleanup needed
+    }
+
+    /// Push a trait context onto the stack when entering a trait definition
+    fn push_trait_context(&mut self, trait_name: String, trait_type: StructuredType) {
+        self.current_trait_context.push((trait_name, trait_type));
+    }
+
+    /// Pop the current trait context from the stack when leaving a trait definition
+    fn pop_trait_context(&mut self) {
+        self.current_trait_context.pop();
+    }
+
+    /// Get the current trait context if we're inside a trait definition
+    fn current_trait_context(&self) -> Option<&(String, StructuredType)> {
+        self.current_trait_context.last()
+    }
+
+    /// Set the current impl block context when entering an impl block
+    fn set_impl_context(&mut self, trait_name: String, impl_type: StructuredType) {
+        self.current_impl_context = Some((trait_name, impl_type));
+    }
+
+    /// Clear the current impl block context when leaving an impl block
+    fn clear_impl_context(&mut self) {
+        self.current_impl_context = None;
+    }
+
+    /// Get the current impl block context if we're inside an impl block
+    fn current_impl_context(&self) -> Option<&(String, StructuredType)> {
+        self.current_impl_context.as_ref()
     }
 
     /// Register a type parameter in the current scope
@@ -2040,10 +2096,82 @@ impl TypeCheckingVisitor {
                 }
             }
             outrun_parser::FunctionPath::Simple { name } => {
-                // Simple call like "some_function" - search in function registry
+                // Simple call like "some_function" - could be trait function if we're in trait context
                 let function_name = &name.name;
                 let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
+                // Check if we're in a trait context and this function exists in the current trait
+                if let Some((trait_name, trait_type)) = self.current_trait_context() {
+                    // Try to find this function as a trait function in the current trait
+                    if let Some(trait_func_entry) = self
+                        .compiler_environment
+                        .lookup_qualified_function(trait_type, function_name_atom.clone())
+                    {
+                        // This is a trait function call within a default implementation
+                        // Get the Self type from type parameter scope
+                        if let Some(self_type) = self.lookup_type_parameter("Self").cloned() {
+                            // Use trait dispatch instead of static dispatch
+                            let mut context = self.compiler_environment.unification_context();
+                            context.add_dispatch_strategy(
+                                call.span,
+                                crate::checker::DispatchMethod::Trait {
+                                    trait_name: trait_name.clone(),
+                                    function_name: function_name.clone(),
+                                    impl_type: Box::new(self_type.clone()),
+                                },
+                            );
+                            self.compiler_environment.set_unification_context(context);
+
+                            // Validate arguments with Self type context
+                            self.validate_function_call_arguments_with_self(
+                                call,
+                                trait_func_entry.definition(),
+                                &self_type,
+                            )?;
+                            return self.resolve_type_annotation_with_self(
+                                &trait_func_entry.definition().return_type,
+                                &self_type,
+                            );
+                        }
+                    }
+                }
+                // Check if we're in an impl block context and this could be a trait function call
+                else if let Some((trait_name, impl_type)) = self.current_impl_context().cloned() {
+                    // Try to find this function as a trait function in the impl's trait
+                    let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
+                    let trait_type = crate::unification::StructuredType::Simple(trait_type_id);
+                    
+                    if let Some(trait_func_entry) = self
+                        .compiler_environment
+                        .lookup_qualified_function(&trait_type, function_name_atom.clone())
+                    {
+                        // This is a trait function call within an expanded default implementation
+                        // Use trait dispatch with the concrete impl type
+                        let mut context = self.compiler_environment.unification_context();
+                        context.add_dispatch_strategy(
+                            call.span,
+                            crate::checker::DispatchMethod::Trait {
+                                trait_name: trait_name.clone(),
+                                function_name: function_name.clone(),
+                                impl_type: Box::new(impl_type.clone()),
+                            },
+                        );
+                        self.compiler_environment.set_unification_context(context);
+
+                        // Validate arguments with Self type context
+                        self.validate_function_call_arguments_with_self(
+                            call,
+                            trait_func_entry.definition(),
+                            &impl_type,
+                        )?;
+                        return self.resolve_type_annotation_with_self(
+                            &trait_func_entry.definition().return_type,
+                            &impl_type,
+                        );
+                    }
+                }
+
+                // Fall back to regular local function lookup
                 if let Some(func_entry) = self
                     .compiler_environment
                     .lookup_local_function(function_name_atom.clone())

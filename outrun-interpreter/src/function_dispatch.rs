@@ -234,13 +234,51 @@ impl FunctionDispatcher {
         impl_type: &outrun_typechecker::unification::StructuredType,
         call_context: &FunctionCallContext,
     ) -> Result<Value, DispatchError> {
-        // Extract the base type ID for trait dispatch
-        let _impl_type_id = match impl_type {
+        // Extract the base type ID for trait dispatch, resolving TypeVariables if needed
+        let resolved_impl_type = match impl_type {
+            outrun_typechecker::unification::StructuredType::TypeVariable(type_id) => {
+                // Try to resolve Self or other type variables from context
+                let type_name = self.compiler_environment
+                    .resolve_type_name(type_id)
+                    .unwrap_or_default();
+                
+                if type_name == "Self" {
+                    // For Self type variables in trait functions, we need to get the actual implementing type
+                    // This should be available from the call context or can be inferred from arguments
+                    if let Some(first_arg) = call_context.arguments.values().next() {
+                        // Infer the implementing type from the first argument
+                        match self.infer_type_from_value(first_arg) {
+                            Some(inferred_type) => inferred_type,
+                            None => {
+                                return Err(DispatchError::Internal {
+                                    message: format!("Could not infer implementing type for Self from arguments"),
+                                    span: call_context.span,
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(DispatchError::Internal {
+                            message: format!("Self type variable found but no arguments to infer from"),
+                            span: call_context.span,
+                        });
+                    }
+                } else {
+                    // Other type variables should have been resolved by now
+                    return Err(DispatchError::Internal {
+                        message: format!("Unresolved type variable in trait dispatch: {type_name}"),
+                        span: call_context.span,
+                    });
+                }
+            },
+            _ => impl_type.clone(),
+        };
+        
+        let _impl_type_id = match &resolved_impl_type {
             outrun_typechecker::unification::StructuredType::Simple(type_id) => type_id.clone(),
             outrun_typechecker::unification::StructuredType::Generic { base, .. } => base.clone(),
             _ => {
                 return Err(DispatchError::Internal {
-                    message: format!("Unsupported impl_type for trait dispatch: {impl_type:?}"),
+                    message: format!("Unsupported impl_type for trait dispatch: {resolved_impl_type:?}"),
                     span: call_context.span,
                 });
             }
@@ -257,7 +295,7 @@ impl FunctionDispatcher {
 
         // CRITICAL FIX: Check for function clauses (guard clauses) within the specific trait implementation
         // We must look up clauses in the correct trait implementation module, not globally
-        if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, impl_type, &function_name_atom) {
+        if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, &resolved_impl_type, &function_name_atom) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
                 &clause_set,
@@ -286,7 +324,7 @@ impl FunctionDispatcher {
             "TYPECHECKER BUG: No function clause set found for {}.{} on type {:?}. \
             All functions should be converted to clause sets during compilation. \
             This is a critical failure in the SMT-first architecture.",
-            trait_name, function_name, impl_type
+            trait_name, function_name, resolved_impl_type
         );
     }
 
@@ -541,6 +579,41 @@ impl FunctionDispatcher {
         // - Value::String matches StructuredType::String
         // - etc.
         true
+    }
+
+    /// Infer the structured type from a runtime value
+    fn infer_type_from_value(&self, value: &crate::value::Value) -> Option<outrun_typechecker::unification::StructuredType> {
+        use outrun_typechecker::unification::StructuredType;
+        
+        match value {
+            crate::value::Value::Integer64(_) => {
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.Integer64");
+                Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::Float64(_) => {
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.Float64");
+                Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::String(_) => {
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.String");
+                Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::Boolean(_) => {
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.Boolean");
+                Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::Atom(_) => {
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.Atom");
+                Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::List { list: _, element_type: _ } => {
+                // For lists, we'd need to infer the element type, but for now use generic List
+                let type_id = self.compiler_environment.intern_type_name("Outrun.Core.List");
+                Some(StructuredType::Simple(type_id))
+            },
+            // Add other value types as needed
+            _ => None,
+        }
     }
 }
 

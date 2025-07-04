@@ -834,12 +834,12 @@ impl CompilerEnvironment {
         // Store implementations in CompilerEnvironment
         self.set_implementations(implementations.clone());
 
-        // Step 5: Phase 5 - Extract all functions (from desugared code)
-        self.extract_functions(&desugared_collection, &compilation_order)?;
-
-        // Step 5.5: Phase 5.5 - Expand trait default implementations into concrete impl blocks (using desugared code)
+        // Step 4.5: Phase 4.5 - Expand trait default implementations into concrete impl blocks (BEFORE function extraction)
         let expanded_collection =
             self.expand_trait_default_implementations(&desugared_collection)?;
+
+        // Step 5: Phase 5 - Extract all functions (from EXPANDED code with default implementations)
+        self.extract_functions(&expanded_collection, &compilation_order)?;
 
         // Step 5.6: Phase 6.5 - SMT-based clause analysis for function dispatch optimization
         self.perform_smt_clause_analysis()?;
@@ -4268,6 +4268,7 @@ impl CompilerEnvironment {
     ) -> Result<ProgramCollection, Vec<TypeError>> {
         use outrun_parser::{ItemKind, TraitFunction};
         use std::collections::HashMap;
+        
 
         // Step 1: Collect all trait default implementations
         let mut trait_defaults: HashMap<String, Vec<outrun_parser::FunctionDefinition>> =
@@ -4309,6 +4310,7 @@ impl CompilerEnvironment {
                         // Expand this impl block with missing default implementations
                         let expanded_impl =
                             self.expand_impl_block_with_defaults(impl_block, &trait_defaults)?;
+                            
                         expanded_items.push(outrun_parser::Item {
                             kind: ItemKind::ImplBlock(expanded_impl),
                             ..item.clone()

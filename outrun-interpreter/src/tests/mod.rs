@@ -16,3 +16,4 @@ mod test_harness_examples;
 mod test_integer_equality_runtime_bug;
 mod test_intrinsic_registry_completeness;
 mod test_trait_implementation_investigation;
+mod test_not_equal_runtime_fix;
