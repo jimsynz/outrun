@@ -2823,16 +2823,17 @@ impl CompilerEnvironment {
         &mut self,
         typed_ast_builder: &mut crate::typed_ast_builder::TypedASTBuilder,
     ) -> Result<(), Vec<TypeError>> {
-        eprintln!("DEBUG: process_registered_impl_functions called - populating clause sets");
         let mut errors = Vec::new();
 
         // Get all modules and their functions
         let modules = self.modules.read().unwrap().clone();
         for (module_key, module) in modules.iter() {
-            // Only process trait implementation modules
-            if let ModuleKey::TraitImpl(_trait_type, _impl_type) = module_key {
-                // Process ALL functions, not just those in functions_by_name
-                for function_entries in module.all_functions_by_name.values() {
+            // Process both trait implementation modules AND trait definition modules
+            match module_key {
+                ModuleKey::TraitImpl(_trait_type, _impl_type) => {
+                    // Process trait implementation functions
+                    // Process ALL functions, not just those in functions_by_name
+                    for function_entries in module.all_functions_by_name.values() {
                     for function_entry in function_entries {
                         // Only process ImplFunction entries that don't have typed definitions yet
                         if let UnifiedFunctionEntry::ImplFunction {
@@ -2915,6 +2916,92 @@ impl CompilerEnvironment {
                             // Restore the previous module context
                             typed_ast_builder.set_current_module_key(previous_module_key);
                         }
+                        }
+                    }
+                }
+                }
+                ModuleKey::Module(_trait_type_hash) => {
+                    // Process trait definition modules (for static functions like Option.some)
+                    // Check if this is actually a trait module by looking for trait definition
+                    if module.get_trait_definition().is_some() {
+                        // Process ALL functions in trait definition modules
+                        for function_entries in module.all_functions_by_name.values() {
+                            for function_entry in function_entries {
+                                // Process trait static functions and default implementations
+                                match function_entry {
+                                    UnifiedFunctionEntry::TraitStatic { definition, typed_definition, .. } |
+                                    UnifiedFunctionEntry::TraitDefault { definition, typed_definition, .. } => {
+                                        if typed_definition.is_none() {
+                                            // Set the correct module context in TypedASTBuilder
+                                            let previous_module_key = typed_ast_builder.get_current_module_key();
+                                            typed_ast_builder.set_current_module_key(Some(module_key.clone()));
+
+                                            // Create typed definition for this trait function
+                                            match typed_ast_builder.convert_function_definition(definition) {
+                                                Some(_typed_def) => {
+                                                    // CRITICAL FIX: Register trait static functions as function clauses
+                                                    // This enables static dispatch for Option.some() and similar functions
+                                                    let function_name = self.intern_atom_name(&definition.name.name);
+                                                    
+                                                    let source_order = definition.span.start as u32;
+                                                    let has_guard = definition.guard.is_some();
+                                                    let is_simple_function = !has_guard && 
+                                                        !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
+                                                    
+                                                    // Create a function clause for this trait function
+                                                    let mut clause = crate::checker::FunctionClause {
+                                                        clause_id: format!("trait_{:?}_{}", module_key, definition.name.name),
+                                                        base_function: _typed_def.clone(),
+                                                        source_order,
+                                                        applicability_constraints: Vec::new(),
+                                                        from_guard: has_guard,
+                                                        span: definition.span,
+                                                    };
+                                                    
+                                                    // For simple trait static functions, pre-populate with direct dispatch constraints
+                                                    if is_simple_function {
+                                                        clause.applicability_constraints.push(
+                                                            crate::smt::constraints::SMTConstraint::PreResolvedClause {
+                                                                call_site: definition.span,
+                                                                trait_type: StructuredType::Simple(self.intern_type_name("DirectDispatch")),
+                                                                impl_type: StructuredType::Simple(self.intern_type_name("SingleClause")),
+                                                                function_name: definition.name.name.clone(),
+                                                                selected_clause_id: clause.clause_id.clone(),
+                                                                guard_pre_evaluated: Some(true), // No guard = always applicable
+                                                                argument_types: vec![], // Will be filled in by type checking
+                                                            }
+                                                        );
+                                                    }
+                                                    
+                                                    // Add the clause to the trait module's function clause registry
+                                                    {
+                                                        let mut modules = self.modules.write().unwrap();
+                                                        if let Some(module) = modules.get_mut(module_key) {
+                                                            module.add_function_clause(function_name, clause);
+                                                        }
+                                                    }
+                                                }
+                                                None => {
+                                                    // Create an error for the failed conversion
+                                                    errors.push(crate::error::TypeError::internal_with_span(
+                                                        format!(
+                                                            "Failed to convert trait function definition for {}",
+                                                            definition.name.name
+                                                        ),
+                                                        definition.span.to_source_span(),
+                                                    ));
+                                                }
+                                            }
+
+                                            // Restore the previous module context
+                                            typed_ast_builder.set_current_module_key(previous_module_key);
+                                        }
+                                    }
+                                    _ => {
+                                        // Skip other function types (signatures without bodies)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

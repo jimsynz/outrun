@@ -166,6 +166,7 @@ impl FunctionDispatcher {
         let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
         // First, check if this function has multiple clauses (guards) that require SMT-based selection
+        
         if let Some(clause_set) = self.lookup_function_clauses(&function_name_atom) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
@@ -187,6 +188,33 @@ impl FunctionDispatcher {
                     message: format!("{e:?}"),
                     span: call_context.span,
                 });
+        }
+        
+        // CRITICAL FIX: Check trait module function clauses for trait static functions
+        // If function_id is "trait::TraitName::function", we need to search the trait module
+        if function_id.starts_with("trait::") {
+            if let Some(clause_set) = self.lookup_trait_static_function_clauses(function_id, &function_name_atom) {
+                
+                let selected_clause = self.select_function_clause_with_smt(
+                    &clause_set,
+                    &call_context.arguments,
+                    call_context.span,
+                )?;
+                
+                let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
+                return function_executor
+                    .execute_typed_function(
+                        interpreter_context,
+                        evaluator,
+                        selected_clause,
+                        call_context.arguments.clone(),
+                        call_context.span,
+                    )
+                    .map_err(|e| DispatchError::FunctionExecution {
+                        message: format!("{e:?}"),
+                        span: call_context.span,
+                    });
+            }
         }
         
         // Fall back to single function lookup
@@ -295,6 +323,7 @@ impl FunctionDispatcher {
 
         // CRITICAL FIX: Check for function clauses (guard clauses) within the specific trait implementation
         // We must look up clauses in the correct trait implementation module, not globally
+        
         if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, &resolved_impl_type, &function_name_atom) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
@@ -320,11 +349,41 @@ impl FunctionDispatcher {
 
         // If we reach here, the SMT-first clause lookup failed
         // This indicates a bug in the typechecker - all functions should have clause sets
+        
+        // Gather debugging information before panic
+        let modules = self.compiler_environment.modules().read().unwrap();
+        let available_modules: Vec<String> = modules.keys().map(|k| format!("{:?}", k)).collect();
+        let total_function_clauses: usize = modules.values()
+            .map(|m| m.function_clauses.len())
+            .sum();
+        
+        // Try to find what function clauses DO exist for this trait/impl combination
+        let module_key = outrun_typechecker::compilation::compiler_environment::ModuleKey::TraitImpl(
+            Box::new(outrun_typechecker::unification::StructuredType::Simple(
+                self.compiler_environment.intern_type_name(trait_name)
+            )),
+            Box::new(resolved_impl_type.clone()),
+        );
+        
+        let existing_clauses: Vec<String> = if let Some(trait_impl_module) = modules.get(&module_key) {
+            trait_impl_module.function_clauses.keys()
+                .map(|atom_id| self.compiler_environment.resolve_atom_name(atom_id).unwrap_or_default())
+                .collect()
+        } else {
+            vec!["MODULE NOT FOUND".to_string()]
+        };
+        
         panic!(
-            "TYPECHECKER BUG: No function clause set found for {}.{} on type {:?}. \
-            All functions should be converted to clause sets during compilation. \
-            This is a critical failure in the SMT-first architecture.",
-            trait_name, function_name, resolved_impl_type
+            "TYPECHECKER BUG: No function clause set found for {trait_name}.{function_name} on type {resolved_impl_type:?}\n\
+            DEBUGGING INFO:\n\
+            - Total modules in compiler environment: {}\n\
+            - Total function clause sets across all modules: {total_function_clauses}\n\
+            - Available modules: {available_modules:?}\n\
+            - Existing function clauses in target module: {existing_clauses:?}\n\
+            - Target module key: {module_key:?}\n\
+            This indicates the typechecker failed to create function clause sets during compilation.\n\
+            Check Phase 6.5 SMT clause analysis and function clause registration phases.",
+            available_modules.len()
         );
     }
 
@@ -427,8 +486,54 @@ impl FunctionDispatcher {
         &self,
         function_name: &outrun_typechecker::compilation::compiler_environment::AtomId,
     ) -> Option<outrun_typechecker::checker::FunctionClauseSet> {
+        println!("🔍 DEBUG: lookup_function_clauses called for {:?}", function_name);
+        
         // Use the new public method on CompilerEnvironment
-        self.compiler_environment.lookup_function_clauses_by_name(function_name)
+        let result = self.compiler_environment.lookup_function_clauses_by_name(function_name);
+        
+        match &result {
+            Some(clause_set) => {
+                println!("✅ DEBUG: Found global function clause set for {:?} with {} clauses", 
+                    self.compiler_environment.resolve_atom_name(function_name).unwrap_or_default(),
+                    clause_set.get_clauses_by_priority().len());
+            }
+            None => {
+                println!("❌ DEBUG: No global function clause set found for {:?}", 
+                    self.compiler_environment.resolve_atom_name(function_name).unwrap_or_default());
+            }
+        }
+        
+        result
+    }
+
+    /// Look up function clauses for trait static functions (e.g., "trait::Option::some")
+    /// These are static functions defined with `defs` in trait definitions
+    fn lookup_trait_static_function_clauses(
+        &self,
+        function_id: &str, // Full ID like "trait::Option::some"
+        function_name: &outrun_typechecker::compilation::compiler_environment::AtomId,
+    ) -> Option<outrun_typechecker::checker::FunctionClauseSet> {
+        // Parse trait name from "trait::TraitName::function"
+        let parts: Vec<&str> = function_id.split("::").collect();
+        if parts.len() != 3 || parts[0] != "trait" {
+            return None;
+        }
+        
+        let trait_name = parts[1];
+        
+        // Create trait type for module lookup
+        let trait_type_id = self.compiler_environment.intern_type_name(trait_name);
+        let _trait_type = outrun_typechecker::unification::StructuredType::Simple(trait_type_id.clone());
+        
+        // Look up function clauses in the trait definition module
+        let modules = self.compiler_environment.modules().read().unwrap();
+        let trait_module_key = outrun_typechecker::compilation::compiler_environment::ModuleKey::Module(trait_type_id.hash);
+        
+        if let Some(trait_module) = modules.get(&trait_module_key) {
+            trait_module.function_clauses.get(function_name).cloned()
+        } else {
+            None
+        }
     }
 
     /// Look up function clauses within a specific trait implementation module
