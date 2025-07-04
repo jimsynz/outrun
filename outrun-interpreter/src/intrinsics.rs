@@ -654,9 +654,13 @@ impl IntrinsicsHandler {
         let lhs = self.get_integer_arg(arguments, "lhs", span)?;
         let rhs = self.get_integer_arg(arguments, "rhs", span)?;
         if rhs == 0 {
-            return Err(IntrinsicError::DivisionByZero { span });
+            // Return Option.none() for modulo by zero
+            self.create_option_none(span)
+        } else {
+            // Return Option.some(result) for successful modulo
+            let result = Value::integer(lhs % rhs);
+            self.create_option_some(result, span)
         }
-        Ok(Value::integer(lhs % rhs))
     }
 
     fn integer_negate(

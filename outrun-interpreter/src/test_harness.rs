@@ -65,21 +65,21 @@ pub struct OutrunTestHarness {
 impl OutrunTestHarness {
     /// Create a new test harness with core library loaded
     pub fn new() -> Result<Self, TestHarnessError> {
-        // Use cached core library compilation for dramatically faster test execution
-        // This avoids recompiling the entire core library for every test case
-        let compiler_environment = CompilerEnvironment::new();
-        let core_result = core_library::get_core_library_compilation();
-
-        // Load the compilation result to populate structs and traits
-        compiler_environment.load_structs_and_traits(core_result);
+        // Use the same approach as REPL: compile core library directly into the environment
+        // This ensures all function registries are properly populated for trait dispatch
+        let mut compiler_environment = CompilerEnvironment::new();
+        let core_result = core_library::compile_core_library_with_environment(&mut compiler_environment);
 
         // Create dispatch context and evaluator using the environment with core library loaded
         let dispatch_context = FunctionDispatchContext::new(Some(compiler_environment.clone()));
         let evaluator = ExpressionEvaluator::from_dispatch_context(dispatch_context);
 
-        // Create interpreter context using the same type context from the core library compilation
+        // Use the UnificationContext from the compiler environment that compiled the core library
+        let unification_context = compiler_environment.unification_context().clone();
+
+        // Create interpreter context using the environment that compiled the core library
         let context = InterpreterContext::new(
-            core_result.type_context.clone(),
+            unification_context,
             compiler_environment.clone(),
             Some(1000), // Set reasonable call stack limit
         );
@@ -284,6 +284,43 @@ impl OutrunTestHarness {
             }),
             other => Err(TestHarnessError::AssertionFailed {
                 expected: format!("Float64({expected})"),
+                actual: format!("{other:?}"),
+            }),
+        }
+    }
+
+    /// Execute Outrun code and assert it returns Some(integer) with the expected value
+    pub fn assert_evaluates_to_some_integer(
+        &mut self,
+        expression_code: &str,
+        expected: i64,
+    ) -> Result<(), TestHarnessError> {
+        let result = self.evaluate(expression_code)?;
+        match &result {
+            Value::Struct { fields, .. } => {
+                // Check if this is an Option.Some with a value field
+                let value_atom = {
+                    let env = self.compiler_env.lock().unwrap();
+                    env.intern_atom_name("value")
+                };
+                if let Some(Value::Integer64(actual)) = fields.get(&value_atom) {
+                    if *actual == expected {
+                        Ok(())
+                    } else {
+                        Err(TestHarnessError::AssertionFailed {
+                            expected: format!("Some(Integer64({expected}))"),
+                            actual: format!("Some(Integer64({actual}))"),
+                        })
+                    }
+                } else {
+                    Err(TestHarnessError::AssertionFailed {
+                        expected: format!("Some(Integer64({expected}))"),
+                        actual: format!("{result:?}"),
+                    })
+                }
+            },
+            other => Err(TestHarnessError::AssertionFailed {
+                expected: format!("Some(Integer64({expected}))"),
                 actual: format!("{other:?}"),
             }),
         }

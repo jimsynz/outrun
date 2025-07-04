@@ -10,8 +10,8 @@ fn test_arithmetic_operations() {
     harness.assert_evaluates_to_integer("5 + 3", 8).unwrap();
     harness.assert_evaluates_to_integer("10 - 4", 6).unwrap();
     harness.assert_evaluates_to_integer("6 * 7", 42).unwrap();
-    harness.assert_evaluates_to_integer("20 / 4", 5).unwrap();
-    harness.assert_evaluates_to_integer("17 % 5", 2).unwrap();
+    harness.assert_evaluates_to_some_integer("20 / 4", 5).unwrap();
+    harness.assert_evaluates_to_some_integer("17 % 5", 2).unwrap();
 
     // Operations with negative numbers
     harness.assert_evaluates_to_integer("-5 + 3", -2).unwrap();
@@ -20,10 +20,10 @@ fn test_arithmetic_operations() {
     harness.assert_evaluates_to_integer("5 - -3", 8).unwrap();
     harness.assert_evaluates_to_integer("-5 * 3", -15).unwrap();
     harness.assert_evaluates_to_integer("-5 * -3", 15).unwrap();
-    harness.assert_evaluates_to_integer("-20 / 4", -5).unwrap();
-    harness.assert_evaluates_to_integer("20 / -4", -5).unwrap();
-    harness.assert_evaluates_to_integer("-20 / -4", 5).unwrap();
-    harness.assert_evaluates_to_integer("-17 % 5", -2).unwrap();
+    harness.assert_evaluates_to_some_integer("-20 / 4", -5).unwrap();
+    harness.assert_evaluates_to_some_integer("20 / -4", -5).unwrap();
+    harness.assert_evaluates_to_some_integer("-20 / -4", 5).unwrap();
+    harness.assert_evaluates_to_some_integer("-17 % 5", -2).unwrap();
 
     // Zero operations
     harness.assert_evaluates_to_integer("0 + 5", 5).unwrap();
@@ -32,8 +32,8 @@ fn test_arithmetic_operations() {
     harness.assert_evaluates_to_integer("5 - 0", 5).unwrap();
     harness.assert_evaluates_to_integer("0 * 5", 0).unwrap();
     harness.assert_evaluates_to_integer("5 * 0", 0).unwrap();
-    harness.assert_evaluates_to_integer("0 / 5", 0).unwrap();
-    harness.assert_evaluates_to_integer("0 % 5", 0).unwrap();
+    harness.assert_evaluates_to_some_integer("0 / 5", 0).unwrap();
+    harness.assert_evaluates_to_some_integer("0 % 5", 0).unwrap();
 }
 
 #[test]
@@ -144,15 +144,15 @@ fn test_operations_with_variables() {
     harness.assert_evaluates_to_integer("x + y", 13).unwrap();
     harness.assert_evaluates_to_integer("x - y", 7).unwrap();
     harness.assert_evaluates_to_integer("x * y", 30).unwrap();
-    harness.assert_evaluates_to_integer("x / y", 3).unwrap();
-    harness.assert_evaluates_to_integer("x % y", 1).unwrap();
+    harness.assert_evaluates_to_some_integer("x / y", 3).unwrap();
+    harness.assert_evaluates_to_some_integer("x % y", 1).unwrap();
 
     // Operations with negative variables
     harness.assert_evaluates_to_integer("x + z", 5).unwrap();
     harness.assert_evaluates_to_integer("x - z", 15).unwrap();
     harness.assert_evaluates_to_integer("y * z", -15).unwrap();
-    harness.assert_evaluates_to_integer("x / z", -2).unwrap();
-    harness.assert_evaluates_to_integer("x % z", 0).unwrap();
+    harness.assert_evaluates_to_some_integer("x / z", -2).unwrap();
+    harness.assert_evaluates_to_some_integer("x % z", 0).unwrap();
 
     // Comparisons with variables
     harness.assert_evaluates_to_boolean("x > y", true).unwrap();
@@ -190,14 +190,14 @@ fn test_edge_cases() {
         .assert_evaluates_to_integer("1000000 * 3", 3000000)
         .unwrap();
     harness
-        .assert_evaluates_to_integer("1000000 / 1000", 1000)
+        .assert_evaluates_to_some_integer("1000000 / 1000", 1000)
         .unwrap();
 
     // Operations resulting in zero
     harness.assert_evaluates_to_integer("5 - 5", 0).unwrap();
     harness.assert_evaluates_to_integer("0 * 999", 0).unwrap();
-    harness.assert_evaluates_to_integer("0 / 999", 0).unwrap();
-    harness.assert_evaluates_to_integer("5 % 5", 0).unwrap();
+    harness.assert_evaluates_to_some_integer("0 / 999", 0).unwrap();
+    harness.assert_evaluates_to_some_integer("5 % 5", 0).unwrap();
 
     // Comparisons at boundaries
     harness.assert_evaluates_to_boolean("0 == 0", true).unwrap();
@@ -224,10 +224,10 @@ fn test_type_consistency() {
         .execute_let_binding("let mul_result = 5 * 3")
         .unwrap();
     harness
-        .execute_let_binding("let div_result = 6 / 3")
+        .execute_let_binding("let pow_result = 2 ** 3")
         .unwrap();
     harness
-        .execute_let_binding("let mod_result = 7 % 3")
+        .execute_let_binding("let neg_result = -5")
         .unwrap();
 
     // These should all be usable in integer contexts
@@ -241,10 +241,10 @@ fn test_type_consistency() {
         .assert_evaluates_to_integer("mul_result + 1", 16)
         .unwrap();
     harness
-        .assert_evaluates_to_integer("div_result + 1", 3)
+        .assert_evaluates_to_integer("pow_result + 1", 9)
         .unwrap();
     harness
-        .assert_evaluates_to_integer("mod_result + 1", 2)
+        .assert_evaluates_to_integer("neg_result + 1", -4)
         .unwrap();
 
     // All comparison operations return booleans
