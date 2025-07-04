@@ -1144,9 +1144,9 @@ impl CompilerEnvironment {
             let struct_type = StructuredType::Simple(struct_type_id.clone());
 
             // Auto-implement Inspect trait for this struct
-            // Since Inspect has a default implementation, we only need to register
-            // the trait implementation - no need to create function entries
+            // Register the trait implementation AND create function entries for default implementations
             self.register_trait_implementation(struct_type.clone(), inspect_trait_type.clone());
+            self.create_default_implementation_functions(&struct_type, &inspect_trait_type)?;
         }
 
         // Auto-implement Inspect trait for built-in generic types
@@ -1178,10 +1178,106 @@ impl CompilerEnvironment {
             let builtin_type_id = self.intern_type_name(builtin_type_name);
             let builtin_type = StructuredType::Simple(builtin_type_id.clone());
 
-            // Register the trait implementation
-            // Since Inspect has a default implementation, we only need to register
-            // the trait implementation - no need to create function entries
+            // Register the trait implementation AND create function entries for default implementations
             self.register_trait_implementation(builtin_type.clone(), inspect_trait_type.clone());
+            self.create_default_implementation_functions(&builtin_type, inspect_trait_type)?;
+        }
+
+        Ok(())
+    }
+
+    /// Create function entries for default implementations from a trait
+    /// This is needed so that auto-generated trait implementations can use default implementations
+    fn create_default_implementation_functions(
+        &self,
+        impl_type: &StructuredType,
+        trait_type: &StructuredType,
+    ) -> Result<(), Vec<TypeError>> {
+        // Get the trait name to look up its definition
+        let trait_name = match trait_type {
+            StructuredType::Simple(type_id) => {
+                self.resolve_type_name(type_id).unwrap_or_default()
+            }
+            _ => return Ok(()), // Complex trait types not yet supported
+        };
+
+        // Find the trait definition
+        if let Some(trait_def) = self.find_trait_definition(&trait_name) {
+            // Create function entries for each default implementation in the trait
+            for trait_function in &trait_def.functions {
+                if let outrun_parser::TraitFunction::Definition(func_def) = trait_function {
+                    // This is a default implementation - create a function entry for it
+                    self.create_default_function_entry(impl_type, trait_type, func_def)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create a function entry that references a default implementation
+    fn create_default_function_entry(
+        &self,
+        impl_type: &StructuredType,
+        trait_type: &StructuredType,
+        default_func_def: &outrun_parser::FunctionDefinition,
+    ) -> Result<(), Vec<TypeError>> {
+        // Create the module key for this trait implementation
+        let module_key = ModuleKey::TraitImpl(
+            Box::new(trait_type.clone()),
+            Box::new(impl_type.clone()),
+        );
+
+        // Ensure the module exists
+        self.get_or_create_module(
+            module_key.clone(),
+            ModuleKind::TraitImpl,
+            SourceLocation::Input("auto_implementation".to_string()),
+            impl_type.clone(),
+        );
+
+        // Create an ImplFunction entry that references the default implementation
+        let function_name_atom = self.intern_atom_name(&default_func_def.name.name);
+        
+        // Generate a unique function ID for this auto-implementation
+        let function_id = format!(
+            "auto_impl::{}::for::{}::{}",
+            self.resolve_type_name(&match trait_type {
+                StructuredType::Simple(id) => id.clone(),
+                _ => return Ok(()), // Skip complex trait types for now
+            }).unwrap_or_default(),
+            self.resolve_type_name(&match impl_type {
+                StructuredType::Simple(id) => id.clone(),
+                _ => return Ok(()), // Skip complex impl types for now
+            }).unwrap_or_default(),
+            default_func_def.name.name
+        );
+        
+        let is_guard = default_func_def.name.name.ends_with('?');
+        
+        // Create a UnifiedFunctionEntry for this default implementation
+        let function_entry = UnifiedFunctionEntry::ImplFunction {
+            definition: default_func_def.clone(),
+            typed_definition: None, // Will be filled later by process_registered_impl_functions
+            function_id,
+            is_guard,
+        };
+
+        // Add the function using the same pattern as other modules
+        // We need to use the function signature type as the key
+        let function_signature_type = impl_type.clone(); // Use impl type as function type for now
+        
+        {
+            let mut modules = self.modules.write().unwrap();
+            if let Some(module) = modules.get_mut(&module_key) {
+                module.add_function(function_signature_type, function_entry);
+                
+                // Also add to the by-name registry for lookup
+                module.all_functions_by_name
+                    .entry(function_name_atom)
+                    .or_insert_with(Vec::new)
+                    .push(module.functions.get(&impl_type.clone()).unwrap().clone());
+            }
         }
 
         Ok(())
