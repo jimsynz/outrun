@@ -115,14 +115,45 @@ fn find_source_for_error(
         TypeError::UndefinedFunction { span, .. } => Some(span),
         TypeError::ArgumentTypeMismatch { span, .. } => Some(span),
         TypeError::UnknownParameter { span, .. } => Some(span),
+        TypeError::TraitNotImplemented { span, .. } => Some(span),
+        TypeError::ParameterMismatch { span, .. } => Some(span),
+        TypeError::InternalError { span, .. } => Some(span), // Internal errors have spans
         _ => None,
     }?;
 
-    let _span_offset = span.offset();
+    let span_offset = span.offset();
 
-    // The compilation process may create cumulative spans, so we need to find
-    // which file contains this offset. For now, let's try to map to the first file
-    // that has content, as a simple heuristic.
+    // IMPROVED: Map span offset to the correct source file by checking
+    // which file's content range contains the span offset
+    let mut cumulative_offset = 0;
+    
+    // Process files in a deterministic order (sorted by filename)
+    let mut sorted_sources: Vec<_> = collection.sources.iter().collect();
+    sorted_sources.sort_by_key(|(filename, _)| filename.as_str());
+    
+    for (filename, source_content) in sorted_sources {
+        let file_end_offset = cumulative_offset + source_content.len();
+        
+        // Check if the span falls within this file's range
+        if span_offset >= cumulative_offset && span_offset < file_end_offset {
+            // Create a new span adjusted for this file's content
+            let file_relative_offset = span_offset - cumulative_offset;
+            
+            // Ensure the adjusted span doesn't exceed the file content
+            if file_relative_offset < source_content.len() {
+                return Some(SourceInfo {
+                    filename: filename.clone(),
+                    content: source_content.clone(),
+                });
+            }
+        }
+        
+        cumulative_offset = file_end_offset;
+    }
+
+    // Fallback: if we can't map the span properly, use the first non-empty file
+    // but log a warning so we know about the issue
+    eprintln!("⚠️  Warning: Could not map span offset {} to any source file. Using fallback.", span_offset);
     for (filename, source_content) in &collection.sources {
         if !source_content.trim().is_empty() {
             return Some(SourceInfo {

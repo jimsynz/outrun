@@ -284,7 +284,7 @@ fn typecheck_core_library() -> Result<()> {
             println!("{}", "-".repeat(40));
 
             for error in &errors {
-                eprintln!("{error:?}");
+                eprintln!("{error}");
                 eprintln!();
             }
 
