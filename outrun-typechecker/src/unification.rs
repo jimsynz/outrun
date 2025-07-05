@@ -935,9 +935,12 @@ impl UnificationContext {
     // SMT Constraint Methods (Phase 4)
     // =============================================================================
 
-    /// Add an SMT constraint to the context
+    /// Add an SMT constraint to the context with deduplication for performance
     pub fn add_smt_constraint(&mut self, constraint: SMTConstraint) {
-        self.smt_constraints.push(constraint);
+        // Avoid adding duplicate constraints for better SMT solver performance
+        if !self.smt_constraints.contains(&constraint) {
+            self.smt_constraints.push(constraint);
+        }
     }
 
     /// Get the latest SMT model for Self type resolution

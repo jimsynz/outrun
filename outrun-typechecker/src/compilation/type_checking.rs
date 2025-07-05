@@ -397,7 +397,7 @@ impl TypeCheckingVisitor {
         structs: HashMap<TypeNameId, StructDefinition>,
         traits: HashMap<TypeNameId, TraitDefinition>,
     ) -> Self {
-        let mut compiler_environment = CompilerEnvironment::new();
+        let compiler_environment = CompilerEnvironment::new();
         compiler_environment.set_unification_context(context);
 
         // Load structs and traits into the environment
@@ -434,7 +434,7 @@ impl TypeCheckingVisitor {
     /// This method is deprecated - use from_compiler_environment instead
     #[deprecated(note = "Use from_compiler_environment instead")]
     pub fn from_context(type_checking_context: crate::context::TypeCheckingContext) -> Self {
-        let mut compiler_environment = CompilerEnvironment::new();
+        let compiler_environment = CompilerEnvironment::new();
         compiler_environment.set_unification_context(type_checking_context.unification_context);
 
         // Load structs and traits from the context
@@ -4596,10 +4596,12 @@ impl TypeCheckingVisitor {
         ).unwrap_or(0);
         
         // Create a deterministic clause ID using clause counting (same format as compiler_environment.rs)
+        // Cache the string representation for performance
+        let impl_type_str = impl_type.to_string_representation();
         let clause_id = format!(
             "{}:{}:{}:{}",
             trait_name,
-            impl_type.to_string_representation(),
+            impl_type_str,
             function_name,
             clause_index
         );

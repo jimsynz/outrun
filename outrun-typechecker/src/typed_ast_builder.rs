@@ -929,10 +929,7 @@ impl TypedASTBuilder {
     ) -> DispatchMethod {
         // First, try to retrieve the dispatch strategy computed and stored by the type checker
         if let Some(stored_strategy) = self.context.get_dispatch_strategy(&call_span) {
-            println!("✅ DEBUG: Found stored dispatch strategy for span {:?}: {:?}", call_span, stored_strategy);
             return stored_strategy.clone();
-        } else {
-            println!("❌ DEBUG: No stored dispatch strategy found for span {:?}", call_span);
         }
 
         // Check if this is a desugared expression - try to get the original span

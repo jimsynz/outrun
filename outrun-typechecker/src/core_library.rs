@@ -14,16 +14,7 @@ lazy_static! {
     /// Core library compilation results cached at runtime
     /// Note: This provides in-process caching but each test run still recompiles once
     pub static ref CORE_LIBRARY_COMPILATION: CompilationResult = {
-        eprintln!("⏳ Compiling core library (this is cached per process)...");
-        let start_time = std::time::Instant::now();
-        let result = load_and_compile_core_library();
-        let duration = start_time.elapsed();
-        
-        // Get SMT cache statistics to help diagnose performance
-        let cache_stats = crate::smt::solver_pool::get_cache_stats();
-        eprintln!("✅ Core library compiled in {:.2}s", duration.as_secs_f64());
-        eprintln!("📊 SMT Cache: {}", cache_stats);
-        result
+        load_and_compile_core_library()
     };
 }
 
@@ -331,7 +322,6 @@ mod tests {
     #[test]
     fn test_core_library_loads() {
         let stats = core_library_stats();
-        println!("{stats}");
 
         // Verify core library loaded successfully
         assert!(stats.parsed_files > 0, "No core library files were parsed");

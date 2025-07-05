@@ -2,7 +2,6 @@
 use outrun_typechecker::core_library;
 
 fn main() {
-    println!("Starting core library compilation profiling...");
     let start = std::time::Instant::now();
     
     // This will trigger the lazy_static compilation

@@ -55,11 +55,7 @@ impl SharedCompilationContext {
             vec![user_compilation.clone()],
         ) {
             Ok(merged) => merged,
-            Err(conflicts) => {
-                // Log conflicts but proceed with user compilation only
-                eprintln!("Warning: Compilation conflicts detected: {conflicts:?}");
-                user_compilation
-            }
+            Err(_conflicts) => user_compilation,
         }
     }
 

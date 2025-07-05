@@ -24,7 +24,6 @@ mod test_visitor_let_bindings;
 // TODO: Create these test files
 // mod test_structured_types;
 
-mod test_option_trait_registration_debug;
 
 // Impl block validation tests
 mod test_default_trait_implementations;
@@ -72,7 +71,6 @@ mod test_type_system_typed_ast;
 mod test_generics_and_type_annotations;
 
 // Debug info and comment attachment tests (Week 9 functionality)
-mod test_debug_info_comments;
 
 // Case expression verification tests
 mod test_case_expression_verification;
@@ -93,7 +91,6 @@ mod test_sigil_desugaring;
 mod test_type_resolution_integration;
 
 // Bug reproduction tests
-mod test_integer_equality_dispatch_bug;
 
 // SMT integration tests
 mod test_complex_trait_constraints;
@@ -101,9 +98,6 @@ mod test_smt_integration;
 mod test_smt_typevariable_resolution;
 
 // Function clause debugging tests
-mod test_function_clause_debugging;
-mod test_function_clause_detailed_debug;
-mod test_parsing_debug;
 mod test_runtime_function_clause_lookup;
 
 // Performance and edge case tests

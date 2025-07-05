@@ -407,15 +407,6 @@ impl Module {
     /// Handles multiple functions with the same name (function clauses) automatically
     pub fn add_function_by_name(&mut self, function_name: AtomId, entry: UnifiedFunctionEntry) {
         // Only debug the specific function we're interested in to avoid spam
-        if function_name.hash == 8473386916263487618 {
-            eprintln!("DEBUG: Adding DIVIDE function with AtomId hash={} to module: {:?}", function_name.hash, self.module_kind);
-            eprintln!("DEBUG: Module structured_type: {:?}", self.structured_type);
-            eprintln!("DEBUG: Current functions_by_name registry has {} entries", self.functions_by_name.len());
-            
-            for (existing_atom_id, _) in &self.functions_by_name {
-                eprintln!("DEBUG: Registry contains AtomId hash={}", existing_atom_id.hash);
-            }
-        }
         
         // Always add to the all_functions_by_name list
         self.all_functions_by_name
@@ -425,15 +416,9 @@ impl Module {
         
         // Check if a function with this name already exists in the primary registry
         if let Some(existing_entry) = self.functions_by_name.get(&function_name) {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Found existing DIVIDE function with same AtomId - creating clause set!");
-            }
             // Multiple functions with same name - create or update function clause set
             self.create_or_update_function_clause_set(function_name.clone(), existing_entry.clone(), entry);
         } else {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: No existing DIVIDE function found with this AtomId - storing as first function");
-            }
             // First function with this name - store in primary registry
             self.functions_by_name.insert(function_name, entry);
         }
@@ -457,19 +442,12 @@ impl Module {
         existing_entry: UnifiedFunctionEntry,
         new_entry: UnifiedFunctionEntry,
     ) {
-        if function_name.hash == 8473386916263487618 {
-            eprintln!("DEBUG: Creating/updating clause set for DIVIDE function!");
-        }
-        
         // Get function name as string for the clause set
         // Note: This is a placeholder - the atom name should be passed from CompilerEnvironment
         let function_name_str = format!("function_{}", function_name.hash);
 
         // Check if we already have a clause set for this function
         if let Some(existing_clause_set) = self.function_clauses.get_mut(&function_name) {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Adding to existing clause set (currently has {} clauses)", existing_clause_set.clauses.len());
-            }
             // Add the new function to the existing clause set
             if let Some(typed_def) = new_entry.typed_definition() {
                 let clause = crate::checker::FunctionClause {
@@ -481,15 +459,8 @@ impl Module {
                     span: typed_def.span,
                 };
                 existing_clause_set.clauses.push(clause);
-                
-                if function_name.hash == 8473386916263487618 {
-                    eprintln!("DEBUG: Clause set now has {} clauses", existing_clause_set.clauses.len());
-                }
             }
         } else {
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Creating new empty clause set (to be populated later)");
-            }
             // Create a new function clause set with both functions
             let clauses = Vec::new();
 
@@ -506,10 +477,6 @@ impl Module {
 
             // Store the clause set
             self.function_clauses.insert(function_name.clone(), clause_set);
-            
-            if function_name.hash == 8473386916263487618 {
-                eprintln!("DEBUG: Created empty clause set '{}' (will be populated later)", function_name_str);
-            }
         }
 
         // Update the main function registry to point to the most specific (guard-based) function
@@ -632,6 +599,8 @@ pub struct CompilerEnvironment {
     structs: Arc<RwLock<HashMap<TypeNameId, StructDefinition>>>,
     /// Trait definitions indexed by TypeNameId for trait resolution
     traits: Arc<RwLock<HashMap<TypeNameId, TraitDefinition>>>,
+    /// Cache for clause index lookups to improve performance during constraint generation
+    clause_index_cache: Arc<RwLock<HashMap<usize, usize>>>,
 }
 
 /// Internal compilation state for the CompilerEnvironment
@@ -671,6 +640,7 @@ impl CompilerEnvironment {
             compilation_state: Arc::new(RwLock::new(CompilationState::default())),
             structs: Arc::new(RwLock::new(HashMap::new())),
             traits: Arc::new(RwLock::new(HashMap::new())),
+            clause_index_cache: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Initialize with default compilation state
@@ -706,8 +676,6 @@ impl CompilerEnvironment {
         collection: ProgramCollection,
         external_variables: HashMap<String, StructuredType>,
     ) -> Result<CompilationResult, Vec<TypeError>> {
-        eprintln!("🔄 Starting compilation pipeline...");
-        
         // Store external variables in CompilerEnvironment
         self.set_external_variables(external_variables.clone());
 
@@ -904,13 +872,6 @@ impl CompilerEnvironment {
         }
 
         // Display SMT cache performance statistics only in debug mode
-        #[cfg(debug_assertions)]
-        {
-            let cache_stats = crate::smt::solver_pool::get_cache_stats();
-            if cache_stats.total_queries > 0 {
-                eprintln!("🚀 SMT Cache Performance: {cache_stats}");
-            }
-        }
 
         Ok(result)
     }
@@ -988,6 +949,7 @@ impl CompilerEnvironment {
 
     /// Get the clause index for a function within its trait/impl module
     /// This is used by the type checker to generate consistent clause IDs
+    /// Results are cached to improve performance during repeated constraint generation
     pub fn get_clause_index_for_function(
         &self,
         trait_type: &StructuredType,
@@ -995,6 +957,18 @@ impl CompilerEnvironment {
         function_name: &str,
         func_def: &FunctionDefinition,
     ) -> Option<usize> {
+        // Create a cache key based on function span for uniqueness
+        let cache_key = func_def.span.start;
+        
+        // Check the clause index cache first
+        {
+            let cache = self.clause_index_cache.read().unwrap();
+            if let Some(&index) = cache.get(&cache_key) {
+                return Some(index);
+            }
+        }
+        
+        // Cache miss - compute the clause index
         let modules = self.modules.read().unwrap();
         
         // Determine the module key based on whether this is a trait static or trait impl function
@@ -1010,10 +984,12 @@ impl CompilerEnvironment {
             ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()))
         };
         
-        if let Some(module) = modules.get(&module_key) {
-            let function_name_atom = self.intern_atom_name(function_name);
-            
-            if let Some(function_entries) = module.all_functions_by_name.get(&function_name_atom) {
+        let result = modules.get(&module_key)
+            .and_then(|module| {
+                let function_name_atom = self.intern_atom_name(function_name);
+                module.all_functions_by_name.get(&function_name_atom)
+            })
+            .and_then(|function_entries| {
                 // Find the index of this specific function definition among all clauses with the same name
                 for (index, entry) in function_entries.iter().enumerate() {
                     let entry_def = match entry {
@@ -1030,10 +1006,16 @@ impl CompilerEnvironment {
                         return Some(index);
                     }
                 }
-            }
+                None
+            });
+        
+        // Cache the result for future lookups
+        if let Some(index) = result {
+            let mut cache = self.clause_index_cache.write().unwrap();
+            cache.insert(cache_key, index);
         }
         
-        None
+        result
     }
 
     /// Get access to the dependency graph
@@ -1986,9 +1968,7 @@ impl CompilerEnvironment {
                             all_errors.extend(errors);
                             all_warnings.extend(warnings);
                         }
-                        Err(smt_error) => {
-                            eprintln!("SMT exhaustiveness analysis failed for {}: {:?}", 
-                                clause_set.function_name, smt_error);
+                        Err(_smt_error) => {
                             // Don't fail compilation for SMT analysis errors
                         }
                     }
@@ -2938,7 +2918,7 @@ impl CompilerEnvironment {
                 ModuleKey::TraitImpl(_trait_type, _impl_type) => {
                     // Process trait implementation functions
                     // First, group functions by name and count clauses for each function
-                    let mut function_clause_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                    let function_clause_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
                     
                     // Process ALL functions, not just those in functions_by_name
                     for (function_name, function_entries) in &module.all_functions_by_name {
@@ -5939,18 +5919,9 @@ impl CompilerEnvironment {
                 // Check for Self variables
                 if type_name.starts_with("Self") {
                     let self_var_name = format!("Self_{}", type_name_id.hash);
-                    eprintln!("DEBUG: SMT resolution - looking for Self '{}' (type_name: '{}')", self_var_name, type_name);
                     
                     if let Some(resolved_type) = model.get_type_assignment(&self_var_name) {
-                        eprintln!("DEBUG: SMT resolved '{}' to: {:?}", self_var_name, resolved_type);
                         return self.apply_smt_model_to_type(resolved_type, model);
-                    } else {
-                        eprintln!("DEBUG: No SMT assignment for '{}' - checking all Self assignments:", self_var_name);
-                        for (var_name, assignment) in &model.type_assignments {
-                            if var_name.starts_with("Self_") {
-                                eprintln!("  {} -> {:?}", var_name, assignment);
-                            }
-                        }
                     }
                 }
 
