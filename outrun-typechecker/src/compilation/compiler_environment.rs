@@ -955,17 +955,85 @@ impl CompilerEnvironment {
     }
 
     /// Generate a consistent SMT-format clause ID for function clauses
-    /// Format: "TraitName:ImplType:FunctionName:Span"
+    /// Format: "TraitName:ImplType:FunctionName" (deterministic, no spans)
     fn generate_smt_clause_id(
         &self,
         trait_name: Option<&str>,
         impl_type: &StructuredType,
         function_name: &str,
-        span: outrun_parser::Span,
+        _span: outrun_parser::Span, // Span no longer used for deterministic IDs
     ) -> String {
         let trait_part = trait_name.unwrap_or("Function");
         let impl_part = impl_type.to_string_representation();
-        format!("{}:{}:{}:{}", trait_part, impl_part, function_name, span.start)
+        format!("{}:{}:{}", trait_part, impl_part, function_name)
+    }
+    
+    /// Generate a clause ID for a specific function definition using clause counting
+    fn generate_clause_id_for_function(
+        &self,
+        trait_name: Option<&str>,
+        impl_type: &StructuredType,
+        func_def: &FunctionDefinition,
+        clause_index: usize,
+    ) -> String {
+        let trait_part = trait_name.unwrap_or("Function");
+        let impl_part = impl_type.to_string_representation();
+        let function_name = &func_def.name.name;
+        
+        // Use clause counting for deterministic, source-order-independent IDs
+        // This uniquely identifies each function clause (including multiple clauses with guards)
+        // Format: "TraitName:ImplType:FunctionName:ClauseIndex"
+        format!("{}:{}:{}:{}", trait_part, impl_part, function_name, clause_index)
+    }
+
+    /// Get the clause index for a function within its trait/impl module
+    /// This is used by the type checker to generate consistent clause IDs
+    pub fn get_clause_index_for_function(
+        &self,
+        trait_type: &StructuredType,
+        impl_type: &StructuredType,
+        function_name: &str,
+        func_def: &FunctionDefinition,
+    ) -> Option<usize> {
+        let modules = self.modules.read().unwrap();
+        
+        // Determine the module key based on whether this is a trait static or trait impl function
+        let module_key = if trait_type == impl_type {
+            // Trait static function - stored in trait definition module
+            match trait_type {
+                StructuredType::Simple(type_id) => ModuleKey::Module(type_id.hash),
+                StructuredType::Generic { base, .. } => ModuleKey::Module(base.hash),
+                _ => return None,
+            }
+        } else {
+            // Trait implementation function - stored in trait impl module  
+            ModuleKey::TraitImpl(Box::new(trait_type.clone()), Box::new(impl_type.clone()))
+        };
+        
+        if let Some(module) = modules.get(&module_key) {
+            let function_name_atom = self.intern_atom_name(function_name);
+            
+            if let Some(function_entries) = module.all_functions_by_name.get(&function_name_atom) {
+                // Find the index of this specific function definition among all clauses with the same name
+                for (index, entry) in function_entries.iter().enumerate() {
+                    let entry_def = match entry {
+                        UnifiedFunctionEntry::TraitStatic { definition, .. } => definition,
+                        UnifiedFunctionEntry::TraitDefault { definition, .. } => definition,
+                        UnifiedFunctionEntry::ImplFunction { definition, .. } => definition,
+                        UnifiedFunctionEntry::TraitSignature { definition, .. } => definition,
+                        UnifiedFunctionEntry::TypeStatic { definition, .. } => definition,
+                        UnifiedFunctionEntry::Intrinsic { .. } => continue, // Skip intrinsics, they don't have clause IDs
+                    };
+                    
+                    // Match by span position for uniqueness
+                    if entry_def.span == func_def.span {
+                        return Some(index);
+                    }
+                }
+            }
+        }
+        
+        None
     }
 
     /// Get access to the dependency graph
@@ -2092,9 +2160,10 @@ impl CompilerEnvironment {
     ) -> Option<crate::checker::DispatchMethod> {
         // Check if we have any PreResolvedClause constraints that match this call site
         let constraints = &context.smt_constraints;
+        // Debug output removed - constraint matching is working correctly
         
         // Search for PreResolvedClause constraints efficiently
-        for constraint in constraints.iter() {
+        for (i, constraint) in constraints.iter().enumerate() {
             if let crate::smt::constraints::SMTConstraint::PreResolvedClause { 
                 call_site,
                 trait_type: constraint_trait,
@@ -2104,16 +2173,19 @@ impl CompilerEnvironment {
                 guard_pre_evaluated,
                 ..
             } = constraint {
-                // Check if this constraint matches our call site
-                if call_site.start == call_span.start 
-                    && call_site.end == call_span.end
-                    && *constraint_function == function_name
+                // Check if this constraint matches our function call (ignore span - focus on signature)
+                
+                if *constraint_function == function_name
                     && constraint_impl == impl_type {
                     
                     // Extract trait name from constraint_trait
                     let constraint_trait_name = match constraint_trait {
                         StructuredType::Simple(type_id) => {
                             self.resolve_type(type_id.clone()).unwrap_or_default()
+                        }
+                        StructuredType::Generic { base, .. } => {
+                            // For generic traits like Option<T>, extract the base name (Option)
+                            self.resolve_type(base.clone()).unwrap_or_default()
                         }
                         _ => continue,
                     };
@@ -2132,6 +2204,7 @@ impl CompilerEnvironment {
                 }
             }
         }
+        // No matching constraint found
         None
     }
 
@@ -2864,63 +2937,71 @@ impl CompilerEnvironment {
             match module_key {
                 ModuleKey::TraitImpl(_trait_type, _impl_type) => {
                     // Process trait implementation functions
+                    // First, group functions by name and count clauses for each function
+                    let mut function_clause_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                    
                     // Process ALL functions, not just those in functions_by_name
-                    for function_entries in module.all_functions_by_name.values() {
-                    for function_entry in function_entries {
-                        // Only process ImplFunction entries that don't have typed definitions yet
-                        if let UnifiedFunctionEntry::ImplFunction {
-                            definition,
-                            typed_definition,
-                            ..
-                        } = function_entry
-                        {
-                        if typed_definition.is_none() {
-                            // IMPORTANT: Set the correct module context in TypedASTBuilder
-                            // This ensures that function updates happen in the right trait implementation module
-                            let previous_module_key = typed_ast_builder.get_current_module_key();
-                            typed_ast_builder.set_current_module_key(Some(module_key.clone()));
+                    for (function_name, function_entries) in &module.all_functions_by_name {
+                        let function_name_str = self.resolve_atom_name(function_name).unwrap_or_default();
+                        let mut clause_index = 0;
+                        
+                        for function_entry in function_entries {
+                            // Only process ImplFunction entries that don't have typed definitions yet
+                            if let UnifiedFunctionEntry::ImplFunction {
+                                definition,
+                                typed_definition,
+                                ..
+                            } = function_entry
+                            {
+                            if typed_definition.is_none() {
+                                // IMPORTANT: Set the correct module context in TypedASTBuilder
+                                // This ensures that function updates happen in the right trait implementation module
+                                let previous_module_key = typed_ast_builder.get_current_module_key();
+                                typed_ast_builder.set_current_module_key(Some(module_key.clone()));
 
-                            // Create typed definition for this impl function
-                            match typed_ast_builder.convert_function_definition(definition) {
-                                Some(_typed_def) => {
-                                    // CRITICAL: Register ALL trait impl functions as function clauses
-                                    // This is needed for the SMT-first architecture where the interpreter
-                                    // relies on having clause sets for static dispatch instead of runtime SMT solving
-                                    let function_name = self.intern_atom_name(&definition.name.name);
-                                    
-                                    // Use source order for clause priority - earlier functions have higher priority (lower number)
-                                    // This matches developer expectations from functional programming languages like Elixir
-                                    let source_order = definition.span.start as u32;
-                                    
-                                    // PERFORMANCE OPTIMIZATION: Check if this will be a simple single-clause function
-                                    // Single clause + no guard = can use direct dispatch without SMT solving
-                                    let has_guard = definition.guard.is_some();
-                                    let is_simple_function = !has_guard && 
-                                        !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
-                                    
-                                    // Create a function clause for this impl function
-                                    let clause_id = if let ModuleKey::TraitImpl(trait_type, impl_type) = module_key {
-                                        // Extract trait name from trait type
-                                        let trait_name = match trait_type.as_ref() {
-                                            StructuredType::Simple(type_id) => {
-                                                self.resolve_type(type_id.clone()).unwrap_or_default()
-                                            }
-                                            StructuredType::Generic { base, .. } => {
-                                                self.resolve_type(base.clone()).unwrap_or_default()
-                                            }
-                                            _ => "UnknownTrait".to_string(),
+                                // Create typed definition for this impl function
+                                match typed_ast_builder.convert_function_definition(definition) {
+                                    Some(_typed_def) => {
+                                        // CRITICAL: Register ALL trait impl functions as function clauses
+                                        // This is needed for the SMT-first architecture where the interpreter
+                                        // relies on having clause sets for static dispatch instead of runtime SMT solving
+                                        let function_name_atom = self.intern_atom_name(&definition.name.name);
+                                        
+                                        // Use source order for clause priority - earlier functions have higher priority (lower number)
+                                        // This matches developer expectations from functional programming languages like Elixir
+                                        let source_order = definition.span.start as u32;
+                                        
+                                        // PERFORMANCE OPTIMIZATION: Check if this will be a simple single-clause function
+                                        // Single clause + no guard = can use direct dispatch without SMT solving
+                                        let has_guard = definition.guard.is_some();
+                                        let is_simple_function = !has_guard && function_entries.len() == 1;
+                                        
+                                        // Create a function clause for this impl function using clause counting
+                                        let clause_id = if let ModuleKey::TraitImpl(trait_type, impl_type) = module_key {
+                                            // Extract trait name from trait type
+                                            let trait_name = match trait_type.as_ref() {
+                                                StructuredType::Simple(type_id) => {
+                                                    self.resolve_type(type_id.clone()).unwrap_or_default()
+                                                }
+                                                StructuredType::Generic { base, .. } => {
+                                                    self.resolve_type(base.clone()).unwrap_or_default()
+                                                }
+                                                _ => "UnknownTrait".to_string(),
+                                            };
+                                            // Use clause counting for deterministic, unique IDs
+                                            self.generate_clause_id_for_function(
+                                                Some(&trait_name),
+                                                impl_type.as_ref(),
+                                                definition,
+                                                clause_index,
+                                            )
+                                        } else {
+                                            // Fallback for non-trait-impl modules
+                                            format!("function_{}_{}", definition.name.name, clause_index)
                                         };
-                                        // Use SMT format: "TraitName:ImplType:FunctionName:Span"
-                                        self.generate_smt_clause_id(
-                                            Some(&trait_name),
-                                            impl_type.as_ref(),
-                                            &definition.name.name,
-                                            definition.span,
-                                        )
-                                    } else {
-                                        // Fallback for non-trait-impl modules
-                                        format!("function_{}_{}", definition.name.name, definition.span.start)
-                                    };
+                                        
+                                        // Increment clause index for this function name
+                                        clause_index += 1;
 
                                     let mut clause = crate::checker::FunctionClause {
                                         clause_id,
@@ -2952,7 +3033,7 @@ impl CompilerEnvironment {
                                     {
                                         let mut modules = self.modules.write().unwrap();
                                         if let Some(module) = modules.get_mut(module_key) {
-                                            module.add_function_clause(function_name, clause);
+                                            module.add_function_clause(function_name_atom.clone(), clause);
                                         }
                                     }
                                 }
@@ -2979,8 +3060,10 @@ impl CompilerEnvironment {
                     // Process trait definition modules (for static functions like Option.some)
                     // Check if this is actually a trait module by looking for trait definition
                     if module.get_trait_definition().is_some() {
-                        // Process ALL functions in trait definition modules
-                        for function_entries in module.all_functions_by_name.values() {
+                        // Process ALL functions in trait definition modules, grouping by name for clause counting
+                        for (function_name, function_entries) in &module.all_functions_by_name {
+                            let mut clause_index = 0;
+                            
                             for function_entry in function_entries {
                                 // Process trait static functions and default implementations
                                 match function_entry {
@@ -2996,14 +3079,13 @@ impl CompilerEnvironment {
                                                 Some(_typed_def) => {
                                                     // CRITICAL FIX: Register trait static functions as function clauses
                                                     // This enables static dispatch for Option.some() and similar functions
-                                                    let function_name = self.intern_atom_name(&definition.name.name);
+                                                    let function_name_atom = self.intern_atom_name(&definition.name.name);
                                                     
                                                     let source_order = definition.span.start as u32;
                                                     let has_guard = definition.guard.is_some();
-                                                    let is_simple_function = !has_guard && 
-                                                        !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
+                                                    let is_simple_function = !has_guard && function_entries.len() == 1;
                                                     
-                                                    // Create a function clause for this trait function
+                                                    // Create a function clause for this trait function using clause counting
                                                     let clause_id = match module_key {
                                                         ModuleKey::Module(type_hash) => {
                                                             // For trait modules, use trait name from type hash
@@ -3011,8 +3093,8 @@ impl CompilerEnvironment {
                                                                 .get(type_hash)
                                                                 .cloned()
                                                                 .unwrap_or_else(|| format!("Trait_{}", type_hash));
-                                                            // Use SMT format for consistency
-                                                            format!("{}:{}:{}:{}", trait_name, trait_name, definition.name.name, definition.span.start)
+                                                            // Use clause counting for consistency with trait impl modules
+                                                            format!("{}:{}:{}:{}", trait_name, trait_name, definition.name.name, clause_index)
                                                         }
                                                         ModuleKey::TraitImpl(trait_type, impl_type) => {
                                                             // Extract trait name from trait type
@@ -3025,15 +3107,18 @@ impl CompilerEnvironment {
                                                                 }
                                                                 _ => "UnknownTrait".to_string(),
                                                             };
-                                                            // Use SMT format: "TraitName:ImplType:FunctionName:Span"
-                                                            self.generate_smt_clause_id(
+                                                            // Use clause counting for deterministic, unique IDs
+                                                            self.generate_clause_id_for_function(
                                                                 Some(&trait_name),
                                                                 impl_type.as_ref(),
-                                                                &definition.name.name,
-                                                                definition.span,
+                                                                definition,
+                                                                clause_index,
                                                             )
                                                         }
                                                     };
+                                                    
+                                                    // Increment clause index for this function name
+                                                    clause_index += 1;
 
                                                     let mut clause = crate::checker::FunctionClause {
                                                         clause_id,
@@ -3063,7 +3148,7 @@ impl CompilerEnvironment {
                                                     {
                                                         let mut modules = self.modules.write().unwrap();
                                                         if let Some(module) = modules.get_mut(module_key) {
-                                                            module.add_function_clause(function_name, clause);
+                                                            module.add_function_clause(function_name_atom.clone(), clause);
                                                         }
                                                     }
                                                 }
@@ -6203,8 +6288,14 @@ impl CompilerEnvironment {
         func_def: &FunctionDefinition,
         source_file: &str,
     ) -> Result<(), TypeError> {
-        // Create a unique clause ID
-        let clause_id = format!("{}::{}::{}", source_file, func_def.name.name, func_def.span.start);
+        // Create a deterministic clause ID using SMT format for consistency
+        // For standalone functions, use source file as "trait" name and clause index 0
+        let clause_id = self.generate_clause_id_for_function(
+            Some(source_file),
+            &StructuredType::Simple(self.intern_type_name("StandaloneFunction")),
+            func_def,
+            0, // Standalone functions always have clause index 0
+        );
         
         // Convert FunctionDefinition to TypedFunctionDefinition (simplified)
         let typed_function = self.convert_function_to_typed(func_def)?;

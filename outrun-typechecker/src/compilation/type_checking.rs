@@ -4586,14 +4586,22 @@ impl TypeCheckingVisitor {
         impl_type: &crate::unification::StructuredType,
         impl_func_def: &outrun_parser::FunctionDefinition,
     ) -> Result<crate::unification::UnificationContext, TypeError> {
-        // Create a unique clause ID for this implementation function
-        // Use a combination of trait, impl type, and function name for uniqueness
+        // Query the compiler environment to get the clause index for this function
+        // This ensures consistency with clause IDs generated during compilation
+        let clause_index = self.compiler_environment.get_clause_index_for_function(
+            trait_type,
+            impl_type,
+            function_name,
+            impl_func_def,
+        ).unwrap_or(0);
+        
+        // Create a deterministic clause ID using clause counting (same format as compiler_environment.rs)
         let clause_id = format!(
             "{}:{}:{}:{}",
             trait_name,
             impl_type.to_string_representation(),
             function_name,
-            impl_func_def.span.start
+            clause_index
         );
 
         // Check if this function has any guards

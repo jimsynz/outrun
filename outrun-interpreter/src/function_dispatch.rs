@@ -467,6 +467,19 @@ impl FunctionDispatcher {
                     }
                 }
             }
+            
+            // If not found, show debug info for Option specifically
+            if trait_name == "Option" {
+                println!("🔍 DEBUG: Option trait impl module found, but clause '{}' not found", clause_id);
+                println!("🔍 DEBUG: Available Option clauses:");
+                for (_function_atom, clause_set) in &trait_impl_module.function_clauses {
+                    for clause in clause_set.get_clauses_by_priority().iter() {
+                        if clause.base_function.name.contains("some") {
+                            println!("  - Available Option clause: '{}'", clause.clause_id);
+                        }
+                    }
+                }
+            }
         }
         
         Err(DispatchError::Internal {
