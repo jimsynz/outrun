@@ -425,37 +425,19 @@ impl FunctionDispatcher {
         }
         
         // Step 3: Execute the function clause directly (no runtime evaluation needed!)
-        println!("🚀 DEBUG: About to execute function clause: {}", function_clause.name);
-        println!("🚀 DEBUG: Function body has {} statements", function_clause.body.statements.len());
-        println!("🚀 DEBUG: Arguments: {:?}", call_context.arguments.keys().collect::<Vec<_>>());
-        println!("🚀 DEBUG: Function ID: {}", function_clause.function_id);
-        
-        // Print the first statement for debugging
-        if !function_clause.body.statements.is_empty() {
-            println!("🚀 DEBUG: First statement: {:?}", function_clause.body.statements[0]);
-        }
-        
         let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
-        println!("🚀 DEBUG: Created function executor, about to call execute_typed_function");
-        
-        let result = function_executor
+        function_executor
             .execute_typed_function(
                 interpreter_context,
                 evaluator,
                 &function_clause,
                 call_context.arguments.clone(),
                 call_context.span,
-            );
-            
-        match &result {
-            Ok(value) => println!("✅ DEBUG: Function execution succeeded, result: {:?}", value),
-            Err(e) => println!("❌ DEBUG: Function execution failed: {e:?}"),
-        }
-        
-        result.map_err(|e| DispatchError::FunctionExecution {
-            message: format!("{e:?}"),
-            span: call_context.span,
-        })
+            )
+            .map_err(|e| DispatchError::FunctionExecution {
+                message: format!("{e:?}"),
+                span: call_context.span,
+            })
     }
 
     /// Look up a specific function clause by its unique ID within a trait implementation
@@ -477,25 +459,14 @@ impl FunctionDispatcher {
         );
         
         if let Some(trait_impl_module) = modules.get(&module_key) {
-            // Search through all function clauses in this module
-            println!("🔍 DEBUG: Looking for clause ID '{}' in trait impl module", clause_id);
-            println!("🔍 DEBUG: Module has {} function clause sets", trait_impl_module.function_clauses.len());
-            
             // Search for clause by exact ID matching (now using SMT-format IDs)
-            for (function_atom, clause_set) in &trait_impl_module.function_clauses {
-                let function_name = self.compiler_environment.resolve_atom_name(function_atom).unwrap_or_default();
-                println!("🔍 DEBUG: Function '{}' has {} clauses", function_name, clause_set.get_clauses_by_priority().len());
-                
-                for (i, clause) in clause_set.get_clauses_by_priority().iter().enumerate() {
-                    println!("🔍 DEBUG: Clause {}: ID = '{}'", i, clause.clause_id);
+            for (_function_atom, clause_set) in &trait_impl_module.function_clauses {
+                for clause in clause_set.get_clauses_by_priority().iter() {
                     if clause.clause_id == clause_id {
-                        println!("✅ DEBUG: Found exact clause match!");
                         return Ok(clause.base_function.clone());
                     }
                 }
             }
-        } else {
-            println!("❌ DEBUG: Trait impl module not found for key: {:?}", module_key);
         }
         
         Err(DispatchError::Internal {

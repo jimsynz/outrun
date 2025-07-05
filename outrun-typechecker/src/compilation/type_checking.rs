@@ -1923,25 +1923,23 @@ impl TypeCheckingVisitor {
 
                             // Store trait dispatch strategy
                             let mut context = updated_context;
-                            println!("🔍 DEBUG: Context after generate_pre_resolved_clause_constraint has {} constraints", context.smt_constraints.len());
-                            context.add_dispatch_strategy(
-                                call.span,
-                                // CRITICAL: Check if SMT has pre-resolved a function clause for this call
-                                self.compiler_environment.get_smt_pre_resolved_clause_with_context(
-                                    &context,
-                                    &module_name,
-                                    &function_name,
-                                    &implementing_structured_type,
-                                    call.span
-                                ).unwrap_or_else(|| {
-                                    // Fallback to traditional trait dispatch if no SMT pre-resolution
-                                    crate::checker::DispatchMethod::Trait {
-                                        trait_name: module_name.clone(),
-                                        function_name: function_name.clone(),
-                                        impl_type: Box::new(implementing_structured_type.clone()),
-                                    }
-                                }),
-                            );
+                            // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
+                            let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                                &context,
+                                &module_name,
+                                &function_name,
+                                &implementing_structured_type,
+                                call.span
+                            ).ok_or_else(|| TypeError::internal_with_span(
+                                format!(
+                                    "SMT solver failed to generate PreResolvedClause for trait function call {}.{} on type {}. \
+                                    This indicates a constraint generation bug - all trait function calls must have SMT pre-resolution.",
+                                    module_name, function_name, implementing_structured_type.to_string_representation()
+                                ),
+                                call.span.to_source_span(),
+                            ))?;
+                            
+                            context.add_dispatch_strategy(call.span, dispatch_method);
                             self.compiler_environment.set_unification_context(context);
 
                             // Use the full structured type for Self context (preserving generics)
@@ -2051,23 +2049,23 @@ impl TypeCheckingVisitor {
 
                                     // Store trait dispatch strategy for default implementation
                                     let mut context = updated_context;
-                                    context.add_dispatch_strategy(
-                                        call.span,
-                                        // CRITICAL: Check for SMT pre-resolved clause for default implementation calls
-                                        self.compiler_environment.get_smt_pre_resolved_clause_with_context(
-                                            &context,
-                                            &module_name,
-                                            &function_name,
-                                            &inferred_self_type,
-                                            call.span
-                                        ).unwrap_or_else(|| {
-                                            crate::checker::DispatchMethod::Trait {
-                                                trait_name: module_name.clone(),
-                                                function_name: function_name.clone(),
-                                                impl_type: Box::new(inferred_self_type.clone()),
-                                            }
-                                        }),
-                                    );
+                                    // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
+                                    let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                                        &context,
+                                        &module_name,
+                                        &function_name,
+                                        &inferred_self_type,
+                                        call.span
+                                    ).ok_or_else(|| TypeError::internal_with_span(
+                                        format!(
+                                            "SMT solver failed to generate PreResolvedClause for trait function call {}.{} on inferred type {}. \
+                                            This indicates a constraint generation bug - all trait function calls must have SMT pre-resolution.",
+                                            module_name, function_name, inferred_self_type.to_string_representation()
+                                        ),
+                                        call.span.to_source_span(),
+                                    ))?;
+                                    
+                                    context.add_dispatch_strategy(call.span, dispatch_method);
                                     self.compiler_environment.set_unification_context(context);
 
                                     self.validate_function_call_arguments_with_self(
@@ -2128,24 +2126,46 @@ impl TypeCheckingVisitor {
 
                 // Check if we're in a trait context and this function exists in the current trait
                 if let Some((trait_name, trait_type)) = self.current_trait_context() {
+                    let trait_name = trait_name.clone();
+                    let trait_type = trait_type.clone();
+                    
                     // Try to find this function as a trait function in the current trait
                     if let Some(trait_func_entry) = self
                         .compiler_environment
-                        .lookup_qualified_function(trait_type, function_name_atom.clone())
+                        .lookup_qualified_function(&trait_type, function_name_atom.clone())
                     {
                         // This is a trait function call within a default implementation
                         // Get the Self type from type parameter scope
                         if let Some(self_type) = self.lookup_type_parameter("Self").cloned() {
-                            // Use trait dispatch instead of static dispatch
-                            let mut context = self.compiler_environment.unification_context();
-                            context.add_dispatch_strategy(
-                                call.span,
-                                crate::checker::DispatchMethod::Trait {
-                                    trait_name: trait_name.clone(),
-                                    function_name: function_name.clone(),
-                                    impl_type: Box::new(self_type.clone()),
-                                },
-                            );
+                            // Generate PreResolvedClause constraint for SMT-first dispatch
+                            let updated_context = self.generate_pre_resolved_clause_constraint(
+                                call,
+                                &trait_name,
+                                &function_name,
+                                &trait_type,
+                                &self_type,
+                                trait_func_entry.definition(),
+                            )?;
+
+                            // Store dispatch strategy with SMT pre-resolution
+                            let mut context = updated_context;
+                            // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
+                            let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                                &context,
+                                &trait_name,
+                                &function_name,
+                                &self_type,
+                                call.span
+                            ).ok_or_else(|| TypeError::internal_with_span(
+                                format!(
+                                    "SMT solver failed to generate PreResolvedClause for trait function call {}.{} in trait context. \
+                                    This indicates a constraint generation bug - all trait function calls must have SMT pre-resolution.",
+                                    trait_name, function_name
+                                ),
+                                call.span.to_source_span(),
+                            ))?;
+                            
+                            context.add_dispatch_strategy(call.span, dispatch_method);
                             self.compiler_environment.set_unification_context(context);
 
                             // Validate arguments with Self type context
@@ -2172,16 +2192,35 @@ impl TypeCheckingVisitor {
                         .lookup_qualified_function(&trait_type, function_name_atom.clone())
                     {
                         // This is a trait function call within an expanded default implementation
-                        // Use trait dispatch with the concrete impl type
-                        let mut context = self.compiler_environment.unification_context();
-                        context.add_dispatch_strategy(
-                            call.span,
-                            crate::checker::DispatchMethod::Trait {
-                                trait_name: trait_name.clone(),
-                                function_name: function_name.clone(),
-                                impl_type: Box::new(impl_type.clone()),
-                            },
-                        );
+                        // Generate PreResolvedClause constraint for SMT-first dispatch
+                        let updated_context = self.generate_pre_resolved_clause_constraint(
+                            call,
+                            &trait_name,
+                            &function_name,
+                            &trait_type,
+                            &impl_type,
+                            trait_func_entry.definition(),
+                        )?;
+
+                        // Store dispatch strategy with SMT pre-resolution
+                        let mut context = updated_context;
+                        // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
+                        let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                            &context,
+                            &trait_name,
+                            &function_name,
+                            &impl_type,
+                            call.span
+                        ).ok_or_else(|| TypeError::internal_with_span(
+                            format!(
+                                "SMT solver failed to generate PreResolvedClause for function call {}.{} on type {}. \
+                                This indicates a constraint generation bug - all trait function calls must have SMT pre-resolution.",
+                                trait_name, function_name, impl_type.to_string_representation()
+                            ),
+                            call.span.to_source_span(),
+                        ))?;
+                        
+                        context.add_dispatch_strategy(call.span, dispatch_method);
                         self.compiler_environment.set_unification_context(context);
 
                         // Validate arguments with Self type context
@@ -4128,22 +4167,22 @@ impl TypeCheckingVisitor {
                 .resolve_atom(function_name_atom.clone())
                 .unwrap_or_default();
             let mut context = self.compiler_environment.unification_context();
-            context.add_dispatch_strategy(
-                call.span,
-                // CRITICAL: Check for SMT pre-resolved clause for qualified function calls
-                self.compiler_environment.get_smt_pre_resolved_clause(
-                    &trait_name,
-                    &function_name,
-                    &impl_type,
-                    call.span
-                ).unwrap_or_else(|| {
-                    crate::checker::DispatchMethod::Trait {
-                        trait_name,
-                        function_name,
-                        impl_type: Box::new(impl_type.clone()),
-                    }
-                }),
-            );
+            // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
+            let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause(
+                &trait_name,
+                &function_name,
+                &impl_type,
+                call.span
+            ).ok_or_else(|| TypeError::internal_with_span(
+                format!(
+                    "SMT solver failed to generate PreResolvedClause for qualified function call {}.{} on type {}. \
+                    This indicates a constraint generation bug - all trait function calls must have SMT pre-resolution.",
+                    trait_name, function_name, impl_type.to_string_representation()
+                ),
+                call.span.to_source_span(),
+            ))?;
+            
+            context.add_dispatch_strategy(call.span, dispatch_method);
             self.compiler_environment.set_unification_context(context);
 
             // Found an impl function - validate the call and return its type
@@ -4590,17 +4629,10 @@ impl TypeCheckingVisitor {
 
         // Add constraint to SMT context
         let mut context = self.compiler_environment.unification_context();
-        println!("🎯 DEBUG: About to add constraint: {:?}", pre_resolved_constraint);
         context.add_smt_constraint(pre_resolved_constraint.clone());
         self.compiler_environment.set_unification_context(context.clone());
 
         // Return the modified context so caller can use it directly
-        println!("🎯 DEBUG: Generated PreResolvedClause constraint for {}::{} on {} at span {:?}", 
-            trait_name, function_name, impl_type.to_string_representation(), call.span);
-        println!("🎯 DEBUG: Clause ID: {}", clause_id);
-        println!("🎯 DEBUG: Total constraints in returned context: {}", context.smt_constraints.len());
-        println!("🎯 DEBUG: Context pointer being returned: {:p}", context.smt_constraints.as_ptr());
-
         Ok(context)
     }
 }

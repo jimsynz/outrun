@@ -2093,43 +2093,8 @@ impl CompilerEnvironment {
         // Check if we have any PreResolvedClause constraints that match this call site
         let constraints = &context.smt_constraints;
         
-        println!("🔍 DEBUG: Looking for PreResolvedClause for {}::{} on {} at span {:?}", 
-            trait_name, function_name, impl_type.to_string_representation(), call_span);
-        println!("🔍 DEBUG: Total SMT constraints available: {}", constraints.len());
-        println!("🔍 DEBUG: Context pointer: {:p}", constraints.as_ptr());
-        
-        for (i, constraint) in constraints.iter().enumerate() {
-            // Debug what type each constraint actually is
-            let constraint_type = match constraint {
-                crate::smt::constraints::SMTConstraint::TraitImplemented { .. } => "TraitImplemented",
-                crate::smt::constraints::SMTConstraint::TypeUnification { .. } => "TypeUnification",
-                crate::smt::constraints::SMTConstraint::GenericInstantiation { .. } => "GenericInstantiation",
-                crate::smt::constraints::SMTConstraint::FunctionSignatureMatch { .. } => "FunctionSignatureMatch",
-                crate::smt::constraints::SMTConstraint::GuardCondition { .. } => "GuardCondition",
-                crate::smt::constraints::SMTConstraint::TypeParameterUnification { .. } => "TypeParameterUnification",
-                crate::smt::constraints::SMTConstraint::TypeVariableConstraint { .. } => "TypeVariableConstraint",
-                crate::smt::constraints::SMTConstraint::TraitCompatibility { .. } => "TraitCompatibility",
-                crate::smt::constraints::SMTConstraint::UniversalSelfConstraint { .. } => "UniversalSelfConstraint",
-                crate::smt::constraints::SMTConstraint::ConcreteSelfBinding { .. } => "ConcreteSelfBinding",
-                crate::smt::constraints::SMTConstraint::SelfTypeInference { .. } => "SelfTypeInference",
-                crate::smt::constraints::SMTConstraint::ArgumentTypeMatch { .. } => "ArgumentTypeMatch",
-                crate::smt::constraints::SMTConstraint::GuardApplicable { .. } => "GuardApplicable",
-                crate::smt::constraints::SMTConstraint::ClausePriority { .. } => "ClausePriority",
-                crate::smt::constraints::SMTConstraint::PreResolvedClause { .. } => "PreResolvedClause",
-                crate::smt::constraints::SMTConstraint::GuardStaticallyEvaluated { .. } => "GuardStaticallyEvaluated",
-                crate::smt::constraints::SMTConstraint::FunctionClauseSetExhaustive { .. } => "FunctionClauseSetExhaustive",
-                crate::smt::constraints::SMTConstraint::FunctionClauseReachable { .. } => "FunctionClauseReachable",
-                crate::smt::constraints::SMTConstraint::GuardCoverageComplete { .. } => "GuardCoverageComplete",
-                crate::smt::constraints::SMTConstraint::GuardConditionSatisfiable { .. } => "GuardConditionSatisfiable",
-            };
-            
-            if i < 5 || constraint_type == "PreResolvedClause" {
-                println!("🔍 DEBUG: Constraint {}: {} = {:?}", i, constraint_type, constraint);
-                if constraint_type == "PreResolvedClause" {
-                    println!("🎯 FOUND PreResolvedClause at index {}: {:?}", i, constraint);
-                }
-            }
-            
+        // Search for PreResolvedClause constraints efficiently
+        for constraint in constraints.iter() {
             if let crate::smt::constraints::SMTConstraint::PreResolvedClause { 
                 call_site,
                 trait_type: constraint_trait,
@@ -2139,34 +2104,22 @@ impl CompilerEnvironment {
                 guard_pre_evaluated,
                 ..
             } = constraint {
-                println!("🔍 DEBUG: Checking constraint {}: span {:?} vs {:?}, function {} vs {}, impl {} vs {}", 
-                    i, call_site, call_span, constraint_function, function_name, 
-                    constraint_impl.to_string_representation(), impl_type.to_string_representation());
-                
                 // Check if this constraint matches our call site
                 if call_site.start == call_span.start 
                     && call_site.end == call_span.end
                     && *constraint_function == function_name
                     && constraint_impl == impl_type {
                     
-                    println!("🔍 DEBUG: Basic matching criteria passed, checking trait name...");
-                    
                     // Extract trait name from constraint_trait
                     let constraint_trait_name = match constraint_trait {
                         StructuredType::Simple(type_id) => {
                             self.resolve_type(type_id.clone()).unwrap_or_default()
                         }
-                        _ => {
-                            println!("🔍 DEBUG: Constraint trait is not Simple type: {:?}", constraint_trait);
-                            continue;
-                        }
+                        _ => continue,
                     };
-                    
-                    println!("🔍 DEBUG: Constraint trait name: '{}' vs expected: '{}'", constraint_trait_name, trait_name);
                     
                     if constraint_trait_name == trait_name {
                         // Found a matching pre-resolved clause!
-                        println!("✅ DEBUG: Found matching PreResolvedClause constraint!");
                         return Some(crate::checker::DispatchMethod::PreResolvedClause {
                             trait_name: trait_name.to_string(),
                             function_name: function_name.to_string(), 
@@ -2176,15 +2129,9 @@ impl CompilerEnvironment {
                             clause_source_order: 0, // TODO: Extract from clause metadata
                         });
                     }
-                } else {
-                    println!("🔍 DEBUG: Constraint {} does not match basic criteria", i);
                 }
-            } else {
-                println!("🔍 DEBUG: Constraint {} is not a PreResolvedClause", i);
             }
         }
-        
-        println!("❌ DEBUG: No matching PreResolvedClause constraint found");
         None
     }
 
