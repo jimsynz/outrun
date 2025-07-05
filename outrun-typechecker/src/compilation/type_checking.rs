@@ -1893,7 +1893,7 @@ impl TypeCheckingVisitor {
                         // or use the default implementation
 
                         // For non-static trait functions, infer the concrete implementing type using SMT constraints
-                        let implementing_structured_type = self.infer_implementing_type_with_smt(
+                        let (implementing_structured_type, self_variable_id) = self.infer_implementing_type_with_smt(
                             module_type_id.clone(),
                             trait_func.definition(),
                             call,
@@ -1932,15 +1932,16 @@ impl TypeCheckingVisitor {
                             self.compiler_environment.set_unification_context(context);
 
                             // Use the full structured type for Self context (preserving generics)
-                            let inferred_self_type = implementing_structured_type;
                             self.validate_function_call_arguments_with_self(
                                 call,
                                 impl_func_def.definition(),
-                                &inferred_self_type,
+                                &implementing_structured_type,
                             )?;
-                            self.resolve_type_annotation_with_self(
+                            // CRITICAL FIX: Use the same Self variable ID for return type resolution
+                            self.resolve_type_annotation_with_specific_self_variable(
                                 &impl_func_def.definition().return_type,
-                                &inferred_self_type,
+                                &self_variable_id,
+                                &implementing_structured_type,
                             )
                         } else {
                             // No implementation found - check if trait function has a default implementation
@@ -1948,7 +1949,7 @@ impl TypeCheckingVisitor {
                                 crate::compilation::FunctionType::TraitSignature => {
                                     // Trait function signature without implementation - this is an error
                                     // Use SMT-enhanced Self type inference for better error reporting
-                                    let inferred_self_type = self
+                                    let (inferred_self_type, _) = self
                                         .infer_implementing_type_with_smt(
                                             module_type_id.clone(),
                                             trait_func.definition(),
@@ -1979,7 +1980,7 @@ impl TypeCheckingVisitor {
                                                         module_type_id.clone(),
                                                         trait_func.definition(),
                                                         call,
-                                                    );
+                                                    ).map(|(resolved_type, _)| resolved_type);
                                                 } else {
                                                     // Concrete implementation doesn't satisfy trait constraint
                                                 }
@@ -2005,7 +2006,7 @@ impl TypeCheckingVisitor {
                                                 module_type_id.clone(),
                                                 trait_func.definition(),
                                                 call,
-                                            );
+                                            ).map(|(resolved_type, _)| resolved_type);
                                         }
                                     }
 
@@ -2018,7 +2019,7 @@ impl TypeCheckingVisitor {
                                 crate::compilation::FunctionType::TraitDefault => {
                                     // Trait function with default implementation - use it
                                     // Use SMT-enhanced Self type inference for trait defaults
-                                    let inferred_self_type = self
+                                    let (inferred_self_type, self_variable_id) = self
                                         .infer_implementing_type_with_smt(
                                             module_type_id.clone(),
                                             trait_func.definition(),
@@ -2051,8 +2052,10 @@ impl TypeCheckingVisitor {
                                         trait_func.definition(),
                                         &inferred_self_type,
                                     )?;
-                                    self.resolve_type_annotation_with_self(
+                                    // CRITICAL FIX: Use the same Self variable ID for return type resolution
+                                    self.resolve_type_annotation_with_specific_self_variable(
                                         &trait_func.definition().return_type,
+                                        &self_variable_id,
                                         &inferred_self_type,
                                     )
                                 }
@@ -3024,6 +3027,110 @@ impl TypeCheckingVisitor {
         self.resolve_type_annotation_with_self_as_type_variable(type_annotation, self_type)
     }
 
+    /// CRITICAL FIX: Resolve type annotation using a specific Self variable ID
+    /// This ensures that both parameter and return type Self references use the same variable
+    fn resolve_type_annotation_with_specific_self_variable(
+        &mut self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        self_variable_id: &TypeNameId,
+        concrete_self_type: &crate::unification::StructuredType,
+    ) -> Result<crate::unification::StructuredType, TypeError> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple {
+                path,
+                generic_args,
+                span: _,
+            } => {
+                // Check if this is a Self reference
+                if path.len() == 1 && path[0].name == "Self" {
+                    // Use the specific Self TypeVariable provided
+                    let self_type_variable =
+                        crate::unification::StructuredType::TypeVariable(self_variable_id.clone());
+
+                    // Generate SMT constraint: Specific Self TypeVariable = concrete implementation type
+                    let constraint =
+                        crate::smt::constraints::SMTConstraint::TypeVariableConstraint {
+                            variable_id: self_variable_id.clone(),
+                            bound_type: concrete_self_type.clone(),
+                            context: "Self type in trait function call".to_string(),
+                        };
+
+                    // Add constraint to unification context
+                    self.compiler_environment
+                        .unification_context_mut()
+                        .add_smt_constraint(constraint);
+
+                    return Ok(self_type_variable);
+                }
+
+                // For non-Self types, resolve normally but recursively check args for Self
+                if let Some(args) = generic_args {
+                    // Create a modified type annotation with Self resolved in args
+                    let mut resolved_args = Vec::new();
+                    for arg in &args.args {
+                        let resolved_arg = self
+                            .resolve_type_annotation_with_specific_self_variable(arg, self_variable_id, concrete_self_type)?;
+                        resolved_args.push(resolved_arg);
+                    }
+
+                    // Get the base type name
+                    let type_name_str = path
+                        .iter()
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    let type_name_id = self.compiler_environment.intern_type_name(&type_name_str);
+
+                    Ok(crate::unification::StructuredType::Generic {
+                        base: type_name_id,
+                        args: resolved_args,
+                    })
+                } else {
+                    // No generic args, use normal resolution
+                    self.resolve_type_annotation(type_annotation)
+                }
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, span: _ } => {
+                // Recursively resolve tuple elements, checking for Self in each
+                let mut resolved_types = Vec::new();
+                for element_type in types {
+                    let resolved_element = self
+                        .resolve_type_annotation_with_specific_self_variable(
+                            element_type,
+                            self_variable_id,
+                            concrete_self_type,
+                        )?;
+                    resolved_types.push(resolved_element);
+                }
+                Ok(crate::unification::StructuredType::Tuple(resolved_types))
+            }
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                span: _,
+            } => {
+                // Recursively resolve function parameters and return type
+                let mut resolved_params = Vec::new();
+                for param in params {
+                    let resolved_param_type = self
+                        .resolve_type_annotation_with_specific_self_variable(&param.type_annotation, self_variable_id, concrete_self_type)?;
+                    resolved_params.push(crate::unification::FunctionParam {
+                        name: self.compiler_environment.intern_atom_name(&param.name.name),
+                        param_type: resolved_param_type,
+                    });
+                }
+
+                let resolved_return_type = self
+                    .resolve_type_annotation_with_specific_self_variable(return_type, self_variable_id, concrete_self_type)?;
+
+                Ok(crate::unification::StructuredType::Function {
+                    params: resolved_params,
+                    return_type: Box::new(resolved_return_type),
+                })
+            }
+        }
+    }
+
     /// NEW: Resolve type annotation with Self as TypeVariable, generating SMT constraints
     /// This replaces manual Self substitution with constraint-based approach
     fn resolve_type_annotation_with_self_as_type_variable(
@@ -3333,7 +3440,7 @@ impl TypeCheckingVisitor {
         trait_type_id: TypeNameId,
         trait_func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
-    ) -> Result<crate::unification::StructuredType, TypeError> {
+    ) -> Result<(crate::unification::StructuredType, TypeNameId), TypeError> {
         // Create a Self type variable for this function call
         let self_type_id = self
             .compiler_environment
@@ -3448,7 +3555,7 @@ impl TypeCheckingVisitor {
             &self.compiler_environment,
             &self_type_id,
         ) {
-            Ok(resolved_type) => Ok(resolved_type),
+            Ok(resolved_type) => Ok((resolved_type, self_type_id)),
             Err(smt_error) => {
                 // SMT solving failed - this indicates a real type error, not a fallback situation
                 Err(TypeError::internal_with_span(

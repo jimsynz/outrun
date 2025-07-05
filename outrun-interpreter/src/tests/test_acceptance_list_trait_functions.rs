@@ -8,16 +8,16 @@ fn test_list_head() {
 
     // Valid head operations
     harness
-        .assert_evaluates_to_integer("List.head(value: [1, 2, 3]) |> Option.unwrap()", 1)
+        .assert_evaluates_to_integer("Option.unwrap(value: List.head(value: [1, 2, 3]))", 1)
         .unwrap();
     harness
         .assert_evaluates_to_string(
-            "List.head(value: [\"hello\", \"world\"]) |> Option.unwrap()",
+            "Option.unwrap(value: List.head(value: [\"hello\", \"world\"]))",
             "hello",
         )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("List.head(value: [42]) |> Option.unwrap()", 42)
+        .assert_evaluates_to_integer("Option.unwrap(value: List.head(value: [42]))", 42)
         .unwrap();
 
     // Head of empty list should return None
@@ -27,17 +27,17 @@ fn test_list_head() {
 
     // Mixed content lists (same type)
     harness
-        .assert_evaluates_to_integer("List.head(value: [99, 1, 2, 3]) |> Option.unwrap()", 99)
+        .assert_evaluates_to_integer("Option.unwrap(value: List.head(value: [99, 1, 2, 3]))", 99)
         .unwrap();
     harness
         .assert_evaluates_to_boolean(
-            "List.head(value: [true, false, true]) |> Option.unwrap()",
+            "Option.unwrap(value: List.head(value: [true, false, true]))",
             true,
         )
         .unwrap();
     harness
         .assert_evaluates_to_string(
-            "List.head(value: [:atom1, :atom2]) |> Option.unwrap() |> Display.to_string()",
+            "Display.to_string(value: Option.unwrap(value: List.head(value: [:atom1, :atom2])))",
             "atom1",
         )
         .unwrap();
@@ -65,19 +65,19 @@ fn test_list_tail() {
 
     // Chained tail operations
     harness
-        .assert_evaluates_to("[3]", "List.tail(value: [1, 2, 3]) |> List.tail()")
+        .assert_evaluates_to("[3]", "List.tail(value: List.tail(value: [1, 2, 3]))")
         .unwrap();
     harness
         .assert_evaluates_to(
             "[]",
-            "List.tail(value: [1, 2, 3]) |> List.tail() |> List.tail()",
+            "List.tail(value: List.tail(value: List.tail(value: [1, 2, 3])))",
         )
         .unwrap();
 
     // Tail operations preserve type
     harness
         .assert_evaluates_to_integer(
-            "List.tail(value: [1, 2, 3]) |> List.head() |> Option.unwrap()",
+            "Option.unwrap(value: List.head(value: List.tail(value: [1, 2, 3])))",
             2,
         )
         .unwrap();
@@ -110,7 +110,7 @@ fn test_list_prepend() {
     harness
         .assert_evaluates_to(
             "[1, 2, 3]",
-            "List.prepend(list: [], elem: 3) |> List.prepend(elem: 2) |> List.prepend(elem: 1)",
+            "List.prepend(list: List.prepend(list: List.prepend(list: [], elem: 3), elem: 2), elem: 1),"
         )
         .unwrap();
 
