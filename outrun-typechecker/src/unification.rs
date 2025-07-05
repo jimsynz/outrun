@@ -161,6 +161,8 @@ pub struct UnificationContext {
     // =============================================================================
     /// SMT constraints collected during type checking
     pub smt_constraints: Vec<SMTConstraint>,
+    /// Constraint specifications collected during type checking (for deferred constraint generation)
+    pub constraint_specifications: Vec<crate::compilation::compiler_environment::ConstraintSpecification>,
     /// Constraint collector for complex constraint scenarios
     pub constraint_collector: Option<ConstraintCollector>,
     /// Cache for constraint solving results
@@ -628,6 +630,7 @@ impl UnificationContext {
             span_mapping: crate::desugaring::SpanMapping::new(),
             // SMT integration fields
             smt_constraints: Vec::new(),
+            constraint_specifications: Vec::new(),
             constraint_collector: None,
             solver_cache: HashMap::new(),
             latest_smt_model: None,
@@ -941,6 +944,11 @@ impl UnificationContext {
         if !self.smt_constraints.contains(&constraint) {
             self.smt_constraints.push(constraint);
         }
+    }
+
+    /// Add a constraint specification for deferred constraint generation
+    pub fn add_constraint_specification(&mut self, spec: crate::compilation::compiler_environment::ConstraintSpecification) {
+        self.constraint_specifications.push(spec);
     }
 
     /// Get the latest SMT model for Self type resolution

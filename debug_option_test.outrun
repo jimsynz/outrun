@@ -1,0 +1,1 @@
+def test(): Boolean { Option.some?(value: Option.some(value: 42)) }

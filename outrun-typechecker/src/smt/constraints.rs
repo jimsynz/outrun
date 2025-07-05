@@ -127,16 +127,6 @@ pub enum SMTConstraint {
         context: String,                // Function name and location context
     },
 
-    /// Pending clause resolution - deferred until after SMT solving
-    /// This tracks trait function calls that need clause ID generation after Self types are resolved
-    PendingClauseResolution {
-        call_site: Span,                // Location of the function call
-        trait_type: StructuredType,     // Trait being called (e.g., BinaryDivision)
-        impl_type: StructuredType,      // Implementation type with unresolved Self (e.g., TypeVariable(Self))
-        function_name: String,          // Function name (e.g., "divide")
-        has_guard: bool,                // Whether the function has guards (for pre-evaluation)
-        argument_types: Vec<StructuredType>, // Call site argument types
-    },
 
     /// Pre-resolved function clause selection
     /// This represents the SMT solver's decision about which clause to use for a specific call
@@ -444,22 +434,6 @@ impl Hash for SMTConstraint {
                 evaluation_result.hash(state);
                 context.hash(state);
             }
-            SMTConstraint::PendingClauseResolution {
-                call_site,
-                trait_type,
-                impl_type,
-                function_name,
-                has_guard,
-                argument_types,
-            } => {
-                14u8.hash(state);
-                call_site.hash(state);
-                trait_type.hash(state);
-                impl_type.hash(state);
-                function_name.hash(state);
-                has_guard.hash(state);
-                argument_types.hash(state);
-            }
             SMTConstraint::PreResolvedClause {
                 call_site,
                 trait_type,
@@ -469,7 +443,7 @@ impl Hash for SMTConstraint {
                 guard_pre_evaluated,
                 argument_types,
             } => {
-                15u8.hash(state);
+                14u8.hash(state);
                 call_site.hash(state);
                 trait_type.hash(state);
                 impl_type.hash(state);
@@ -484,7 +458,7 @@ impl Hash for SMTConstraint {
                 parameter_types,
                 context,
             } => {
-                16u8.hash(state);
+                15u8.hash(state);
                 function_name.hash(state);
                 clauses.hash(state);
                 parameter_types.hash(state);
@@ -496,7 +470,7 @@ impl Hash for SMTConstraint {
                 parameter_types,
                 context,
             } => {
-                17u8.hash(state);
+                16u8.hash(state);
                 clause_id.hash(state);
                 earlier_clauses.hash(state);
                 parameter_types.hash(state);
@@ -509,7 +483,7 @@ impl Hash for SMTConstraint {
                 has_default_clause,
                 context,
             } => {
-                18u8.hash(state);
+                17u8.hash(state);
                 function_name.hash(state);
                 guard_clauses.hash(state);
                 parameter_types.hash(state);
@@ -522,7 +496,7 @@ impl Hash for SMTConstraint {
                 parameter_constraints,
                 context,
             } => {
-                19u8.hash(state);
+                18u8.hash(state);
                 clause_id.hash(state);
                 guard_expression.hash(state);
                 // HashMap doesn't implement Hash, so hash the sorted entries

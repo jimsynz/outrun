@@ -381,11 +381,6 @@ impl SMTTranslator {
             SMTConstraint::GuardConditionSatisfiable { clause_id, guard_expression, .. } => {
                 format!("(satisfiable_guard_{} {})", clause_id, guard_expression.replace(' ', "_"))
             }
-            SMTConstraint::PendingClauseResolution { .. } => {
-                // PendingClauseResolution constraints are not translated to SMT
-                // They are processed after SMT solving
-                "(pending_clause_resolution true)".to_string()
-            }
         }
     }
 

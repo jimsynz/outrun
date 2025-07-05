@@ -1912,7 +1912,7 @@ impl TypeCheckingVisitor {
                         {
                             // CRITICAL: Generate PreResolvedClause constraint for SMT-first dispatch
                             // This ensures all trait function calls bypass runtime module lookups
-                            let updated_context = self.generate_pending_clause_resolution_constraint(
+                            let updated_context = self.collect_constraint_specification(
                                 call,
                                 &module_name,
                                 &function_name,
@@ -1934,7 +1934,7 @@ impl TypeCheckingVisitor {
                                 format!(
                                     "Failed to generate SMT constraint for trait function call {}.{} on type {}. \
                                     This indicates a constraint generation bug - all trait function calls must have either \
-                                    PendingClauseResolution (during type checking) or PreResolvedClause (after SMT solving).",
+                                    constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
                                     module_name, function_name, implementing_structured_type.to_string_representation()
                                 ),
                                 call.span.to_source_span(),
@@ -2039,7 +2039,7 @@ impl TypeCheckingVisitor {
                                         )?;
 
                                     // CRITICAL: Generate PreResolvedClause constraint for trait default implementations
-                                    let updated_context = self.generate_pending_clause_resolution_constraint(
+                                    let updated_context = self.collect_constraint_specification(
                                         call,
                                         &module_name,
                                         &function_name,
@@ -2061,7 +2061,7 @@ impl TypeCheckingVisitor {
                                         format!(
                                             "Failed to generate SMT constraint for trait function call {}.{} on inferred type {}. \
                                             This indicates a constraint generation bug - all trait function calls must have either \
-                                            PendingClauseResolution (during type checking) or PreResolvedClause (after SMT solving).",
+                                            constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
                                             module_name, function_name, inferred_self_type.to_string_representation()
                                         ),
                                         call.span.to_source_span(),
@@ -2140,7 +2140,7 @@ impl TypeCheckingVisitor {
                         // Get the Self type from type parameter scope
                         if let Some(self_type) = self.lookup_type_parameter("Self").cloned() {
                             // Generate PreResolvedClause constraint for SMT-first dispatch
-                            let updated_context = self.generate_pending_clause_resolution_constraint(
+                            let updated_context = self.collect_constraint_specification(
                                 call,
                                 &trait_name,
                                 &function_name,
@@ -2162,7 +2162,7 @@ impl TypeCheckingVisitor {
                                 format!(
                                     "Failed to generate SMT constraint for trait function call {}.{} in trait context. \
                                     This indicates a constraint generation bug - all trait function calls must have either \
-                                    PendingClauseResolution (during type checking) or PreResolvedClause (after SMT solving).",
+                                    constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
                                     trait_name, function_name
                                 ),
                                 call.span.to_source_span(),
@@ -2196,7 +2196,7 @@ impl TypeCheckingVisitor {
                     {
                         // This is a trait function call within an expanded default implementation
                         // Generate PreResolvedClause constraint for SMT-first dispatch
-                        let updated_context = self.generate_pending_clause_resolution_constraint(
+                        let updated_context = self.collect_constraint_specification(
                             call,
                             &trait_name,
                             &function_name,
@@ -2218,7 +2218,7 @@ impl TypeCheckingVisitor {
                             format!(
                                 "Failed to generate SMT constraint for function call {}.{} on type {}. \
                                 This indicates a constraint generation bug - all trait function calls must have either \
-                                PendingClauseResolution (during type checking) or PreResolvedClause (after SMT solving).",
+                                constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
                                 trait_name, function_name, impl_type.to_string_representation()
                             ),
                             call.span.to_source_span(),
@@ -4181,7 +4181,7 @@ impl TypeCheckingVisitor {
                 format!(
                     "Failed to generate SMT constraint for qualified function call {}.{} on type {}. \
                     This indicates a constraint generation bug - all trait function calls must have either \
-                    PendingClauseResolution (during type checking) or PreResolvedClause (after SMT solving).",
+                    constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
                     trait_name, function_name, impl_type.to_string_representation()
                 ),
                 call.span.to_source_span(),
@@ -4580,9 +4580,9 @@ impl TypeCheckingVisitor {
         }
     }
 
-    /// Generate PendingClauseResolution constraint for deferred clause ID generation
-    /// This ensures trait function calls wait for SMT Self resolution before generating clause IDs
-    fn generate_pending_clause_resolution_constraint(
+    /// Collect constraint specification for deferred SMT constraint generation
+    /// This ensures constraint generation happens after type checking with fully resolved types
+    fn collect_constraint_specification(
         &mut self,
         call: &outrun_parser::FunctionCall,
         trait_name: &str,
@@ -4601,19 +4601,21 @@ impl TypeCheckingVisitor {
             }
         }
 
-        // Generate the PendingClauseResolution constraint (deferred until after SMT solving)
-        let pending_constraint = crate::smt::constraints::SMTConstraint::PendingClauseResolution {
+        // Create constraint specification for deferred SMT constraint generation
+        let constraint_spec = crate::compilation::compiler_environment::ConstraintSpecification {
             call_site: call.span,
-            trait_type: trait_type.clone(),
-            impl_type: impl_type.clone(), // This may contain unresolved Self types
+            trait_name: trait_name.to_string(),
             function_name: function_name.to_string(),
-            has_guard: impl_func_def.guard.is_some(),
+            trait_type: trait_type.clone(),
+            impl_type: impl_type.clone(), // Will be fully resolved by the time we generate constraints
             argument_types,
+            has_guard: impl_func_def.guard.is_some(),
+            call_context: format!("trait function call {}.{}", trait_name, function_name),
         };
 
-        // Add constraint to SMT context
+        // Add specification to context for later constraint generation
         let mut context = self.compiler_environment.unification_context();
-        context.add_smt_constraint(pending_constraint.clone());
+        context.add_constraint_specification(constraint_spec);
         self.compiler_environment.set_unification_context(context.clone());
 
         // Return the modified context so caller can use it directly

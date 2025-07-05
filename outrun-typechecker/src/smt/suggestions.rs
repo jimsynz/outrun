@@ -317,9 +317,6 @@ impl ErrorSuggestionGenerator {
                             SMTConstraint::GuardConditionSatisfiable { clause_id, .. } => {
                                 format!("Allow unsatisfiable guard in clause {clause_id}")
                             }
-                            SMTConstraint::PendingClauseResolution { function_name, .. } => {
-                                format!("Skip pending clause resolution for function {function_name}")
-                            }
                         };
 
                         relaxations.push(ConstraintRelaxation {

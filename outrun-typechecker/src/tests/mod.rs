@@ -96,6 +96,7 @@ mod test_type_resolution_integration;
 mod test_complex_trait_constraints;
 mod test_smt_integration;
 mod test_smt_typevariable_resolution;
+mod test_smt_monomorphization_dispatch;
 
 // Function clause debugging tests
 mod test_runtime_function_clause_lookup;

@@ -560,7 +560,11 @@ pub fn typecheck_with_core_library(
     collection.add_program(filename.to_string(), desugared_program, source.to_string());
 
     // Compile the user program with the shared environment that already has core library
-    typecheck_program_collection(&mut compiler_env, collection)
+    let user_result = typecheck_program_collection(&mut compiler_env, collection)?;
+    
+    // CRITICAL FIX: Merge core library and user compilation results
+    // This ensures monomorphized implementations from core library are available to user code
+    Ok(compiler_env.extend_with_user_compilation(user_result))
 }
 
 /// Type check a collection of programs with a fresh CompilerEnvironment (convenience function)
