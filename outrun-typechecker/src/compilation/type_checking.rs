@@ -1910,12 +1910,25 @@ impl TypeCheckingVisitor {
                                 function_name_atom,
                             )
                         {
+                            // CRITICAL: Generate PreResolvedClause constraint for SMT-first dispatch
+                            // This ensures all trait function calls bypass runtime module lookups
+                            let updated_context = self.generate_pre_resolved_clause_constraint(
+                                call,
+                                &module_name,
+                                &function_name,
+                                &module_type,
+                                &implementing_structured_type,
+                                impl_func_def.definition(),
+                            )?;
+
                             // Store trait dispatch strategy
-                            let mut context = self.compiler_environment.unification_context();
+                            let mut context = updated_context;
+                            println!("🔍 DEBUG: Context after generate_pre_resolved_clause_constraint has {} constraints", context.smt_constraints.len());
                             context.add_dispatch_strategy(
                                 call.span,
                                 // CRITICAL: Check if SMT has pre-resolved a function clause for this call
-                                self.compiler_environment.get_smt_pre_resolved_clause(
+                                self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                                    &context,
                                     &module_name,
                                     &function_name,
                                     &implementing_structured_type,
@@ -2026,13 +2039,23 @@ impl TypeCheckingVisitor {
                                             call,
                                         )?;
 
+                                    // CRITICAL: Generate PreResolvedClause constraint for trait default implementations
+                                    let updated_context = self.generate_pre_resolved_clause_constraint(
+                                        call,
+                                        &module_name,
+                                        &function_name,
+                                        &module_type,
+                                        &inferred_self_type,
+                                        trait_func.definition(),
+                                    )?;
+
                                     // Store trait dispatch strategy for default implementation
-                                    let mut context =
-                                        self.compiler_environment.unification_context();
+                                    let mut context = updated_context;
                                     context.add_dispatch_strategy(
                                         call.span,
                                         // CRITICAL: Check for SMT pre-resolved clause for default implementation calls
-                                        self.compiler_environment.get_smt_pre_resolved_clause(
+                                        self.compiler_environment.get_smt_pre_resolved_clause_with_context(
+                                            &context,
                                             &module_name,
                                             &function_name,
                                             &inferred_self_type,
@@ -4511,5 +4534,73 @@ impl TypeCheckingVisitor {
                 Ok(arg_type.clone())
             }
         }
+    }
+
+    /// Generate PreResolvedClause constraint for SMT-first dispatch
+    /// This ensures all trait function calls bypass runtime module lookups
+    fn generate_pre_resolved_clause_constraint(
+        &mut self,
+        call: &outrun_parser::FunctionCall,
+        trait_name: &str,
+        function_name: &str,
+        trait_type: &crate::unification::StructuredType,
+        impl_type: &crate::unification::StructuredType,
+        impl_func_def: &outrun_parser::FunctionDefinition,
+    ) -> Result<crate::unification::UnificationContext, TypeError> {
+        // Create a unique clause ID for this implementation function
+        // Use a combination of trait, impl type, and function name for uniqueness
+        let clause_id = format!(
+            "{}:{}:{}:{}",
+            trait_name,
+            impl_type.to_string_representation(),
+            function_name,
+            impl_func_def.span.start
+        );
+
+        // Check if this function has any guards
+        let guard_pre_evaluated = if impl_func_def.guard.is_some() {
+            // Function has guards - let SMT handle guard evaluation
+            // For now, we'll leave this as None and let runtime handle it
+            // TODO: Implement static guard evaluation for simple cases
+            None
+        } else {
+            // No guards - this function will always be applicable
+            Some(true)
+        };
+
+        // Extract argument types from the function call
+        let mut argument_types = Vec::new();
+        for arg in &call.arguments {
+            if let outrun_parser::Argument::Named { expression, .. } = arg {
+                let arg_type = self.check_expression_type(expression)?;
+                argument_types.push(arg_type);
+            }
+        }
+
+        // Generate the PreResolvedClause constraint
+        let pre_resolved_constraint = crate::smt::constraints::SMTConstraint::PreResolvedClause {
+            call_site: call.span,
+            trait_type: trait_type.clone(),
+            impl_type: impl_type.clone(),
+            function_name: function_name.to_string(),
+            selected_clause_id: clause_id.clone(),
+            guard_pre_evaluated,
+            argument_types,
+        };
+
+        // Add constraint to SMT context
+        let mut context = self.compiler_environment.unification_context();
+        println!("🎯 DEBUG: About to add constraint: {:?}", pre_resolved_constraint);
+        context.add_smt_constraint(pre_resolved_constraint.clone());
+        self.compiler_environment.set_unification_context(context.clone());
+
+        // Return the modified context so caller can use it directly
+        println!("🎯 DEBUG: Generated PreResolvedClause constraint for {}::{} on {} at span {:?}", 
+            trait_name, function_name, impl_type.to_string_representation(), call.span);
+        println!("🎯 DEBUG: Clause ID: {}", clause_id);
+        println!("🎯 DEBUG: Total constraints in returned context: {}", context.smt_constraints.len());
+        println!("🎯 DEBUG: Context pointer being returned: {:p}", context.smt_constraints.as_ptr());
+
+        Ok(context)
     }
 }

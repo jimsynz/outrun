@@ -950,8 +950,22 @@ impl CompilerEnvironment {
     }
 
     /// Update the unification context
-    pub fn set_unification_context(&mut self, context: UnificationContext) {
+    pub fn set_unification_context(&self, context: UnificationContext) {
         self.compilation_state.write().unwrap().unification_context = context;
+    }
+
+    /// Generate a consistent SMT-format clause ID for function clauses
+    /// Format: "TraitName:ImplType:FunctionName:Span"
+    fn generate_smt_clause_id(
+        &self,
+        trait_name: Option<&str>,
+        impl_type: &StructuredType,
+        function_name: &str,
+        span: outrun_parser::Span,
+    ) -> String {
+        let trait_part = trait_name.unwrap_or("Function");
+        let impl_part = impl_type.to_string_representation();
+        format!("{}:{}:{}:{}", trait_part, impl_part, function_name, span.start)
     }
 
     /// Get access to the dependency graph
@@ -2058,10 +2072,64 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         call_span: outrun_parser::Span
     ) -> Option<crate::checker::DispatchMethod> {
+        self.get_smt_pre_resolved_clause_with_context(
+            &self.unification_context(), 
+            trait_name, 
+            function_name, 
+            impl_type, 
+            call_span
+        )
+    }
+
+    /// Check if SMT has pre-resolved a function clause using a specific context
+    pub fn get_smt_pre_resolved_clause_with_context(
+        &self,
+        context: &crate::unification::UnificationContext,
+        trait_name: &str,
+        function_name: &str, 
+        impl_type: &StructuredType,
+        call_span: outrun_parser::Span
+    ) -> Option<crate::checker::DispatchMethod> {
         // Check if we have any PreResolvedClause constraints that match this call site
-        let constraints = &self.unification_context().smt_constraints;
+        let constraints = &context.smt_constraints;
         
-        for constraint in constraints {
+        println!("🔍 DEBUG: Looking for PreResolvedClause for {}::{} on {} at span {:?}", 
+            trait_name, function_name, impl_type.to_string_representation(), call_span);
+        println!("🔍 DEBUG: Total SMT constraints available: {}", constraints.len());
+        println!("🔍 DEBUG: Context pointer: {:p}", constraints.as_ptr());
+        
+        for (i, constraint) in constraints.iter().enumerate() {
+            // Debug what type each constraint actually is
+            let constraint_type = match constraint {
+                crate::smt::constraints::SMTConstraint::TraitImplemented { .. } => "TraitImplemented",
+                crate::smt::constraints::SMTConstraint::TypeUnification { .. } => "TypeUnification",
+                crate::smt::constraints::SMTConstraint::GenericInstantiation { .. } => "GenericInstantiation",
+                crate::smt::constraints::SMTConstraint::FunctionSignatureMatch { .. } => "FunctionSignatureMatch",
+                crate::smt::constraints::SMTConstraint::GuardCondition { .. } => "GuardCondition",
+                crate::smt::constraints::SMTConstraint::TypeParameterUnification { .. } => "TypeParameterUnification",
+                crate::smt::constraints::SMTConstraint::TypeVariableConstraint { .. } => "TypeVariableConstraint",
+                crate::smt::constraints::SMTConstraint::TraitCompatibility { .. } => "TraitCompatibility",
+                crate::smt::constraints::SMTConstraint::UniversalSelfConstraint { .. } => "UniversalSelfConstraint",
+                crate::smt::constraints::SMTConstraint::ConcreteSelfBinding { .. } => "ConcreteSelfBinding",
+                crate::smt::constraints::SMTConstraint::SelfTypeInference { .. } => "SelfTypeInference",
+                crate::smt::constraints::SMTConstraint::ArgumentTypeMatch { .. } => "ArgumentTypeMatch",
+                crate::smt::constraints::SMTConstraint::GuardApplicable { .. } => "GuardApplicable",
+                crate::smt::constraints::SMTConstraint::ClausePriority { .. } => "ClausePriority",
+                crate::smt::constraints::SMTConstraint::PreResolvedClause { .. } => "PreResolvedClause",
+                crate::smt::constraints::SMTConstraint::GuardStaticallyEvaluated { .. } => "GuardStaticallyEvaluated",
+                crate::smt::constraints::SMTConstraint::FunctionClauseSetExhaustive { .. } => "FunctionClauseSetExhaustive",
+                crate::smt::constraints::SMTConstraint::FunctionClauseReachable { .. } => "FunctionClauseReachable",
+                crate::smt::constraints::SMTConstraint::GuardCoverageComplete { .. } => "GuardCoverageComplete",
+                crate::smt::constraints::SMTConstraint::GuardConditionSatisfiable { .. } => "GuardConditionSatisfiable",
+            };
+            
+            if i < 5 || constraint_type == "PreResolvedClause" {
+                println!("🔍 DEBUG: Constraint {}: {} = {:?}", i, constraint_type, constraint);
+                if constraint_type == "PreResolvedClause" {
+                    println!("🎯 FOUND PreResolvedClause at index {}: {:?}", i, constraint);
+                }
+            }
+            
             if let crate::smt::constraints::SMTConstraint::PreResolvedClause { 
                 call_site,
                 trait_type: constraint_trait,
@@ -2071,22 +2139,34 @@ impl CompilerEnvironment {
                 guard_pre_evaluated,
                 ..
             } = constraint {
+                println!("🔍 DEBUG: Checking constraint {}: span {:?} vs {:?}, function {} vs {}, impl {} vs {}", 
+                    i, call_site, call_span, constraint_function, function_name, 
+                    constraint_impl.to_string_representation(), impl_type.to_string_representation());
+                
                 // Check if this constraint matches our call site
                 if call_site.start == call_span.start 
                     && call_site.end == call_span.end
                     && *constraint_function == function_name
                     && constraint_impl == impl_type {
                     
+                    println!("🔍 DEBUG: Basic matching criteria passed, checking trait name...");
+                    
                     // Extract trait name from constraint_trait
                     let constraint_trait_name = match constraint_trait {
                         StructuredType::Simple(type_id) => {
                             self.resolve_type(type_id.clone()).unwrap_or_default()
                         }
-                        _ => continue,
+                        _ => {
+                            println!("🔍 DEBUG: Constraint trait is not Simple type: {:?}", constraint_trait);
+                            continue;
+                        }
                     };
+                    
+                    println!("🔍 DEBUG: Constraint trait name: '{}' vs expected: '{}'", constraint_trait_name, trait_name);
                     
                     if constraint_trait_name == trait_name {
                         // Found a matching pre-resolved clause!
+                        println!("✅ DEBUG: Found matching PreResolvedClause constraint!");
                         return Some(crate::checker::DispatchMethod::PreResolvedClause {
                             trait_name: trait_name.to_string(),
                             function_name: function_name.to_string(), 
@@ -2096,10 +2176,15 @@ impl CompilerEnvironment {
                             clause_source_order: 0, // TODO: Extract from clause metadata
                         });
                     }
+                } else {
+                    println!("🔍 DEBUG: Constraint {} does not match basic criteria", i);
                 }
+            } else {
+                println!("🔍 DEBUG: Constraint {} is not a PreResolvedClause", i);
             }
         }
         
+        println!("❌ DEBUG: No matching PreResolvedClause constraint found");
         None
     }
 
@@ -2867,8 +2952,31 @@ impl CompilerEnvironment {
                                         !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
                                     
                                     // Create a function clause for this impl function
+                                    let clause_id = if let ModuleKey::TraitImpl(trait_type, impl_type) = module_key {
+                                        // Extract trait name from trait type
+                                        let trait_name = match trait_type.as_ref() {
+                                            StructuredType::Simple(type_id) => {
+                                                self.resolve_type(type_id.clone()).unwrap_or_default()
+                                            }
+                                            StructuredType::Generic { base, .. } => {
+                                                self.resolve_type(base.clone()).unwrap_or_default()
+                                            }
+                                            _ => "UnknownTrait".to_string(),
+                                        };
+                                        // Use SMT format: "TraitName:ImplType:FunctionName:Span"
+                                        self.generate_smt_clause_id(
+                                            Some(&trait_name),
+                                            impl_type.as_ref(),
+                                            &definition.name.name,
+                                            definition.span,
+                                        )
+                                    } else {
+                                        // Fallback for non-trait-impl modules
+                                        format!("function_{}_{}", definition.name.name, definition.span.start)
+                                    };
+
                                     let mut clause = crate::checker::FunctionClause {
-                                        clause_id: format!("impl_{:?}_{}", module_key, definition.name.name),
+                                        clause_id,
                                         base_function: _typed_def.clone(),
                                         source_order,
                                         applicability_constraints: Vec::new(),
@@ -2949,8 +3057,39 @@ impl CompilerEnvironment {
                                                         !self.has_multiple_functions_with_same_name(module_key, &definition.name.name);
                                                     
                                                     // Create a function clause for this trait function
+                                                    let clause_id = match module_key {
+                                                        ModuleKey::Module(type_hash) => {
+                                                            // For trait modules, use trait name from type hash
+                                                            let trait_name = self.type_names.read().unwrap()
+                                                                .get(type_hash)
+                                                                .cloned()
+                                                                .unwrap_or_else(|| format!("Trait_{}", type_hash));
+                                                            // Use SMT format for consistency
+                                                            format!("{}:{}:{}:{}", trait_name, trait_name, definition.name.name, definition.span.start)
+                                                        }
+                                                        ModuleKey::TraitImpl(trait_type, impl_type) => {
+                                                            // Extract trait name from trait type
+                                                            let trait_name = match trait_type.as_ref() {
+                                                                StructuredType::Simple(type_id) => {
+                                                                    self.resolve_type(type_id.clone()).unwrap_or_default()
+                                                                }
+                                                                StructuredType::Generic { base, .. } => {
+                                                                    self.resolve_type(base.clone()).unwrap_or_default()
+                                                                }
+                                                                _ => "UnknownTrait".to_string(),
+                                                            };
+                                                            // Use SMT format: "TraitName:ImplType:FunctionName:Span"
+                                                            self.generate_smt_clause_id(
+                                                                Some(&trait_name),
+                                                                impl_type.as_ref(),
+                                                                &definition.name.name,
+                                                                definition.span,
+                                                            )
+                                                        }
+                                                    };
+
                                                     let mut clause = crate::checker::FunctionClause {
-                                                        clause_id: format!("trait_{:?}_{}", module_key, definition.name.name),
+                                                        clause_id,
                                                         base_function: _typed_def.clone(),
                                                         source_order,
                                                         applicability_constraints: Vec::new(),
