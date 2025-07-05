@@ -179,6 +179,7 @@ fn order_constraints_for_solving(constraints: &[SMTConstraint]) -> Vec<SMTConstr
         SMTConstraint::FunctionClauseReachable { .. } => 17,
         SMTConstraint::GuardCoverageComplete { .. } => 18,
         SMTConstraint::GuardConditionSatisfiable { .. } => 19,
+        SMTConstraint::PendingClauseResolution { .. } => 20,
     });
 
     ordered_constraints

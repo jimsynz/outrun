@@ -833,6 +833,9 @@ impl CompilerEnvironment {
         // Step 7: Phase 7 - SMT constraint solving (moved before clause analysis)
         self.phase_7_smt_constraint_solving()?;
 
+        // Step 7.5: Phase 7.5 - Post-SMT clause resolution (convert PendingClauseResolution to PreResolvedClause)
+        self.phase_7_5_post_smt_clause_resolution()?;
+
         // Check for errors accumulated during type checking
         let errors = self.get_errors();
         if !errors.is_empty() {
@@ -2130,6 +2133,8 @@ impl CompilerEnvironment {
     }
 
     /// Check if SMT has pre-resolved a function clause using a specific context
+    /// Updated for two-phase constraint resolution: checks for PendingClauseResolution during type checking
+    /// and PreResolvedClause after SMT solving
     pub fn get_smt_pre_resolved_clause_with_context(
         &self,
         context: &crate::unification::UnificationContext,
@@ -2138,14 +2143,12 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         call_span: outrun_parser::Span
     ) -> Option<crate::checker::DispatchMethod> {
-        // Check if we have any PreResolvedClause constraints that match this call site
         let constraints = &context.smt_constraints;
-        // Debug output removed - constraint matching is working correctly
         
-        // Search for PreResolvedClause constraints efficiently
-        for (i, constraint) in constraints.iter().enumerate() {
+        // First, check for PreResolvedClause constraints (post-SMT solving)
+        for constraint in constraints.iter() {
             if let crate::smt::constraints::SMTConstraint::PreResolvedClause { 
-                call_site,
+                call_site: _,
                 trait_type: constraint_trait,
                 impl_type: constraint_impl,
                 function_name: constraint_function,
@@ -2153,38 +2156,67 @@ impl CompilerEnvironment {
                 guard_pre_evaluated,
                 ..
             } = constraint {
-                // Check if this constraint matches our function call (ignore span - focus on signature)
-                
-                if *constraint_function == function_name
-                    && constraint_impl == impl_type {
-                    
+                if *constraint_function == function_name && constraint_impl == impl_type {
                     // Extract trait name from constraint_trait
                     let constraint_trait_name = match constraint_trait {
                         StructuredType::Simple(type_id) => {
                             self.resolve_type(type_id.clone()).unwrap_or_default()
                         }
                         StructuredType::Generic { base, .. } => {
-                            // For generic traits like Option<T>, extract the base name (Option)
                             self.resolve_type(base.clone()).unwrap_or_default()
                         }
                         _ => continue,
                     };
                     
                     if constraint_trait_name == trait_name {
-                        // Found a matching pre-resolved clause!
                         return Some(crate::checker::DispatchMethod::PreResolvedClause {
                             trait_name: trait_name.to_string(),
                             function_name: function_name.to_string(), 
                             impl_type: Box::new(impl_type.clone()),
                             selected_clause_id: selected_clause_id.clone(),
                             guard_pre_evaluated: *guard_pre_evaluated,
-                            clause_source_order: 0, // TODO: Extract from clause metadata
+                            clause_source_order: 0,
                         });
                     }
                 }
             }
         }
-        // No matching constraint found
+        
+        // If no PreResolvedClause found, check for PendingClauseResolution (during type checking)
+        // This indicates constraint generation was successful and resolution is deferred to Phase 7.5
+        for constraint in constraints.iter() {
+            if let crate::smt::constraints::SMTConstraint::PendingClauseResolution { 
+                call_site: _,
+                trait_type: constraint_trait,
+                impl_type: constraint_impl,
+                function_name: constraint_function,
+                ..
+            } = constraint {
+                if *constraint_function == function_name && constraint_impl == impl_type {
+                    // Extract trait name from constraint_trait
+                    let constraint_trait_name = match constraint_trait {
+                        StructuredType::Simple(type_id) => {
+                            self.resolve_type(type_id.clone()).unwrap_or_default()
+                        }
+                        StructuredType::Generic { base, .. } => {
+                            self.resolve_type(base.clone()).unwrap_or_default()
+                        }
+                        _ => continue,
+                    };
+                    
+                    if constraint_trait_name == trait_name {
+                        // Found matching pending constraint - return placeholder dispatch method
+                        // This will be replaced with actual PreResolvedClause in Phase 7.5
+                        return Some(crate::checker::DispatchMethod::Trait {
+                            trait_name: trait_name.to_string(),
+                            function_name: function_name.to_string(),
+                            impl_type: Box::new(impl_type.clone()),
+                        });
+                    }
+                }
+            }
+        }
+        
         None
     }
 
@@ -2215,6 +2247,155 @@ impl CompilerEnvironment {
                     TypeError::internal(format!("SMT constraint solving failed: {smt_error}"));
                 Err(vec![type_error])
             }
+        }
+    }
+
+    /// Phase 7.5: Post-SMT clause resolution
+    /// Convert PendingClauseResolution constraints to PreResolvedClause constraints
+    /// using resolved Self types from the SMT model
+    fn phase_7_5_post_smt_clause_resolution(&mut self) -> Result<(), Vec<TypeError>> {
+        let mut unification_context = self.unification_context();
+        
+        // Get the SMT model from the unification context
+        let smt_model = match &unification_context.latest_smt_model {
+            Some(model) => model.clone(),
+            None => {
+                // No SMT model available - nothing to resolve
+                return Ok(());
+            }
+        };
+
+        // Collect all PendingClauseResolution constraints
+        let pending_constraints: Vec<_> = unification_context
+            .smt_constraints
+            .iter()
+            .filter_map(|constraint| {
+                if let crate::smt::constraints::SMTConstraint::PendingClauseResolution {
+                    call_site,
+                    trait_type,
+                    impl_type,
+                    function_name,
+                    has_guard,
+                    argument_types,
+                } = constraint {
+                    Some((
+                        *call_site,
+                        trait_type.clone(),
+                        impl_type.clone(),
+                        function_name.clone(),
+                        *has_guard,
+                        argument_types.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Remove all PendingClauseResolution constraints from the context
+        unification_context.smt_constraints.retain(|constraint| {
+            !matches!(constraint, crate::smt::constraints::SMTConstraint::PendingClauseResolution { .. })
+        });
+
+        // Process each pending constraint
+        for (call_site, trait_type, impl_type, function_name, has_guard, argument_types) in pending_constraints {
+            // Resolve the impl_type using the SMT model
+            let resolved_impl_type = self.resolve_type_with_smt_model(&impl_type, &smt_model);
+            
+            // Look up the function definition again to get clause index
+            let clause_index = if let Some(unified_func_entry) = self.lookup_impl_function_with_smt(
+                &trait_type,
+                &resolved_impl_type,
+                self.intern_atom_name(&function_name),
+            ) {
+                // Extract FunctionDefinition from UnifiedFunctionEntry
+                let func_def = match &unified_func_entry {
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::ImplFunction { definition, .. } => definition,
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::TraitStatic { definition, .. } => definition,
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::TraitSignature { definition, .. } => definition,
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::TraitDefault { definition, .. } => definition,
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::TypeStatic { definition, .. } => definition,
+                    crate::compilation::compiler_environment::UnifiedFunctionEntry::Intrinsic { .. } => {
+                        // Intrinsics don't have clause indices
+                        continue;
+                    }
+                };
+                
+                self.get_clause_index_for_function(
+                    &trait_type,
+                    &resolved_impl_type,
+                    &function_name,
+                    func_def,
+                ).unwrap_or(0)
+            } else {
+                0 // Fallback clause index
+            };
+            
+            let trait_name = match &trait_type {
+                crate::unification::StructuredType::Simple(trait_name_id) => {
+                    self.resolve_type_name(trait_name_id).unwrap_or_default()
+                }
+                _ => "UnknownTrait".to_string(),
+            };
+            
+            let resolved_impl_type_str = resolved_impl_type.to_string_representation();
+            let clause_id = format!(
+                "{}:{}:{}:{}",
+                trait_name,
+                resolved_impl_type_str,
+                function_name,
+                clause_index
+            );
+
+            // Check if this function has any guards
+            let guard_pre_evaluated = if has_guard {
+                None // Let runtime handle guard evaluation
+            } else {
+                Some(true) // No guards - always applicable
+            };
+
+            // Create the PreResolvedClause constraint with resolved types
+            let pre_resolved_constraint = crate::smt::constraints::SMTConstraint::PreResolvedClause {
+                call_site,
+                trait_type,
+                impl_type: resolved_impl_type,
+                function_name,
+                selected_clause_id: clause_id,
+                guard_pre_evaluated,
+                argument_types,
+            };
+
+            // Add the resolved constraint back to the context
+            unification_context.add_smt_constraint(pre_resolved_constraint);
+        }
+
+        // Update the unification context
+        self.set_unification_context(unification_context);
+
+        Ok(())
+    }
+
+    /// Helper function to resolve a StructuredType using the SMT model
+    fn resolve_type_with_smt_model(
+        &self,
+        structured_type: &crate::unification::StructuredType,
+        smt_model: &crate::smt::solver::ConstraintModel,
+    ) -> crate::unification::StructuredType {
+        match structured_type {
+            crate::unification::StructuredType::TypeVariable(type_name_id) => {
+                // This is a type variable (like Self) - resolve it using the SMT model
+                let variable_name = self.resolve_type_name(type_name_id).unwrap_or_default();
+                
+                if let Some(resolved_type) = smt_model.type_assignments.get(&variable_name) {
+                    // SMT model already contains StructuredType - use it directly
+                    resolved_type.clone()
+                } else {
+                    // Type variable not resolved by SMT - return as-is
+                    structured_type.clone()
+                }
+            }
+            // For non-type-variable types, return as-is
+            _ => structured_type.clone(),
         }
     }
 

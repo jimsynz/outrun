@@ -127,6 +127,17 @@ pub enum SMTConstraint {
         context: String,                // Function name and location context
     },
 
+    /// Pending clause resolution - deferred until after SMT solving
+    /// This tracks trait function calls that need clause ID generation after Self types are resolved
+    PendingClauseResolution {
+        call_site: Span,                // Location of the function call
+        trait_type: StructuredType,     // Trait being called (e.g., BinaryDivision)
+        impl_type: StructuredType,      // Implementation type with unresolved Self (e.g., TypeVariable(Self))
+        function_name: String,          // Function name (e.g., "divide")
+        has_guard: bool,                // Whether the function has guards (for pre-evaluation)
+        argument_types: Vec<StructuredType>, // Call site argument types
+    },
+
     /// Pre-resolved function clause selection
     /// This represents the SMT solver's decision about which clause to use for a specific call
     PreResolvedClause {
@@ -432,6 +443,22 @@ impl Hash for SMTConstraint {
                 }
                 evaluation_result.hash(state);
                 context.hash(state);
+            }
+            SMTConstraint::PendingClauseResolution {
+                call_site,
+                trait_type,
+                impl_type,
+                function_name,
+                has_guard,
+                argument_types,
+            } => {
+                14u8.hash(state);
+                call_site.hash(state);
+                trait_type.hash(state);
+                impl_type.hash(state);
+                function_name.hash(state);
+                has_guard.hash(state);
+                argument_types.hash(state);
             }
             SMTConstraint::PreResolvedClause {
                 call_site,

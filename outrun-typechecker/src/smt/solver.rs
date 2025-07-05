@@ -470,6 +470,11 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let satisfiable_var = Bool::new_const(self.context, format!("satisfiable_guard_{clause_id}"));
                     self.solver.assert(&satisfiable_var);
                 }
+                SMTConstraint::PendingClauseResolution { .. } => {
+                    // PendingClauseResolution constraints are handled in post-SMT phase
+                    // They should not be sent to Z3 solver
+                    continue;
+                }
             }
         }
 
