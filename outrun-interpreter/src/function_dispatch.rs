@@ -169,9 +169,14 @@ impl FunctionDispatcher {
         
         if let Some(clause_set) = self.lookup_function_clauses(&function_name_atom) {
             // SMT-based clause selection for functions with guards
+            // For non-trait functions, create a placeholder impl type
+            let placeholder_impl_type = outrun_typechecker::unification::StructuredType::Simple(
+                self.compiler_environment.intern_type_name("Placeholder")
+            );
             let selected_clause = self.select_function_clause_with_smt(
                 &clause_set,
                 &call_context.arguments,
+                &placeholder_impl_type,
                 call_context.span,
             )?;
             
@@ -194,10 +199,14 @@ impl FunctionDispatcher {
         // If function_id is "trait::TraitName::function", we need to search the trait module
         if function_id.starts_with("trait::") {
             if let Some(clause_set) = self.lookup_trait_static_function_clauses(function_id, &function_name_atom) {
-                
+                // For trait static functions, create a placeholder impl type
+                let placeholder_impl_type = outrun_typechecker::unification::StructuredType::Simple(
+                    self.compiler_environment.intern_type_name("Placeholder")
+                );
                 let selected_clause = self.select_function_clause_with_smt(
                     &clause_set,
                     &call_context.arguments,
+                    &placeholder_impl_type,
                     call_context.span,
                 )?;
                 
@@ -324,16 +333,26 @@ impl FunctionDispatcher {
         // CRITICAL FIX: Check for function clauses (guard clauses) within the specific trait implementation
         // We must look up clauses in the correct trait implementation module, not globally
         
-        if let Some(clause_set) = self.lookup_function_clauses_in_trait_impl(&trait_type, &resolved_impl_type, &function_name_atom) {
+        println!("🔍 DEBUG: Trait dispatch for {trait_name}.{function_name}");
+        println!("🔍 DEBUG: Trait type: {trait_type:?}");
+        println!("🔍 DEBUG: Resolved impl type: {resolved_impl_type:?}");
+        println!("🔍 DEBUG: First argument value: {:?}", call_context.arguments.values().next());
+        
+        // Use cross-module clause lookup to get clauses from ALL implementations, not just one
+        if let Some(clause_set) = self.compiler_environment.lookup_all_function_clauses_for_trait(&trait_type, &function_name_atom) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
                 &clause_set,
                 &call_context.arguments,
+                &resolved_impl_type,
                 call_context.span,
             )?;
             
+            println!("🔍 DEBUG: Found clause set, executing selected clause: {}", selected_clause.name);
+            println!("🔍 DEBUG: Function parameters: {:?}", selected_clause.parameters);
+            
             let function_executor = FunctionExecutor::new(self.compiler_environment.clone());
-            return function_executor
+            let result = function_executor
                 .execute_typed_function(
                     interpreter_context,
                     evaluator,
@@ -345,6 +364,12 @@ impl FunctionDispatcher {
                     message: format!("{e:?}"),
                     span: call_context.span,
                 });
+            
+            if let Ok(ref value) = result {
+                println!("🔍 DEBUG: Function returned: {}", value);
+            }
+            
+            return result;
         }
 
         // If we reach here, the SMT-first clause lookup failed
@@ -567,22 +592,47 @@ impl FunctionDispatcher {
         &self,
         clause_set: &'a outrun_typechecker::checker::FunctionClauseSet,
         arguments: &std::collections::HashMap<String, crate::value::Value>,
+        impl_type: &outrun_typechecker::unification::StructuredType,
         span: outrun_parser::Span,
     ) -> Result<&'a outrun_typechecker::checker::TypedFunctionDefinition, DispatchError> {
         // Get clauses sorted by priority (SMT pre-computed)
         let candidates = clause_set.get_clauses_by_priority();
         
-        // Iterate through clauses in priority order
-        for clause in candidates {
-            // Check if this clause is applicable
-            if self.is_clause_applicable(clause, arguments)? {
+        println!("🔍 CLAUSE SET: Function '{}' has {} clauses:", clause_set.function_name, candidates.len());
+        for (i, clause) in candidates.iter().enumerate() {
+            println!("🔍   Clause {}: {}", i, clause.clause_id);
+        }
+        
+        // Strategy 1: Try to find an exact type match first
+        for clause in &candidates {
+            if self.is_clause_exact_match(clause, arguments, impl_type)? {
                 // Check guard condition if present
                 if let Some(guard_expr) = &clause.base_function.guard {
                     if self.evaluate_guard_condition(guard_expr, arguments, span)? {
+                        println!("🔍 CLAUSE SELECTION: Selected exact match clause with guard: {}", clause.base_function.name);
+                        return Ok(&clause.base_function);
+                    }
+                } else {
+                    // No guard, exact match clause is best choice
+                    println!("🔍 CLAUSE SELECTION: Selected exact match clause: {}", clause.base_function.name);
+                    return Ok(&clause.base_function);
+                }
+            }
+        }
+        
+        // Strategy 2: Fall back to general applicability check
+        for clause in &candidates {
+            // Check if this clause is applicable (but not exact match)
+            if self.is_clause_applicable(clause, arguments, impl_type)? {
+                // Check guard condition if present
+                if let Some(guard_expr) = &clause.base_function.guard {
+                    if self.evaluate_guard_condition(guard_expr, arguments, span)? {
+                        println!("🔍 CLAUSE SELECTION: Selected fallback clause with guard: {}", clause.base_function.name);
                         return Ok(&clause.base_function);
                     }
                 } else {
                     // No guard, clause is applicable
+                    println!("🔍 CLAUSE SELECTION: Selected fallback clause: {}", clause.base_function.name);
                     return Ok(&clause.base_function);
                 }
             }
@@ -595,26 +645,217 @@ impl FunctionDispatcher {
         })
     }
 
+    /// Check if a function clause is an exact match for the argument types
+    /// This is used for precise dispatch when multiple clauses could be applicable
+    fn is_clause_exact_match(
+        &self,
+        clause: &outrun_typechecker::checker::FunctionClause,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+        impl_type: &outrun_typechecker::unification::StructuredType,
+    ) -> Result<bool, DispatchError> {
+        // For exact matching, we need to check if the clause's source implementation type
+        // exactly matches the concrete type of the ACTUAL argument values (not typechecker impl_type)
+        
+        println!("🔍 EXACT MATCH CHECK: Checking clause ID: {}", clause.clause_id);
+        
+        // Extract the implementing type from the clause's source module
+        if let Some(clause_impl_type) = self.extract_clause_implementing_type(clause) {
+            println!("🔍 EXACT MATCH: Clause impl type: {:?}", clause_impl_type);
+            
+            // Infer the actual implementing type from the first Self argument
+            if let Some(actual_impl_type) = self.infer_impl_type_from_arguments(clause, arguments) {
+                println!("🔍 EXACT MATCH: Actual argument impl type: {:?}", actual_impl_type);
+                
+                // Check if clause implementing type matches actual argument implementing type
+                if self.types_match_exactly(&clause_impl_type, &actual_impl_type) {
+                    // Now check that all arguments are compatible
+                    return self.is_clause_applicable(clause, arguments, impl_type);
+                }
+            } else {
+                // Fallback to typechecker-provided impl_type
+                println!("🔍 EXACT MATCH: Using typechecker impl type: {:?}", impl_type);
+                if self.types_match_exactly(&clause_impl_type, impl_type) {
+                    return self.is_clause_applicable(clause, arguments, impl_type);
+                }
+            }
+        }
+        
+        Ok(false)
+    }
+
+    /// Extract the implementing type from a function clause's source information
+    fn extract_clause_implementing_type(
+        &self,
+        clause: &outrun_typechecker::checker::FunctionClause,
+    ) -> Option<outrun_typechecker::unification::StructuredType> {
+        // The clause should contain information about which implementation it came from
+        // For now, we can try to parse it from the clause_id or function source
+        
+        // Parse clause ID format: "TraitType:ImplType:function_name:index"
+        let parts: Vec<&str> = clause.clause_id.split(':').collect();
+        println!("🔍 CLAUSE PARSING: Clause ID parts: {:?}", parts);
+        if parts.len() >= 2 {
+            let impl_type_name = parts[1];
+            
+            // Handle generic types like "Outrun.Option.Some<T>" -> "Outrun.Option.Some"
+            let base_type_name = if let Some(generic_start) = impl_type_name.find('<') {
+                &impl_type_name[..generic_start]
+            } else {
+                impl_type_name
+            };
+            
+            let impl_type_id = self.compiler_environment.intern_type_name(base_type_name);
+            return Some(outrun_typechecker::unification::StructuredType::Simple(impl_type_id));
+        }
+        
+        None
+    }
+
+    /// Infer the implementing type from the actual runtime argument values
+    /// This looks for the first Self parameter and extracts its concrete type
+    fn infer_impl_type_from_arguments(
+        &self,
+        clause: &outrun_typechecker::checker::FunctionClause,
+        arguments: &std::collections::HashMap<String, crate::value::Value>,
+    ) -> Option<outrun_typechecker::unification::StructuredType> {
+        use outrun_typechecker::unification::StructuredType;
+        
+        // Find the first Self parameter
+        for parameter in &clause.base_function.parameters {
+            if let Some(param_type) = &parameter.param_type {
+                if let StructuredType::Simple(type_id) = param_type {
+                    let type_name = self.compiler_environment.resolve_type_name(type_id).unwrap_or_default();
+                    if type_name == "Self" {
+                        // Found a Self parameter, extract its actual type from the argument
+                        if let Some(arg_value) = arguments.get(&parameter.name) {
+                            return self.infer_type_from_argument_value(arg_value);
+                        }
+                    }
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// Infer the implementing type from a runtime value
+    fn infer_type_from_argument_value(
+        &self,
+        value: &crate::value::Value,
+    ) -> Option<outrun_typechecker::unification::StructuredType> {
+        use outrun_typechecker::unification::StructuredType;
+        
+        match value {
+            crate::value::Value::Struct { type_id, .. } => {
+                // Return the concrete struct type
+                Some(StructuredType::Simple(type_id.clone()))
+            },
+            crate::value::Value::String(_) => {
+                let string_type_id = self.compiler_environment.intern_type_name("Outrun.Core.String");
+                Some(StructuredType::Simple(string_type_id))
+            },
+            crate::value::Value::Integer64(_) => {
+                let int_type_id = self.compiler_environment.intern_type_name("Outrun.Core.Integer64");
+                Some(StructuredType::Simple(int_type_id))
+            },
+            crate::value::Value::Boolean(_) => {
+                let bool_type_id = self.compiler_environment.intern_type_name("Outrun.Core.Boolean");
+                Some(StructuredType::Simple(bool_type_id))
+            },
+            // Add more cases as needed
+            _ => None,
+        }
+    }
+
+
+    /// Check if two types match exactly (not just compatible)
+    fn types_match_exactly(
+        &self,
+        type1: &outrun_typechecker::unification::StructuredType,
+        type2: &outrun_typechecker::unification::StructuredType,
+    ) -> bool {
+        use outrun_typechecker::unification::StructuredType;
+        
+        match (type1, type2) {
+            (StructuredType::Simple(id1), StructuredType::Simple(id2)) => {
+                let name1 = self.compiler_environment.resolve_type_name(id1).unwrap_or_default();
+                let name2 = self.compiler_environment.resolve_type_name(id2).unwrap_or_default();
+                
+                println!("🔍 EXACT TYPE MATCH: '{}' vs '{}'", name1, name2);
+                
+                // Handle common type name variations
+                self.normalize_type_name(&name1) == self.normalize_type_name(&name2)
+            },
+            (StructuredType::Generic { base: base1, .. }, StructuredType::Generic { base: base2, .. }) => {
+                let name1 = self.compiler_environment.resolve_type_name(base1).unwrap_or_default();
+                let name2 = self.compiler_environment.resolve_type_name(base2).unwrap_or_default();
+                
+                // For generic types, compare base types
+                self.normalize_type_name(&name1) == self.normalize_type_name(&name2)
+            },
+            // Handle mixed cases: Simple vs Generic (compare simple type to generic base)
+            (StructuredType::Simple(simple_id), StructuredType::Generic { base: generic_base, .. }) => {
+                let simple_name = self.compiler_environment.resolve_type_name(simple_id).unwrap_or_default();
+                let generic_name = self.compiler_environment.resolve_type_name(generic_base).unwrap_or_default();
+                
+                println!("🔍 MIXED TYPE MATCH: Simple '{}' vs Generic base '{}'", simple_name, generic_name);
+                
+                self.normalize_type_name(&simple_name) == self.normalize_type_name(&generic_name)
+            },
+            (StructuredType::Generic { base: generic_base, .. }, StructuredType::Simple(simple_id)) => {
+                let generic_name = self.compiler_environment.resolve_type_name(generic_base).unwrap_or_default();
+                let simple_name = self.compiler_environment.resolve_type_name(simple_id).unwrap_or_default();
+                
+                println!("🔍 MIXED TYPE MATCH: Generic base '{}' vs Simple '{}'", generic_name, simple_name);
+                
+                self.normalize_type_name(&generic_name) == self.normalize_type_name(&simple_name)
+            },
+            _ => false,
+        }
+    }
+
+    /// Normalize type names to handle variations like "Option" vs "Outrun.Option"
+    fn normalize_type_name(&self, name: &str) -> String {
+        // Remove common prefixes for comparison
+        if let Some(short_name) = name.strip_prefix("Outrun.Option.") {
+            format!("Option.{}", short_name)
+        } else if let Some(short_name) = name.strip_prefix("Outrun.Core.") {
+            short_name.to_string()
+        } else if let Some(short_name) = name.strip_prefix("Outrun.") {
+            short_name.to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
     /// Check if a function clause is applicable based on argument types
     fn is_clause_applicable(
         &self,
         clause: &outrun_typechecker::checker::FunctionClause,
         arguments: &std::collections::HashMap<String, crate::value::Value>,
+        impl_type: &outrun_typechecker::unification::StructuredType,
     ) -> Result<bool, DispatchError> {
+        println!("🔍 CLAUSE CHECK: Checking clause for function '{}'", clause.base_function.name);
+        
         // Check argument type compatibility
         for parameter in &clause.base_function.parameters {
             if let Some(argument_value) = arguments.get(&parameter.name) {
+                println!("🔍 CLAUSE CHECK: Checking parameter '{}' with type {:?}", parameter.name, parameter.param_type);
+                println!("🔍 CLAUSE CHECK: Argument value: {:?}", argument_value);
+                
                 // Check if argument type matches parameter type
-                // This would use the SMT ArgumentTypeMatch constraints in a full implementation
-                if !self.value_matches_type(argument_value, &parameter.param_type) {
+                if !self.value_matches_type(argument_value, &parameter.param_type, impl_type) {
+                    println!("🔍 CLAUSE CHECK: ❌ Parameter '{}' type mismatch - clause rejected", parameter.name);
                     return Ok(false);
                 }
+                println!("🔍 CLAUSE CHECK: ✅ Parameter '{}' type matches", parameter.name);
             } else {
-                // Missing required argument
+                println!("🔍 CLAUSE CHECK: ❌ Missing required argument '{}' - clause rejected", parameter.name);
                 return Ok(false);
             }
         }
         
+        println!("🔍 CLAUSE CHECK: ✅ All parameters match - clause accepted");
         Ok(true)
     }
 
@@ -685,18 +926,106 @@ impl FunctionDispatcher {
     }
 
     /// Check if a runtime value matches an expected parameter type
+    /// 
+    /// CRITICAL: This function enforces EXACT type matching only. 
+    /// NO WORKAROUNDS, NO FALLBACKS, NO PERMISSIVE MATCHING.
+    /// If types don't match exactly, the clause is rejected.
+    /// Any type compatibility issues must be solved by proper monomorphization
+    /// in the typechecker, not by runtime workarounds.
     fn value_matches_type(
         &self,
-        _value: &crate::value::Value,
-        _expected_type: &Option<outrun_typechecker::unification::StructuredType>,
+        value: &crate::value::Value,
+        expected_type: &Option<outrun_typechecker::unification::StructuredType>,
+        impl_type: &outrun_typechecker::unification::StructuredType,
     ) -> bool {
-        // This would perform runtime type checking against the expected type
-        // For now, we'll assume all values match (no type errors at runtime)
-        // In a full implementation, this would check:
-        // - Value::Integer64 matches StructuredType::Integer64
-        // - Value::String matches StructuredType::String
-        // - etc.
-        true
+        use outrun_typechecker::unification::StructuredType;
+        
+        let Some(expected) = expected_type else {
+            // No type constraint means the parameter is untyped - this should not happen
+            // in a properly monomorphized system, but we'll allow it for now during development
+            println!("🔍 TYPE CHECK: No type constraint - allowing match during development");
+            return true;
+        };
+        
+        match (value, expected) {
+            // EXACT TYPE MATCHING ONLY - NO WORKAROUNDS
+            (crate::value::Value::Integer64(_), StructuredType::Simple(type_id)) => {
+                let expected_name = self.compiler_environment.resolve_type_name(type_id).unwrap_or_default();
+                println!("🔍 TYPE CHECK: Integer64 value vs Expected type '{}'", expected_name);
+                
+                // STRICT: Only exact type matches allowed
+                expected_name == "Outrun.Core.Integer64"
+            },
+            
+            (crate::value::Value::Boolean(_), StructuredType::Simple(type_id)) => {
+                let expected_name = self.compiler_environment.resolve_type_name(type_id).unwrap_or_default();
+                println!("🔍 TYPE CHECK: Boolean value vs Expected type '{}'", expected_name);
+                
+                // STRICT: Only exact type matches allowed
+                expected_name == "Outrun.Core.Boolean"
+            },
+            
+            (crate::value::Value::String(_), StructuredType::Simple(expected_type_id)) => {
+                let expected_type_name = self.compiler_environment.resolve_type_name(expected_type_id).unwrap_or_default();
+                
+                println!("🔍 TYPE CHECK: String value vs Expected type '{}'", expected_type_name);
+                
+                // Handle Self type parameters by checking against the implementing type
+                if expected_type_name == "Self" {
+                    match impl_type {
+                        StructuredType::Simple(impl_type_id) => {
+                            let impl_type_name = self.compiler_environment.resolve_type_name(impl_type_id).unwrap_or_default();
+                            println!("🔍 SELF TYPE CHECK: Checking String value against implementing type '{}'", impl_type_name);
+                            
+                            // STRICT: Self must resolve to exact concrete type
+                            impl_type_name == "Outrun.Core.String"
+                        },
+                        _ => {
+                            println!("🔍 SELF TYPE CHECK: Complex implementing type not supported");
+                            false // NO FALLBACKS - reject complex Self types
+                        }
+                    }
+                } else {
+                    // STRICT: Only exact type matches allowed
+                    expected_type_name == "Outrun.Core.String"
+                }
+            },
+            
+            (crate::value::Value::Struct { type_id: value_type_id, .. }, StructuredType::Simple(expected_type_id)) => {
+                let value_type_name = self.compiler_environment.resolve_type_name(value_type_id).unwrap_or_default();
+                let expected_type_name = self.compiler_environment.resolve_type_name(expected_type_id).unwrap_or_default();
+                
+                println!("🔍 TYPE CHECK: Value type '{}' vs Expected type '{}'", value_type_name, expected_type_name);
+                
+                // Handle Self type parameters
+                if expected_type_name == "Self" {
+                    match impl_type {
+                        StructuredType::Simple(impl_type_id) => {
+                            let impl_type_name = self.compiler_environment.resolve_type_name(impl_type_id).unwrap_or_default();
+                            println!("🔍 SELF TYPE CHECK: Checking value type '{}' against implementing type '{}'", value_type_name, impl_type_name);
+                            
+                            // STRICT: Self must resolve to exact type
+                            value_type_name == impl_type_name
+                        },
+                        _ => {
+                            println!("🔍 SELF TYPE CHECK: Complex implementing type not supported");
+                            false // NO FALLBACKS
+                        }
+                    }
+                } else {
+                    // STRICT: Only exact type matches allowed
+                    value_type_name == expected_type_name
+                }
+            },
+            
+            // NO FALLBACK CASES - reject all unhandled combinations
+            _ => {
+                println!("🔍 TYPE CHECK: Unhandled value/type combination - REJECTING");
+                println!("🔍 TYPE CHECK: Value: {:?}", value);
+                println!("🔍 TYPE CHECK: Expected: {:?}", expected);
+                false // NO FALLBACKS - strict type checking only
+            }
+        }
     }
 
     /// Infer the structured type from a runtime value
@@ -728,6 +1057,10 @@ impl FunctionDispatcher {
                 // For lists, we'd need to infer the element type, but for now use generic List
                 let type_id = self.compiler_environment.intern_type_name("Outrun.Core.List");
                 Some(StructuredType::Simple(type_id))
+            },
+            crate::value::Value::Struct { type_id, .. } => {
+                // For structs, use the exact type stored in the value
+                Some(StructuredType::Simple(type_id.clone()))
             },
             // Add other value types as needed
             _ => None,

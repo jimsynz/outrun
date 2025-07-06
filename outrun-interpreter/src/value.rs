@@ -533,19 +533,23 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, ")")
             }
-            Value::Struct { fields, .. } => {
-                // For struct display, we'll show it like a map for now
-                // TODO: Better struct display with type names
-                write!(f, "Struct{{")?;
-                let mut first = true;
-                for (field_name, value) in fields.iter() {
-                    if !first {
-                        write!(f, ", ")?;
+            Value::Struct { type_id, fields, .. } => {
+                // Display as Outrun struct syntax: TypeName { field1: value1, field2: value2 }
+                write!(f, "{type_id}")?;
+                if fields.is_empty() {
+                    write!(f, " {{}}")
+                } else {
+                    write!(f, " {{ ")?;
+                    let mut first = true;
+                    for (field_name, value) in fields.iter() {
+                        if !first {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{field_name}: {value}")?;
+                        first = false;
                     }
-                    write!(f, "field_{field_name:?}: {value}")?; // TODO: Get field name from interner
-                    first = false;
+                    write!(f, " }}")
                 }
-                write!(f, "}}")
             }
         }
     }

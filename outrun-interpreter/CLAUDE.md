@@ -1,5 +1,45 @@
 # Working with the Outrun Interpreter
 
+## 🚨 CRITICAL: NO TYPE MATCHING WORKAROUNDS POLICY
+
+**ABSOLUTELY NO TYPE MATCHING WORKAROUNDS OR FALLBACKS ARE ACCEPTABLE IN THIS CODEBASE.**
+
+This interpreter enforces **EXACT TYPE MATCHING ONLY**. Any type compatibility issues must be solved by proper monomorphization in the typechecker, not by runtime workarounds in the interpreter.
+
+### ❌ FORBIDDEN PATTERNS:
+```rust
+// ❌ FORBIDDEN: Permissive type matching
+if expected_type == "Integer" || expected_type == "Integer64" { ... }
+
+// ❌ FORBIDDEN: Fallback to "allow anything"
+_ => true  // Default to allowing unhandled cases
+
+// ❌ FORBIDDEN: "For now" workarounds
+|| expected_name == "Integer"  // For now, until monomorphization works
+
+// ❌ FORBIDDEN: Multiple type alternatives
+expected_name == "String" || expected_name == "Binary" || expected_name == "Self"
+```
+
+### ✅ REQUIRED PATTERNS:
+```rust
+// ✅ REQUIRED: Exact type matching only
+expected_name == "Outrun.Core.Integer64"
+
+// ✅ REQUIRED: Strict rejection of mismatches
+_ => false  // Reject all unhandled cases
+
+// ✅ REQUIRED: Clear error messages for debugging
+println!("TYPE MISMATCH: Value {:?} vs Expected {:?}", value, expected);
+```
+
+### Rationale
+Type safety is non-negotiable. Any "compatibility" checking belongs in the typechecker's monomorphization system, not in runtime dispatch. The interpreter must only execute code that has been proven type-safe by the typechecker.
+
+**If a test fails due to type mismatches, the solution is to fix the monomorphization in the typechecker, never to add workarounds in the interpreter.**
+
+---
+
 ## Project Overview
 
 The Outrun interpreter is an expression-mode interpreter that executes typed expressions from the Outrun typechecker. It's designed primarily for REPL usage and focuses on functional programming patterns with immutable data structures.

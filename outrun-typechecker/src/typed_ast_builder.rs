@@ -1561,6 +1561,15 @@ impl TypedASTBuilder {
         match type_annotation {
             outrun_parser::TypeAnnotation::Simple { path, .. } => {
                 if let Some(first_type) = path.first() {
+                    // CRITICAL FIX: Check generic context for Self type resolution
+                    if first_type.name == "Self" {
+                        if let Some(context) = &self.generic_context {
+                            if let Some(self_type) = &context.self_type {
+                                return Some(self_type.clone());
+                            }
+                        }
+                    }
+                    
                     let type_id = self
                         .compiler_environment
                         .as_ref()
@@ -2473,7 +2482,7 @@ impl TypedASTBuilder {
     }
 
     /// Create generic context for a scope with given parameters
-    fn create_generic_context(
+    pub fn create_generic_context(
         &mut self,
         generic_params: &[TypedGenericParam],
         self_type: Option<StructuredType>,
@@ -2493,12 +2502,12 @@ impl TypedASTBuilder {
     }
 
     /// Push generic context for nested scopes
-    fn push_generic_context(&mut self, context: TypedGenericContext) {
+    pub fn push_generic_context(&mut self, context: TypedGenericContext) {
         self.generic_context = Some(context);
     }
 
     /// Pop generic context when leaving scope
-    fn pop_generic_context(&mut self) {
+    pub fn pop_generic_context(&mut self) {
         self.generic_context = None;
     }
 
