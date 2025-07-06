@@ -338,8 +338,8 @@ impl FunctionDispatcher {
         println!("🔍 DEBUG: Resolved impl type: {resolved_impl_type:?}");
         println!("🔍 DEBUG: First argument value: {:?}", call_context.arguments.values().next());
         
-        // Use cross-module clause lookup to get clauses from ALL implementations, not just one
-        if let Some(clause_set) = self.compiler_environment.lookup_all_function_clauses_for_trait(&trait_type, &function_name_atom) {
+        // 🚀 CENTRAL REGISTRY LOOKUP: Use O(1) registry lookup instead of expensive module traversal
+        if let Some(clause_set) = self.compiler_environment.get_function_clauses_from_registry(trait_name, function_name) {
             // SMT-based clause selection for functions with guards
             let selected_clause = self.select_function_clause_with_smt(
                 &clause_set,
@@ -691,11 +691,11 @@ impl FunctionDispatcher {
         // The clause should contain information about which implementation it came from
         // For now, we can try to parse it from the clause_id or function source
         
-        // Parse clause ID format: "TraitType:ImplType:function_name:index"
+        // Parse clause ID format: "MONO_{trait}:{function}:{impl_type}:({params}):{hash}"
         let parts: Vec<&str> = clause.clause_id.split(':').collect();
         println!("🔍 CLAUSE PARSING: Clause ID parts: {:?}", parts);
-        if parts.len() >= 2 {
-            let impl_type_name = parts[1];
+        if parts.len() >= 3 {
+            let impl_type_name = parts[2];  // Fixed: impl type is the 3rd part, not 2nd
             
             // Handle generic types like "Outrun.Option.Some<T>" -> "Outrun.Option.Some"
             let base_type_name = if let Some(generic_start) = impl_type_name.find('<') {
@@ -988,6 +988,32 @@ impl FunctionDispatcher {
                 } else {
                     // STRICT: Only exact type matches allowed
                     expected_type_name == "Outrun.Core.String"
+                }
+            },
+            
+            (crate::value::Value::Atom(_), StructuredType::Simple(expected_type_id)) => {
+                let expected_type_name = self.compiler_environment.resolve_type_name(expected_type_id).unwrap_or_default();
+                
+                println!("🔍 TYPE CHECK: Atom value vs Expected type '{}'", expected_type_name);
+                
+                // Handle Self type parameters by checking against the implementing type
+                if expected_type_name == "Self" {
+                    match impl_type {
+                        StructuredType::Simple(impl_type_id) => {
+                            let impl_type_name = self.compiler_environment.resolve_type_name(impl_type_id).unwrap_or_default();
+                            println!("🔍 SELF TYPE CHECK: Checking Atom value against implementing type '{}'", impl_type_name);
+                            
+                            // STRICT: Self must resolve to exact concrete type
+                            impl_type_name == "Outrun.Core.Atom"
+                        },
+                        _ => {
+                            println!("🔍 SELF TYPE CHECK: Complex implementing type not supported");
+                            false // NO FALLBACKS - reject complex Self types
+                        }
+                    }
+                } else {
+                    // STRICT: Only exact type matches allowed
+                    expected_type_name == "Outrun.Core.Atom"
                 }
             },
             

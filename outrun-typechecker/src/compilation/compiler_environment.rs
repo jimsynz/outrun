@@ -187,6 +187,142 @@ impl std::hash::Hash for AtomId {
     }
 }
 
+/// Function signature for central registry lookup
+/// Provides fast O(1) access to all implementations of a function across traits
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunctionSignature {
+    /// Trait name (None for non-trait functions, Some for trait functions)
+    pub trait_name: Option<String>,
+    /// Function name
+    pub function_name: String,
+}
+
+impl FunctionSignature {
+    /// Create a new function signature for a trait function
+    pub fn trait_function(trait_name: String, function_name: String) -> Self {
+        Self {
+            trait_name: Some(trait_name),
+            function_name,
+        }
+    }
+    
+    /// Create a new function signature for a non-trait function
+    pub fn standalone_function(function_name: String) -> Self {
+        Self {
+            trait_name: None,
+            function_name,
+        }
+    }
+    
+    /// Get the qualified function name for display
+    pub fn qualified_name(&self) -> String {
+        match &self.trait_name {
+            Some(trait_name) => format!("{}::{}", trait_name, self.function_name),
+            None => self.function_name.clone(),
+        }
+    }
+}
+
+/// Central function clause registry for fast dispatch across all modules
+/// This provides O(1) lookup for function clauses instead of O(modules) module traversal
+#[derive(Debug)]
+pub struct FunctionClauseRegistry {
+    /// Fast lookup by function signature -> all implementations
+    /// Maps (trait_name, function_name) to all clauses that implement that function
+    clauses_by_signature: HashMap<FunctionSignature, Vec<Arc<crate::checker::FunctionClause>>>,
+    
+    /// Fast lookup by clause ID for pre-resolved dispatch
+    /// Maps clause_id to the specific clause for direct execution
+    clauses_by_id: HashMap<String, Arc<crate::checker::FunctionClause>>,
+    
+    /// Statistics for debugging and optimization
+    total_clauses: usize,
+    total_signatures: usize,
+}
+
+impl FunctionClauseRegistry {
+    /// Create a new empty function clause registry
+    pub fn new() -> Self {
+        Self {
+            clauses_by_signature: HashMap::new(),
+            clauses_by_id: HashMap::new(),
+            total_clauses: 0,
+            total_signatures: 0,
+        }
+    }
+    
+    /// Add a function clause to the registry
+    /// The clause will be indexed by both signature and ID for fast lookup
+    pub fn add_clause(&mut self, signature: FunctionSignature, clause: crate::checker::FunctionClause) {
+        let clause_arc = Arc::new(clause);
+        
+        // Index by signature for trait dispatch
+        self.clauses_by_signature
+            .entry(signature)
+            .or_insert_with(Vec::new)
+            .push(clause_arc.clone());
+            
+        // Index by ID for pre-resolved dispatch
+        self.clauses_by_id.insert(clause_arc.clause_id.clone(), clause_arc);
+        
+        // Update statistics
+        self.total_clauses += 1;
+        self.total_signatures = self.clauses_by_signature.len();
+    }
+    
+    /// Get all clauses for a function signature
+    /// Returns all implementations of trait_name::function_name across all types
+    pub fn get_clauses_by_signature(&self, signature: &FunctionSignature) -> Option<&[Arc<crate::checker::FunctionClause>]> {
+        self.clauses_by_signature.get(signature).map(|v| v.as_slice())
+    }
+    
+    /// Get a specific clause by ID
+    /// Used for pre-resolved dispatch where SMT has already selected the clause
+    pub fn get_clause_by_id(&self, clause_id: &str) -> Option<&Arc<crate::checker::FunctionClause>> {
+        self.clauses_by_id.get(clause_id)
+    }
+    
+    /// Get all clauses as a unified clause set
+    /// This replaces the module traversal approach with direct registry lookup
+    pub fn get_unified_clause_set(&self, signature: &FunctionSignature) -> Option<crate::checker::FunctionClauseSet> {
+        if let Some(clauses) = self.clauses_by_signature.get(signature) {
+            if !clauses.is_empty() {
+                // Convert Arc<FunctionClause> to FunctionClause for the clause set
+                let clause_copies: Vec<crate::checker::FunctionClause> = clauses
+                    .iter()
+                    .map(|arc_clause| (**arc_clause).clone())
+                    .collect();
+                    
+                Some(crate::checker::FunctionClauseSet {
+                    clauses: clause_copies,
+                    function_name: signature.qualified_name(),
+                    clause_resolution_cache: HashMap::new(),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+    
+    /// Get registry statistics for debugging
+    pub fn stats(&self) -> (usize, usize, usize) {
+        (self.total_clauses, self.total_signatures, self.clauses_by_id.len())
+    }
+    
+    /// List all function signatures in the registry
+    pub fn list_signatures(&self) -> Vec<&FunctionSignature> {
+        self.clauses_by_signature.keys().collect()
+    }
+}
+
+impl Default for FunctionClauseRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Key for identifying modules in the compiler environment
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModuleKey {
@@ -629,6 +765,9 @@ pub struct CompilerEnvironment {
     atoms: Arc<RwLock<HashMap<u64, String>>>,
     /// Map of module keys to their module definitions with interior mutability
     modules: Arc<RwLock<HashMap<ModuleKey, Module>>>,
+    /// Central function clause registry for fast O(1) dispatch lookup
+    /// Replaces expensive module traversal with direct function signature lookup
+    function_registry: Arc<RwLock<FunctionClauseRegistry>>,
     /// Compilation state
     compilation_state: Arc<RwLock<CompilationState>>,
     /// Struct definitions indexed by TypeNameId for type checking
@@ -673,6 +812,7 @@ impl CompilerEnvironment {
             type_names: Arc::new(RwLock::new(HashMap::new())),
             atoms: Arc::new(RwLock::new(HashMap::new())),
             modules: Arc::new(RwLock::new(HashMap::new())),
+            function_registry: Arc::new(RwLock::new(FunctionClauseRegistry::new())),
             compilation_state: Arc::new(RwLock::new(CompilationState::default())),
             structs: Arc::new(RwLock::new(HashMap::new())),
             traits: Arc::new(RwLock::new(HashMap::new())),
@@ -2356,37 +2496,72 @@ impl CompilerEnvironment {
     }
 
     /// Phase 7.6 - Comprehensive function signature monomorphization
-    /// This phase collects all function call sites and generates fully monomorphized clauses
+    /// This phase monomorphizes ALL trait implementations in the system
     /// where ALL trait types are resolved to concrete types
     fn phase_7_6_comprehensive_monomorphization(
         &mut self,
-        collection: &ProgramCollection,
+        _collection: &ProgramCollection,
     ) -> Result<(), Vec<TypeError>> {
         eprintln!("🔧 PHASE 7.6: Starting comprehensive monomorphization");
 
-        // Step 1: Collect all function call sites with their concrete argument types
-        let mut call_sites = Vec::new();
-        self.collect_function_call_sites_with_types(collection, &mut call_sites)?;
+        // Step 1: Find all trait implementations that need monomorphization
+        let trait_implementations = self.collect_all_trait_implementations()?;
+        
+        eprintln!("🔧 PHASE 7.6: Found {} trait implementations", trait_implementations.len());
 
-        eprintln!("🔧 PHASE 7.6: Found {} function call sites", call_sites.len());
-
-        // Step 2: For each call site, determine what monomorphizations are needed
-        let mut monomorphization_specs = Vec::new();
-        for call_site in &call_sites {
-            if let Some(spec) = self.analyze_call_site_for_monomorphization(call_site)? {
-                monomorphization_specs.push(spec);
-            }
-        }
-
-        eprintln!("🔧 PHASE 7.6: Generated {} monomorphization specs", monomorphization_specs.len());
-
-        // Step 3: Generate fully monomorphized clauses
-        for spec in monomorphization_specs {
-            self.generate_fully_monomorphized_clause(&spec)?;
+        // Step 2: Monomorphize each trait implementation
+        for (trait_name, impl_type, function_name) in trait_implementations {
+            eprintln!("🔧 MONO IMPL: Processing {}::{} for {}", trait_name, function_name, 
+                     self.resolve_type_display(&impl_type));
+            
+            self.monomorphize_trait_implementation(&trait_name, &impl_type, &function_name)?;
         }
 
         eprintln!("🔧 PHASE 7.6: Comprehensive monomorphization complete");
         Ok(())
+    }
+
+    /// Collect all trait implementations in the system that need monomorphization
+    fn collect_all_trait_implementations(&self) -> Result<Vec<(String, StructuredType, String)>, Vec<TypeError>> {
+        let mut implementations = Vec::new();
+        
+        // Look through all modules for trait implementations
+        let modules = self.modules.read().unwrap();
+        for (module_key, module) in modules.iter() {
+            if let ModuleKey::TraitImpl(trait_type, impl_type) = module_key {
+                let trait_name = self.resolve_type_display(trait_type);
+                let impl_type_resolved = (**impl_type).clone(); // Dereference the Box
+                
+                // For each function in this trait implementation
+                for function_name_atom in module.function_clauses.keys() {
+                    let function_name = self.resolve_atom_name(function_name_atom).unwrap_or_default();
+                    
+                    implementations.push((trait_name.clone(), impl_type_resolved.clone(), function_name));
+                }
+            }
+        }
+        
+        Ok(implementations)
+    }
+
+    /// Monomorphize a specific trait implementation
+    fn monomorphize_trait_implementation(
+        &mut self,
+        trait_name: &str,
+        impl_type: &StructuredType,
+        function_name: &str,
+    ) -> Result<(), Vec<TypeError>> {
+        // Create a spec for this trait implementation
+        let spec = FullMonomorphizationSpec {
+            trait_name: trait_name.to_string(),
+            function_name: function_name.to_string(),
+            implementing_type: impl_type.clone(),
+            concrete_argument_types: std::collections::HashMap::new(), // We'll infer from the clause
+            concrete_return_type: StructuredType::Simple(self.intern_type_name("Unknown")), // Will be inferred
+            call_site_span: outrun_parser::Span::new(0, 0),
+        };
+        
+        self.generate_fully_monomorphized_clause(&spec)
     }
 
     /// Collect all function call sites with their resolved argument types
@@ -2705,14 +2880,47 @@ impl CompilerEnvironment {
             span: clause.span,
         };
         
-        // Add the monomorphized clause (don't replace, just add the new one)
+        // Add the monomorphized clause with strict validation against overwrites
         {
             let mut modules = self.modules.write().unwrap();
             if let Some(module) = modules.get_mut(&module_key) {
                 if let Some(clause_set) = module.get_function_clause_set_mut(&function_name_atom) {
-                    clause_set.clauses.push(monomorphized_clause);
-                    eprintln!("🔧 MONO CLAUSE: Added monomorphized clause {}", monomorphized_clause_id);
+                    // Check if this clause ID already exists
+                    if clause_set.clauses.iter().any(|c| c.clause_id == monomorphized_clause_id) {
+                        return Err(vec![TypeError::InternalError { 
+                            message: format!("CRITICAL ERROR: Attempted to overwrite existing clause {}", monomorphized_clause_id),
+                            span: clause.span.to_source_span()
+                        }]);
+                    }
+                    
+                    clause_set.clauses.push(monomorphized_clause.clone());
+                    eprintln!("🔧 MONO CLAUSE: Added monomorphized clause {} (total clauses: {})", 
+                             monomorphized_clause_id, clause_set.clauses.len());
+                    
+                    // CRITICAL: Also register the clause in the central registry for fast dispatch
+                    self.register_function_clause(
+                        Some(spec.trait_name.clone()), 
+                        spec.function_name.clone(), 
+                        monomorphized_clause
+                    );
+                              
+                    // Special debugging for Display::to_string for Atom
+                    if spec.trait_name == "Display" && spec.function_name == "to_string" {
+                        if let StructuredType::Simple(type_id) = &spec.implementing_type {
+                            let type_name = self.resolve_type_name(type_id).unwrap_or_default();
+                            if type_name == "Outrun.Core.Atom" {
+                                eprintln!("🎯 TARGET MODULE: Display::to_string for Atom - added clause {} (clause #{}/{})", 
+                                         monomorphized_clause_id, clause_set.clauses.len(), clause_set.clauses.len());
+                                eprintln!("🎯 TARGET MODULE: Module key: {:?}", module_key);
+                                eprintln!("🎯 TARGET MODULE: Function atom: {:?}", function_name_atom);
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("🔧 MONO CLAUSE: No clause set found for function {}", function_name_atom);
                 }
+            } else {
+                eprintln!("🔧 MONO CLAUSE: No module found for key {:?}", module_key);
             }
         }
         
@@ -8239,19 +8447,45 @@ impl CompilerEnvironment {
         let modules = self.modules.read().unwrap();
         let mut unified_clauses = Vec::new();
         
+        eprintln!("🔍 CLAUSE LOOKUP: Looking for {}::{}", trait_type.to_string_representation(), function_name);
+        eprintln!("🔍 CLAUSE LOOKUP: Total modules: {}", modules.len());
+        
         // Iterate through all modules to find trait implementations
         for (module_key, module) in modules.iter() {
-            if let ModuleKey::TraitImpl(module_trait_type, _impl_type) = module_key {
+            if let ModuleKey::TraitImpl(module_trait_type, impl_type) = module_key {
+                eprintln!("🔍 CLAUSE LOOKUP: Checking module trait {} for impl {}", 
+                         module_trait_type.to_string_representation(), 
+                         impl_type.to_string_representation());
+                
                 // Check if this module implements the trait we're looking for
                 if self.types_match_for_dispatch(trait_type, module_trait_type) {
+                    eprintln!("🔍 CLAUSE LOOKUP: ✅ Trait types match! Looking for function clauses...");
+                    
                     // Look for function clauses for this function name in this implementation
                     if let Some(clause_set) = module.function_clauses.get(function_name) {
+                        eprintln!("🔍 CLAUSE LOOKUP: ✅ Found {} clauses for function {}", 
+                                 clause_set.clauses.len(), function_name);
+                        
+                        for clause in &clause_set.clauses {
+                            eprintln!("🔍 CLAUSE LOOKUP:   - Clause: {}", clause.clause_id);
+                        }
+                        
                         // Add all clauses from this implementation
                         unified_clauses.extend(clause_set.clauses.clone());
+                    } else {
+                        eprintln!("🔍 CLAUSE LOOKUP: ❌ No clauses found for function {} in this implementation", function_name);
+                        eprintln!("🔍 CLAUSE LOOKUP: Available functions: {:?}", 
+                                 module.function_clauses.keys().map(|k| self.resolve_atom_name(k).unwrap_or_default()).collect::<Vec<_>>());
                     }
+                } else {
+                    eprintln!("🔍 CLAUSE LOOKUP: ❌ Trait types don't match (requested: {}, module: {})", 
+                             trait_type.to_string_representation(), 
+                             module_trait_type.to_string_representation());
                 }
             }
         }
+        
+        eprintln!("🔍 CLAUSE LOOKUP: Total unified clauses found: {}", unified_clauses.len());
         
         // Return unified clause set if we found any clauses
         if !unified_clauses.is_empty() {
@@ -8261,6 +8495,7 @@ impl CompilerEnvironment {
                 clause_resolution_cache: std::collections::HashMap::new(),
             })
         } else {
+            eprintln!("🔍 CLAUSE LOOKUP: ❌ No clauses found at all!");
             None
         }
     }
@@ -8286,6 +8521,71 @@ impl CompilerEnvironment {
             }
             _ => false, // Other combinations don't match
         }
+    }
+
+    // ========== CENTRAL FUNCTION CLAUSE REGISTRY METHODS ==========
+
+    /// Add a function clause to the central registry 
+    /// This should be called during monomorphization and function registration
+    pub fn register_function_clause(&self, trait_name: Option<String>, function_name: String, clause: crate::checker::FunctionClause) {
+        let signature = if let Some(trait_name) = trait_name {
+            FunctionSignature::trait_function(trait_name, function_name)
+        } else {
+            FunctionSignature::standalone_function(function_name)
+        };
+        
+        eprintln!("🏛️ REGISTRY: Adding clause {} for signature {}", clause.clause_id, signature.qualified_name());
+        
+        let mut registry = self.function_registry.write().unwrap();
+        registry.add_clause(signature, clause);
+        
+        let (total_clauses, total_signatures, _) = registry.stats();
+        eprintln!("🏛️ REGISTRY: Now has {} clauses across {} signatures", total_clauses, total_signatures);
+    }
+
+    /// Get all function clauses for a trait function from the central registry
+    /// This replaces the expensive module traversal approach with O(1) lookup
+    pub fn get_function_clauses_from_registry(&self, trait_name: &str, function_name: &str) -> Option<crate::checker::FunctionClauseSet> {
+        let signature = FunctionSignature::trait_function(trait_name.to_string(), function_name.to_string());
+        
+        eprintln!("🏛️ REGISTRY: Looking up clauses for {}", signature.qualified_name());
+        
+        let registry = self.function_registry.read().unwrap();
+        
+        if let Some(clause_set) = registry.get_unified_clause_set(&signature) {
+            eprintln!("🏛️ REGISTRY: ✅ Found {} clauses", clause_set.clauses.len());
+            for clause in &clause_set.clauses {
+                eprintln!("🏛️ REGISTRY:   - {}", clause.clause_id);
+            }
+            Some(clause_set)
+        } else {
+            eprintln!("🏛️ REGISTRY: ❌ No clauses found for {}", signature.qualified_name());
+            
+            // Debug: List all available signatures
+            let signatures = registry.list_signatures();
+            eprintln!("🏛️ REGISTRY: Available signatures: {:?}", 
+                     signatures.iter().map(|s| s.qualified_name()).collect::<Vec<_>>());
+            None
+        }
+    }
+
+    /// Get a specific function clause by ID from the central registry
+    /// Used for pre-resolved dispatch where SMT has already selected the clause
+    pub fn get_function_clause_by_id(&self, clause_id: &str) -> Option<Arc<crate::checker::FunctionClause>> {
+        let registry = self.function_registry.read().unwrap();
+        registry.get_clause_by_id(clause_id).map(|arc| arc.clone())
+    }
+
+    /// List all function signatures in the central registry (for debugging)
+    pub fn list_registered_function_signatures(&self) -> Vec<String> {
+        let registry = self.function_registry.read().unwrap();
+        registry.list_signatures().iter().map(|s| s.qualified_name()).collect()
+    }
+
+    /// Get central registry statistics for debugging and optimization
+    pub fn get_registry_stats(&self) -> (usize, usize, usize) {
+        let registry = self.function_registry.read().unwrap();
+        registry.stats()
     }
 
     /// Phase 6.6: Guard purity analysis for mathematical soundness
