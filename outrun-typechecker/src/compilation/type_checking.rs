@@ -88,15 +88,18 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
             }
         };
 
-        // If there was a type annotation, validate it matches the expression
+        // If there was a type annotation, defer validation to SMT solving phase
         if let Some(expected_type) = &type_hint {
-            if !self.types_are_compatible(&expr_type, expected_type) {
-                self.errors.push(TypeError::type_mismatch(
-                    expected_type.to_string_representation(),
-                    expr_type.to_string_representation(),
-                    let_binding.expression.span.to_source_span(),
-                ));
-            }
+            // Generate SMT constraint for deferred validation
+            let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+                type1: expr_type.clone(),
+                type2: expected_type.clone(),
+                context: format!("let binding type annotation"),
+            };
+            
+            let mut context = self.compiler_environment.unification_context();
+            context.add_smt_constraint(constraint);
+            self.compiler_environment.set_unification_context(context);
         }
 
         // Visit the pattern (but not the expression since we already checked it with hint)
@@ -1806,11 +1809,19 @@ impl TypeCheckingVisitor {
         let _func_atom = self.compiler_environment.intern_atom_name(&func_name);
 
         // Look up function definition using hierarchical registry
-        match &call.path {
+        let result = match &call.path {
             outrun_parser::FunctionPath::Qualified { module, name } => {
                 // Qualified call like "Option.some?" or "Outrun.Intrinsic.list_inspect"
                 let module_name = &module.name;
                 let function_name = &name.name;
+                
+                // DEBUG: Trace Map.get calls specifically
+                if module_name == "Map" && function_name == "get" {
+                    println!("🔍 MAP.GET CALL TRACE: Starting resolution for Map.get");
+                    println!("   Call span: {}:{}", call.span.start, call.span.end);
+                    println!("   Current trait context: {:?}", self.current_trait_context());
+                    println!("   Current impl context: {:?}", self.current_impl_context());
+                }
 
                 // Get module TypeId and look up the full structured type from module registry
                 let module_type_id = self.compiler_environment.intern_type_name(module_name);
@@ -1829,12 +1840,26 @@ impl TypeCheckingVisitor {
                 let module_structured =
                     crate::unification::StructuredType::Simple(module_type_id.clone());
                 let is_trait = self.compiler_environment.is_trait(&module_structured);
+                
+                // DEBUG: Log trait check for Map.get
+                if module_name == "Map" && function_name == "get" {
+                    println!("🔍 MAP.GET TRAIT CHECK: is_trait = {}", is_trait);
+                    println!("   Module structured type: {:?}", module_structured);
+                }
 
                 if is_trait {
                     // For trait calls, first infer the implementing type from arguments
                     let trait_func_entry = self
                         .compiler_environment
                         .lookup_qualified_function(&module_type, function_name_atom.clone());
+                    
+                    // DEBUG: Log trait function lookup for Map.get and Option.some?
+                    if (module_name == "Map" && function_name == "get") || (module_name == "Option" && function_name == "some?") {
+                        match &trait_func_entry {
+                            Some(func) => println!("🔍 TRAIT LOOKUP {}.{}: Found function, type = {:?}", module_name, function_name, func.function_type()),
+                            None => println!("🔍 TRAIT LOOKUP {}.{}: Function not found", module_name, function_name),
+                        }
+                    }
 
                     if let Some(trait_func) = trait_func_entry {
                         // Check if this is a static function (defs) - static functions don't need Self parameter resolution
@@ -1898,18 +1923,32 @@ impl TypeCheckingVisitor {
                             trait_func.definition(),
                             call,
                         )?;
+                        
+                        // DEBUG: Log implementing type inference for Map.get and Option.some?
+                        if (module_name == "Map" && function_name == "get") || (module_name == "Option" && function_name == "some?") {
+                            println!("🔍 IMPLEMENTING TYPE {}.{}: {:?}", module_name, function_name, implementing_structured_type);
+                            println!("   Self variable ID: {:?}", self_variable_id);
+                        }
 
                         // TODO: Instantiate generic parameters in module_type based on implementing_structured_type
                         // For now, use module_type from registry as-is
 
                         // Look up the actual implementation function using SMT-enhanced lookup
-                        if let Some(impl_func_def) =
-                            self.compiler_environment.lookup_impl_function_with_smt(
-                                &module_type,
-                                &implementing_structured_type,
-                                function_name_atom,
-                            )
-                        {
+                        let impl_func_def = self.compiler_environment.lookup_impl_function_with_smt(
+                            &module_type,
+                            &implementing_structured_type,
+                            function_name_atom,
+                        );
+                        
+                        // DEBUG: Log trait implementation lookup for Option functions
+                        if module_name == "Option" {
+                            match &impl_func_def {
+                                Some(func) => println!("🔍 TRAIT IMPL LOOKUP {}.{}: Found implementation {:?}", module_name, function_name, func.function_id()),
+                                None => println!("🔍 TRAIT IMPL LOOKUP {}.{}: No implementation found for {:?}", module_name, function_name, implementing_structured_type),
+                            }
+                        }
+                        
+                        if let Some(impl_func_def) = impl_func_def {
                             // CRITICAL: Generate PreResolvedClause constraint for SMT-first dispatch
                             // This ensures all trait function calls bypass runtime module lookups
                             let updated_context = self.collect_constraint_specification(
@@ -1950,11 +1989,24 @@ impl TypeCheckingVisitor {
                                 &implementing_structured_type,
                             )?;
                             // CRITICAL FIX: Use the same Self variable ID for return type resolution
-                            self.resolve_type_annotation_with_specific_self_variable(
+                            let resolved_return_type = self.resolve_type_annotation_with_specific_self_variable(
                                 &impl_func_def.definition().return_type,
                                 &self_variable_id,
                                 &implementing_structured_type,
-                            )
+                            )?;
+                            
+                            // DEBUG: Log trait implementation return type resolution for Map.get and Option.some?
+                            if (module_name == "Map" && function_name == "get") || 
+                               (module_name == "Option" && function_name == "some?") ||
+                               module_name.contains("Outrun.Intrinsic") && (function_name == "map_get" || function_name == "string_index_of") {
+                                println!("🔍 TRAIT IMPL RETURN TYPE: {}.{}", module_name, function_name);
+                                println!("   Original return type annotation: {:?}", impl_func_def.definition().return_type);
+                                println!("   Resolved return type: {:?}", resolved_return_type);
+                                println!("   Implementing type: {:?}", implementing_structured_type);
+                                println!("   Implementation function ID: {}", impl_func_def.function_id());
+                            }
+                            
+                            Ok(resolved_return_type)
                         } else {
                             // No implementation found - check if trait function has a default implementation
                             match trait_func.function_type() {
@@ -2076,11 +2128,22 @@ impl TypeCheckingVisitor {
                                         &inferred_self_type,
                                     )?;
                                     // CRITICAL FIX: Use the same Self variable ID for return type resolution
-                                    self.resolve_type_annotation_with_specific_self_variable(
+                                    let resolved_return_type = self.resolve_type_annotation_with_specific_self_variable(
                                         &trait_func.definition().return_type,
                                         &self_variable_id,
                                         &inferred_self_type,
-                                    )
+                                    )?;
+                                    
+                                    // DEBUG: Log trait default return type resolution for Map.get and Option.some?
+                                    if (module_name == "Map" && function_name == "get") || (module_name == "Option" && function_name == "some?") {
+                                        println!("🔍 TRAIT DEFAULT RETURN TYPE: {}.{}", module_name, function_name);
+                                        println!("   Original return type annotation: {:?}", trait_func.definition().return_type);
+                                        println!("   Resolved return type: {:?}", resolved_return_type);
+                                        println!("   Inferred self type: {:?}", inferred_self_type);
+                                        println!("   Function type: {:?}", trait_func.function_type());
+                                    }
+                                    
+                                    Ok(resolved_return_type)
                                 }
                                 _ => {
                                     // Other function types shouldn't reach here in trait dispatch
@@ -2113,7 +2176,21 @@ impl TypeCheckingVisitor {
                     self.compiler_environment.set_unification_context(context);
 
                     self.validate_function_call_arguments(call, func_entry.definition())?;
-                    self.resolve_type_annotation(&func_entry.definition().return_type)
+                    
+                    // DEBUG: Log intrinsic function calls
+                    if module_name.contains("Intrinsic") && (function_name == "map_get" || function_name == "string_index_of") {
+                        println!("🔍 NON-TRAIT INTRINSIC CALL: {}.{}", module_name, function_name);
+                        println!("   Return type annotation: {:?}", func_entry.definition().return_type);
+                    }
+                    
+                    let resolved_return_type = self.resolve_type_annotation(&func_entry.definition().return_type)?;
+                    
+                    // DEBUG: Log intrinsic return type resolution  
+                    if module_name.contains("Intrinsic") && (function_name == "map_get" || function_name == "string_index_of") {
+                        println!("   Resolved return type: {:?}", resolved_return_type);
+                    }
+                    
+                    Ok(resolved_return_type)
                 } else {
                     Err(TypeError::undefined_function(
                         func_name,
@@ -2205,7 +2282,23 @@ impl TypeCheckingVisitor {
                     call.span.to_source_span(),
                 ))
             }
+        };
+        
+        // DEBUG: Log all function call return types, especially Map.get
+        if let outrun_parser::FunctionPath::Qualified { module, name } = &call.path {
+            if module.name == "Map" && name.name == "get" {
+                match &result {
+                    Ok(return_type) => {
+                        println!("🔍 FUNCTION CALL RETURN: {}.{} -> {:?}", module.name, name.name, return_type);
+                    }
+                    Err(e) => {
+                        println!("🔍 FUNCTION CALL ERROR: {}.{} -> {:?}", module.name, name.name, e);
+                    }
+                }
+            }
         }
+        
+        result
     }
 
     /// Validate function call arguments against function definition parameters
@@ -2720,26 +2813,31 @@ impl TypeCheckingVisitor {
                 self.compiler_environment.intern_type_name("Boolean"),
             );
 
-            if !self.types_are_compatible(&guard_type, &boolean_type) {
-                return Err(TypeError::type_mismatch(
-                    "Boolean".to_string(),
-                    guard_type.to_string_representation(),
-                    guard_clause.condition.span.to_source_span(),
-                ));
-            }
+            // Defer guard type validation to SMT solving phase
+            let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+                type1: guard_type.clone(),
+                type2: boolean_type.clone(),
+                context: format!("guard expression in function {}", func.name.name),
+            };
+            
+            let mut context = self.compiler_environment.unification_context();
+            context.add_smt_constraint(constraint);
+            self.compiler_environment.set_unification_context(context);
         }
 
         // Type check function body with expected return type as hint (this will register let-bound variables)
         let body_type = self.check_block_type_with_hint(&func.body, Some(&expected_return_type))?;
 
-        // Validate body type matches return type
-        if !self.types_are_compatible(&body_type, &expected_return_type) {
-            self.errors.push(TypeError::type_mismatch(
-                expected_return_type.to_string_representation(),
-                body_type.to_string_representation(),
-                func.body.span.to_source_span(),
-            ));
-        }
+        // Defer function body type validation to SMT solving phase
+        let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+            type1: body_type.clone(),
+            type2: expected_return_type.clone(),
+            context: format!("function body return type in function {}", func.name.name),
+        };
+        
+        let mut context = self.compiler_environment.unification_context();
+        context.add_smt_constraint(constraint);
+        self.compiler_environment.set_unification_context(context);
 
         // Capture let-bound variables from the current scope (excluding parameters)
         let mut let_bound_variables = std::collections::HashMap::new();
@@ -3475,10 +3573,21 @@ impl TypeCheckingVisitor {
         trait_func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<(crate::unification::StructuredType, TypeNameId), TypeError> {
-        // Create a Self type variable for this function call
+        // Create a unique Self type variable for this function call
+        // Use span position, function name, and a unique counter to ensure uniqueness
+        // This is critical for expanded default implementations that may share spans
+        static CALL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let counter = CALL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let unique_call_id = format!(
+            "Self_call_{}_{}_{}_{}",
+            call.span.start,
+            call.span.end,
+            trait_func_def.name.name,
+            counter
+        );
         let self_type_id = self
             .compiler_environment
-            .intern_type_name(&format!("Self_call_{}", call.span.start));
+            .intern_type_name(&unique_call_id);
 
         // Build argument type mapping
         let mut arg_type_map = std::collections::HashMap::new();
@@ -3488,6 +3597,15 @@ impl TypeCheckingVisitor {
             } = arg
             {
                 let arg_type = self.check_expression_type(expression)?;
+                
+                // DEBUG: Log argument types for some? calls
+                if trait_func_def.name.name == "some?" && name.name == "value" {
+                    println!("🔍 some? ARGUMENT TYPE: span {}:{}", call.span.start, call.span.end);
+                    println!("   Argument name: {}", name.name);
+                    println!("   Expression: {:?}", expression);
+                    println!("   Resolved argument type: {:?}", arg_type);
+                }
+                
                 arg_type_map.insert(name.name.clone(), arg_type);
             }
         }
@@ -3495,6 +3613,14 @@ impl TypeCheckingVisitor {
         // Generate SelfTypeInference constraints for each Self parameter
         let mut inference_constraints = Vec::new();
         let mut has_self_parameters = false;
+        let mut candidate_self_types = Vec::new();
+
+        // DEBUG: Add detailed logging for intrinsic calls
+        let trait_name = self.compiler_environment.resolve_type_name(&trait_type_id).unwrap_or_default();
+        if trait_name == "Outrun.Intrinsic" && (trait_func_def.name.name == "map_get" || trait_func_def.name.name == "string_index_of") {
+            println!("🔍 DEBUGGING intrinsic call: {}.{} at span {}:{}", trait_name, trait_func_def.name.name, call.span.start, call.span.end);
+            println!("   Return type annotation: {:?}", trait_func_def.return_type);
+        }
 
         for param in &trait_func_def.parameters {
             let param_name = &param.name.name.clone();
@@ -3513,36 +3639,56 @@ impl TypeCheckingVisitor {
                             trait_type_id.clone(),
                         )?;
 
-                    let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
-                        self_variable_id: self_type_id.clone(),
-                        inferred_type: concrete_self_type,
-                        call_site_context: format!(
-                            "parameter {} in call to {}",
-                            param_name, trait_func_def.name.name
-                        ),
-                        confidence: crate::smt::constraints::InferenceConfidence::High,
-                    };
-                    inference_constraints.push(constraint);
+                    candidate_self_types.push((concrete_self_type, param_name.clone()));
                 } else if self.type_annotation_contains_self(&param.type_annotation) {
                     // Parameter contains Self (e.g., Option<Self>): need to extract Self from arg_type
                     has_self_parameters = true;
+
                     if let Some(extracted_self_type) =
                         self.extract_self_type_from_generic(&param.type_annotation, arg_type)?
                     {
-                        let constraint =
-                            crate::smt::constraints::SMTConstraint::SelfTypeInference {
-                                self_variable_id: self_type_id.clone(),
-                                inferred_type: extracted_self_type,
-                                call_site_context: format!(
-                                    "generic parameter {} in call to {}",
-                                    param_name, trait_func_def.name.name
-                                ),
-                                confidence: crate::smt::constraints::InferenceConfidence::Medium,
-                            };
-                        inference_constraints.push(constraint);
+                        candidate_self_types.push((extracted_self_type, param_name.clone()));
                     }
                 }
             }
+        }
+
+        // Consolidate Self type inference to avoid conflicts
+        if !candidate_self_types.is_empty() {
+            // Check if all candidate Self types are compatible
+            let first_self_type = &candidate_self_types[0].0;
+            let mut unified_self_type = first_self_type.clone();
+            let mut context_info = vec![candidate_self_types[0].1.clone()];
+            
+            for (candidate_type, param_name) in &candidate_self_types[1..] {
+                // Check if types are the same - if not, this is a constraint conflict
+                if first_self_type != candidate_type {
+                    return Err(TypeError::type_mismatch(
+                        format!(
+                            "Conflicting Self type inferences in call to {}: {} vs {}",
+                            trait_func_def.name.name,
+                            format!("{:?}", first_self_type),
+                            format!("{:?}", candidate_type)
+                        ),
+                        "Self type cannot be inferred consistently from parameters".to_string(),
+                        call.span.to_source_span(),
+                    ));
+                }
+                context_info.push(param_name.clone());
+            }
+
+            // Create a single consolidated constraint
+            let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
+                self_variable_id: self_type_id.clone(),
+                inferred_type: unified_self_type,
+                call_site_context: format!(
+                    "parameters {} in call to {}",
+                    context_info.join(", "),
+                    trait_func_def.name.name
+                ),
+                confidence: crate::smt::constraints::InferenceConfidence::High,
+            };
+            inference_constraints.push(constraint);
         }
 
         if !has_self_parameters {
@@ -4506,7 +4652,61 @@ impl TypeCheckingVisitor {
         arg_type: &StructuredType,
         trait_type_id: TypeNameId,
     ) -> Result<StructuredType, TypeError> {
+        // DEBUG: Log calls for Map trait
+        let trait_name = self.compiler_environment.resolve_type_name(&trait_type_id).unwrap_or_default();
+        if trait_name == "Map" {
+            println!("🔍 RESOLVE CONCRETE IMPLEMENTING TYPE for Map");
+            println!("   Arg type: {:?}", arg_type);
+            println!("   Trait type ID: {:?} ({})", trait_type_id, trait_name);
+        }
         match arg_type {
+            StructuredType::TypeVariable(type_var_id) => {
+                // Handle TypeVariable case (e.g., Self in trait default implementations)
+                let type_var_name = self.compiler_environment.resolve_type_name(type_var_id).unwrap_or_default();
+                
+                if trait_name == "Map" {
+                    println!("🔍 TYPEVARIABLE CASE: {} -> need to resolve to concrete type", type_var_name);
+                }
+                
+                // If this is a Self variable, we need to resolve it to the concrete implementing type
+                // For now, use the trait type itself as a fallback
+                // TODO: Implement proper TypeVariable resolution through SMT constraints
+                if type_var_name == "Self" || type_var_name.contains("Self") {
+                    // For Self variables in trait contexts, we need to find what concrete type Self represents
+                    // This should come from the current trait or impl context
+                    if let Some((_, impl_type)) = self.current_impl_context() {
+                        if trait_name == "Map" {
+                            println!("🔍 SELF RESOLUTION: Using impl context type {:?}", impl_type);
+                        }
+                        return Ok(impl_type.clone());
+                    } else if let Some((_, trait_context_type)) = self.current_trait_context() {
+                        if trait_name == "Map" {
+                            println!("🔍 SELF RESOLUTION: Using trait context type {:?}", trait_context_type);
+                        }
+                        // In trait context, Self should be a generic version of the trait
+                        // For Map trait, this should be something like Map<K,V> but we need to make it concrete
+                        // For now, create a generic implementation type
+                        let trait_type_name = self.compiler_environment.resolve_type_name(&trait_type_id).unwrap_or_default();
+                        if trait_type_name == "Map" {
+                            // Create a concrete Map type for the type variable resolution
+                            let concrete_map_type_id = self.compiler_environment.intern_type_name("Outrun.Core.Map");
+                            let k_type_id = self.compiler_environment.intern_type_name("K");
+                            let v_type_id = self.compiler_environment.intern_type_name("V");
+                            return Ok(StructuredType::Generic { 
+                                base: concrete_map_type_id, 
+                                args: vec![
+                                    StructuredType::Simple(k_type_id),
+                                    StructuredType::Simple(v_type_id)
+                                ]
+                            });
+                        }
+                        return Ok(trait_context_type.clone());
+                    }
+                }
+                
+                // Fallback: return the TypeVariable as-is 
+                Ok(arg_type.clone())
+            }
             StructuredType::Generic { base, args: _ } => {
                 // Check if this argument type matches the trait being called
                 let trait_name = self
@@ -4520,37 +4720,9 @@ impl TypeCheckingVisitor {
 
                 if trait_name == arg_base_name {
                     // This is a call like Option.some?(value: Option<Integer>)
-                    // We need to find concrete implementations of Option<Integer>
-                    let concrete_implementations = self
-                        .compiler_environment
-                        .find_trait_implementations(arg_type);
-
-                    for implementation in concrete_implementations {
-                        match &implementation {
-                            StructuredType::Generic {
-                                base: impl_base, ..
-                            } => {
-                                let impl_name = self
-                                    .compiler_environment
-                                    .resolve_type_name(impl_base)
-                                    .unwrap_or_default();
-                                // Prefer concrete implementations over abstract ones
-                                if impl_name.contains("Outrun.") && impl_name != trait_name {
-                                    return Ok(implementation);
-                                }
-                            }
-                            StructuredType::Simple(impl_type_id) => {
-                                let impl_name = self
-                                    .compiler_environment
-                                    .resolve_type_name(impl_type_id)
-                                    .unwrap_or_default();
-                                if impl_name.contains("Outrun.") && impl_name != trait_name {
-                                    return Ok(implementation);
-                                }
-                            }
-                            _ => continue,
-                        }
-                    }
+                    // For trait function calls, Self should be the trait type, not a concrete implementation
+                    // The runtime dispatch will handle which concrete implementation to use
+                    return Ok(arg_type.clone());
                 }
 
                 Ok(arg_type.clone())

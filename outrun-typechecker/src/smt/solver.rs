@@ -162,20 +162,9 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
                     let bool_var = Bool::new_const(self.context, var_name);
                     self.solver.assert(&bool_var);
                 }
-                SMTConstraint::TypeUnification { type1, type2, .. } => {
-                    // Create equality constraint between two types
-                    let type1_sort = self
-                        .translator
-                        .translate_structured_type(type1, compiler_env);
-                    let type2_sort = self
-                        .translator
-                        .translate_structured_type(type2, compiler_env);
-
-                    // For now, create boolean variables for each type and assert equality
-                    let var1 = Bool::new_const(self.context, format!("type_{type1_sort}"));
-                    let var2 = Bool::new_const(self.context, format!("type_{type2_sort}"));
-                    let equality = var1._eq(&var2);
-                    self.solver.assert(&equality);
+                SMTConstraint::TypeUnification { type1, type2, context: _ } => {
+                    // Implement structural type unification instead of simple equality
+                    self.add_type_unification_constraints(type1, type2, compiler_env)?;
                 }
                 SMTConstraint::GenericInstantiation {
                     generic_type,
@@ -800,5 +789,102 @@ impl<'ctx> Z3ConstraintSolver<'ctx> {
             return false;
         }
         matches!(self.solve(), SolverResult::Satisfiable(_))
+    }
+
+    /// Add structural type unification constraints
+    /// This properly handles generic type unification like Option<Outrun.Core.Integer64> with Option<T>
+    fn add_type_unification_constraints(
+        &mut self,
+        type1: &StructuredType,
+        type2: &StructuredType,
+        compiler_env: &CompilerEnvironment,
+    ) -> Result<(), SMTError> {
+        use crate::unification::StructuredType;
+
+        match (type1, type2) {
+            // Case 1: Both are simple types - direct equality
+            (StructuredType::Simple(id1), StructuredType::Simple(id2)) => {
+                let name1 = compiler_env.resolve_type(id1.clone()).unwrap_or_default();
+                let name2 = compiler_env.resolve_type(id2.clone()).unwrap_or_default();
+                
+                let var1 = Bool::new_const(self.context, format!("type_{name1}"));
+                let var2 = Bool::new_const(self.context, format!("type_{name2}"));
+                let equality = var1._eq(&var2);
+                self.solver.assert(&equality);
+            }
+
+            // Case 2: One is TypeVariable, other is concrete - bind the variable
+            (StructuredType::TypeVariable(var_id), concrete_type) |
+            (concrete_type, StructuredType::TypeVariable(var_id)) => {
+                let var_name = format!("TypeVar_{}", var_id.hash);
+                let concrete_sort = self.translator.translate_structured_type(concrete_type, compiler_env);
+                
+                let type_var = Bool::new_const(self.context, var_name);
+                let concrete_var = Bool::new_const(self.context, format!("type_{concrete_sort}"));
+                let binding = type_var._eq(&concrete_var);
+                self.solver.assert(&binding);
+            }
+
+            // Case 3: Both are generic types with same base - unify recursively
+            (StructuredType::Generic { base: base1, args: args1 }, 
+             StructuredType::Generic { base: base2, args: args2 }) => {
+                
+                let name1 = compiler_env.resolve_type(base1.clone()).unwrap_or_default();
+                let name2 = compiler_env.resolve_type(base2.clone()).unwrap_or_default();
+
+                // Bases must be the same for unification
+                if name1 == name2 && args1.len() == args2.len() {
+                    // Recursively unify all type arguments
+                    for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                        self.add_type_unification_constraints(arg1, arg2, compiler_env)?;
+                    }
+                } else {
+                    // Incompatible generic types - assert false to make constraint unsatisfiable
+                    let false_constraint = Bool::from_bool(self.context, false);
+                    self.solver.assert(&false_constraint);
+                }
+            }
+
+            // Case 4: Generic type with TypeVariable in argument position
+            (StructuredType::Generic { base, args }, other) |
+            (other, StructuredType::Generic { base, args }) => {
+                // Check if the other type can unify with this generic structure
+                match other {
+                    StructuredType::Generic { base: other_base, args: other_args } => {
+                        let base_name = compiler_env.resolve_type(base.clone()).unwrap_or_default();
+                        let other_base_name = compiler_env.resolve_type(other_base.clone()).unwrap_or_default();
+                        
+                        if base_name == other_base_name && args.len() == other_args.len() {
+                            for (arg1, arg2) in args.iter().zip(other_args.iter()) {
+                                self.add_type_unification_constraints(arg1, arg2, compiler_env)?;
+                            }
+                        } else {
+                            let false_constraint = Bool::from_bool(self.context, false);
+                            self.solver.assert(&false_constraint);
+                        }
+                    }
+                    _ => {
+                        // Can't unify generic with non-generic unless it's a type variable
+                        if !matches!(other, StructuredType::TypeVariable(_)) {
+                            let false_constraint = Bool::from_bool(self.context, false);
+                            self.solver.assert(&false_constraint);
+                        }
+                    }
+                }
+            }
+
+            // Case 5: Fall back to simple equality for other cases
+            _ => {
+                let type1_sort = self.translator.translate_structured_type(type1, compiler_env);
+                let type2_sort = self.translator.translate_structured_type(type2, compiler_env);
+                
+                let var1 = Bool::new_const(self.context, format!("type_{type1_sort}"));
+                let var2 = Bool::new_const(self.context, format!("type_{type2_sort}"));
+                let equality = var1._eq(&var2);
+                self.solver.assert(&equality);
+            }
+        }
+
+        Ok(())
     }
 }

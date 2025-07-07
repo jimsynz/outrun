@@ -6666,11 +6666,36 @@ impl CompilerEnvironment {
         let resolved_trait_type = self.resolve_type_variables(trait_type);
         let resolved_impl_type = self.resolve_type_variables(impl_type);
 
+        // DEBUG: Log Option.some? lookups
+        let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
+        let trait_name = self.resolve_type_display(&resolved_trait_type);
+        if trait_name.contains("Option") && function_name_str == "some?" {
+            println!("🔍 LOOKUP IMPL: Looking for Option.some? implementation");
+            println!("   Trait type: {:?}", resolved_trait_type);
+            println!("   Impl type: {:?}", resolved_impl_type);
+            println!("   Trait name resolved: {}", trait_name);
+        }
+
         if let Ok(modules) = self.modules.read() {
             let module_key = ModuleKey::TraitImpl(
                 Box::new(resolved_trait_type.clone()),
                 Box::new(resolved_impl_type.clone()),
             );
+
+            // DEBUG: Log available modules for Option.some?
+            if trait_name.contains("Option") && function_name_str == "some?" {
+                println!("   Looking for module key: {:?}", module_key);
+                println!("   Available modules:");
+                for (key, _) in modules.iter() {
+                    if let ModuleKey::TraitImpl(t, i) = key {
+                        let key_trait_name = self.resolve_type_display(t);
+                        let key_impl_name = self.resolve_type_display(i);
+                        if key_trait_name.contains("Option") {
+                            println!("     Option impl: trait={:?}, impl={:?}", t, i);
+                        }
+                    }
+                }
+            }
 
             if let Some(impl_module) = modules.get(&module_key) {
                 if let Some(function) = impl_module.get_function_by_name(function_name.clone()) {
@@ -6683,6 +6708,9 @@ impl CompilerEnvironment {
                 }
             } else {
                 // No exact module match found, proceeding to SMT-based search
+                if trait_name.contains("Option") && function_name_str == "some?" {
+                    println!("   No exact module match found, proceeding to generic search");
+                }
             }
 
             if let Some(generic_function) = self.find_compatible_generic_implementation(
@@ -6709,18 +6737,64 @@ impl CompilerEnvironment {
         function_name: AtomId,
         modules: &std::collections::HashMap<ModuleKey, Module>,
     ) -> Option<UnifiedFunctionEntry> {
+        // DEBUG: Log generic implementation search for Option.some?
+        let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
+        let concrete_trait_name = self.resolve_type_display(concrete_trait_type);
+        if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+            println!("🔍 GENERIC SEARCH: Looking for compatible generic implementation");
+            println!("   Concrete trait: {:?}", concrete_trait_type);
+            println!("   Concrete impl: {:?}", concrete_impl_type);
+            println!("   Searching through {} modules", modules.len());
+        }
+
         for (module_key, module) in modules.iter() {
             if let ModuleKey::TraitImpl(generic_trait_type, generic_impl_type) = module_key {
-                if generic_trait_type
-                    .to_string_representation()
-                    .contains("Option")
-                {
-                    // Use SMT to check if concrete types are compatible with this generic implementation
-                    if self.smt_types_are_compatible(concrete_trait_type, generic_trait_type)
-                        && self.smt_types_are_compatible(concrete_impl_type, generic_impl_type)
-                    {
+                let generic_trait_name = self.resolve_type_display(generic_trait_type);
+                
+                // DEBUG: Log each module being checked
+                if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                    println!("   Checking module: trait={} impl={}", generic_trait_name, self.resolve_type_display(generic_impl_type));
+                }
+                
+                if generic_trait_name.contains("Option") {
+                    // DEBUG: Log compatibility check
+                    if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                        println!("   Found Option trait implementation, checking compatibility");
+                    }
+                    
+                    // Check trait type compatibility
+                    let trait_compatible = self.smt_types_are_compatible(concrete_trait_type, generic_trait_type);
+                    
+                    // For trait function calls, the concrete_impl_type might be a trait type (e.g., Option<Integer64>)
+                    // In this case, we need to check if the generic_impl_type implements the trait
+                    let impl_compatible = if self.is_trait_type(concrete_impl_type) && 
+                                            self.types_have_same_trait_base(concrete_impl_type, concrete_trait_type) {
+                        // This is a trait function call where the impl type is the same trait
+                        // Check if the generic implementation can handle this trait type
+                        self.can_implementation_handle_trait_type(generic_impl_type, concrete_impl_type)
+                    } else {
+                        // Regular implementation type compatibility
+                        self.smt_types_are_compatible(concrete_impl_type, generic_impl_type)
+                    };
+                    
+                    if trait_compatible && impl_compatible {
+                        if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                            println!("   ✅ Types are compatible! Looking for function");
+                        }
+                        
                         if let Some(function) = module.get_function_by_name(function_name.clone()) {
+                            if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                                println!("   ✅ Found compatible function!");
+                            }
                             return Some(function.clone());
+                        } else {
+                            if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                                println!("   ❌ Function not found in module");
+                            }
+                        }
+                    } else {
+                        if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+                            println!("   ❌ Types are not compatible");
                         }
                     }
                 }
@@ -6728,7 +6802,54 @@ impl CompilerEnvironment {
         }
 
         // No SMT-compatible generic implementation found
+        if concrete_trait_name.contains("Option") && function_name_str == "some?" {
+            println!("   ❌ No compatible generic implementation found");
+        }
         None
+    }
+
+
+    /// Check if two types have the same trait base (e.g., both are Option<...>)
+    fn types_have_same_trait_base(&self, type1: &StructuredType, type2: &StructuredType) -> bool {
+        match (type1, type2) {
+            (StructuredType::Simple(id1), StructuredType::Simple(id2)) => id1 == id2,
+            (StructuredType::Generic { base: base1, .. }, StructuredType::Generic { base: base2, .. }) => base1 == base2,
+            (StructuredType::Simple(id), StructuredType::Generic { base, .. }) |
+            (StructuredType::Generic { base, .. }, StructuredType::Simple(id)) => id == base,
+            _ => false
+        }
+    }
+
+    /// Check if a concrete implementation can handle a trait type
+    fn can_implementation_handle_trait_type(&self, impl_type: &StructuredType, trait_type: &StructuredType) -> bool {
+        // For Option example:
+        // impl_type: Outrun.Option.Some<T>
+        // trait_type: Option<Integer64>
+        // Should return true if Outrun.Option.Some<T> implements Option<T> and T can unify with Integer64
+        
+        match (impl_type, trait_type) {
+            (StructuredType::Generic { base: impl_base, args: impl_args },
+             StructuredType::Generic { base: trait_base, args: trait_args }) => {
+                let impl_name = self.resolve_type_name(impl_base).unwrap_or_default();
+                let trait_name = self.resolve_type_name(trait_base).unwrap_or_default();
+                
+                // Check if this is an Option implementation
+                if trait_name == "Option" && (impl_name == "Outrun.Option.Some" || impl_name == "Outrun.Option.None") {
+                    // Check if type arguments are compatible
+                    if impl_args.len() == trait_args.len() {
+                        for (impl_arg, trait_arg) in impl_args.iter().zip(trait_args.iter()) {
+                            if !self.smt_types_are_compatible(trait_arg, impl_arg) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                }
+                
+                false
+            }
+            _ => false
+        }
     }
 
     /// Use SMT to check if two types are compatible through type parameter unification
@@ -6738,14 +6859,39 @@ impl CompilerEnvironment {
         concrete_type: &StructuredType,
         generic_type: &StructuredType,
     ) -> bool {
+        // DEBUG: Log compatibility checks for Option types
+        let concrete_display = self.resolve_type_display(concrete_type);
+        let generic_display = self.resolve_type_display(generic_type);
+        if concrete_display.contains("Option") || generic_display.contains("Option") {
+            println!("🔍 SMT COMPAT: Checking {} vs {}", concrete_display, generic_display);
+            println!("   Concrete: {:?}", concrete_type);
+            println!("   Generic: {:?}", generic_type);
+        }
+        
         // Generate precise SMT constraints for type parameter unification
         match self.generate_type_parameter_unification_constraints(concrete_type, generic_type) {
             Some(constraints) => {
+                if concrete_display.contains("Option") || generic_display.contains("Option") {
+                    println!("   Generated {} constraints", constraints.len());
+                    for (i, constraint) in constraints.iter().enumerate() {
+                        println!("     Constraint {}: {:?}", i, constraint);
+                    }
+                }
+                
                 // Use SMT solver to check if the type parameter unifications are satisfiable
-                self.smt_check_constraints_satisfiable(&constraints)
+                let result = self.smt_check_constraints_satisfiable(&constraints);
+                
+                if concrete_display.contains("Option") || generic_display.contains("Option") {
+                    println!("   SMT result: {}", if result { "COMPATIBLE" } else { "INCOMPATIBLE" });
+                }
+                
+                result
             }
             None => {
                 // Types are structurally incompatible (e.g., Option vs List)
+                if concrete_display.contains("Option") || generic_display.contains("Option") {
+                    println!("   No constraints generated - structurally incompatible");
+                }
                 false
             }
         }
@@ -7890,10 +8036,26 @@ impl CompilerEnvironment {
         impl_type: &StructuredType,
         function_name: AtomId,
     ) -> Option<UnifiedFunctionEntry> {
+        // DEBUG: Log Option.some? SMT lookups
+        let function_name_str = self.resolve_atom_name(&function_name).unwrap_or_default();
+        let trait_name = self.resolve_type_display(trait_type);
+        if trait_name.contains("Option") && function_name_str == "some?" {
+            println!("🔍 SMT LOOKUP: Looking for Option.some? with SMT");
+            println!("   Trait type: {:?}", trait_type);
+            println!("   Impl type: {:?}", impl_type);
+        }
+        
         // First try traditional lookup
         if let Some(entry) = self.lookup_impl_function(trait_type, impl_type, function_name.clone())
         {
+            if trait_name.contains("Option") && function_name_str == "some?" {
+                println!("   ✅ Found via traditional lookup");
+            }
             return Some(entry);
+        }
+        
+        if trait_name.contains("Option") && function_name_str == "some?" {
+            println!("   Traditional lookup failed, trying SMT...");
         }
 
         let (actual_trait_type, type_parameter_constraints) =
