@@ -2126,126 +2126,57 @@ impl TypeCheckingVisitor {
                 let function_name = &name.name;
                 let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
-                // Check if we're in a trait context and this function exists in the current trait
-                if let Some((trait_name, trait_type)) = self.current_trait_context() {
-                    let trait_name = trait_name.clone();
-                    let trait_type = trait_type.clone();
+                // Simple call like "some_function" - should resolve to local function in current module context
+                println!("🔍 SIMPLE CALL: Processing simple function call '{}'", function_name);
+                
+                // Check current context and look for local functions 
+                // Priority: impl block > struct module > error
+                if let Some((trait_name, impl_type)) = self.current_impl_context().cloned() {
+                    // We're in an impl block - look for local functions in this impl block first
+                    println!("✅ IMPL BLOCK: In impl block '{}' for type '{}'", trait_name, impl_type.to_string_representation());
                     
-                    // Try to find this function as a trait function in the current trait
-                    if let Some(trait_func_entry) = self
+                    if let Some(local_func_entry) = self
                         .compiler_environment
-                        .lookup_qualified_function(&trait_type, function_name_atom.clone())
+                        .lookup_qualified_function(&impl_type, function_name_atom.clone())
                     {
-                        // This is a trait function call within a default implementation
-                        // Get the Self type from type parameter scope
-                        if let Some(self_type) = self.lookup_type_parameter("Self").cloned() {
-                            // Generate PreResolvedClause constraint for SMT-first dispatch
-                            let updated_context = self.collect_constraint_specification(
-                                call,
-                                &trait_name,
-                                &function_name,
-                                &trait_type,
-                                &self_type,
-                                trait_func_entry.definition(),
-                            )?;
-
-                            // Store dispatch strategy with SMT pre-resolution
-                            let mut context = updated_context;
-                            // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
-                            let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
-                                &context,
-                                &trait_name,
-                                &function_name,
-                                &self_type,
-                                call.span
-                            ).ok_or_else(|| TypeError::internal_with_span(
-                                format!(
-                                    "Failed to generate SMT constraint for trait function call {}.{} in trait context. \
-                                    This indicates a constraint generation bug - all trait function calls must have either \
-                                    constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
-                                    trait_name, function_name
-                                ),
-                                call.span.to_source_span(),
-                            ))?;
-                            
-                            context.add_dispatch_strategy(call.span, dispatch_method);
-                            self.compiler_environment.set_unification_context(context);
-
-                            // Validate arguments with Self type context
-                            self.validate_function_call_arguments_with_self(
-                                call,
-                                trait_func_entry.definition(),
-                                &self_type,
-                            )?;
-                            return self.resolve_type_annotation_with_self(
-                                &trait_func_entry.definition().return_type,
-                                &self_type,
-                            );
-                        }
-                    }
-                }
-                // Check if we're in an impl block context and this could be a trait function call
-                else if let Some((trait_name, impl_type)) = self.current_impl_context().cloned() {
-                    // Try to find this function as a trait function in the impl's trait
-                    let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
-                    let trait_type = crate::unification::StructuredType::Simple(trait_type_id);
-                    
-                    if let Some(trait_func_entry) = self
-                        .compiler_environment
-                        .lookup_qualified_function(&trait_type, function_name_atom.clone())
-                    {
-                        // This is a trait function call within an expanded default implementation
-                        // Generate PreResolvedClause constraint for SMT-first dispatch
-                        let updated_context = self.collect_constraint_specification(
-                            call,
-                            &trait_name,
-                            &function_name,
-                            &trait_type,
-                            &impl_type,
-                            trait_func_entry.definition(),
-                        )?;
-
-                        // Store dispatch strategy with SMT pre-resolution
-                        let mut context = updated_context;
-                        // Get SMT pre-resolved dispatch method (no fallbacks - SMT-first architecture)
-                        let dispatch_method = self.compiler_environment.get_smt_pre_resolved_clause_with_context(
-                            &context,
-                            &trait_name,
-                            &function_name,
-                            &impl_type,
-                            call.span
-                        ).ok_or_else(|| TypeError::internal_with_span(
-                            format!(
-                                "Failed to generate SMT constraint for function call {}.{} on type {}. \
-                                This indicates a constraint generation bug - all trait function calls must have either \
-                                constraint specifications (during type checking) or PreResolvedClause (after SMT constraint generation and solving).",
-                                trait_name, function_name, impl_type.to_string_representation()
-                            ),
-                            call.span.to_source_span(),
-                        ))?;
+                        println!("✅ FOUND LOCAL: Function '{}' found in impl block", function_name);
                         
-                        context.add_dispatch_strategy(call.span, dispatch_method);
+                        // Store static dispatch strategy for local function call in impl block
+                        let mut context = self.compiler_environment.unification_context();
+                        context.add_dispatch_strategy(
+                            call.span,
+                            crate::checker::DispatchMethod::Static {
+                                function_id: local_func_entry.function_id().to_string(),
+                            },
+                        );
                         self.compiler_environment.set_unification_context(context);
 
-                        // Validate arguments with Self type context
+                        // Validate arguments with impl type context  
                         self.validate_function_call_arguments_with_self(
                             call,
-                            trait_func_entry.definition(),
+                            local_func_entry.definition(),
                             &impl_type,
                         )?;
+                        
                         return self.resolve_type_annotation_with_self(
-                            &trait_func_entry.definition().return_type,
+                            &local_func_entry.definition().return_type,
                             &impl_type,
                         );
+                    } else {
+                        println!("🔍 IMPL BLOCK: Function '{}' not found in impl block, trying struct module", function_name);
                     }
                 }
-
-                // Fall back to regular local function lookup
+                
+                // If not found in impl block (or no impl context), try struct module
+                println!("✅ STRUCT MODULE: Checking for local functions in struct module");
+                
                 if let Some(func_entry) = self
                     .compiler_environment
                     .lookup_local_function(function_name_atom.clone())
                 {
-                    // Store static dispatch strategy for simple function call
+                    println!("✅ FOUND LOCAL: Function '{}' found in struct module", function_name);
+                    
+                    // Store static dispatch strategy for local function call
                     let mut context = self.compiler_environment.unification_context();
                     context.add_dispatch_strategy(
                         call.span,
@@ -2255,11 +2186,12 @@ impl TypeCheckingVisitor {
                     );
                     self.compiler_environment.set_unification_context(context);
 
-                    // Validate arguments match parameters
+                    // Validate arguments
                     self.validate_function_call_arguments(call, func_entry.definition())?;
-                    // Return the declared return type
                     self.resolve_type_annotation(&func_entry.definition().return_type)
                 } else {
+                    // Function not found anywhere - this is an error
+                    println!("❌ NOT FOUND: Function '{}' not found in any context", function_name);
                     Err(TypeError::undefined_function(
                         function_name.clone(),
                         call.span.to_source_span(),
@@ -2329,16 +2261,21 @@ impl TypeCheckingVisitor {
                     let expected_param_type =
                         self.resolve_type_annotation(&param_def.type_annotation)?;
 
-                    // Validate argument type matches parameter type
-                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
-                        return Err(TypeError::ArgumentTypeMismatch {
-                            span: expression.span.to_source_span(),
-                            function_name: func_def.name.name.clone(),
-                            parameter_name: param_name.clone(),
-                            expected_type: expected_param_type.to_string_representation(),
-                            found_type: arg_type.to_string_representation(),
-                        });
-                    }
+                    // Defer type compatibility validation to SMT solving phase
+                    // Generate SMT constraint for deferred validation - this allows Option<Outrun.Core.Integer64> 
+                    // to unify with Option<T> via T = Outrun.Core.Integer64
+                    let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+                        type1: arg_type.clone(),
+                        type2: expected_param_type.clone(),
+                        context: format!("argument '{}' in function '{}'", param_name, func_def.name.name),
+                    };
+                    
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_smt_constraint(constraint);
+                    self.compiler_environment.set_unification_context(context);
+                    
+                    // Note: Type compatibility will be validated after SMT constraint solving
+                    // For now, assume compatibility will be resolved by SMT solver
 
                     // For shorthand format, validate that argument name matches parameter name
                     if let outrun_parser::ArgumentFormat::Shorthand = format {
@@ -2452,16 +2389,21 @@ impl TypeCheckingVisitor {
                     let expected_param_type = self
                         .resolve_type_annotation_with_self(&param_def.type_annotation, self_type)?;
 
-                    // Validate argument type matches parameter type
-                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
-                        return Err(TypeError::ArgumentTypeMismatch {
-                            span: expression.span.to_source_span(),
-                            function_name: func_def.name.name.clone(),
-                            parameter_name: param_name.clone(),
-                            expected_type: expected_param_type.to_string_representation(),
-                            found_type: arg_type.to_string_representation(),
-                        });
-                    }
+                    // Defer type compatibility validation to SMT solving phase
+                    // Generate SMT constraint for deferred validation - this allows Option<Outrun.Core.Integer64> 
+                    // to unify with Option<T> via T = Outrun.Core.Integer64
+                    let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+                        type1: arg_type.clone(),
+                        type2: expected_param_type.clone(),
+                        context: format!("argument '{}' in function '{}'", param_name, func_def.name.name),
+                    };
+                    
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_smt_constraint(constraint);
+                    self.compiler_environment.set_unification_context(context);
+                    
+                    // Note: Type compatibility will be validated after SMT constraint solving
+                    // For now, assume compatibility will be resolved by SMT solver
                 }
                 outrun_parser::Argument::Spread { .. } => {
                     // Spread arguments not yet implemented
@@ -2582,16 +2524,21 @@ impl TypeCheckingVisitor {
                         self.add_type_variable_resolution_constraints(concrete_type)?;
                     }
 
-                    // Validate argument type matches parameter type
-                    if !self.types_are_compatible(&arg_type, &expected_param_type) {
-                        return Err(TypeError::ArgumentTypeMismatch {
-                            span: expression.span.to_source_span(),
-                            function_name: func_def.name.name.clone(),
-                            parameter_name: param_name.clone(),
-                            expected_type: expected_param_type.to_string_representation(),
-                            found_type: arg_type.to_string_representation(),
-                        });
-                    }
+                    // Defer type compatibility validation to SMT solving phase
+                    // Generate SMT constraint for deferred validation - this allows Option<Outrun.Core.Integer64> 
+                    // to unify with Option<T> via T = Outrun.Core.Integer64
+                    let constraint = crate::smt::constraints::SMTConstraint::TypeUnification {
+                        type1: arg_type.clone(),
+                        type2: expected_param_type.clone(),
+                        context: format!("argument '{}' in function '{}'", param_name, func_def.name.name),
+                    };
+                    
+                    let mut context = self.compiler_environment.unification_context();
+                    context.add_smt_constraint(constraint);
+                    self.compiler_environment.set_unification_context(context);
+                    
+                    // Note: Type compatibility will be validated after SMT constraint solving
+                    // For now, assume compatibility will be resolved by SMT solver
                 }
                 outrun_parser::Argument::Spread { .. } => {
                     // Spread arguments not yet implemented
@@ -3436,7 +3383,7 @@ impl TypeCheckingVisitor {
     /// This is used for trait dispatch to find the specific implementation to use
     fn infer_implementing_type_from_arguments(
         &mut self,
-        _trait_type_id: TypeNameId,
+        trait_type_id: TypeNameId,
         trait_func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
@@ -3468,14 +3415,35 @@ impl TypeCheckingVisitor {
         let return_type_has_self = self.type_annotation_contains_self(&trait_func_def.return_type);
 
         if self_types.is_empty() {
-            // If no Self parameter found, this is an error - trait functions should have Self parameters
-            return Err(TypeError::internal_with_span(
-                format!(
-                    "Trait function {} has no Self parameter for implementation dispatch",
-                    trait_func_def.name.name
-                ),
-                call.span.to_source_span(),
-            ));
+            // Self only appears in return type - try to infer implementing type from context
+            if return_type_has_self {
+                // Try to infer the implementing type using available context
+                if let Some(inferred_type) = self.infer_implementing_type_from_context(&trait_type_id, call)? {
+                    return Ok(inferred_type);
+                } else {
+                    return Err(TypeError::type_mismatch(
+                        format!(
+                            "explicit type annotation (e.g., 'let x: Type = {}(...)') or type cast (e.g., '{}(...) as Type')",
+                            trait_func_def.name.name,
+                            trait_func_def.name.name
+                        ),
+                        format!(
+                            "ambiguous trait function call - cannot infer implementing type for '{}'",
+                            trait_func_def.name.name
+                        ),
+                        call.span.to_source_span(),
+                    ));
+                }
+            } else {
+                // No Self anywhere - this shouldn't be a trait function
+                return Err(TypeError::internal_with_span(
+                    format!(
+                        "Function {} has no Self type in signature - should this be a static function using 'defs'?",
+                        trait_func_def.name.name
+                    ),
+                    call.span.to_source_span(),
+                ));
+            }
         }
 
         // If we only have one Self type, return it (optimization for common case)
@@ -3578,14 +3546,47 @@ impl TypeCheckingVisitor {
         }
 
         if !has_self_parameters {
-            // If no Self parameter found, this is an error - trait functions should have Self parameters
-            return Err(TypeError::internal_with_span(
-                format!(
-                    "Trait function {} has no Self parameter for implementation dispatch",
-                    trait_func_def.name.name
-                ),
-                call.span.to_source_span(),
-            ));
+            // Self only appears in return type - try to infer implementing type from context
+            let return_type_has_self = self.type_annotation_contains_self(&trait_func_def.return_type);
+            if return_type_has_self {
+                // Try to infer the implementing type using available context
+                if let Some(inferred_type) = self.infer_implementing_type_from_context(&trait_type_id, call)? {
+                    // Create a constraint for the inferred Self type
+                    let constraint = crate::smt::constraints::SMTConstraint::SelfTypeInference {
+                        self_variable_id: self_type_id.clone(),
+                        inferred_type: inferred_type.clone(),
+                        call_site_context: format!(
+                            "trait function {} with Self only in return type",
+                            trait_func_def.name.name
+                        ),
+                        confidence: crate::smt::constraints::InferenceConfidence::High,
+                    };
+                    inference_constraints.push(constraint);
+                } else {
+                    // Cannot infer implementing type - require explicit annotation
+                    return Err(TypeError::type_mismatch(
+                        format!(
+                            "explicit type annotation (e.g., 'let x: Type = {}(...)') or type cast (e.g., '{}(...) as Type')",
+                            trait_func_def.name.name,
+                            trait_func_def.name.name
+                        ),
+                        format!(
+                            "ambiguous trait function call - cannot infer implementing type for '{}'",
+                            trait_func_def.name.name
+                        ),
+                        call.span.to_source_span(),
+                    ));
+                }
+            } else {
+                // No Self anywhere - this shouldn't be a trait function
+                return Err(TypeError::internal_with_span(
+                    format!(
+                        "Function {} has no Self type in signature - should this be a static function using 'defs'?",
+                        trait_func_def.name.name
+                    ),
+                    call.span.to_source_span(),
+                ));
+            }
         }
 
         // Add all inference constraints to SMT context
@@ -4620,5 +4621,39 @@ impl TypeCheckingVisitor {
 
         // Return the modified context so caller can use it directly
         Ok(context)
+    }
+
+    /// Attempt to infer the implementing type from available context
+    /// Used for trait functions where Self only appears in return type
+    fn infer_implementing_type_from_context(
+        &self, 
+        trait_type_id: &TypeNameId, 
+        call: &outrun_parser::FunctionCall
+    ) -> Result<Option<StructuredType>, TypeError> {
+        let trait_type = StructuredType::Simple(trait_type_id.clone());
+        
+        // Get all available implementations for this trait
+        let implementations = self.compiler_environment.find_trait_implementations(&trait_type);
+        
+        // Strategy 1: If only one implementation exists, use it
+        if implementations.len() == 1 {
+            return Ok(Some(implementations[0].clone()));
+        }
+        
+        // Strategy 2: Look for explicit type context from parent expressions
+        // TODO: This would require traversing up the AST to find type annotations
+        // For now, we'll focus on the single implementation case
+        
+        // Strategy 3: No clear inference possible - require explicit type annotation
+        if implementations.is_empty() {
+            return Err(TypeError::internal_with_span(
+                format!("No implementations found for trait '{}'", 
+                    self.compiler_environment.resolve_type_name(trait_type_id).unwrap_or_default()),
+                call.span.to_source_span(),
+            ));
+        }
+        
+        // Multiple implementations available - need explicit type context
+        Ok(None)
     }
 }

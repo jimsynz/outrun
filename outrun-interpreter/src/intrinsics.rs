@@ -1822,6 +1822,11 @@ impl IntrinsicsHandler {
             return self.create_option_some(Value::integer(0), span);
         }
 
+        // If search is longer than value, it can't be found
+        if search_bytes.len() > value_bytes.len() {
+            return self.create_option_none(span);
+        }
+
         for i in 0..=value_bytes.len().saturating_sub(search_bytes.len()) {
             if &value_bytes[i..i + search_bytes.len()] == search_bytes {
                 return self.create_option_some(Value::integer(i as i64), span);

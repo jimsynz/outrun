@@ -1043,6 +1043,18 @@ impl FunctionDispatcher {
                     value_type_name == expected_type_name
                 }
             },
+
+            // Handle Struct values against Generic expected types
+            (crate::value::Value::Struct { type_id: value_type_id, .. }, StructuredType::Generic { base: expected_base_id, args: _expected_args }) => {
+                let value_type_name = self.compiler_environment.resolve_type_name(value_type_id).unwrap_or_default();
+                let expected_base_name = self.compiler_environment.resolve_type_name(expected_base_id).unwrap_or_default();
+                
+                println!("🔍 GENERIC TYPE CHECK: Value type '{}' vs Expected generic base '{}'", value_type_name, expected_base_name);
+                
+                // The runtime value should match the base type of the generic
+                // Generic arguments are compile-time information and don't affect runtime matching
+                value_type_name == expected_base_name
+            },
             
             // NO FALLBACK CASES - reject all unhandled combinations
             _ => {

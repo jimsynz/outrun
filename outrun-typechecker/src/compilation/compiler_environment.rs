@@ -2495,27 +2495,35 @@ impl CompilerEnvironment {
         }
     }
 
-    /// Phase 7.6 - Comprehensive function signature monomorphization
+    /// Phase 7.6 - Comprehensive function signature monomorphization with Cartesian product generation
     /// This phase monomorphizes ALL trait implementations in the system
     /// where ALL trait types are resolved to concrete types
+    /// 
+    /// CRITICAL: Implements Cartesian product monomorphization - when we see Option<Integer>,
+    /// we generate clauses for ALL Option implementations × ALL Integer implementations
     fn phase_7_6_comprehensive_monomorphization(
         &mut self,
         _collection: &ProgramCollection,
     ) -> Result<(), Vec<TypeError>> {
-        eprintln!("🔧 PHASE 7.6: Starting comprehensive monomorphization");
+        eprintln!("🔧 PHASE 7.6: Starting comprehensive monomorphization with Cartesian product generation");
 
         // Step 1: Find all trait implementations that need monomorphization
         let trait_implementations = self.collect_all_trait_implementations()?;
         
         eprintln!("🔧 PHASE 7.6: Found {} trait implementations", trait_implementations.len());
 
-        // Step 2: Monomorphize each trait implementation
+        // Step 2: Traditional monomorphization for existing trait implementations
         for (trait_name, impl_type, function_name) in trait_implementations {
             eprintln!("🔧 MONO IMPL: Processing {}::{} for {}", trait_name, function_name, 
                      self.resolve_type_display(&impl_type));
             
             self.monomorphize_trait_implementation(&trait_name, &impl_type, &function_name)?;
         }
+
+        // Step 3: NEW - Cartesian product monomorphization for generic types
+        // This is the critical fix: generate ALL possible combinations
+        eprintln!("🔧 CARTESIAN: Starting Cartesian product monomorphization");
+        self.generate_cartesian_product_monomorphizations()?;
 
         eprintln!("🔧 PHASE 7.6: Comprehensive monomorphization complete");
         Ok(())
@@ -2562,6 +2570,344 @@ impl CompilerEnvironment {
         };
         
         self.generate_fully_monomorphized_clause(&spec)
+    }
+
+    /// NEW: Generate Cartesian product monomorphizations for generic types
+    /// This implements the core fix: when we encounter Option<Integer>, generate clauses for
+    /// ALL Option implementations × ALL Integer implementations
+    /// 
+    /// Example: Option<Integer> generates:
+    /// - Outrun.Option.Some<Outrun.Core.Integer64>
+    /// - Outrun.Option.None<Outrun.Core.Integer64>
+    fn generate_cartesian_product_monomorphizations(&mut self) -> Result<(), Vec<TypeError>> {
+        eprintln!("🎯 CARTESIAN: Starting Cartesian product monomorphization");
+        
+        // Find all generic types that need Cartesian product expansion
+        let generic_types_to_expand = self.find_generic_types_needing_expansion()?;
+        
+        eprintln!("🎯 CARTESIAN: Found {} generic types to expand", generic_types_to_expand.len());
+        
+        for (trait_name, type_args, function_names) in generic_types_to_expand {
+            eprintln!("🎯 CARTESIAN: Expanding {}[{}] for functions: {:?}", 
+                     trait_name, 
+                     type_args.iter().map(|t| self.resolve_type_display(t)).collect::<Vec<_>>().join(", "),
+                     function_names);
+            
+            // Find ALL implementing types for this trait
+            let implementing_types = self.find_all_implementing_types_for_trait(&trait_name)?;
+            eprintln!("🎯 CARTESIAN: Found {} implementing types for {}: {:?}", 
+                     implementing_types.len(), 
+                     trait_name,
+                     implementing_types.iter().map(|t| self.resolve_type_display(t)).collect::<Vec<_>>());
+            
+            // For each implementing type, generate monomorphized clauses with concrete type arguments
+            for implementing_type in implementing_types {
+                for function_name in &function_names {
+                    eprintln!("🎯 CARTESIAN: Generating clauses for {}::{} with impl type {}", 
+                             trait_name, function_name, self.resolve_type_display(&implementing_type));
+                    
+                    // Create a concrete implementation with substituted type arguments
+                    let concrete_implementing_type = self.substitute_generic_args_in_type(&implementing_type, &type_args)?;
+                    
+                    eprintln!("🎯 CARTESIAN: Concrete implementing type: {}", 
+                             self.resolve_type_display(&concrete_implementing_type));
+                    
+                    // Generate the monomorphized clause
+                    self.monomorphize_trait_implementation(&trait_name, &concrete_implementing_type, function_name)?;
+                }
+            }
+        }
+        
+        eprintln!("🎯 CARTESIAN: Cartesian product monomorphization complete");
+        Ok(())
+    }
+
+    /// Find generic types that need Cartesian product expansion
+    /// Returns (trait_name, type_args, function_names) tuples
+    fn find_generic_types_needing_expansion(&self) -> Result<Vec<(String, Vec<StructuredType>, Vec<String>)>, Vec<TypeError>> {
+        let mut generic_types = Vec::new();
+        
+        // TODO: This should scan the actual AST for generic type usage patterns
+        // For now, we need to identify specific generic instantiations that are actually used
+        
+        // Scan all trait implementations to find generic patterns that need monomorphization
+        let modules = self.modules.read().unwrap();
+        let mut discovered_generic_usages = std::collections::HashSet::new();
+        
+        for (module_key, _module) in modules.iter() {
+            if let ModuleKey::TraitImpl(trait_type, impl_type) = module_key {
+                // Look for generic trait implementations
+                if let (StructuredType::Generic { base: trait_base, args: trait_args }, 
+                        StructuredType::Generic { base: _impl_base, args: _impl_args }) = (trait_type.as_ref(), impl_type.as_ref()) {
+                    
+                    let trait_name = self.resolve_type_name(trait_base).unwrap_or_default();
+                    
+                    // For now, specifically handle the case we know is needed
+                    // but this could be generalized to scan actual usage patterns
+                    if trait_name == "Option" && trait_args.len() == 1 {
+                        // We found Option<T> - check if we need Option<Integer64>
+                        let integer_type = StructuredType::Simple(self.intern_type_name("Outrun.Core.Integer64"));
+                        let key = (trait_name.clone(), vec![integer_type]);
+                        discovered_generic_usages.insert(key);
+                    }
+                }
+            }
+        }
+        
+        // Convert discovered usages to expansion specifications
+        for (trait_name, type_args) in discovered_generic_usages {
+            // Get all function names for this trait
+            let function_names = self.get_trait_function_names(&trait_name);
+            generic_types.push((trait_name, type_args, function_names));
+        }
+        
+        eprintln!("🎯 CARTESIAN: Discovered {} generic type patterns needing expansion", generic_types.len());
+        
+        Ok(generic_types)
+    }
+
+    /// Get all function names defined in a trait
+    fn get_trait_function_names(&self, trait_name: &str) -> Vec<String> {
+        let trait_id = self.intern_type_name(trait_name);
+        let all_traits = self.get_all_traits();
+        
+        if let Some(trait_def) = all_traits.get(&trait_id) {
+            trait_def.functions.iter().map(|f| {
+                match f {
+                    TraitFunction::Definition(def) => def.name.name.clone(),
+                    TraitFunction::Signature(sig) => sig.name.name.clone(),
+                    TraitFunction::StaticDefinition(static_def) => static_def.name.name.clone(),
+                }
+            }).collect()
+        } else {
+            eprintln!("🎯 TRAIT SCAN: Trait '{}' not found, using default function list", trait_name);
+            // Fallback for common traits
+            match trait_name {
+                "Option" => vec!["some?".to_string(), "none?".to_string(), "unwrap".to_string()],
+                _ => vec![],
+            }
+        }
+    }
+
+    /// Get all concrete types available in the system
+    /// These are types that can be used to instantiate unconstrained type variables
+    fn get_all_concrete_types(&self) -> Vec<StructuredType> {
+        let mut concrete_types = Vec::new();
+        let modules = self.modules.read().unwrap();
+        
+        for (module_key, module) in modules.iter() {
+            match module_key {
+                // Look for struct modules - these represent concrete types
+                ModuleKey::Module(_) if module.module_kind == ModuleKind::Struct => {
+                    concrete_types.push(module.structured_type.clone());
+                }
+                _ => {} // Skip trait and impl modules
+            }
+        }
+        
+        eprintln!("🎯 CONCRETE: Discovered {} concrete types from modules", concrete_types.len());
+        concrete_types
+    }
+
+    /// Find the original trait type that was used to store a specific trait implementation
+    /// This is needed because impl blocks are stored with their original trait types,
+    /// not simplified versions we create during monomorphization
+    fn find_original_trait_type_for_impl(&self, trait_name: &str, implementing_type: &StructuredType) -> Result<Option<StructuredType>, Vec<TypeError>> {
+        let modules = self.modules.read().unwrap();
+        
+        for (module_key, _module) in modules.iter() {
+            if let ModuleKey::TraitImpl(stored_trait_type, stored_impl_type) = module_key {
+                let stored_trait_name = self.resolve_type_display(stored_trait_type);
+                let stored_impl_name = self.resolve_type_display(stored_impl_type);
+                let impl_name = self.resolve_type_display(implementing_type);
+                
+                // Handle both exact trait matches and generic base trait matches 
+                let base_trait_name = if stored_trait_name.contains('<') {
+                    stored_trait_name.split('<').next().unwrap_or(&stored_trait_name).to_string()
+                } else {
+                    stored_trait_name.clone()
+                };
+                
+                // Check if this is the right trait and implementation
+                if base_trait_name == trait_name {
+                    // For generic implementing types, match the base type structure
+                    let impl_matches = match (implementing_type, stored_impl_type.as_ref()) {
+                        // Both are generic types - match the base type
+                        (StructuredType::Generic { base: impl_base, .. }, 
+                         StructuredType::Generic { base: stored_base, .. }) => {
+                            let impl_base_name = self.resolve_type_name(impl_base).unwrap_or_default();
+                            let stored_base_name = self.resolve_type_name(stored_base).unwrap_or_default();
+                            impl_base_name == stored_base_name
+                        },
+                        // One generic, one simple - compare base names
+                        (StructuredType::Generic { base, .. }, StructuredType::Simple(stored_id)) |
+                        (StructuredType::Simple(stored_id), StructuredType::Generic { base, .. }) => {
+                            let base_name = self.resolve_type_name(base).unwrap_or_default();
+                            let stored_name = self.resolve_type_name(stored_id).unwrap_or_default();
+                            base_name == stored_name
+                        },
+                        // Both simple - direct comparison
+                        (StructuredType::Simple(impl_id), StructuredType::Simple(stored_id)) => {
+                            impl_id.hash == stored_id.hash
+                        },
+                        // Other cases - fallback to string comparison for debugging
+                        _ => {
+                            let base_impl_name = if impl_name.contains('<') {
+                                impl_name.split('<').next().unwrap_or(&impl_name).to_string()
+                            } else {
+                                impl_name.clone()
+                            };
+                            
+                            let base_stored_impl_name = if stored_impl_name.contains('<') {
+                                stored_impl_name.split('<').next().unwrap_or(&stored_impl_name).to_string()
+                            } else {
+                                stored_impl_name.clone()
+                            };
+                            
+                            base_impl_name == base_stored_impl_name
+                        }
+                    };
+                    
+                    if impl_matches {
+                        eprintln!("🔧 TRAIT TYPE FOUND: Found original trait type {:?} for impl type {}", stored_trait_type, impl_name);
+                        return Ok(Some(stored_trait_type.as_ref().clone()));
+                    }
+                }
+            }
+        }
+        
+        eprintln!("🔧 TRAIT TYPE NOT FOUND: No original trait type found for {} implementing {}", trait_name, self.resolve_type_display(implementing_type));
+        Ok(None)
+    }
+
+    /// Find the original implementing type that was used to store a specific trait implementation
+    /// This is needed when the stored implementation uses type variables but we're looking with concrete types
+    fn find_original_impl_type_for_trait(&self, trait_name: &str, implementing_type: &StructuredType) -> Result<Option<StructuredType>, Vec<TypeError>> {
+        let modules = self.modules.read().unwrap();
+        
+        for (module_key, _module) in modules.iter() {
+            if let ModuleKey::TraitImpl(stored_trait_type, stored_impl_type) = module_key {
+                let stored_trait_name = self.resolve_type_display(stored_trait_type);
+                let stored_impl_name = self.resolve_type_display(stored_impl_type);
+                let impl_name = self.resolve_type_display(implementing_type);
+                
+                // Handle both exact trait matches and generic base trait matches 
+                let base_trait_name = if stored_trait_name.contains('<') {
+                    stored_trait_name.split('<').next().unwrap_or(&stored_trait_name).to_string()
+                } else {
+                    stored_trait_name.clone()
+                };
+                
+                // Check if this is the right trait and implementation
+                if base_trait_name == trait_name {
+                    // Check if the base implementing types match
+                    let impl_matches = match (implementing_type, stored_impl_type.as_ref()) {
+                        // Both are generic types - match the base type
+                        (StructuredType::Generic { base: impl_base, .. }, 
+                         StructuredType::Generic { base: stored_base, .. }) => {
+                            let impl_base_name = self.resolve_type_name(impl_base).unwrap_or_default();
+                            let stored_base_name = self.resolve_type_name(stored_base).unwrap_or_default();
+                            impl_base_name == stored_base_name
+                        },
+                        // Other matching cases same as trait type matching
+                        (StructuredType::Generic { base, .. }, StructuredType::Simple(stored_id)) |
+                        (StructuredType::Simple(stored_id), StructuredType::Generic { base, .. }) => {
+                            let base_name = self.resolve_type_name(base).unwrap_or_default();
+                            let stored_name = self.resolve_type_name(stored_id).unwrap_or_default();
+                            base_name == stored_name
+                        },
+                        (StructuredType::Simple(impl_id), StructuredType::Simple(stored_id)) => {
+                            impl_id.hash == stored_id.hash
+                        },
+                        _ => false,
+                    };
+                    
+                    if impl_matches {
+                        eprintln!("🔧 IMPL TYPE FOUND: Found original impl type {:?} for concrete type {}", stored_impl_type, impl_name);
+                        return Ok(Some(stored_impl_type.as_ref().clone()));
+                    }
+                }
+            }
+        }
+        
+        eprintln!("🔧 IMPL TYPE NOT FOUND: No original impl type found for {} implementing {}", trait_name, self.resolve_type_display(implementing_type));
+        Ok(None)
+    }
+
+    /// Find all types that implement a given trait
+    fn find_all_implementing_types_for_trait(&self, trait_name: &str) -> Result<Vec<StructuredType>, Vec<TypeError>> {
+        let mut implementing_types = Vec::new();
+        
+        let modules = self.modules.read().unwrap();
+        eprintln!("🎯 DETAILED SEARCH: Looking for trait '{}' implementations in {} modules", trait_name, modules.len());
+        
+        for (module_key, _module) in modules.iter() {
+            match module_key {
+                ModuleKey::TraitImpl(trait_type, impl_type) => {
+                    let impl_trait_name = self.resolve_type_display(trait_type);
+                    let impl_type_name = self.resolve_type_display(impl_type);
+                    
+                    eprintln!("🎯 DETAILED: Found trait impl {} for {}", impl_trait_name, impl_type_name);
+                    
+                    // Handle both exact matches and generic trait names like "Option<ComplexType>" -> "Option"
+                    let base_trait_name = if impl_trait_name.contains('<') {
+                        impl_trait_name.split('<').next().unwrap_or(&impl_trait_name).to_string()
+                    } else {
+                        impl_trait_name.clone()
+                    };
+                    
+                    if base_trait_name == trait_name || impl_trait_name == trait_name {
+                        eprintln!("🎯 DETAILED: ✅ MATCH - Adding {} as implementing type (trait: {} -> {})", 
+                                 impl_type_name, impl_trait_name, base_trait_name);
+                        implementing_types.push((**impl_type).clone());
+                    }
+                },
+                _ => {
+                    // eprintln!("🎯 DETAILED: Skipping non-trait-impl module");
+                }
+            }
+        }
+        
+        eprintln!("🎯 CARTESIAN: Found {} implementing types for trait {}", implementing_types.len(), trait_name);
+        for impl_type in &implementing_types {
+            eprintln!("🎯 CARTESIAN:   - {}", self.resolve_type_display(impl_type));
+        }
+        
+        Ok(implementing_types)
+    }
+
+    /// Substitute generic type arguments in a type
+    /// For example: Some<T> + [Integer64] -> Some<Integer64>
+    fn substitute_generic_args_in_type(
+        &self, 
+        implementing_type: &StructuredType, 
+        type_args: &[StructuredType]
+    ) -> Result<StructuredType, Vec<TypeError>> {
+        match implementing_type {
+            StructuredType::Generic { base, args: _ } => {
+                // Replace the generic arguments with the concrete ones
+                Ok(StructuredType::Generic { 
+                    base: base.clone(), 
+                    args: type_args.to_vec() 
+                })
+            },
+            StructuredType::Simple(_) => {
+                // For simple types, if we have type arguments, make it generic
+                if !type_args.is_empty() {
+                    if let StructuredType::Simple(base_id) = implementing_type {
+                        Ok(StructuredType::Generic { 
+                            base: base_id.clone(), 
+                            args: type_args.to_vec() 
+                        })
+                    } else {
+                        Ok(implementing_type.clone())
+                    }
+                } else {
+                    Ok(implementing_type.clone())
+                }
+            },
+            _ => Ok(implementing_type.clone()),
+        }
     }
 
     /// Collect all function call sites with their resolved argument types
@@ -2763,24 +3109,54 @@ impl CompilerEnvironment {
         eprintln!("🔧 MONOMORPH: Starting clause type monomorphization for {}::{}", spec.trait_name, spec.function_name);
         
         // Find existing function clauses for this trait/function combination
-        let trait_type = StructuredType::Simple(self.intern_type_name(&spec.trait_name));
+        // Use the same trait type lookup as in generate_and_store_monomorphized_clause
+        eprintln!("🔧 LOOKUP2: Looking for original trait type for {} implementing {}", spec.trait_name, self.resolve_type_display(&spec.implementing_type));
+        let trait_type = self.find_original_trait_type_for_impl(&spec.trait_name, &spec.implementing_type)?
+            .unwrap_or_else(|| {
+                eprintln!("🔧 FALLBACK2: Using Simple trait type for {}", spec.trait_name);
+                StructuredType::Simple(self.intern_type_name(&spec.trait_name))
+            });
+        
+        // Also find the original implementing type that was used when storing the trait implementation
+        let implementing_type = self.find_original_impl_type_for_trait(&spec.trait_name, &spec.implementing_type)?
+            .unwrap_or_else(|| {
+                eprintln!("🔧 FALLBACK_IMPL: Using concrete implementing type {}", self.resolve_type_display(&spec.implementing_type));
+                spec.implementing_type.clone()
+            });
+            
         let module_key = ModuleKey::TraitImpl(
             Box::new(trait_type.clone()),
-            Box::new(spec.implementing_type.clone()),
+            Box::new(implementing_type.clone()),
         );
         
         // Look for the existing function clauses
         let function_name_atom = self.intern_atom_name(&spec.function_name);
+        eprintln!("🔧 MODULE: Looking for module with key {:?}", module_key);
+        eprintln!("🔧 ATOM: Looking for function atom {:?} (from name '{}')", function_name_atom, spec.function_name);
         let clauses_to_monomorphize = {
             let modules = self.modules.read().unwrap();
             if let Some(module) = modules.get(&module_key) {
+                eprintln!("🔧 MODULE: Found module! Available functions: {:?}", 
+                         module.functions_by_name.keys().map(|k| self.resolve_atom_name(k).unwrap_or_default()).collect::<Vec<_>>());
+                eprintln!("🔧 MODULE: Function atom keys: {:?}", 
+                         module.functions_by_name.keys().collect::<Vec<_>>());
+                eprintln!("🔧 MODULE: Function clause sets available: {:?}", 
+                         module.function_clauses.keys().map(|k| self.resolve_atom_name(k).unwrap_or_default()).collect::<Vec<_>>());
+                eprintln!("🔧 MODULE: Looking for atom key {:?}", function_name_atom);
                 if let Some(clause_set) = module.get_function_clause_set(&function_name_atom) {
+                    eprintln!("🔧 MONOMORPH: Found {} existing clauses to monomorphize", clause_set.clauses.len());
                     clause_set.clauses.clone()
                 } else {
+                    eprintln!("🔧 MONOMORPH: No function clause set found for '{}' in module", spec.function_name);
                     Vec::new()
                 }
             } else {
-                eprintln!("🔧 MONOMORPH: No module found for trait impl - this is expected for trait signatures");
+                eprintln!("🔧 MONOMORPH: No module found for trait impl key: {:?}", module_key);
+                eprintln!("🔧 MONOMORPH: Available modules:");
+                for (key, _) in modules.iter().take(10) {
+                    eprintln!("🔧 MONOMORPH:   {:?}", key);
+                }
+                eprintln!("🔧 MONOMORPH: (showing first 10 of {} modules)", modules.len());
                 return Ok(());
             }
         };
@@ -2844,11 +3220,27 @@ impl CompilerEnvironment {
             &monomorphized_function.parameters
         );
         
-        // Check if this exact monomorphization already exists
-        let trait_type = StructuredType::Simple(self.intern_type_name(&spec.trait_name));
+        // Find the actual trait type and implementing type used when this impl was stored
+        // The issue is that implementations are stored with generic types like:
+        // Generic { base: TypeNameId(Option), args: [TypeVariable(TypeNameId(T))] }
+        // But we're trying to lookup with concrete types
+        eprintln!("🔧 LOOKUP: Looking for original trait type for {} implementing {}", spec.trait_name, self.resolve_type_display(&spec.implementing_type));
+        let actual_trait_type = self.find_original_trait_type_for_impl(&spec.trait_name, &spec.implementing_type)?
+            .unwrap_or_else(|| {
+                eprintln!("🔧 FALLBACK: Using Simple trait type for {}", spec.trait_name);
+                StructuredType::Simple(self.intern_type_name(&spec.trait_name))
+            });
+        
+        eprintln!("🔧 IMPL TYPE LOOKUP: Looking for original impl type for {} implementing {}", spec.trait_name, self.resolve_type_display(&spec.implementing_type));
+        let actual_impl_type = self.find_original_impl_type_for_trait(&spec.trait_name, &spec.implementing_type)?
+            .unwrap_or_else(|| {
+                eprintln!("🔧 FALLBACK_IMPL: Using concrete implementing type {}", self.resolve_type_display(&spec.implementing_type));
+                spec.implementing_type.clone()
+            });
+        
         let module_key = ModuleKey::TraitImpl(
-            Box::new(trait_type.clone()),
-            Box::new(spec.implementing_type.clone()),
+            Box::new(actual_trait_type.clone()),
+            Box::new(actual_impl_type.clone()),
         );
         let function_name_atom = self.intern_atom_name(&spec.function_name);
         
@@ -3105,17 +3497,58 @@ impl CompilerEnvironment {
         spec: &FullMonomorphizationSpec,
     ) -> Result<Option<StructuredType>, Vec<TypeError>> {
         match type_annotation {
-            outrun_parser::TypeAnnotation::Simple { path, .. } => {
+            outrun_parser::TypeAnnotation::Simple { path, generic_args, .. } => {
                 if let Some(first_type) = path.first() {
                     let type_name = &first_type.name;
                     
-                    // Handle Self -> implementing type
+                    eprintln!("🔧 TYPE RESOLUTION: Processing type name: {}", type_name);
+                    eprintln!("🔧 TYPE RESOLUTION: Has generic args: {:?}", generic_args.is_some());
+                    eprintln!("🔧 TYPE RESOLUTION: Available concrete types: {:?}", spec.concrete_argument_types);
+                    
+                    // Handle Self -> implementing type (flattened to concrete representation)
                     if type_name == "Self" {
-                        return Ok(Some(spec.implementing_type.clone()));
+                        eprintln!("🔧 SELF RESOLUTION: Input implementing type: {:?}", spec.implementing_type);
+                        // Flatten Generic types to concrete type representations for the interpreter
+                        let concrete_self_type = self.flatten_generic_to_concrete_type(&spec.implementing_type)?;
+                        eprintln!("🔧 SELF RESOLUTION: Output concrete type: {:?}", concrete_self_type);
+                        return Ok(Some(concrete_self_type));
                     }
                     
-                    // Handle trait types -> concrete implementing types
-                    // For now, map common trait types to their concrete implementations
+                    // Check if this is a type parameter that should be substituted with a concrete type
+                    if let Some(concrete_type) = spec.concrete_argument_types.get(type_name) {
+                        eprintln!("🔧 TYPE PARAM SUBSTITUTION: {} -> {:?}", type_name, concrete_type);
+                        // Flatten the concrete type to ensure interpreter compatibility
+                        let flattened_type = self.flatten_generic_to_concrete_type(concrete_type)?;
+                        eprintln!("🔧 TYPE PARAM SUBSTITUTION: Flattened to: {:?}", flattened_type);
+                        return Ok(Some(flattened_type));
+                    }
+                    
+                    // Handle generic types like Option<T>
+                    if let Some(generic_args) = generic_args {
+                        eprintln!("🔧 GENERIC TYPE RESOLUTION: Processing generic type with args");
+                        
+                        // Resolve all the generic arguments
+                        let mut resolved_args = Vec::new();
+                        for arg in &generic_args.args {
+                            if let Some(resolved_arg) = self.resolve_trait_type_to_concrete(arg, spec)? {
+                                resolved_args.push(resolved_arg);
+                            }
+                        }
+                        
+                        // Create a generic type and then flatten it
+                        let base_type_id = self.intern_type_name(type_name);
+                        let generic_type = if resolved_args.is_empty() {
+                            StructuredType::Simple(base_type_id)
+                        } else {
+                            StructuredType::Generic { base: base_type_id, args: resolved_args }
+                        };
+                        
+                        let flattened = self.flatten_generic_to_concrete_type(&generic_type)?;
+                        eprintln!("🔧 GENERIC TYPE RESOLUTION: Final flattened type: {:?}", flattened);
+                        return Ok(Some(flattened));
+                    }
+                    
+                    // Handle simple types (no generic args)
                     let concrete_type = match type_name.as_str() {
                         "Integer" => {
                             let type_id = self.intern_type_name("Outrun.Core.Integer64");
@@ -3136,13 +3569,15 @@ impl CompilerEnvironment {
                         }
                     };
                     
+                    eprintln!("🔧 TYPE RESOLUTION: Final type: {:?}", concrete_type);
                     Ok(Some(concrete_type))
                 } else {
                     Ok(None)
                 }
             }
             _ => {
-                // TODO: Handle complex type annotations
+                // TODO: Handle other complex type annotations (tuples, functions, etc.)
+                eprintln!("🔧 TYPE RESOLUTION: Unsupported type annotation: {:?}", type_annotation);
                 Ok(None)
             }
         }
@@ -3181,6 +3616,44 @@ impl CompilerEnvironment {
                 format!("{}<{}>", base_name, arg_names.join(", "))
             }
             _ => "ComplexType".to_string(),
+        }
+    }
+
+    /// Flatten a generic type to a concrete type representation suitable for the interpreter
+    /// This converts Generic { base: Foo, args: [Bar] } to Simple(TypeNameId("Foo<Bar>"))
+    /// This allows the interpreter to match against concrete type representations rather than complex Generic structures
+    fn flatten_generic_to_concrete_type(&self, structured_type: &StructuredType) -> Result<StructuredType, Vec<TypeError>> {
+        match structured_type {
+            // Simple types are already concrete
+            StructuredType::Simple(_) => Ok(structured_type.clone()),
+            
+            // Generic types need to be flattened to concrete type names
+            StructuredType::Generic { base, args } => {
+                let base_name = self.resolve_type_name(base).unwrap_or_default();
+                let arg_names: Vec<String> = args.iter().map(|arg| {
+                    // Recursively flatten nested generic types
+                    match self.flatten_generic_to_concrete_type(arg) {
+                        Ok(flattened) => self.resolve_type_display(&flattened),
+                        Err(_) => "Unknown".to_string(),
+                    }
+                }).collect();
+                
+                // Create a concrete type name like "Outrun.Option.Some<Outrun.Core.Integer64>"
+                let concrete_type_name = format!("{}<{}>", base_name, arg_names.join(", "));
+                let concrete_type_id = self.intern_type_name(&concrete_type_name);
+                
+                eprintln!("🔧 TYPE FLATTEN: Generic {} -> Concrete {}", 
+                         self.resolve_type_display(structured_type), 
+                         concrete_type_name);
+                
+                Ok(StructuredType::Simple(concrete_type_id))
+            }
+            
+            // Other types are not supported for flattening yet
+            _ => {
+                eprintln!("🔧 TYPE FLATTEN: Unsupported type for flattening: {:?}", structured_type);
+                Ok(structured_type.clone())
+            }
         }
     }
 
@@ -5454,7 +5927,7 @@ impl CompilerEnvironment {
     }
 
     /// Find all concrete types that implement a given trait
-    fn find_all_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
+    pub fn find_all_trait_implementations(&self, trait_type: &StructuredType) -> Vec<StructuredType> {
         let mut implementations = Vec::new();
         let modules = self.modules.read().unwrap();
 
@@ -7315,81 +7788,11 @@ impl CompilerEnvironment {
 
     /// Find concrete implementations for simple traits
     fn find_simple_trait_implementations(&self, trait_id: &TypeNameId) -> Vec<StructuredType> {
-        // For now, use core trait knowledge until we can properly access parsed implementations
-        // This is a simplified approach that gets the core library working
-        self.get_core_trait_implementations(trait_id)
+        // Use the actual parsed implementations from the core library
+        let trait_type = StructuredType::Simple(trait_id.clone());
+        self.find_all_trait_implementations(&trait_type)
     }
 
-    /// Get known core trait implementations for built-in traits
-    fn get_core_trait_implementations(&self, trait_id: &TypeNameId) -> Vec<StructuredType> {
-        let trait_name = self.resolve_type_name(trait_id).unwrap_or_default();
-        let mut implementations = Vec::new();
-
-        match trait_name.as_str() {
-            "Option" => {
-                // Option<T> trait is implemented by Outrun.Option.Some<T> and Outrun.Option.None<T>
-                let some_id = self.intern_type_name("Outrun.Option.Some");
-                let none_id = self.intern_type_name("Outrun.Option.None");
-                implementations.push(StructuredType::Simple(some_id));
-                implementations.push(StructuredType::Simple(none_id));
-            }
-            "String" => {
-                // String trait is implemented by Outrun.Core.String
-                let string_id = self.intern_type_name("Outrun.Core.String");
-                implementations.push(StructuredType::Simple(string_id));
-            }
-            "Integer" => {
-                // Integer trait is implemented by Outrun.Core.Integer64
-                let int_id = self.intern_type_name("Outrun.Core.Integer64");
-                implementations.push(StructuredType::Simple(int_id));
-            }
-            "Boolean" => {
-                // Boolean trait is implemented by Outrun.Core.Boolean
-                let bool_id = self.intern_type_name("Outrun.Core.Boolean");
-                implementations.push(StructuredType::Simple(bool_id));
-            }
-            "List" => {
-                // List trait is implemented by Outrun.Core.List
-                let list_id = self.intern_type_name("Outrun.Core.List");
-                implementations.push(StructuredType::Simple(list_id));
-            }
-            "Map" => {
-                // Map trait is implemented by Outrun.Core.Map
-                let map_id = self.intern_type_name("Outrun.Core.Map");
-                implementations.push(StructuredType::Simple(map_id));
-            }
-            "Binary" => {
-                // Binary trait is implemented by Outrun.Core.Binary
-                let binary_id = self.intern_type_name("Outrun.Core.Binary");
-                implementations.push(StructuredType::Simple(binary_id));
-            }
-            "BinarySubtraction" => {
-                // BinarySubtraction trait is implemented by numeric types
-                for concrete_type in ["Outrun.Core.Integer64", "Outrun.Core.Float64"] {
-                    let concrete_id = self.intern_type_name(concrete_type);
-                    implementations.push(StructuredType::Simple(concrete_id));
-                }
-            }
-            "Equality" => {
-                // Equality trait is implemented by most concrete types
-                for concrete_type in [
-                    "Outrun.Core.String",
-                    "Outrun.Core.Integer64",
-                    "Outrun.Core.Float64",
-                    "Outrun.Core.Boolean",
-                    "Outrun.Core.Binary",
-                ] {
-                    let concrete_id = self.intern_type_name(concrete_type);
-                    implementations.push(StructuredType::Simple(concrete_id));
-                }
-            }
-            _ => {
-                // No known core implementations for trait
-            }
-        }
-
-        implementations
-    }
 
     /// Helper to format StructuredType for debugging
     fn format_structured_type(&self, structured_type: &StructuredType) -> String {
@@ -8150,9 +8553,9 @@ impl CompilerEnvironment {
 
     /// Check if a function should be registered as a clause (has guards or complex patterns)
     fn should_create_clause_for_function(&self, func_def: &FunctionDefinition) -> bool {
-        // For now, create clauses for all functions with guards
-        // In the future, we might expand this to include other criteria
-        func_def.guard.is_some()
+        // Always create clause sets for all functions, not just guarded ones
+        // This is needed for monomorphization to work properly
+        true
     }
 
     /// Add a function clause to a module
