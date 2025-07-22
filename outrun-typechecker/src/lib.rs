@@ -43,7 +43,7 @@ pub use dispatch::{
     ResolvedFunction,
 };
 pub use error::{CompilerError, ConstraintError, DispatchError, TypecheckError, UnificationError};
-pub use inference::InferenceContext;
+pub use inference::{TypeInferenceEngine, InferenceContext, InferenceResult};
 pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
 pub use types::{
     Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
@@ -72,21 +72,21 @@ impl Package {
 /// Main entry point for type checking a complete Outrun package
 #[allow(clippy::result_large_err)]
 pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
-    let mut context = InferenceContext::new();
+    let mut engine = TypeInferenceEngine::new();
 
     // Phase 1: Collect all type and protocol definitions across all files
     for program in &package.programs {
-        context.collect_definitions(program)?;
+        engine.collect_definitions(program)?;
     }
 
     // Phase 2: Build protocol implementation registry
     for program in &package.programs {
-        context.register_implementations(program)?;
+        engine.register_implementations(program)?;
     }
 
     // Phase 3: Type check all expressions with complete context
     for program in &mut package.programs {
-        context.typecheck_program(program)?;
+        engine.typecheck_program(program)?;
     }
 
     Ok(())
