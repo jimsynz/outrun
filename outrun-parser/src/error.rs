@@ -293,9 +293,9 @@ fn rule_to_user_friendly_description(rule: &Rule) -> String {
             "a static function definition (defs name(...) { ... })".to_string()
         }
         Rule::struct_definition => "a struct definition (struct Name(...))".to_string(),
-        Rule::trait_definition => "a trait definition (trait Name { ... })".to_string(),
+        Rule::protocol_definition => "a protocol definition (protocol Name { ... })".to_string(),
         Rule::impl_block => {
-            "an implementation block (impl TraitName for TypeName { ... })".to_string()
+            "an implementation block (impl ProtocolName for TypeName { ... })".to_string()
         }
         Rule::const_definition => "a constant definition (const NAME: Type = value)".to_string(),
         Rule::let_binding => "a let binding (let pattern = expression)".to_string(),
@@ -312,7 +312,7 @@ fn rule_to_user_friendly_description(rule: &Rule) -> String {
         Rule::keyword_defp => "the 'defp' keyword".to_string(),
         Rule::keyword_defs => "the 'defs' keyword".to_string(),
         Rule::keyword_struct => "the 'struct' keyword".to_string(),
-        Rule::keyword_trait => "the 'trait' keyword".to_string(),
+        Rule::keyword_protocol => "the 'protocol' keyword".to_string(),
         Rule::keyword_impl => "the 'impl' keyword".to_string(),
         Rule::keyword_let => "the 'let' keyword".to_string(),
         Rule::keyword_const => "the 'const' keyword".to_string(),
@@ -400,7 +400,7 @@ fn rule_to_user_friendly_description(rule: &Rule) -> String {
         Rule::tuple_type => "a tuple type".to_string(),
         Rule::generic_params => "generic parameters".to_string(),
         Rule::generic_args => "generic arguments".to_string(),
-        Rule::trait_constraints => "trait constraints".to_string(),
+        Rule::protocol_constraints => "protocol constraints".to_string(),
         Rule::impl_constraints => "implementation constraints".to_string(),
 
         // Fallback for unknown rules
@@ -454,10 +454,10 @@ fn get_suggestions_for_rules(rules: &[Rule]) -> String {
     // Check for common patterns and provide specific advice
     if rules.contains(&Rule::keyword_defs) {
         suggestions.push(
-            "   • If defining a static function in a trait, use: defs function_name(...)"
+            "   • If defining a static function in a protocol, use: defs function_name(...)"
                 .to_string(),
         );
-        suggestions.push("   • Make sure you're inside a trait definition".to_string());
+        suggestions.push("   • Make sure you're inside a protocol definition".to_string());
     }
 
     if rules.contains(&Rule::function_definition) || rules.contains(&Rule::keyword_def) {
@@ -470,8 +470,9 @@ fn get_suggestions_for_rules(rules: &[Rule]) -> String {
         suggestions.push("   • For structs, use: struct StructName(field: Type)".to_string());
     }
 
-    if rules.contains(&Rule::trait_definition) || rules.contains(&Rule::keyword_trait) {
-        suggestions.push("   • For traits, use: trait TraitName { def method(...) }".to_string());
+    if rules.contains(&Rule::protocol_definition) || rules.contains(&Rule::keyword_protocol) {
+        suggestions
+            .push("   • For protocols, use: protocol ProtocolName { def method(...) }".to_string());
     }
 
     if rules.contains(&Rule::COMMENT) {

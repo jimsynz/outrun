@@ -57,7 +57,7 @@ contexts:
 
   # Keywords and control flow
   keywords:
-    - match: \b(def|let|const|if|else|case|when|struct|trait|impl|macro|alias|import|except|only)\b
+    - match: \b(def|let|const|if|else|case|when|struct|protocol|impl|macro|alias|import|except|only)\b
       scope: keyword.control.outrun
     - match: \b(true|false)\b
       scope: constant.language.boolean.outrun

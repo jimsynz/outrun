@@ -2,10 +2,10 @@ use outrun_typechecker::core_library::get_core_library_compilation;
 use outrun_typechecker::unification::StructuredType;
 
 #[test]
-fn test_trait_implementation_lookup_investigation() {
+fn test_protocol_implementation_lookup_investigation() {
     let core_compilation = get_core_library_compilation();
 
-    println!("📊 Investigating trait implementation storage and lookup");
+    println!("📊 Investigating protocol implementation storage and lookup");
 
     // Create a temporary compiler environment to test lookup
     let mut compiler_env =
@@ -20,23 +20,23 @@ fn test_trait_implementation_lookup_investigation() {
     println!("\n🔍 Debugging module storage:");
     // Note: This would require access to internal module structure
 
-    // Test specific List trait implementation lookup
-    let list_trait_name = "List";
+    // Test specific List protocol implementation lookup
+    let list_protocol_name = "List";
     let list_type_name = "Outrun.Core.List";
     let head_function_name = "head";
 
     // Intern the necessary identifiers
-    let trait_type_id = compiler_env.intern_type_name(list_trait_name);
+    let protocol_type_id = compiler_env.intern_type_name(list_protocol_name);
     let impl_type_id = compiler_env.intern_type_name(list_type_name);
     let function_name_atom = compiler_env.intern_atom_name(head_function_name);
 
-    println!("\n🔍 Testing trait implementation lookup:");
-    println!("  - Trait: {list_trait_name} (id: {trait_type_id})");
+    println!("\n🔍 Testing protocol implementation lookup:");
+    println!("  - Protocol: {list_protocol_name} (id: {protocol_type_id})");
     println!("  - Implementation type: {list_type_name} (id: {impl_type_id})");
     println!("  - Function: {head_function_name} (atom: {function_name_atom})");
 
-    // Create trait and impl types for lookup
-    let trait_type = StructuredType::Simple(trait_type_id);
+    // Create protocol and impl types for lookup
+    let protocol_type = StructuredType::Simple(protocol_type_id);
     let impl_type = StructuredType::Generic {
         base: impl_type_id.clone(),
         args: vec![
@@ -45,12 +45,12 @@ fn test_trait_implementation_lookup_investigation() {
         ],
     };
 
-    println!("\n  - Trait type for lookup: {trait_type:?}");
+    println!("\n  - Protocol type for lookup: {protocol_type:?}");
     println!("  - Impl type for lookup: {impl_type:?}");
 
     // Attempt the lookup
     let lookup_result =
-        compiler_env.lookup_impl_function(&trait_type, &impl_type, function_name_atom.clone());
+        compiler_env.lookup_impl_function(&protocol_type, &impl_type, function_name_atom.clone());
 
     match lookup_result {
         Some(function_entry) => {
@@ -62,10 +62,10 @@ fn test_trait_implementation_lookup_investigation() {
 
             // Check what type of entry it is
             match &function_entry {
-                outrun_typechecker::compilation::compiler_environment::UnifiedFunctionEntry::TraitSignature {
+                outrun_typechecker::compilation::compiler_environment::UnifiedFunctionEntry::ProtocolSignature {
                     definition, typed_definition, function_id, ..
                 } => {
-                    println!("  - Entry type: TraitSignature");
+                    println!("  - Entry type: ProtocolSignature");
                     println!("  - Function ID: {function_id}");
                     println!("  - Has typed definition: {}", typed_definition.is_some());
                     if let Some(typed_def) = typed_definition {
@@ -84,10 +84,10 @@ fn test_trait_implementation_lookup_investigation() {
                     }
                     println!("  - Original definition name: {}", definition.name.name);
                 }
-                outrun_typechecker::compilation::compiler_environment::UnifiedFunctionEntry::TraitDefault {
+                outrun_typechecker::compilation::compiler_environment::UnifiedFunctionEntry::ProtocolDefault {
                     definition, typed_definition, function_id, ..
                 } => {
-                    println!("  - Entry type: TraitDefault");
+                    println!("  - Entry type: ProtocolDefault");
                     println!("  - Function ID: {function_id}");
                     println!("  - Has typed definition: {}", typed_definition.is_some());
                     if let Some(typed_def) = typed_definition {
@@ -137,7 +137,7 @@ fn test_trait_implementation_lookup_investigation() {
             // Try with a simpler impl type (just base, no generics)
             let simple_impl_type = StructuredType::Simple(impl_type_id);
             let simple_lookup_result = compiler_env.lookup_impl_function(
-                &trait_type,
+                &protocol_type,
                 &simple_impl_type,
                 function_name_atom,
             );

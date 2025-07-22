@@ -61,8 +61,8 @@ fn test_error_context_variants() {
             struct_name: "User".to_string(),
             field_name: "name".to_string(),
         },
-        ErrorContext::TraitImplementation {
-            trait_name: "Display".to_string(),
+        ErrorContext::ProtocolImplementation {
+            protocol_name: "Display".to_string(),
             type_name: "String".to_string(),
         },
         ErrorContext::PatternMatching {
@@ -81,7 +81,7 @@ fn test_error_context_variants() {
             ErrorContext::LetBinding { .. } => (),
             ErrorContext::Expression { .. } => (),
             ErrorContext::StructField { .. } => (),
-            ErrorContext::TraitImplementation { .. } => (),
+            ErrorContext::ProtocolImplementation { .. } => (),
             ErrorContext::PatternMatching { .. } => (),
             ErrorContext::General { .. } => (),
         }

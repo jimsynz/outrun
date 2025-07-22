@@ -198,7 +198,7 @@ fn find_outrun_files_recursive(
     }
 }
 
-/// Get the compiled core library (trait definitions, structs, functions, etc.)
+/// Get the compiled core library (protocol definitions, structs, functions, etc.)
 pub fn get_core_library_compilation() -> &'static CompilationResult {
     &CORE_LIBRARY_COMPILATION
 }
@@ -212,7 +212,7 @@ pub fn get_core_library_compilation() -> &'static CompilationResult {
 /// * `compiler_env` - Shared compiler environment that will be populated with core library types
 ///
 /// # Returns
-/// * `CompilationResult` - Core library compilation with all types, traits, and implementations
+/// * `CompilationResult` - Core library compilation with all types, protocols, and implementations
 pub fn compile_core_library_with_environment(
     compiler_env: &mut CompilerEnvironment,
 ) -> CompilationResult {
@@ -230,7 +230,7 @@ pub fn get_core_source(file_path: &str) -> Option<String> {
 #[derive(Debug)]
 pub struct CoreLibraryStats {
     pub parsed_files: usize,
-    pub total_traits: usize,
+    pub total_protocols: usize,
     pub total_structs: usize,
     pub total_functions: usize,
     pub total_implementations: usize,
@@ -243,7 +243,7 @@ pub fn core_library_stats() -> CoreLibraryStats {
 
     CoreLibraryStats {
         parsed_files: collection.programs.len(),
-        total_traits: compilation.traits.len(),
+        total_protocols: compilation.protocols.len(),
         total_structs: compilation.structs.len(),
         total_functions: 0, // Function count no longer available in CompilationResult
         total_implementations: compilation.implementations.len(),
@@ -254,9 +254,9 @@ impl std::fmt::Display for CoreLibraryStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Core Library Stats: {} files, {} traits, {} structs, {} functions, {} implementations",
+            "Core Library Stats: {} files, {} protocols, {} structs, {} functions, {} implementations",
             self.parsed_files,
-            self.total_traits,
+            self.total_protocols,
             self.total_structs,
             self.total_functions,
             self.total_implementations
@@ -321,8 +321,8 @@ mod tests {
         // Verify core library loaded successfully
         assert!(stats.parsed_files > 0, "No core library files were parsed");
         assert!(
-            stats.total_traits > 0,
-            "No traits were found in core library"
+            stats.total_protocols > 0,
+            "No protocols were found in core library"
         );
         assert!(
             stats.total_structs > 0,
@@ -335,7 +335,7 @@ mod tests {
         let compilation = get_core_library_compilation();
 
         // Verify compilation succeeded
-        assert!(!compilation.traits.is_empty(), "No traits compiled");
+        assert!(!compilation.protocols.is_empty(), "No protocols compiled");
         assert!(!compilation.structs.is_empty(), "No structs compiled");
 
         // Verify compilation order is valid

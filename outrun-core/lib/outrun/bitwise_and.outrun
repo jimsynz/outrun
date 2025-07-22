@@ -1,7 +1,7 @@
 @Doc(content: """
-Bitwise AND trait for the & operator.
+Bitwise AND protocol for the & operator.
 
-The BitwiseAnd trait defines the behaviour for the & operator.
+The BitwiseAnd protocol defines the behaviour for the & operator.
 When you write `a & b`, it becomes `BitwiseAnd.and(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -19,7 +19,7 @@ When you write `a & b`, it becomes `BitwiseAnd.and(lhs: a, rhs: b)`.
 flags & MASK                  # BitwiseAnd.and(lhs: flags, rhs: MASK): Integer64
 ```
 """)
-trait BitwiseAnd {
+protocol BitwiseAnd {
     @Doc(content: "Perform bitwise AND on two values")
     def and(lhs: Self, rhs: Self): Self
 }

@@ -1,26 +1,26 @@
-//! Trait system definitions and implementation tracking
+//! Protocol system definitions and implementation tracking
 //!
-//! This module handles trait definitions, implementations, and the complex
-//! trait constraint system that powers Outrun's "everything is traits" philosophy.
+//! This module handles protocol definitions, implementations, and the complex
+//! protocol constraint system that powers Outrun's "everything is protocols" philosophy.
 
 use crate::compilation::compiler_environment::{AtomId, TypeNameId};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
-/// A trait definition with functions and constraints
+/// A protocol definition with functions and constraints
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitDefinition {
+pub struct ProtocolDefinition {
     pub id: TypeNameId,
     pub name: String,
-    pub functions: Vec<TraitFunction>,
+    pub functions: Vec<ProtocolFunction>,
     pub generic_params: Vec<TypeNameId>,
-    pub constraints: Vec<TraitConstraint>,
+    pub constraints: Vec<ProtocolConstraint>,
     pub span: Span,
 }
 
-/// Function definition within a trait
+/// Function definition within a protocol
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitFunction {
+pub struct ProtocolFunction {
     pub name: AtomId,
     pub params: Vec<(AtomId, TypeNameId)>,
     pub return_type: TypeNameId,
@@ -30,22 +30,22 @@ pub struct TraitFunction {
     pub span: Span,
 }
 
-/// Trait constraint (e.g., T: Display && T: Debug)
+/// Protocol constraint (e.g., T: Display && T: Debug)
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitConstraint {
+pub struct ProtocolConstraint {
     pub type_param: TypeNameId,
-    pub required_traits: Vec<TypeNameId>,
+    pub required_protocols: Vec<TypeNameId>,
     pub span: Span,
 }
 
-/// Implementation of a trait for a specific type
+/// Implementation of a protocol for a specific type
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitImplementation {
-    pub trait_id: TypeNameId,
+pub struct ProtocolImplementation {
+    pub protocol_id: TypeNameId,
     pub type_id: TypeNameId,
     pub functions: HashMap<AtomId, FunctionId>,
     pub generic_params: Vec<TypeNameId>,
-    pub constraints: Vec<TraitConstraint>,
+    pub constraints: Vec<ProtocolConstraint>,
     pub span: Span,
 }
 
@@ -53,13 +53,13 @@ pub struct TraitImplementation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub u32);
 
-/// Result of exhaustiveness checking for trait case statements and guard analysis
+/// Result of exhaustiveness checking for protocol case statements and guard analysis
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExhaustivenessResult {
     /// All possible cases are covered
     Exhaustive,
-    /// Some trait implementations are missing from the case statement
-    MissingTraitImplementations(Vec<TypeNameId>),
+    /// Some protocol implementations are missing from the case statement
+    MissingProtocolImplementations(Vec<TypeNameId>),
     /// Some guard patterns are missing - contains counter-examples from SAT solving
     MissingGuardPatterns(Vec<GuardCounterExample>),
     /// Open type domain (infinite) - requires explicit default case for exhaustiveness
@@ -77,9 +77,9 @@ pub struct GuardCounterExample {
     pub suggested_guard: Option<String>,
 }
 
-impl TraitDefinition {
-    /// Create a new trait definition
-    pub fn new(id: TypeNameId, name: String, functions: Vec<TraitFunction>, span: Span) -> Self {
+impl ProtocolDefinition {
+    /// Create a new protocol definition
+    pub fn new(id: TypeNameId, name: String, functions: Vec<ProtocolFunction>, span: Span) -> Self {
         Self {
             id,
             name,
@@ -90,29 +90,29 @@ impl TraitDefinition {
         }
     }
 
-    /// Add a generic parameter to this trait
+    /// Add a generic parameter to this protocol
     pub fn add_generic_param(&mut self, param: TypeNameId) {
         self.generic_params.push(param);
     }
 
-    /// Add a constraint to this trait
-    pub fn add_constraint(&mut self, constraint: TraitConstraint) {
+    /// Add a constraint to this protocol
+    pub fn add_constraint(&mut self, constraint: ProtocolConstraint) {
         self.constraints.push(constraint);
     }
 
-    /// Find a function by name in this trait
-    pub fn find_function(&self, name: AtomId) -> Option<&TraitFunction> {
+    /// Find a function by name in this protocol
+    pub fn find_function(&self, name: AtomId) -> Option<&ProtocolFunction> {
         self.functions.iter().find(|f| f.name == name)
     }
 
-    /// Check if this trait has any generic parameters
+    /// Check if this protocol has any generic parameters
     pub fn is_generic(&self) -> bool {
         !self.generic_params.is_empty()
     }
 }
 
-impl TraitFunction {
-    /// Create a new trait function signature (no default implementation)
+impl ProtocolFunction {
+    /// Create a new protocol function signature (no default implementation)
     pub fn new(
         name: AtomId,
         params: Vec<(AtomId, TypeNameId)>,
@@ -131,7 +131,7 @@ impl TraitFunction {
         }
     }
 
-    /// Create a new trait function with default implementation
+    /// Create a new protocol function with default implementation
     pub fn new_with_default(
         name: AtomId,
         params: Vec<(AtomId, TypeNameId)>,
@@ -150,7 +150,7 @@ impl TraitFunction {
         }
     }
 
-    /// Create a new static trait function
+    /// Create a new static protocol function
     pub fn new_static(
         name: AtomId,
         params: Vec<(AtomId, TypeNameId)>,
@@ -179,16 +179,16 @@ impl TraitFunction {
     }
 }
 
-impl TraitImplementation {
-    /// Create a new trait implementation
+impl ProtocolImplementation {
+    /// Create a new protocol implementation
     pub fn new(
-        trait_id: TypeNameId,
+        protocol_id: TypeNameId,
         type_id: TypeNameId,
         functions: HashMap<AtomId, FunctionId>,
         span: Span,
     ) -> Self {
         Self {
-            trait_id,
+            protocol_id,
             type_id,
             functions,
             generic_params: Vec::new(),
@@ -213,72 +213,72 @@ impl TraitImplementation {
     }
 }
 
-impl TraitConstraint {
-    /// Create a new trait constraint
-    pub fn new(type_param: TypeNameId, required_traits: Vec<TypeNameId>, span: Span) -> Self {
+impl ProtocolConstraint {
+    /// Create a new protocol constraint
+    pub fn new(type_param: TypeNameId, required_protocols: Vec<TypeNameId>, span: Span) -> Self {
         Self {
             type_param,
-            required_traits,
+            required_protocols,
             span,
         }
     }
 
-    /// Check if this constraint requires a specific trait
-    pub fn requires_trait(&self, trait_id: TypeNameId) -> bool {
-        self.required_traits.contains(&trait_id)
+    /// Check if this constraint requires a specific protocol
+    pub fn requires_protocol(&self, protocol_id: TypeNameId) -> bool {
+        self.required_protocols.contains(&protocol_id)
     }
 }
 
-/// Trait registry for managing all trait definitions and implementations
+/// Protocol registry for managing all protocol definitions and implementations
 #[derive(Debug, Default, Clone)]
-pub struct TraitRegistry {
-    definitions: HashMap<TypeNameId, TraitDefinition>,
-    implementations: HashMap<(TypeNameId, TypeNameId), TraitImplementation>,
+pub struct ProtocolRegistry {
+    definitions: HashMap<TypeNameId, ProtocolDefinition>,
+    implementations: HashMap<(TypeNameId, TypeNameId), ProtocolImplementation>,
     next_function_id: u32,
 }
 
-impl TraitRegistry {
-    /// Create a new empty trait registry
+impl ProtocolRegistry {
+    /// Create a new empty protocol registry
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Register a trait definition
-    pub fn register_trait(&mut self, definition: TraitDefinition) {
+    /// Register a protocol definition
+    pub fn register_protocol(&mut self, definition: ProtocolDefinition) {
         self.definitions.insert(definition.id.clone(), definition);
     }
 
-    /// Register a trait implementation
-    pub fn register_implementation(&mut self, implementation: TraitImplementation) {
+    /// Register a protocol implementation
+    pub fn register_implementation(&mut self, implementation: ProtocolImplementation) {
         let key = (
-            implementation.trait_id.clone(),
+            implementation.protocol_id.clone(),
             implementation.type_id.clone(),
         );
         self.implementations.insert(key, implementation);
     }
 
-    /// Get a trait definition by ID
-    pub fn get_trait(&self, trait_id: TypeNameId) -> Option<&TraitDefinition> {
-        self.definitions.get(&trait_id)
+    /// Get a protocol definition by ID
+    pub fn get_protocol(&self, protocol_id: TypeNameId) -> Option<&ProtocolDefinition> {
+        self.definitions.get(&protocol_id)
     }
 
-    /// Check if a trait definition exists with the given TraitId
-    pub fn has_trait(&self, trait_id: TypeNameId) -> bool {
-        self.definitions.contains_key(&trait_id)
+    /// Check if a protocol definition exists with the given ProtocolId
+    pub fn has_protocol(&self, protocol_id: TypeNameId) -> bool {
+        self.definitions.contains_key(&protocol_id)
     }
 
-    /// Get a trait implementation
+    /// Get a protocol implementation
     pub fn get_implementation(
         &self,
-        trait_id: TypeNameId,
+        protocol_id: TypeNameId,
         type_id: TypeNameId,
-    ) -> Option<&TraitImplementation> {
-        self.implementations.get(&(trait_id, type_id))
+    ) -> Option<&ProtocolImplementation> {
+        self.implementations.get(&(protocol_id, type_id))
     }
 
-    /// Check if a type implements a trait
-    pub fn implements_trait(&self, type_id: TypeNameId, trait_id: TypeNameId) -> bool {
-        self.implementations.contains_key(&(trait_id, type_id))
+    /// Check if a type implements a protocol
+    pub fn implements_protocol(&self, type_id: TypeNameId, protocol_id: TypeNameId) -> bool {
+        self.implementations.contains_key(&(protocol_id, type_id))
     }
 
     /// Generate a new unique function ID
@@ -288,17 +288,20 @@ impl TraitRegistry {
         id
     }
 
-    /// Get all implementations of a trait
-    pub fn get_trait_implementations(&self, trait_id: TypeNameId) -> Vec<&TraitImplementation> {
+    /// Get all implementations of a protocol
+    pub fn get_protocol_implementations(
+        &self,
+        protocol_id: TypeNameId,
+    ) -> Vec<&ProtocolImplementation> {
         self.implementations
             .iter()
-            .filter(|((t_id, _), _)| t_id.clone() == trait_id)
+            .filter(|((t_id, _), _)| t_id.clone() == protocol_id)
             .map(|(_, impl_)| impl_)
             .collect()
     }
 
-    /// Get all traits implemented by a type
-    pub fn get_type_implementations(&self, type_id: TypeNameId) -> Vec<&TraitImplementation> {
+    /// Get all protocols implemented by a type
+    pub fn get_type_implementations(&self, type_id: TypeNameId) -> Vec<&ProtocolImplementation> {
         self.implementations
             .iter()
             .filter(|((_, t_id), _)| t_id.clone() == type_id)
@@ -306,22 +309,22 @@ impl TraitRegistry {
             .collect()
     }
 
-    /// Get all concrete types that implement a trait (for exhaustiveness checking)
-    pub fn get_trait_implementors(&self, trait_id: TypeNameId) -> Vec<TypeNameId> {
+    /// Get all concrete types that implement a protocol (for exhaustiveness checking)
+    pub fn get_protocol_implementors(&self, protocol_id: TypeNameId) -> Vec<TypeNameId> {
         self.implementations
             .iter()
-            .filter(|((t_id, _), _)| t_id.clone() == trait_id)
+            .filter(|((t_id, _), _)| t_id.clone() == protocol_id)
             .map(|((_, type_id), _)| type_id.clone())
             .collect()
     }
 
-    /// Check if a trait case statement is exhaustive by verifying all implementors are covered
-    pub fn check_trait_case_exhaustiveness(
+    /// Check if a protocol case statement is exhaustive by verifying all implementors are covered
+    pub fn check_protocol_case_exhaustiveness(
         &self,
-        trait_id: TypeNameId,
+        protocol_id: TypeNameId,
         covered_types: &[TypeNameId],
     ) -> ExhaustivenessResult {
-        let all_implementors = self.get_trait_implementors(trait_id);
+        let all_implementors = self.get_protocol_implementors(protocol_id);
 
         // Find missing implementations
         let missing_types: Vec<TypeNameId> = all_implementors
@@ -333,17 +336,17 @@ impl TraitRegistry {
         if missing_types.is_empty() {
             ExhaustivenessResult::Exhaustive
         } else {
-            ExhaustivenessResult::MissingTraitImplementations(missing_types)
+            ExhaustivenessResult::MissingProtocolImplementations(missing_types)
         }
     }
 
-    /// Get all trait implementations for dispatch table construction
-    pub fn all_implementations(&self) -> impl Iterator<Item = &TraitImplementation> {
+    /// Get all protocol implementations for dispatch table construction
+    pub fn all_implementations(&self) -> impl Iterator<Item = &ProtocolImplementation> {
         self.implementations.values()
     }
 
-    /// Get all trait definitions for dispatch table construction
-    pub fn all_traits(&self) -> impl Iterator<Item = &TraitDefinition> {
+    /// Get all protocol definitions for dispatch table construction
+    pub fn all_protocols(&self) -> impl Iterator<Item = &ProtocolDefinition> {
         self.definitions.values()
     }
 }

@@ -104,7 +104,7 @@ pub fn validate_collection_type(collection: &CollectionType) -> Result<(), Colle
             key_type: _,
             value_type: _,
         } => {
-            // TODO: In future, validate that key_type implements Hash + Eq traits
+            // TODO: In future, validate that key_type implements Hash + Eq protocols
             // For now, all types are valid as map keys/values
             Ok(())
         }

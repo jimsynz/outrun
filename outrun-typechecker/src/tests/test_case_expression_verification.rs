@@ -71,9 +71,9 @@ def test(): String {
 }
 
 #[test]
-fn test_trait_case_expression_compiles() {
+fn test_protocol_case_expression_compiles() {
     let source = r#"
-trait Formatter {
+protocol Formatter {
     def format(value: Self): String
 }
 
@@ -127,7 +127,7 @@ def format_value(value: Formatter): String {
             if let crate::checker::TypedItemKind::FunctionDefinition(func) = &format_function.kind {
                 // Look for case expression in function body
                 let body_block = &func.body;
-                println!("✓ Trait case expression compiled successfully");
+                println!("✓ Protocol case expression compiled successfully");
                 assert!(!body_block.statements.is_empty());
             }
         }
@@ -136,8 +136,8 @@ def format_value(value: Formatter): String {
             for (i, error) in errors.iter().enumerate() {
                 println!("Error {}: {:?}", i + 1, error);
             }
-            // This might fail due to trait implementation checking
-            println!("Note: Trait case expressions may not fully work until trait dispatch is implemented");
+            // This might fail due to protocol implementation checking
+            println!("Note: Protocol case expressions may not fully work until protocol dispatch is implemented");
         }
     }
 }
@@ -149,7 +149,7 @@ fn test_simple_concrete_case_with_literals() {
 def test_number(x: Integer): String {
     case x {
         1 -> "one"
-        2 -> "two" 
+        2 -> "two"
         _ -> "other"
     }
 }

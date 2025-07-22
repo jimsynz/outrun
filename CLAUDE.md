@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Outrun is a statically-typed, functional programming language built around the concept of traits. The language emphasises immutability, named parameters, and a powerful guard system for control flow.
+Outrun is a statically-typed, functional programming language built around the concept of protocols. The language emphasises immutability, named parameters, and a powerful guard system for control flow.
 
 ## Project Structure
 
@@ -26,16 +26,18 @@ outrun/
 
 ## Core Design Principles
 
-- **Everything is traits** - All types implement traits, which define behaviour
-- **Named arguments only** - No positional arguments in function calls  
-- **Static typing** with trait constraints and guards
+- **Everything is protocols** - All types implement protocols, which define behaviour
+- **Named arguments only** - No positional arguments in function calls
+- **Static typing** with protocol constraints and guards
 - **Immutable and functional** - No mutation, rebinding allowed
 - **Actor model runtime** - Built for concurrent, distributed systems
 
 ## Key Language Features
 
-### Trait-Based Everything
-All operators, control flow, and behaviour is defined through traits:
+### protocol-Based Everything
+
+All operators, control flow, and behaviour is defined through protocols:
+
 - `+` calls `BinaryAddition.add()`
 - `|>` calls `Pipe.pipe_into()`
 - `|?` calls `Maybe.maybe_pipe()`
@@ -43,22 +45,27 @@ All operators, control flow, and behaviour is defined through traits:
 - `~Sigil""` calls `Sigil.parse()`
 
 ### Module System
-- Types (structs/traits) ARE modules
+
+- Types (structs/protocols) ARE modules
 - File structure maps to module hierarchy: `src/http/client.outrun` → `Http.Client`
 - Multiple types per file all belong to the same module namespace
 - Constants are always private; use functions to expose values
 
 ### Guard System
+
 Functions ending in `?` must be side-effect-free and return Boolean:
+
 ```outrun
-def divide(a: Integer, b: Integer): Float 
+def divide(a: Integer, b: Integer): Float
 when Integer.non_zero?(b) {
     Float.from_integer(a) / Float.from_integer(b)
 }
 ```
 
 ### Hygienic Macros
+
 Same syntax as the language, using `^` for argument injection:
+
 ```outrun
 macro unless(condition, do_block) {
     if !^condition {
@@ -72,28 +79,31 @@ macro unless(condition, do_block) {
 **⚠️ Outrun is NOT Like Other Languages** - These differences are crucial for all development:
 
 #### 1. **NO METHODS OR INSTANCE FUNCTIONS**
+
 ```outrun
 // ❌ WRONG - This is NOT how Outrun works
 let list = [1, 2, 3];
 let head = list.head();  // Methods don't exist in Outrun
 
-// ✅ CORRECT - Outrun uses static trait functions
+// ✅ CORRECT - Outrun uses static protocol functions
 let list = [1, 2, 3];
 let head = List.head(value: list);  // Static function call
 ```
 
 #### 2. **NO ENUM VARIANT CONSTRUCTORS**
+
 ```outrun
 // ❌ WRONG - Outrun has no enum constructors
 let opt = Some(42);        // This syntax doesn't exist
 let result = Ok("success"); // This syntax doesn't exist
 
-// ✅ CORRECT - Use static trait functions
+// ✅ CORRECT - Use static protocol functions
 let opt = Option.some(value: 42);        // Static function creates struct
 let result = Result.ok(value: "success"); // Static function creates struct
 ```
 
 #### 3. **NO EMPTY TUPLE OR UNIT TYPES**
+
 ```outrun
 // ❌ WRONG - No unit type in Outrun
 def do_something() {  // No return type = void (doesn't exist)
@@ -102,12 +112,13 @@ def do_something() {  // No return type = void (doesn't exist)
 
 // ✅ CORRECT - All functions return meaningful values
 def do_something(): Boolean {  // Must return actual value
-    // ... 
+    // ...
     true  // Always return a value
 }
 ```
 
 #### 4. **ONLY NAMED PARAMETERS (with shorthand)**
+
 ```outrun
 // ❌ WRONG - No positional arguments
 List.prepend(list, element);  // Positional args don't exist
@@ -122,17 +133,19 @@ List.prepend(list, elem);  // Shorthand: list means list: list, elem means elem:
 ```
 
 #### 5. **STRUCTS CREATED BY FUNCTIONS, NOT CONSTRUCTORS**
+
 ```outrun
 // ❌ WRONG - Direct struct construction doesn't exist for users
 let opt = Some { value: 42 };  // Direct construction not available
 
-// ✅ CORRECT - Use static trait functions (which create structs internally)
+// ✅ CORRECT - Use static protocol functions (which create structs internally)
 let opt = Option.some(value: 42);  // Creates Outrun.Option.Some<T> struct internally
 ```
 
 ### Common Programming Mistakes to Avoid
 
 #### ❌ Thinking Object-Oriented
+
 ```rust
 // WRONG - Treating values as objects with methods
 let list = [1, 2, 3];
@@ -143,17 +156,19 @@ let head = List.head(value: list);
 ```
 
 #### ❌ Using Direct Enum/Variant Construction
+
 ```rust
-// WRONG - Direct variant construction 
+// WRONG - Direct variant construction
 let opt = Some(value);
 let result = Ok(data);
 
-// CORRECT - Via trait functions
+// CORRECT - Via protocol functions
 let opt = Option.some(value: value);
 let result = Result.ok(value: data);
 ```
 
 #### ❌ Expecting Unit/Void Returns
+
 ```rust
 // WRONG - Functions returning nothing
 def print_line(text: String) {  // Void return
@@ -168,6 +183,7 @@ def print_line(text: String): Boolean {  // Success indicator
 ```
 
 #### ❌ Using Positional Arguments
+
 ```rust
 // WRONG - Positional function calls
 List.append(list1, list2);
@@ -201,17 +217,20 @@ Map.get(map, key);  // Equivalent to Map.get(map: map, key: key)
 
 ## Standard Library
 
-Core traits that will be used every day by developers are in the root namespace:
+Core protocols that will be used every day by developers are in the root namespace:
+
 - `Option<T>`
 - `Result<T, E>`
 - `Iterator<T>`
 - etc.
 
-Traits which are for syntax support, or not commonly needed devs live in the `Outrun` namespace:
+Protocols which are for syntax support, or not commonly needed devs live in the `Outrun` namespace:
+
 - `Outrun.BinaryAddition<T>`
 - etc.
 
 Users must explicitly alias them:
+
 ```outrun
 alias Outrun.BinaryAddition<T> as BinAdd<T>
 ```
@@ -222,7 +241,7 @@ When working on the language:
 
 1. **Syntax changes** require updates to both LANGUAGE_SPEC.md and GRAMMAR.bnf
 2. **Test thoroughly** following component-specific testing guidelines
-3. **Keep "everything is traits"** philosophy consistent
+3. **Keep "everything is protocols"** philosophy consistent
 4. **Maintain immutability** and functional approach
 5. **Document design decisions** in commit messages
 
@@ -242,17 +261,18 @@ outrun-parser/tests/test_string_literals.rs
 outrun-parser/tests/test_arithmetic_operators.rs
 
 ✅ Alternative (src/tests/ subdirectory):
-outrun-typechecker/src/tests/test_trait_definitions.rs
+outrun-typechecker/src/tests/test_protocol_definitions.rs
 outrun-typechecker/src/tests/test_expression_checking.rs
 
 ❌ Incorrect:
 outrun-parser/tests/string_literals.rs        # Missing test_ prefix
 outrun-parser/src/parser/literals.rs          # Inline #[cfg(test)] modules
 outrun-typechecker/src/types/mod.rs           # Inline tests
-outrun-typechecker/tests/trait_definitions.rs # Missing test_ prefix
+outrun-typechecker/tests/protocol_definitions.rs # Missing test_ prefix
 ```
 
 **Recommended Structure**:
+
 ```
 outrun-component/
 ├── src/
@@ -266,10 +286,11 @@ outrun-component/
 │       └── test_edge_cases.rs
 ```
 
-**Rationale**: 
+**Rationale**:
+
 - Keeps source code clean and focused on implementation
 - `test_` prefix makes test files immediately identifiable
-- Enables comprehensive integration testing  
+- Enables comprehensive integration testing
 - Improves compilation times for production builds
 - Separates unit logic from test logic clearly
 - Tests can access internal modules more easily when in src/tests/
@@ -279,12 +300,13 @@ outrun-component/
 The Outrun compiler supports composing multiple compilation results together, enabling:
 
 1. **Package Systems** - Import pre-compiled packages
-2. **Incremental Compilation** - Reuse previously compiled modules  
+2. **Incremental Compilation** - Reuse previously compiled modules
 3. **Build Systems** - Compose multiple compilation units
 
 ### Core Components
 
 #### CompilationResult::merge()
+
 Combines multiple compilation results into a single coherent unit:
 
 ```rust
@@ -293,12 +315,13 @@ let user_package = compile_user_package();
 let third_party = compile_third_party_package();
 
 let combined = CompilationResult::merge(
-    core_lib, 
+    core_lib,
     vec![user_package, third_party]
 )?;
 ```
 
 #### PackageSummary
+
 Lightweight interface extraction for fast imports:
 
 ```rust
@@ -306,10 +329,10 @@ Lightweight interface extraction for fast imports:
 let summary = compilation.create_package_summary("my_package");
 
 // Package summary contains only public interface:
-// - Exported traits and their signatures
-// - Exported structs and their fields  
+// - Exported protocols and their signatures
+// - Exported structs and their fields
 // - Exported function signatures
-// - Trait implementations
+// - Protocol implementations
 
 // Convert back to compilation result for merging
 let import_compilation = summary.to_compilation_result();
@@ -321,7 +344,7 @@ let import_compilation = summary.to_compilation_result();
 // Compose multiple packages
 let composed = MultiProgramCompiler::compose_packages(vec![
     core_library_compilation,
-    math_library_compilation, 
+    math_library_compilation,
     user_code_compilation,
 ])?;
 
@@ -334,10 +357,10 @@ compiler.import_package(&math_package_summary)?;
 
 The system handles conflicts through:
 
-1. **Trait Compatibility** - Same trait must have identical signatures
+1. **Protocol Compatibility** - Same protocol must have identical signatures
 2. **Struct Compatibility** - Same struct must have identical fields
 3. **Function Overrides** - Later packages can override earlier functions (with warnings)
-4. **Orphan Rules** - Prevent conflicting trait implementations
+4. **Orphan Rules** - Prevent conflicting protocol implementations
 
 ### Performance Benefits
 

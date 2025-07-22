@@ -2,12 +2,12 @@
 [
   (function_body)
   (struct_definition)
-  (trait_definition)
+  (protocol_definition)
   (impl_block)
   (if_expression)
   (case_expression)
-  (concrete_case_expression) 
-  (trait_case_expression)
+  (concrete_case_expression)
+  (protocol_case_expression)
   (anonymous_function)
   (macro_definition)
 ] @indent
@@ -26,15 +26,15 @@
   ")"
 ] @outdent
 
-; Case clauses and arrow expressions 
+; Case clauses and arrow expressions
 [
   (case_clause)
-  (trait_case_clause)
+  (protocolcol_case_clause)
   (anonymous_clause)
 ] @indent
 
 ; Function definitions with bodies
-(function_definition 
+(function_definition
   (function_body) @indent)
 
 (static_function_definition
@@ -50,13 +50,13 @@
 (logical_and_expression) @indent
 
 ; Multi-line function calls
-(postfix_expression 
+(postfix_expression
   (argument_list) @indent)
 
 ; Multi-line collections
 [
   (list_literal)
-  (map_literal) 
+  (map_literal)
   (tuple_literal)
 ] @indent
 

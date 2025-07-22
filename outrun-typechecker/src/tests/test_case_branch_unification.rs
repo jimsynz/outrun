@@ -109,9 +109,9 @@ def test(): String {
 }
 
 #[test]
-fn test_trait_case_branches_with_compatible_types() {
+fn test_protocol_case_branches_with_compatible_types() {
     let source = r#"
-trait Formatter {
+protocol Formatter {
     def format(value: Self): String
 }
 
@@ -165,7 +165,7 @@ def format_value(value: Formatter): String {
             if let crate::checker::TypedItemKind::FunctionDefinition(func) = &format_function.kind {
                 assert!(!func.body.statements.is_empty());
                 println!(
-                    "✓ Trait case expression with compatible String branches compiled successfully"
+                    "✓ Protocol case expression with compatible String branches compiled successfully"
                 );
             }
         }
@@ -175,7 +175,7 @@ def format_value(value: Formatter): String {
                 println!("Error {}: {:?}", i + 1, error);
             }
             println!(
-                "Note: Trait case compilation may fail due to incomplete trait implementation"
+                "Note: Protocol case compilation may fail due to incomplete protocol implementation"
             );
         }
     }

@@ -1,23 +1,23 @@
-//! Acceptance tests for Float trait functions
+//! Acceptance tests for Float protocol functions
 
 use crate::test_harness::OutrunTestHarness;
 
 // TODO: Ceil function has precision parameter requirement issue
-// The trait function is being routed to precision version instead of simple version
+// The protocol function is being routed to precision version instead of simple version
 // #[test]
 // fn test_ceil_function() {
 //     // Tests commented out due to precision parameter routing issue
 // }
 
 // TODO: Floor function has precision parameter requirement issue
-// The trait function is being routed to precision version instead of simple version
+// The protocol function is being routed to precision version instead of simple version
 // #[test]
 // fn test_floor_function() {
 //     // Tests commented out due to precision parameter routing issue
 // }
 
 // TODO: Round function has precision parameter requirement issue
-// The trait function is being routed to precision version instead of simple version
+// The protocol function is being routed to precision version instead of simple version
 // #[test]
 // fn test_round_function() {
 //     // Tests commented out due to precision parameter routing issue
@@ -360,7 +360,7 @@ fn test_nan_predicate() {
 }
 
 #[test]
-fn test_trait_functions_with_expressions() {
+fn test_protocol_functions_with_expressions() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Test Float functions with expressions
@@ -397,7 +397,7 @@ fn test_trait_functions_with_expressions() {
 }
 
 #[test]
-fn test_chained_trait_functions() {
+fn test_chained_protocol_functions() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Chaining mathematical functions
@@ -426,7 +426,7 @@ fn test_chained_trait_functions() {
 }
 
 #[test]
-fn test_trait_function_type_consistency() {
+fn test_protocol_function_type_consistency() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Test that mathematical functions return floats
@@ -460,10 +460,10 @@ fn test_trait_function_type_consistency() {
 }
 
 #[test]
-fn test_trait_functions_integration_with_binary_ops() {
+fn test_protocol_functions_integration_with_binary_ops() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
-    // Use trait functions as operands in binary operations
+    // Use protocol functions as operands in binary operations
     harness
         .assert_evaluates_to_float("Float.abs(value: -3.0) + 2.0", 5.0)
         .unwrap();
@@ -478,7 +478,7 @@ fn test_trait_functions_integration_with_binary_ops() {
     //     .assert_evaluates_to_float("Float.round(value: 2.6) / 2.0", 1.5)
     //     .unwrap();
 
-    // Use binary operations in trait function arguments
+    // Use binary operations in protocol function arguments
     harness
         .assert_evaluates_to_float("Float.abs(value: 2.0 - 5.0)", 3.0)
         .unwrap();
@@ -490,7 +490,7 @@ fn test_trait_functions_integration_with_binary_ops() {
     //     .assert_evaluates_to_float("Float.floor(value: 3.0 * 1.5)", 4.0)
     //     .unwrap();
 
-    // Complex expressions mixing trait functions and binary operations
+    // Complex expressions mixing protocol functions and binary operations
     // TODO: Commented out due to precision parameter routing issues
     // harness
     //     .assert_evaluates_to_float("Float.abs(value: -2.0) + Float.ceil(value: 1.3)", 5.0)

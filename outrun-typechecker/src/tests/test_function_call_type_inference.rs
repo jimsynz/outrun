@@ -3,21 +3,21 @@
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
-/// Test that static trait functions can infer generic parameters from expected return type
+/// Test that static protocol functions can infer generic parameters from expected return type
 #[test]
-fn test_static_trait_function_generic_inference_from_return_type() {
+fn test_static_protocol_function_generic_inference_from_return_type() {
     let source = r#"
         # Define a simple generic struct that represents None
         struct TestNone<T>() {}
-        
-        # Define a trait with a static function that returns a generic type
-        trait TestOption<T> {
+
+        # Define a protocol with a static function that returns a generic type
+        protocol TestOption<T> {
             defs none(): TestNone<T> {
                 TestNone { }
             }
         }
-        
-        # Test function that calls the static trait function with expected return type
+
+        # Test function that calls the static protocol function with expected return type
         def test_function(): TestNone<String> {
             TestOption.none()
         }
@@ -44,7 +44,7 @@ fn test_static_trait_function_generic_inference_from_return_type() {
                 .expect("Should have test program");
 
             assert!(!typed_program.items.is_empty(), "Should have typed items");
-            println!("✅ Type inference for static trait functions with generic parameters works correctly");
+            println!("✅ Type inference for static protocol functions with generic parameters works correctly");
         }
         Err(errors) => {
             println!("❌ Compilation failed with errors:");
@@ -72,8 +72,8 @@ fn test_static_trait_function_generic_inference_from_return_type() {
 fn test_function_call_without_type_hint_still_works() {
     let source = r#"
         struct SimpleStruct() {}
-        
-        trait SimpleTrait {
+
+        protocol SimpleProtocol {
             defs create(): SimpleStruct {
                 SimpleStruct { }
             }
@@ -117,15 +117,15 @@ fn test_function_call_without_type_hint_still_works() {
 fn test_function_call_with_argument_based_inference() {
     let source = r#"
         struct Container<T>(value: T) {}
-        
-        trait ContainerTrait<T> {
+
+        protocol ContainerProtocol<T> {
             defs wrap(value: T): Container<T> {
                 Container { value: value }
             }
         }
-        
+
         def test_function(): Container<String> {
-            ContainerTrait.wrap(value: "hello")
+            ContainerProtocol.wrap(value: "hello")
         }
     "#;
 
@@ -166,13 +166,13 @@ fn test_function_call_with_argument_based_inference() {
 fn test_parameterless_static_function_with_type_hint() {
     let source = r#"
         struct MyNone<T>() {}
-        
-        trait MyOption<T> {
+
+        protocol MyOption<T> {
             defs none(): MyNone<T> {
                 MyNone { }
             }
         }
-        
+
         # This should work with type inference from the let binding
         def test_none(): MyNone<Integer> {
             MyOption.none()

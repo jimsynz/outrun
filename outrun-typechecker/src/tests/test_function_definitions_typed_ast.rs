@@ -82,7 +82,7 @@ fn test_simple_function_definition_typed_ast() {
 #[test]
 fn test_function_with_guard_clause_typed_ast() {
     let source = r#"
-        def divide(a: Integer, b: Integer): Float 
+        def divide(a: Integer, b: Integer): Float
         when Integer.non_zero?(b) {
             Float.from_integer(a) / Float.from_integer(b)
         }
@@ -268,7 +268,7 @@ fn test_anonymous_function_expression_typed_ast() {
 #[test]
 fn test_anonymous_function_with_multiple_clauses_typed_ast() {
     let source = r#"
-        def test_function(x: Outrun.Core.Integer64): Outrun.Core.Integer64 
+        def test_function(x: Outrun.Core.Integer64): Outrun.Core.Integer64
         when Integer.positive?(value: x) {
             x * 2
         }
@@ -287,7 +287,7 @@ fn test_anonymous_function_with_multiple_clauses_typed_ast() {
                 if let Some(guard) = &func_def.guard {
                     match &guard.kind {
                         TypedExpressionKind::FunctionCall { .. } => {
-                            println!("✓ Guard clause with trait method call successfully converted to typed AST");
+                            println!("✓ Guard clause with protocol method call successfully converted to typed AST");
                         }
                         TypedExpressionKind::Placeholder(_) => {
                             println!("Guard clause converted to placeholder (may indicate type checking limitations)");
@@ -298,7 +298,9 @@ fn test_anonymous_function_with_multiple_clauses_typed_ast() {
                     }
                 }
 
-                println!("✓ Function with trait method guard successfully converted to typed AST");
+                println!(
+                    "✓ Function with protocol method guard successfully converted to typed AST"
+                );
             }
             TypedItemKind::Placeholder(_) => {
                 println!(
@@ -311,7 +313,7 @@ fn test_anonymous_function_with_multiple_clauses_typed_ast() {
         }
     } else {
         println!(
-            "Compilation failed - trait method calls in guards may not be fully supported yet"
+            "Compilation failed - protocol method calls in guards may not be fully supported yet"
         );
     }
 }

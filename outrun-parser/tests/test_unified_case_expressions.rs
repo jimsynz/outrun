@@ -1,5 +1,5 @@
 // Tests for unified case expressions and as Type expressions
-// These test the new unified syntax that combines concrete and trait cases
+// These test the new unified syntax that combines concrete and protocol cases
 
 use outrun_parser::parse_program;
 
@@ -46,7 +46,7 @@ fn test_case_expression_with_struct_patterns() {
     let input = r#"
         case user {
             User { name, age } when age >= 18 -> "adult"
-            User { name } -> "minor" 
+            User { name } -> "minor"
             Guest {} -> "visitor"
         }
     "#;

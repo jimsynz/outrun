@@ -10,7 +10,7 @@ use crate::compilation::FunctionType;
 use crate::error::{context, SpanExt, TypeError};
 use crate::unification::{StructuredType, UnificationContext};
 use crate::visitor::{Visitor, VisitorResult};
-use outrun_parser::{StructDefinition, TraitDefinition};
+use outrun_parser::{ProtocolDefinition, StructDefinition};
 use std::collections::HashMap;
 
 /// Visitor for type checking expressions (Phase 5)
@@ -180,23 +180,23 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
         Ok(())
     }
 
-    fn visit_trait_definition(
+    fn visit_protocol_definition(
         &mut self,
-        trait_def: &outrun_parser::TraitDefinition,
+        protocol_def: &outrun_parser::ProtocolDefinition,
     ) -> VisitorResult {
-        // Establish type parameter scope for this trait definition FIRST
+        // Establish type parameter scope for this protocol definition FIRST
         self.push_type_parameter_scope();
 
         // Register Self parameter
-        let trait_name = trait_def.name_as_string();
-        let trait_type_id = self.compiler_environment.intern_type_name(&trait_name);
+        let protocol_name = protocol_def.name_as_string();
+        let protocol_type_id = self.compiler_environment.intern_type_name(&protocol_name);
         self.register_type_parameter(
             "Self".to_string(),
-            crate::unification::StructuredType::Simple(trait_type_id),
+            crate::unification::StructuredType::Simple(protocol_type_id),
         );
 
         // Register generic parameters (T, E, K, V, etc.)
-        if let Some(ref generic_params) = trait_def.generic_params {
+        if let Some(ref generic_params) = protocol_def.generic_params {
             for param in &generic_params.params {
                 let param_type_id = self
                     .compiler_environment
@@ -208,25 +208,25 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
             }
         }
 
-        // Now validate trait function signatures and constraints with Self context available
-        if let Err(error) = self.check_trait_definition(trait_def) {
+        // Now validate protocol function signatures and constraints with Self context available
+        if let Err(error) = self.check_protocol_definition(protocol_def) {
             self.errors.push(error);
         }
 
-        // Visit trait functions with Self context established
-        // Note: trait definitions are typically leaf nodes, so we manually traverse functions
-        for trait_function in &trait_def.functions {
-            match trait_function {
-                outrun_parser::TraitFunction::Definition(func) => {
+        // Visit protocol functions with Self context established
+        // Note: protocol definitions are typically leaf nodes, so we manually traverse functions
+        for protocol_function in &protocol_def.functions {
+            match protocol_function {
+                outrun_parser::ProtocolFunction::Definition(func) => {
                     let _ = <Self as crate::visitor::Visitor<()>>::visit_function_definition(
                         self, func,
                     );
                     // Errors are already collected in visit_function_definition
                 }
-                outrun_parser::TraitFunction::Signature(_) => {
+                outrun_parser::ProtocolFunction::Signature(_) => {
                     // Function signatures don't have bodies to traverse
                 }
-                outrun_parser::TraitFunction::StaticDefinition(static_func) => {
+                outrun_parser::ProtocolFunction::StaticDefinition(static_func) => {
                     // Convert StaticFunctionDefinition to FunctionDefinition for visitor
                     // TODO: StaticFunctionDefinition should have a guard field for consistency
                     let func_def = outrun_parser::FunctionDefinition {
@@ -254,7 +254,7 @@ impl<T> Visitor<T> for TypeCheckingVisitor {
     }
 
     fn visit_impl_block(&mut self, impl_block: &outrun_parser::ImplBlock) -> VisitorResult {
-        // Validate trait implementation
+        // Validate protocol implementation
         if let Err(error) = self.check_impl_block(impl_block) {
             self.errors.push(error);
         }
@@ -329,17 +329,17 @@ impl TypeCheckingVisitor {
     pub fn new(
         context: UnificationContext,
         structs: HashMap<TypeNameId, StructDefinition>,
-        traits: HashMap<TypeNameId, TraitDefinition>,
+        protocols: HashMap<TypeNameId, ProtocolDefinition>,
     ) -> Self {
         let mut compiler_environment = CompilerEnvironment::new();
         compiler_environment.set_unification_context(context);
 
-        // Load structs and traits into the environment
+        // Load structs and protocols into the environment
         for (type_id, struct_def) in structs {
             compiler_environment.add_struct(type_id, struct_def);
         }
-        for (type_id, trait_def) in traits {
-            compiler_environment.add_trait(type_id, trait_def);
+        for (type_id, protocol_def) in protocols {
+            compiler_environment.add_protocol(type_id, protocol_def);
         }
 
         Self {
@@ -367,12 +367,12 @@ impl TypeCheckingVisitor {
         let mut compiler_environment = CompilerEnvironment::new();
         compiler_environment.set_unification_context(type_checking_context.unification_context);
 
-        // Load structs and traits from the context
+        // Load structs and protocols from the context
         for (type_id, struct_def) in type_checking_context.structs {
             compiler_environment.add_struct(type_id, struct_def);
         }
-        for (type_id, trait_def) in type_checking_context.traits {
-            compiler_environment.add_trait(type_id, trait_def);
+        for (type_id, protocol_def) in type_checking_context.protocols {
+            compiler_environment.add_protocol(type_id, protocol_def);
         }
 
         Self {
@@ -702,7 +702,7 @@ impl TypeCheckingVisitor {
                 if let crate::unification::StructuredType::Generic { base, args } = hint {
                     let list_type_id = self.compiler_environment.intern_type_name("List");
                     if base == &list_type_id && args.len() == 1 {
-                        // Convert trait hint List<T> to concrete implementation Outrun.Core.List<T>
+                        // Convert protocol hint List<T> to concrete implementation Outrun.Core.List<T>
                         let concrete_list_type_id = self
                             .compiler_environment
                             .intern_type_name("Outrun.Core.List");
@@ -786,7 +786,7 @@ impl TypeCheckingVisitor {
                 }
             }
 
-            // All elements match hint, convert trait hint to concrete implementation
+            // All elements match hint, convert protocol hint to concrete implementation
             if let crate::unification::StructuredType::Generic { base, args } = hint {
                 let list_type_id = self.compiler_environment.intern_type_name("List");
                 if base == &list_type_id {
@@ -855,7 +855,7 @@ impl TypeCheckingVisitor {
                         if (base.clone() == map_type_id || base.clone() == concrete_map_type_id)
                             && args.len() == 2
                         {
-                            // Accept both trait hint Map<K, V> and concrete hint Outrun.Core.Map<K, V>
+                            // Accept both protocol hint Map<K, V> and concrete hint Outrun.Core.Map<K, V>
                             Ok(crate::unification::StructuredType::Generic {
                                 base: concrete_map_type_id,
                                 args: args.clone(),
@@ -1433,35 +1433,35 @@ impl TypeCheckingVisitor {
 
             Ok(then_type)
         } else {
-            // If no else branch, the then branch type must implement Default trait
-            let default_trait_id = self.compiler_environment.intern_type_name("Default");
+            // If no else branch, the then branch type must implement Default protocol
+            let default_protocol_id = self.compiler_environment.intern_type_name("Default");
 
-            // Check if then_type implements Default using the trait registry
+            // Check if then_type implements Default using the protocol registry
             match &then_type {
                 crate::unification::StructuredType::Simple(type_id) => {
                     let type_structured =
                         crate::unification::StructuredType::Simple(type_id.clone());
-                    let default_trait_structured =
-                        crate::unification::StructuredType::Simple(default_trait_id);
+                    let default_protocol_structured =
+                        crate::unification::StructuredType::Simple(default_protocol_id);
 
                     if !self
                         .compiler_environment
-                        .implements_trait(&type_structured, &default_trait_structured)
+                        .implements_protocol(&type_structured, &default_protocol_structured)
                     {
                         let type_name = type_id.to_string();
-                        return Err(TypeError::TraitNotImplemented {
+                        return Err(TypeError::ProtocolNotImplemented {
                             span: if_expr.then_block.span.to_source_span(),
-                            trait_name: "Default".to_string(),
+                            protocol_name: "Default".to_string(),
                             type_name,
                         });
                     }
                 }
                 _ => {
                     // For generic types, tuple types, and function types, we need more sophisticated
-                    // trait implementation checking. For now, reject non-simple types.
-                    return Err(TypeError::TraitNotImplemented {
+                    // protocol implementation checking. For now, reject non-simple types.
+                    return Err(TypeError::ProtocolNotImplemented {
                         span: if_expr.then_block.span.to_source_span(),
-                        trait_name: "Default".to_string(),
+                        protocol_name: "Default".to_string(),
                         type_name: then_type.to_string_representation(),
                     });
                 }
@@ -1670,36 +1670,36 @@ impl TypeCheckingVisitor {
                 let module_type = StructuredType::Simple(module_type_id.clone());
                 let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
-                // Check if this is a trait that has implementations
+                // Check if this is a protocol that has implementations
                 let module_structured =
                     crate::unification::StructuredType::Simple(module_type_id.clone());
-                let is_trait = self.compiler_environment.is_trait(&module_structured);
+                let is_protocol = self.compiler_environment.is_protocol(&module_structured);
 
-                if is_trait {
-                    // For trait calls, first infer the implementing type from arguments
-                    let trait_func_entry = self
+                if is_protocol {
+                    // For protocol calls, first infer the implementing type from arguments
+                    let protocol_func_entry = self
                         .compiler_environment
                         .lookup_qualified_function(&module_type, function_name_atom.clone());
 
-                    if let Some(trait_func) = trait_func_entry {
+                    if let Some(protocol_func) = protocol_func_entry {
                         // Check if this is a static function (defs) - static functions don't need Self parameter resolution
-                        if trait_func.function_type() == FunctionType::TraitStatic {
-                            // Static functions are called directly on the trait, no implementation dispatch needed
+                        if protocol_func.function_type() == FunctionType::ProtocolStatic {
+                            // Static functions are called directly on the protocol, no implementation dispatch needed
 
                             // Store static dispatch strategy
                             let mut context = self.compiler_environment.unification_context();
                             context.add_dispatch_strategy(
                                 call.span,
                                 crate::checker::DispatchMethod::Static {
-                                    function_id: trait_func.function_id().to_string(),
+                                    function_id: protocol_func.function_id().to_string(),
                                 },
                             );
                             self.compiler_environment.set_unification_context(context);
 
-                            // First, infer generic type parameters from arguments and return type hint for static trait functions
+                            // First, infer generic type parameters from arguments and return type hint for static protocol functions
                             let generic_substitutions = self
                                 .infer_generic_parameters_from_arguments(
-                                    trait_func.definition(),
+                                    protocol_func.definition(),
                                     call,
                                     type_hint,
                                 )?;
@@ -1707,25 +1707,25 @@ impl TypeCheckingVisitor {
                             // Then validate arguments using the inferred generic types
                             self.validate_function_call_arguments_with_generic_substitution(
                                 call,
-                                trait_func.definition(),
+                                protocol_func.definition(),
                                 &generic_substitutions,
                             )?;
 
                             return self.resolve_type_annotation_with_generic_substitution(
-                                &trait_func.definition().return_type,
+                                &protocol_func.definition().return_type,
                                 &generic_substitutions,
                             );
                         }
 
-                        // Trait functions with default implementations (TraitDefault) should be treated
-                        // as trait dispatch, not static dispatch - they need to find an implementation
+                        // Protocol functions with default implementations (ProtocolDefault) should be treated
+                        // as protocol dispatch, not static dispatch - they need to find an implementation
                         // or use the default implementation
 
-                        // For non-static trait functions, infer the concrete implementing type from the first Self parameter
+                        // For non-static protocol functions, infer the concrete implementing type from the first Self parameter
                         let implementing_structured_type = self
                             .infer_implementing_type_from_arguments(
                                 module_type_id.clone(),
-                                trait_func.definition(),
+                                protocol_func.definition(),
                                 call,
                             )?;
 
@@ -1737,12 +1737,12 @@ impl TypeCheckingVisitor {
                             &implementing_structured_type,
                             function_name_atom,
                         ) {
-                            // Store trait dispatch strategy
+                            // Store protocol dispatch strategy
                             let mut context = self.compiler_environment.unification_context();
                             context.add_dispatch_strategy(
                                 call.span,
-                                crate::checker::DispatchMethod::Trait {
-                                    trait_name: module_name.clone(),
+                                crate::checker::DispatchMethod::Protocol {
+                                    protocol_name: module_name.clone(),
                                     function_name: function_name.clone(),
                                     impl_type: Box::new(implementing_structured_type.clone()),
                                 },
@@ -1761,38 +1761,38 @@ impl TypeCheckingVisitor {
                                 &inferred_self_type,
                             )
                         } else {
-                            // No implementation found - check if trait function has a default implementation
-                            match trait_func.function_type() {
-                                crate::compilation::FunctionType::TraitSignature => {
-                                    // Trait function signature without implementation - this is an error
+                            // No implementation found - check if protocol function has a default implementation
+                            match protocol_func.function_type() {
+                                crate::compilation::FunctionType::ProtocolSignature => {
+                                    // Protocol function signature without implementation - this is an error
                                     let inferred_self_type = self
-                                        .infer_trait_self_type_from_arguments(
+                                        .infer_protocol_self_type_from_arguments(
                                             module_type_id.clone(),
-                                            trait_func.definition(),
+                                            protocol_func.definition(),
                                             call,
                                         )?;
-                                    Err(TypeError::TraitNotImplemented {
+                                    Err(TypeError::ProtocolNotImplemented {
                                         span: call.span.to_source_span(),
-                                        trait_name: module_name.clone(),
+                                        protocol_name: module_name.clone(),
                                         type_name: inferred_self_type.to_string_representation(),
                                     })
                                 }
-                                crate::compilation::FunctionType::TraitDefault => {
-                                    // Trait function with default implementation - use it
+                                crate::compilation::FunctionType::ProtocolDefault => {
+                                    // Protocol function with default implementation - use it
                                     let inferred_self_type = self
-                                        .infer_trait_self_type_from_arguments(
+                                        .infer_protocol_self_type_from_arguments(
                                             module_type_id.clone(),
-                                            trait_func.definition(),
+                                            protocol_func.definition(),
                                             call,
                                         )?;
 
-                                    // Store trait dispatch strategy for default implementation
+                                    // Store protocol dispatch strategy for default implementation
                                     let mut context =
                                         self.compiler_environment.unification_context();
                                     context.add_dispatch_strategy(
                                         call.span,
-                                        crate::checker::DispatchMethod::Trait {
-                                            trait_name: module_name.clone(),
+                                        crate::checker::DispatchMethod::Protocol {
+                                            protocol_name: module_name.clone(),
                                             function_name: function_name.clone(),
                                             impl_type: Box::new(inferred_self_type.clone()),
                                         },
@@ -1801,20 +1801,20 @@ impl TypeCheckingVisitor {
 
                                     self.validate_function_call_arguments_with_self(
                                         call,
-                                        trait_func.definition(),
+                                        protocol_func.definition(),
                                         &inferred_self_type,
                                     )?;
                                     self.resolve_type_annotation_with_self(
-                                        &trait_func.definition().return_type,
+                                        &protocol_func.definition().return_type,
                                         &inferred_self_type,
                                     )
                                 }
                                 _ => {
-                                    // Other function types shouldn't reach here in trait dispatch
+                                    // Other function types shouldn't reach here in protocol dispatch
                                     Err(TypeError::internal_with_span(
                                         format!(
-                                            "Unexpected function type {:?} in trait dispatch",
-                                            trait_func.function_type()
+                                            "Unexpected function type {:?} in protocol dispatch",
+                                            protocol_func.function_type()
                                         ),
                                         call.span.to_source_span(),
                                     ))
@@ -1822,8 +1822,12 @@ impl TypeCheckingVisitor {
                             }
                         }
                     } else {
-                        // No static trait function found, try to find impl function
-                        self.try_trait_impl_function_call(module_type_id, function_name_atom, call)
+                        // No static protocol function found, try to find impl function
+                        self.try_protocol_impl_function_call(
+                            module_type_id,
+                            function_name_atom,
+                            call,
+                        )
                     }
                 } else if let Some(func_entry) = self
                     .compiler_environment
@@ -1983,17 +1987,17 @@ impl TypeCheckingVisitor {
         // Check that all required parameters have been provided
         for param in &func_def.parameters {
             if !provided_params.contains(&param.name.name.clone()) {
-                // Check if parameter type implements Default trait (making it optional)
+                // Check if parameter type implements Default protocol (making it optional)
                 let param_type = self.resolve_type_annotation(&param.type_annotation)?;
-                let default_trait_id = self.compiler_environment.intern_type_name("Default");
+                let default_protocol_id = self.compiler_environment.intern_type_name("Default");
 
                 // Check if param_type implements Default using CompilerEnvironment
-                let default_trait_structured =
-                    crate::unification::StructuredType::Simple(default_trait_id);
+                let default_protocol_structured =
+                    crate::unification::StructuredType::Simple(default_protocol_id);
                 let implements_default = match &param_type {
                     crate::unification::StructuredType::Simple(_type_id) => self
                         .compiler_environment
-                        .implements_trait(&param_type, &default_trait_structured),
+                        .implements_protocol(&param_type, &default_protocol_structured),
                     _ => {
                         // For complex types (generics, functions, tuples), assume they don't implement Default
                         // This is a simplification - in a full implementation, we'd need to check recursively
@@ -2017,7 +2021,7 @@ impl TypeCheckingVisitor {
     }
 
     /// Validate function call arguments against function definition parameters with Self context
-    /// This is used for trait function calls where Self needs to be resolved to the trait type
+    /// This is used for protocol function calls where Self needs to be resolved to the protocol type
     fn validate_function_call_arguments_with_self(
         &mut self,
         call: &outrun_parser::FunctionCall,
@@ -2104,18 +2108,18 @@ impl TypeCheckingVisitor {
         // Check that all required parameters have been provided
         for param in &func_def.parameters {
             if !provided_params.contains(&param.name.name.clone()) {
-                // Check if parameter type implements Default trait (making it optional)
+                // Check if parameter type implements Default protocol (making it optional)
                 let param_type =
                     self.resolve_type_annotation_with_self(&param.type_annotation, self_type)?;
-                let default_trait_id = self.compiler_environment.intern_type_name("Default");
+                let default_protocol_id = self.compiler_environment.intern_type_name("Default");
 
                 // Check if param_type implements Default using CompilerEnvironment
-                let default_trait_structured =
-                    crate::unification::StructuredType::Simple(default_trait_id);
+                let default_protocol_structured =
+                    crate::unification::StructuredType::Simple(default_protocol_id);
                 let implements_default = match &param_type {
                     crate::unification::StructuredType::Simple(_type_id) => self
                         .compiler_environment
-                        .implements_trait(&param_type, &default_trait_structured),
+                        .implements_protocol(&param_type, &default_protocol_structured),
                     _ => {
                         // For complex types (generics, tuples, functions), conservatively assume they don't implement Default
                         false
@@ -2230,20 +2234,20 @@ impl TypeCheckingVisitor {
         // Check that all required parameters have been provided
         for param in &func_def.parameters {
             if !provided_params.contains(&param.name.name.clone()) {
-                // Check if parameter type implements Default trait (making it optional)
+                // Check if parameter type implements Default protocol (making it optional)
                 let param_type = self.resolve_type_annotation_with_generic_substitution(
                     &param.type_annotation,
                     generic_substitutions,
                 )?;
-                let default_trait_id = self.compiler_environment.intern_type_name("Default");
+                let default_protocol_id = self.compiler_environment.intern_type_name("Default");
 
                 // Check if param_type implements Default using CompilerEnvironment
-                let default_trait_structured =
-                    crate::unification::StructuredType::Simple(default_trait_id);
+                let default_protocol_structured =
+                    crate::unification::StructuredType::Simple(default_protocol_id);
                 let implements_default = match &param_type {
                     crate::unification::StructuredType::Simple(_type_id) => self
                         .compiler_environment
-                        .implements_trait(&param_type, &default_trait_structured),
+                        .implements_protocol(&param_type, &default_protocol_structured),
                     _ => {
                         // For complex types (generics, tuples, functions), conservatively assume they don't implement Default
                         false
@@ -2458,15 +2462,15 @@ impl TypeCheckingVisitor {
         Ok(())
     }
 
-    /// Check trait definition
-    fn check_trait_definition(
+    /// Check protocol definition
+    fn check_protocol_definition(
         &mut self,
-        trait_def: &outrun_parser::TraitDefinition,
+        protocol_def: &outrun_parser::ProtocolDefinition,
     ) -> Result<(), TypeError> {
         // Validate all function signatures
-        for trait_func in &trait_def.functions {
-            match trait_func {
-                outrun_parser::TraitFunction::Signature(sig) => {
+        for protocol_func in &protocol_def.functions {
+            match protocol_func {
+                outrun_parser::ProtocolFunction::Signature(sig) => {
                     // Validate return type
                     let _return_type = self.resolve_type_annotation(&sig.return_type)?;
 
@@ -2475,7 +2479,7 @@ impl TypeCheckingVisitor {
                         let _param_type = self.resolve_type_annotation(&param.type_annotation)?;
                     }
                 }
-                outrun_parser::TraitFunction::Definition(func) => {
+                outrun_parser::ProtocolFunction::Definition(func) => {
                     // Validate return type
                     let _return_type = self.resolve_type_annotation(&func.return_type)?;
 
@@ -2484,7 +2488,7 @@ impl TypeCheckingVisitor {
                         let _param_type = self.resolve_type_annotation(&param.type_annotation)?;
                     }
                 }
-                outrun_parser::TraitFunction::StaticDefinition(static_func) => {
+                outrun_parser::ProtocolFunction::StaticDefinition(static_func) => {
                     // Validate return type
                     let _return_type = self.resolve_type_annotation(&static_func.return_type)?;
 
@@ -2500,73 +2504,74 @@ impl TypeCheckingVisitor {
 
     /// Check impl block
     fn check_impl_block(&mut self, impl_block: &outrun_parser::ImplBlock) -> Result<(), TypeError> {
-        // Validate trait and type exist
-        let trait_type = self.resolve_type_spec(&impl_block.trait_spec)?;
+        // Validate protocol and type exist
+        let protocol_type = self.resolve_type_spec(&impl_block.protocol_spec)?;
         let impl_type = self.resolve_type_spec(&impl_block.type_spec)?;
 
-        // Get trait TypeId for lookup
-        let trait_id = match trait_type {
+        // Get protocol TypeId for lookup
+        let protocol_id = match protocol_type {
             crate::unification::StructuredType::Simple(type_id) => type_id,
             crate::unification::StructuredType::Generic { base, .. } => {
-                // For generic traits like List<T>, use the base trait type
+                // For generic protocols like List<T>, use the base protocol type
                 base
             }
             _ => {
                 return Err(TypeError::internal_with_span(
-                    "Expected simple or generic type for trait in impl block".to_string(),
-                    impl_block.trait_spec.span.to_source_span(),
+                    "Expected simple or generic type for protocol in impl block".to_string(),
+                    impl_block.protocol_spec.span.to_source_span(),
                 ));
             }
         };
 
-        // Look up trait definition (clone to avoid borrowing issues)
-        let trait_def = self
+        // Look up protocol definition (clone to avoid borrowing issues)
+        let protocol_def = self
             .compiler_environment
-            .get_trait(&trait_id)
+            .get_protocol(&protocol_id)
             .ok_or_else(|| {
-                let trait_name = impl_block
-                    .trait_spec
+                let protocol_name = impl_block
+                    .protocol_spec
                     .path
                     .iter()
                     .map(|id| id.name.as_str())
                     .collect::<Vec<_>>()
                     .join(".");
-                TypeError::UndefinedTrait {
-                    span: impl_block.trait_spec.span.to_source_span(),
-                    trait_name,
+                TypeError::UndefinedProtocol {
+                    span: impl_block.protocol_spec.span.to_source_span(),
+                    protocol_name,
                 }
             })?;
 
-        // Validate impl functions match trait signatures
-        self.validate_impl_functions(impl_block, &trait_def, trait_id, impl_type)?;
+        // Validate impl functions match protocol signatures
+        self.validate_impl_functions(impl_block, &protocol_def, protocol_id, impl_type)?;
 
         Ok(())
     }
 
-    /// Validate that impl block functions match trait signatures exactly
+    /// Validate that impl block functions match protocol signatures exactly
     fn validate_impl_functions(
         &mut self,
         impl_block: &outrun_parser::ImplBlock,
-        trait_def: &outrun_parser::TraitDefinition,
-        trait_id: TypeNameId,
+        protocol_def: &outrun_parser::ProtocolDefinition,
+        protocol_id: TypeNameId,
         impl_type: crate::unification::StructuredType,
     ) -> Result<(), TypeError> {
         use std::collections::{HashMap, HashSet};
 
-        // Collect trait function signatures by name
-        let mut trait_functions: HashMap<String, &outrun_parser::TraitFunction> = HashMap::new();
-        for trait_func in &trait_def.functions {
-            let func_name = match trait_func {
-                outrun_parser::TraitFunction::Signature(sig) => &sig.name.name,
-                outrun_parser::TraitFunction::Definition(func) => &func.name.name,
-                outrun_parser::TraitFunction::StaticDefinition(static_func) => {
+        // Collect protocol function signatures by name
+        let mut protocol_functions: HashMap<String, &outrun_parser::ProtocolFunction> =
+            HashMap::new();
+        for protocol_func in &protocol_def.functions {
+            let func_name = match protocol_func {
+                outrun_parser::ProtocolFunction::Signature(sig) => &sig.name.name,
+                outrun_parser::ProtocolFunction::Definition(func) => &func.name.name,
+                outrun_parser::ProtocolFunction::StaticDefinition(static_func) => {
                     &static_func.name.name
                 }
             };
-            trait_functions.insert(func_name.clone(), trait_func);
+            protocol_functions.insert(func_name.clone(), protocol_func);
         }
 
-        // Track which trait functions have been implemented
+        // Track which protocol functions have been implemented
         let mut implemented_functions: HashSet<String> = HashSet::new();
 
         // Validate each impl function
@@ -2574,34 +2579,33 @@ impl TypeCheckingVisitor {
             let func_name = &impl_func.name.name;
             implemented_functions.insert(func_name.clone());
 
-            // Check if function exists in trait
-            let trait_func =
-                trait_functions
-                    .get(func_name)
-                    .ok_or_else(|| TypeError::ExtraImplementation {
-                        span: impl_func.span.to_source_span(),
-                        trait_name: trait_id.to_string(),
-                        function_name: func_name.clone(),
-                    })?;
+            // Check if function exists in protocol
+            let protocol_func = protocol_functions.get(func_name).ok_or_else(|| {
+                TypeError::ExtraImplementation {
+                    span: impl_func.span.to_source_span(),
+                    protocol_name: protocol_id.to_string(),
+                    function_name: func_name.clone(),
+                }
+            })?;
 
             // Validate function signatures match
-            self.validate_function_signature_match(impl_func, trait_func, &impl_type)?;
+            self.validate_function_signature_match(impl_func, protocol_func, &impl_type)?;
         }
 
         // Check for missing implementations - only check functions without default implementations
 
-        for (trait_func_name, trait_func) in &trait_functions {
-            if !implemented_functions.contains(trait_func_name) {
+        for (protocol_func_name, protocol_func) in &protocol_functions {
+            if !implemented_functions.contains(protocol_func_name) {
                 // Only require implementation if this is a signature without a default implementation
                 let requires_implementation =
-                    matches!(trait_func, outrun_parser::TraitFunction::Signature(_));
+                    matches!(protocol_func, outrun_parser::ProtocolFunction::Signature(_));
 
                 if requires_implementation {
                     return Err(TypeError::MissingImplementation {
                         span: impl_block.span.to_source_span(),
-                        trait_name: trait_id.to_string(),
+                        protocol_name: protocol_id.to_string(),
                         type_name: impl_type.to_string_representation(),
-                        function_name: trait_func_name.clone(),
+                        function_name: protocol_func_name.clone(),
                     });
                 }
                 // Functions with default implementations are optional - no need to require them
@@ -2611,22 +2615,22 @@ impl TypeCheckingVisitor {
         Ok(())
     }
 
-    /// Validate that an impl function signature matches the trait function signature exactly
+    /// Validate that an impl function signature matches the protocol function signature exactly
     fn validate_function_signature_match(
         &mut self,
         impl_func: &outrun_parser::FunctionDefinition,
-        trait_func: &outrun_parser::TraitFunction,
+        protocol_func: &outrun_parser::ProtocolFunction,
         impl_type: &crate::unification::StructuredType,
     ) -> Result<(), TypeError> {
-        // Get trait function signature details
-        let (trait_params, trait_return_type, trait_visibility) = match trait_func {
-            outrun_parser::TraitFunction::Signature(sig) => {
+        // Get protocol function signature details
+        let (protocol_params, protocol_return_type, protocol_visibility) = match protocol_func {
+            outrun_parser::ProtocolFunction::Signature(sig) => {
                 (&sig.parameters, &sig.return_type, sig.visibility.clone())
             }
-            outrun_parser::TraitFunction::Definition(func) => {
+            outrun_parser::ProtocolFunction::Definition(func) => {
                 (&func.parameters, &func.return_type, func.visibility.clone())
             }
-            outrun_parser::TraitFunction::StaticDefinition(_static_func) => {
+            outrun_parser::ProtocolFunction::StaticDefinition(_static_func) => {
                 // Static functions should not be implemented in impl blocks
                 return Err(TypeError::SignatureMismatch {
                     span: impl_func.span.to_source_span(),
@@ -2638,33 +2642,34 @@ impl TypeCheckingVisitor {
         };
 
         // Check visibility matches
-        if impl_func.visibility != trait_visibility {
+        if impl_func.visibility != protocol_visibility {
             return Err(TypeError::SignatureMismatch {
                 span: impl_func.span.to_source_span(),
                 function_name: impl_func.name.name.clone(),
-                expected: format!("Visibility: {trait_visibility:?}"),
+                expected: format!("Visibility: {protocol_visibility:?}"),
                 found: format!("Visibility: {:?}", impl_func.visibility),
             });
         }
 
         // Check parameter count matches
-        if impl_func.parameters.len() != trait_params.len() {
+        if impl_func.parameters.len() != protocol_params.len() {
             return Err(TypeError::SignatureMismatch {
                 span: impl_func.span.to_source_span(),
                 function_name: impl_func.name.name.clone(),
-                expected: format!("{} parameters", trait_params.len()),
+                expected: format!("{} parameters", protocol_params.len()),
                 found: format!("{} parameters", impl_func.parameters.len()),
             });
         }
 
         // Check each parameter matches (name and type)
-        for (impl_param, trait_param) in impl_func.parameters.iter().zip(trait_params.iter()) {
+        for (impl_param, protocol_param) in impl_func.parameters.iter().zip(protocol_params.iter())
+        {
             // Check parameter names match
-            if impl_param.name.name.clone() != trait_param.name.name.clone() {
+            if impl_param.name.name.clone() != protocol_param.name.name.clone() {
                 return Err(TypeError::SignatureMismatch {
                     span: impl_param.span.to_source_span(),
                     function_name: impl_func.name.name.clone(),
-                    expected: format!("Parameter name: {}", trait_param.name.name.clone()),
+                    expected: format!("Parameter name: {}", protocol_param.name.name.clone()),
                     found: format!("Parameter name: {}", impl_param.name.name.clone()),
                 });
             }
@@ -2672,12 +2677,12 @@ impl TypeCheckingVisitor {
             // Check parameter types match (with Self substitution)
             let impl_param_type =
                 self.resolve_type_annotation_with_self(&impl_param.type_annotation, impl_type)?;
-            let trait_param_type =
-                self.resolve_type_annotation_with_self(&trait_param.type_annotation, impl_type)?;
+            let protocol_param_type =
+                self.resolve_type_annotation_with_self(&protocol_param.type_annotation, impl_type)?;
 
             match crate::unification::unify_structured_types(
                 &impl_param_type,
-                &trait_param_type,
+                &protocol_param_type,
                 &self.compiler_environment.unification_context(),
                 &self.compiler_environment,
             ) {
@@ -2687,8 +2692,8 @@ impl TypeCheckingVisitor {
                         function_name: impl_func.name.name.clone(),
                         expected: format!(
                             "Parameter {}: {}",
-                            trait_param.name.name.clone(),
-                            trait_param_type.to_string_representation()
+                            protocol_param.name.name.clone(),
+                            protocol_param_type.to_string_representation()
                         ),
                         found: format!(
                             "Parameter {}: {}",
@@ -2704,12 +2709,12 @@ impl TypeCheckingVisitor {
         // Check return types match (with Self substitution)
         let impl_return_type =
             self.resolve_type_annotation_with_self(&impl_func.return_type, impl_type)?;
-        let trait_return_type =
-            self.resolve_type_annotation_with_self(trait_return_type, impl_type)?;
+        let protocol_return_type =
+            self.resolve_type_annotation_with_self(protocol_return_type, impl_type)?;
 
         match crate::unification::unify_structured_types(
             &impl_return_type,
-            &trait_return_type,
+            &protocol_return_type,
             &self.compiler_environment.unification_context(),
             &self.compiler_environment,
         ) {
@@ -2719,7 +2724,7 @@ impl TypeCheckingVisitor {
                     function_name: impl_func.name.name.clone(),
                     expected: format!(
                         "Return type: {}",
-                        trait_return_type.to_string_representation()
+                        protocol_return_type.to_string_representation()
                     ),
                     found: format!(
                         "Return type: {}",
@@ -2832,11 +2837,11 @@ impl TypeCheckingVisitor {
         }
     }
 
-    /// Infer trait Self type from function call arguments
+    /// Infer protocol Self type from function call arguments
     /// This solves the "generic vs self" issue by inferring Self type from arguments
-    fn infer_trait_self_type_from_arguments(
+    fn infer_protocol_self_type_from_arguments(
         &mut self,
-        trait_type_id: TypeNameId,
+        protocol_type_id: TypeNameId,
         func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
@@ -2894,7 +2899,7 @@ impl TypeCheckingVisitor {
                     Ok(None) => {
                         return Err(TypeError::internal_with_span(
                             format!(
-                                "Incompatible Self types in trait function call: {} vs {}",
+                                "Incompatible Self types in protocol function call: {} vs {}",
                                 unified_type.to_string_representation(),
                                 self_type.to_string_representation()
                             ),
@@ -2915,27 +2920,27 @@ impl TypeCheckingVisitor {
             return Ok(unified_type);
         }
 
-        // If no Self parameter found, try to infer from generic trait structure
-        let trait_def = self
+        // If no Self parameter found, try to infer from generic protocol structure
+        let protocol_def = self
             .compiler_environment
-            .get_trait(&trait_type_id)
+            .get_protocol(&protocol_type_id)
             .ok_or_else(|| {
                 TypeError::internal_with_span(
-                    format!("Trait not found: {trait_type_id:?}"),
+                    format!("Protocol not found: {protocol_type_id:?}"),
                     call.span.to_source_span(),
                 )
             })?;
 
-        // Extract generic parameter names from trait definition (e.g., ["T"] for Option<T>)
-        let generic_param_names: Vec<String> = trait_def
+        // Extract generic parameter names from protocol definition (e.g., ["T"] for Option<T>)
+        let generic_param_names: Vec<String> = protocol_def
             .generic_params
             .as_ref()
             .map(|params| params.params.iter().map(|p| p.name.name.clone()).collect())
             .unwrap_or_default();
 
         if generic_param_names.is_empty() {
-            // No generic parameters, just use simple trait type
-            return Ok(crate::unification::StructuredType::Simple(trait_type_id));
+            // No generic parameters, just use simple protocol type
+            return Ok(crate::unification::StructuredType::Simple(protocol_type_id));
         }
 
         // Try to infer generic parameter types from function signature
@@ -2954,12 +2959,12 @@ impl TypeCheckingVisitor {
             }
         }
 
-        // Construct the inferred trait type
+        // Construct the inferred protocol type
         if inferred_generic_types.is_empty() {
-            // No type inference possible, use simple trait type
-            Ok(crate::unification::StructuredType::Simple(trait_type_id))
+            // No type inference possible, use simple protocol type
+            Ok(crate::unification::StructuredType::Simple(protocol_type_id))
         } else {
-            // Build generic trait type with inferred type arguments
+            // Build generic protocol type with inferred type arguments
             let mut generic_args = Vec::new();
             for param_name in &generic_param_names {
                 if let Some(inferred_type) = inferred_generic_types.get(param_name) {
@@ -2974,18 +2979,18 @@ impl TypeCheckingVisitor {
             }
 
             Ok(crate::unification::StructuredType::Generic {
-                base: trait_type_id,
+                base: protocol_type_id,
                 args: generic_args,
             })
         }
     }
 
-    /// Infer the concrete implementing type from trait function call arguments
-    /// This is used for trait dispatch to find the specific implementation to use
+    /// Infer the concrete implementing type from protocol function call arguments
+    /// This is used for protocol dispatch to find the specific implementation to use
     fn infer_implementing_type_from_arguments(
         &mut self,
-        _trait_type_id: TypeNameId,
-        trait_func_def: &outrun_parser::FunctionDefinition,
+        _protocol_type_id: TypeNameId,
+        protocol_func_def: &outrun_parser::FunctionDefinition,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
         // Build argument type mapping
@@ -3002,7 +3007,7 @@ impl TypeCheckingVisitor {
 
         // Collect ALL Self types from function parameters and arguments
         let mut self_types = Vec::new();
-        for param in &trait_func_def.parameters {
+        for param in &protocol_func_def.parameters {
             let param_name = &param.name.name.clone();
             if let Some(arg_type) = arg_type_map.get(param_name) {
                 // Check if this parameter is typed as Self
@@ -3013,14 +3018,15 @@ impl TypeCheckingVisitor {
         }
 
         // Also check the return type for Self (needed for complete unification)
-        let return_type_has_self = self.type_annotation_contains_self(&trait_func_def.return_type);
+        let return_type_has_self =
+            self.type_annotation_contains_self(&protocol_func_def.return_type);
 
         if self_types.is_empty() {
-            // If no Self parameter found, this is an error - trait functions should have Self parameters
+            // If no Self parameter found, this is an error - protocol functions should have Self parameters
             return Err(TypeError::internal_with_span(
                 format!(
-                    "Trait function {} has no Self parameter for implementation dispatch",
-                    trait_func_def.name.name
+                    "Protocol function {} has no Self parameter for implementation dispatch",
+                    protocol_func_def.name.name
                 ),
                 call.span.to_source_span(),
             ));
@@ -3260,7 +3266,7 @@ impl TypeCheckingVisitor {
         Ok(())
     }
 
-    /// Infer generic type parameters from static trait function arguments and return type hint
+    /// Infer generic type parameters from static protocol function arguments and return type hint
     fn infer_generic_parameters_from_arguments(
         &mut self,
         func_def: &outrun_parser::FunctionDefinition,
@@ -3499,11 +3505,11 @@ impl TypeCheckingVisitor {
         }
     }
 
-    /// Try to resolve a trait function call as an impl function when no static trait function exists
-    /// This implements the trait dispatch lookup: static function -> impl function -> default implementation
-    fn try_trait_impl_function_call(
+    /// Try to resolve a protocol function call as an impl function when no static protocol function exists
+    /// This implements the protocol dispatch lookup: static function -> impl function -> default implementation
+    fn try_protocol_impl_function_call(
         &mut self,
-        trait_type_id: TypeNameId,
+        protocol_type_id: TypeNameId,
         function_name_atom: AtomId,
         call: &outrun_parser::FunctionCall,
     ) -> Result<crate::unification::StructuredType, TypeError> {
@@ -3529,24 +3535,24 @@ impl TypeCheckingVisitor {
             }
         } else {
             return Err(TypeError::undefined_function(
-                format!("{}:{}", trait_type_id, function_name_atom.clone()),
+                format!("{}:{}", protocol_type_id, function_name_atom.clone()),
                 call.span.to_source_span(),
             ));
         };
 
-        // Create StructuredType for the trait
-        let trait_type = StructuredType::Simple(trait_type_id.clone());
+        // Create StructuredType for the protocol
+        let protocol_type = StructuredType::Simple(protocol_type_id.clone());
 
         // Look up the impl function in the registry
         if let Some(func_entry) = self.compiler_environment.lookup_impl_function(
-            &trait_type,
+            &protocol_type,
             &impl_type,
             function_name_atom.clone(),
         ) {
-            // Store trait dispatch strategy
-            let trait_name = self
+            // Store protocol dispatch strategy
+            let protocol_name = self
                 .compiler_environment
-                .resolve_type(trait_type_id.clone())
+                .resolve_type(protocol_type_id.clone())
                 .unwrap_or_default();
             let function_name = self
                 .compiler_environment
@@ -3555,8 +3561,8 @@ impl TypeCheckingVisitor {
             let mut context = self.compiler_environment.unification_context();
             context.add_dispatch_strategy(
                 call.span,
-                crate::checker::DispatchMethod::Trait {
-                    trait_name,
+                crate::checker::DispatchMethod::Protocol {
+                    protocol_name,
                     function_name,
                     impl_type: Box::new(impl_type.clone()),
                 },
@@ -3571,11 +3577,11 @@ impl TypeCheckingVisitor {
             self.resolve_type_annotation(&func_entry.definition().return_type)
         } else {
             // No impl function found either - this is a true undefined function error
-            let trait_name = trait_type_id.to_string();
+            let protocol_name = protocol_type_id.to_string();
             let function_name = function_name_atom.to_string();
 
             Err(TypeError::undefined_function(
-                format!("{trait_name}.{function_name}"),
+                format!("{protocol_name}.{function_name}"),
                 call.span.to_source_span(),
             ))
         }

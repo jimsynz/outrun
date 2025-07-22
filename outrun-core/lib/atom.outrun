@@ -1,12 +1,12 @@
 @Doc(content: """
-Atom trait for types that can behave like atoms.
+Atom protocol for types that can behave like atoms.
 
-This trait is a marker trait that indicates a type can act as an atom.
+This protocol is a marker protocol that indicates a type can act as an atom.
 Atoms are immutable, interned identifiers used for efficient comparisons
 and as keys in data structures.
 
-The trait itself contains no functions - atom behavior comes from
-implementing Equality, Display, and Inspect traits, which are required.
+The protocol itself contains no functions - atom behavior comes from
+implementing Equality, Display, and Inspect protocols, which are required.
 
 ## Examples
 
@@ -22,6 +22,6 @@ impl Display for CustomAtom { ... }
 impl Inspect for CustomAtom { ... }
 ```
 """)
-trait Atom when Self: Equality && Self: Display && Self: Inspect {
-    # Empty trait - atoms get their behavior from the constrained traits
+protocol Atom when Self: Equality && Self: Display && Self: Inspect {
+    # Empty protocol - atoms get their behavior from the constrained protocols
 }

@@ -3,7 +3,7 @@ use crate::parser::OutrunParser;
 
 #[test]
 fn test_struct_with_basic_attribute() {
-    let input = r#"@Derive(traits: [Debug])
+    let input = r#"@Derive(protocols: [Debug])
 struct User(name: String) {
 }"#;
 
@@ -97,7 +97,7 @@ def old_function(): String {
 
 #[test]
 fn test_struct_with_multiple_attributes() {
-    let input = r#"@Derive(traits: [Debug, Clone])
+    let input = r#"@Derive(protocols: [Debug, Clone])
 @Serializable
 @CustomAttribute(key: "value")
 struct User(name: String, age: Integer) {
@@ -128,9 +128,9 @@ struct User(name: String, age: Integer) {
 }
 
 #[test]
-fn test_trait_with_attribute() {
+fn test_protocol_with_attribute() {
     let input = r#"@Exportable
-trait Drawable {
+protocol Drawable {
     def draw(self: Self): String
 }"#;
 
@@ -139,20 +139,20 @@ trait Drawable {
     assert_eq!(result.items.len(), 1);
 
     match &result.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.attributes.len(), 1);
-            assert_eq!(trait_def.attributes[0].name.name, "Exportable");
-            assert!(trait_def.attributes[0].args.is_none());
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            assert_eq!(protocol_def.attributes.len(), 1);
+            assert_eq!(protocol_def.attributes[0].name.name, "Exportable");
+            assert!(protocol_def.attributes[0].args.is_none());
 
-            assert_eq!(trait_def.name_as_string(), "Drawable");
+            assert_eq!(protocol_def.name_as_string(), "Drawable");
         }
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_attribute_display_formatting() {
-    let input = r#"@Derive(traits: [Debug])
+    let input = r#"@Derive(protocols: [Debug])
 struct User(name: String) {
 }"#;
 
@@ -163,7 +163,7 @@ struct User(name: String) {
             let formatted = format!("{struct_def}");
 
             assert!(formatted.contains("@Derive"));
-            assert!(formatted.contains("traits:"));
+            assert!(formatted.contains("protocols:"));
             assert!(formatted.contains("struct User"));
         }
         _ => panic!("Expected struct definition"),

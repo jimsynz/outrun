@@ -71,8 +71,8 @@ impl OutrunTestHarness {
         let core_result =
             core_library::compile_core_library_with_environment(&mut compiler_environment);
 
-        // Load the compilation result to populate structs and traits
-        compiler_environment.load_structs_and_traits(&core_result);
+        // Load the compilation result to populate structs and protocols
+        compiler_environment.load_structs_and_protocols(&core_result);
 
         // Create dispatch context and evaluator using the environment with core library loaded
         let dispatch_context = FunctionDispatchContext::new(Some(compiler_environment.clone()));

@@ -23,8 +23,8 @@ fn test_simple_typed_program_conversion() {
         Ok(compilation_result) => {
             // If it succeeds, verify the structure
             println!(
-                "Compilation traits: {}, structs: {}, implementations: {}",
-                compilation_result.traits.len(),
+                "Compilation protocols: {}, structs: {}, implementations: {}",
+                compilation_result.protocols.len(),
                 compilation_result.structs.len(),
                 compilation_result.implementations.len()
             );
@@ -73,8 +73,8 @@ def test(): Boolean {
     match result {
         Ok(compilation_result) => {
             println!(
-                "Compilation with function - traits: {}, structs: {}, implementations: {}",
-                compilation_result.traits.len(),
+                "Compilation with function - protocols: {}, structs: {}, implementations: {}",
+                compilation_result.protocols.len(),
                 compilation_result.structs.len(),
                 compilation_result.implementations.len()
             );

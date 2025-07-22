@@ -582,7 +582,7 @@ impl ExhaustivenessChecker {
         }
     }
 
-    /// Create a new exhaustiveness checker with compiler environment for trait case checking
+    /// Create a new exhaustiveness checker with compiler environment for protocol case checking
     pub fn with_compiler_environment(
         _context: UnificationContext,
         compiler_environment: crate::compilation::compiler_environment::CompilerEnvironment,
@@ -698,18 +698,18 @@ impl ExhaustivenessChecker {
         target_type: &StructuredType,
     ) -> Result<Vec<PatternConstructor>, TypeError> {
         match target_type {
-            // Simple types: check if it's a known type with limited constructors or a trait
+            // Simple types: check if it's a known type with limited constructors or a protocol
             StructuredType::Simple(type_id) => {
-                // Check if this is a trait type for trait case exhaustiveness
+                // Check if this is a protocol type for protocol case exhaustiveness
                 if let Some(compiler_env) = &self.compiler_environment {
-                    if compiler_env.is_trait(&StructuredType::Simple(type_id.clone())) {
-                        // This is a trait - return all implementor types as constructors
+                    if compiler_env.is_protocol(&StructuredType::Simple(type_id.clone())) {
+                        // This is a protocol - return all implementor types as constructors
                         let implementors = compiler_env
-                            .get_trait_implementations(&StructuredType::Simple(type_id.clone()));
+                            .get_protocol_implementations(&StructuredType::Simple(type_id.clone()));
                         return Ok(implementors
                             .into_iter()
                             .map(|impl_type| {
-                                PatternConstructor::TraitImplementor(
+                                PatternConstructor::ProtocolImplementor(
                                     if let StructuredType::Simple(id) = impl_type {
                                         id
                                     } else {
@@ -888,15 +888,21 @@ impl ExhaustivenessChecker {
                 }
             }
 
-            // Trait implementor matches
+            // Protocol implementor matches
             (
-                PatternConstructor::TraitImplementor(type1),
-                PatternConstructor::TraitImplementor(type2),
+                PatternConstructor::ProtocolImplementor(type1),
+                PatternConstructor::ProtocolImplementor(type2),
             ) => type1 == type2,
 
-            // Trait implementor matches struct pattern by type name
-            (PatternConstructor::TraitImplementor(type_id), PatternConstructor::Struct(path))
-            | (PatternConstructor::Struct(path), PatternConstructor::TraitImplementor(type_id)) => {
+            // Protocol implementor matches struct pattern by type name
+            (
+                PatternConstructor::ProtocolImplementor(type_id),
+                PatternConstructor::Struct(path),
+            )
+            | (
+                PatternConstructor::Struct(path),
+                PatternConstructor::ProtocolImplementor(type_id),
+            ) => {
                 {
                     let type_name = type_id.to_string();
                     // Check if the type name matches the struct path
@@ -1003,8 +1009,8 @@ impl ExhaustivenessChecker {
                 ))
             }
 
-            PatternConstructor::TraitImplementor(type_id) => {
-                // Generate a struct pattern for the trait implementor type
+            PatternConstructor::ProtocolImplementor(type_id) => {
+                // Generate a struct pattern for the protocol implementor type
                 {
                     let type_name = type_id.to_string();
                     // Split type name into path components (e.g., "Outrun.Core.String" -> ["Outrun", "Core", "String"])
@@ -1139,7 +1145,7 @@ pub enum PatternConstructor {
     Struct(Vec<String>), // Type path
     Tuple(usize),        // Number of elements
     List { min_length: usize, has_rest: bool },
-    TraitImplementor(TypeNameId), // Trait implementor type for trait case exhaustiveness
+    ProtocolImplementor(TypeNameId), // Protocol implementor type for protocol case exhaustiveness
 }
 
 #[cfg(test)]
@@ -2030,26 +2036,26 @@ mod tests {
     }
 
     #[test]
-    fn test_trait_exhaustiveness_complete() {
+    fn test_protocol_exhaustiveness_complete() {
         let _context = create_test_context();
         let compiler_env = create_test_compiler_env();
 
-        // Set up trait and implementors
-        let display_trait_id = compiler_env.intern_type_name("Display");
+        // Set up protocol and implementors
+        let display_protocol_id = compiler_env.intern_type_name("Display");
         let string_type_id = compiler_env.intern_type_name("String");
         let integer_type_id = compiler_env.intern_type_name("Integer");
 
-        // Register trait implementations using CompilerEnvironment
-        compiler_env.register_trait_implementation(
+        // Register protocol implementations using CompilerEnvironment
+        compiler_env.register_protocol_implementation(
             StructuredType::Simple(string_type_id.clone()),
-            StructuredType::Simple(display_trait_id.clone()),
+            StructuredType::Simple(display_protocol_id.clone()),
         );
-        compiler_env.register_trait_implementation(
+        compiler_env.register_protocol_implementation(
             StructuredType::Simple(integer_type_id.clone()),
-            StructuredType::Simple(display_trait_id.clone()),
+            StructuredType::Simple(display_protocol_id.clone()),
         );
 
-        let display_trait_type = StructuredType::Simple(display_trait_id);
+        let display_protocol_type = StructuredType::Simple(display_protocol_id);
         let checker = ExhaustivenessChecker::new(Some(compiler_env));
 
         // Create patterns for both implementors
@@ -2058,7 +2064,7 @@ mod tests {
                 type_path: vec!["String".to_string()],
                 fields: vec![],
             },
-            Some(display_trait_type.clone()),
+            Some(display_protocol_type.clone()),
             Span::new(0, 0),
         );
 
@@ -2067,7 +2073,7 @@ mod tests {
                 type_path: vec!["Integer".to_string()],
                 fields: vec![],
             },
-            Some(display_trait_type.clone()),
+            Some(display_protocol_type.clone()),
             Span::new(0, 0),
         );
 
@@ -2075,37 +2081,37 @@ mod tests {
 
         // Should be exhaustive - covers all implementors
         assert!(checker
-            .is_exhaustive(&patterns, &display_trait_type)
+            .is_exhaustive(&patterns, &display_protocol_type)
             .unwrap());
 
         // Should have no missing patterns
         assert!(checker
-            .find_missing_patterns(&patterns, &display_trait_type)
+            .find_missing_patterns(&patterns, &display_protocol_type)
             .unwrap()
             .is_empty());
     }
 
     #[test]
-    fn test_trait_exhaustiveness_incomplete() {
+    fn test_protocol_exhaustiveness_incomplete() {
         let _context = create_test_context();
         let compiler_env = create_test_compiler_env();
 
-        // Set up trait and implementors
-        let display_trait_id = compiler_env.intern_type_name("Display");
+        // Set up protocol and implementors
+        let display_protocol_id = compiler_env.intern_type_name("Display");
         let string_type_id = compiler_env.intern_type_name("String");
         let integer_type_id = compiler_env.intern_type_name("Integer");
 
-        // Register trait implementations using CompilerEnvironment
-        compiler_env.register_trait_implementation(
+        // Register protocol implementations using CompilerEnvironment
+        compiler_env.register_protocol_implementation(
             StructuredType::Simple(string_type_id.clone()),
-            StructuredType::Simple(display_trait_id.clone()),
+            StructuredType::Simple(display_protocol_id.clone()),
         );
-        compiler_env.register_trait_implementation(
+        compiler_env.register_protocol_implementation(
             StructuredType::Simple(integer_type_id.clone()),
-            StructuredType::Simple(display_trait_id.clone()),
+            StructuredType::Simple(display_protocol_id.clone()),
         );
 
-        let display_trait_type = StructuredType::Simple(display_trait_id);
+        let display_protocol_type = StructuredType::Simple(display_protocol_id);
         let checker = ExhaustivenessChecker::new(Some(compiler_env));
 
         // Only String pattern (missing Integer)
@@ -2114,7 +2120,7 @@ mod tests {
                 type_path: vec!["String".to_string()],
                 fields: vec![],
             },
-            Some(display_trait_type.clone()),
+            Some(display_protocol_type.clone()),
             Span::new(0, 0),
         );
 
@@ -2122,12 +2128,12 @@ mod tests {
 
         // Should NOT be exhaustive - missing Integer implementor
         assert!(!checker
-            .is_exhaustive(&patterns, &display_trait_type)
+            .is_exhaustive(&patterns, &display_protocol_type)
             .unwrap());
 
         // Should have missing Integer pattern
         let missing = checker
-            .find_missing_patterns(&patterns, &display_trait_type)
+            .find_missing_patterns(&patterns, &display_protocol_type)
             .unwrap();
         assert_eq!(missing.len(), 1);
 
@@ -2135,7 +2141,7 @@ mod tests {
         if let TypedPatternKind::Struct { type_path, .. } = &missing[0].kind {
             assert_eq!(type_path, &vec!["Integer".to_string()]);
         } else {
-            panic!("Expected struct pattern for missing trait implementor");
+            panic!("Expected struct pattern for missing protocol implementor");
         }
     }
 
@@ -2545,7 +2551,7 @@ mod tests {
 /// SAT-based guard exhaustiveness analysis
 pub mod guard_exhaustiveness {
     use crate::checker::TypedExpression;
-    use crate::types::traits::{ExhaustivenessResult, GuardCounterExample};
+    use crate::types::protocols::{ExhaustivenessResult, GuardCounterExample};
     use rustsat::instances::{BasicVarManager, Cnf, ManageVars};
     use rustsat::solvers::{Solve, SolverResult};
     use rustsat::types::{Lit, Var};

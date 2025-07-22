@@ -39,19 +39,19 @@ fn test_detailed_core_library_errors() {
                         println!("\nError {}: Undefined Type", i + 1);
                         println!("  Type: {name}");
                     }
-                    TypeError::TraitNotImplemented {
-                        trait_name,
+                    TypeError::ProtocolNotImplemented {
+                        protocol_name,
                         type_name,
                         ..
                     } => {
                         other_errors += 1;
-                        println!("\nError {}: Trait Not Implemented", i + 1);
-                        println!("  Trait: {trait_name} for Type: {type_name}");
+                        println!("\nError {}: Protocol Not Implemented", i + 1);
+                        println!("  Protocol: {protocol_name} for Type: {type_name}");
                     }
-                    TypeError::UndefinedTrait { trait_name, .. } => {
+                    TypeError::UndefinedProtocol { protocol_name, .. } => {
                         other_errors += 1;
-                        println!("\nError {}: Undefined Trait", i + 1);
-                        println!("  Trait: {trait_name}");
+                        println!("\nError {}: Undefined Protocol", i + 1);
+                        println!("  Protocol: {protocol_name}");
                     }
                     TypeError::SignatureMismatch {
                         function_name,

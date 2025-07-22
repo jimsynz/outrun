@@ -90,7 +90,7 @@ pub enum ItemKind {
     ConstDefinition(ConstDefinition),
     LetBinding(LetBinding),
     StructDefinition(StructDefinition),
-    TraitDefinition(TraitDefinition),
+    ProtocolDefinition(ProtocolDefinition),
     ImplBlock(ImplBlock),
     AliasDefinition(AliasDefinition),
     ImportDefinition(ImportDefinition),
@@ -108,7 +108,7 @@ pub struct Keyword {
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeywordKind {
     Struct,
-    Trait,
+    Protocol,
     Impl,
     Def,
     Defp,
@@ -299,7 +299,7 @@ pub struct Identifier {
     pub span: Span,
 }
 
-/// Type identifiers (structs, traits, modules)
+/// Type identifiers (structs, protocols, modules)
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeIdentifier {
     pub name: String,
@@ -734,7 +734,7 @@ impl std::fmt::Display for Item {
             ItemKind::ConstDefinition(const_def) => write!(f, "{const_def}"),
             ItemKind::LetBinding(let_binding) => write!(f, "{let_binding}"),
             ItemKind::StructDefinition(struct_def) => write!(f, "{struct_def}"),
-            ItemKind::TraitDefinition(trait_def) => write!(f, "{trait_def}"),
+            ItemKind::ProtocolDefinition(protocol_def) => write!(f, "{protocol_def}"),
             ItemKind::ImplBlock(impl_block) => write!(f, "{impl_block}"),
             ItemKind::AliasDefinition(alias_def) => write!(f, "{alias_def}"),
             ItemKind::ImportDefinition(import_def) => write!(f, "{import_def}"),
@@ -748,7 +748,7 @@ impl std::fmt::Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let keyword_str = match self.kind {
             KeywordKind::Struct => "struct",
-            KeywordKind::Trait => "trait",
+            KeywordKind::Protocol => "protocol",
             KeywordKind::Impl => "impl",
             KeywordKind::Def => "def",
             KeywordKind::Defp => "defp",
@@ -1383,19 +1383,19 @@ pub struct StructField {
     pub span: Span,
 }
 
-/// Trait definition with optional generics and constraints
+/// Protocol definition with optional generics and constraints
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitDefinition {
+pub struct ProtocolDefinition {
     pub attributes: Vec<Attribute>,
     pub name: Vec<TypeIdentifier>,
     pub generic_params: Option<GenericParams>,
     pub constraints: Option<ConstraintExpression>,
-    pub functions: Vec<TraitFunction>,
+    pub functions: Vec<ProtocolFunction>,
     pub span: Span,
 }
 
-impl TraitDefinition {
-    /// Get the trait name as a string
+impl ProtocolDefinition {
+    /// Get the protocol name as a string
     pub fn name_as_string(&self) -> String {
         self.name
             .iter()
@@ -1405,15 +1405,15 @@ impl TraitDefinition {
     }
 }
 
-/// Trait function (signature, definition, or static definition)
+/// Protocol function (signature, definition, or static definition)
 #[derive(Debug, Clone, PartialEq)]
-pub enum TraitFunction {
+pub enum ProtocolFunction {
     Signature(FunctionSignature),
     Definition(FunctionDefinition),
     StaticDefinition(StaticFunctionDefinition),
 }
 
-/// Static function definition in traits (using `defs` keyword)
+/// Static function definition in protocols (using `defs` keyword)
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticFunctionDefinition {
     pub attributes: Vec<Attribute>,
@@ -1440,7 +1440,7 @@ pub struct FunctionSignature {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock {
     pub generic_params: Option<GenericParams>,
-    pub trait_spec: TypeSpec,
+    pub protocol_spec: TypeSpec,
     pub type_spec: TypeSpec,
     pub constraints: Option<ConstraintExpression>,
     pub methods: Vec<FunctionDefinition>,
@@ -1468,7 +1468,7 @@ pub struct GenericArgs {
     pub span: Span,
 }
 
-/// Type specification for traits and implementations
+/// Type specification for protocols and implementations
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeSpec {
     pub path: Vec<TypeIdentifier>,
@@ -1476,7 +1476,7 @@ pub struct TypeSpec {
     pub span: Span,
 }
 
-/// Constraint expressions for traits and implementations
+/// Constraint expressions for protocols and implementations
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstraintExpression {
     And {
@@ -1486,7 +1486,7 @@ pub enum ConstraintExpression {
     },
     Constraint {
         type_param: TypeIdentifier,
-        trait_bound: Vec<TypeIdentifier>,
+        protocol_bound: Vec<TypeIdentifier>,
         span: Span,
     },
     Parenthesized {
@@ -1540,14 +1540,14 @@ impl std::fmt::Display for StructField {
     }
 }
 
-impl std::fmt::Display for TraitDefinition {
+impl std::fmt::Display for ProtocolDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Display attributes
         for attr in &self.attributes {
             writeln!(f, "{attr}")?;
         }
 
-        write!(f, "trait {}", self.name_as_string())?;
+        write!(f, "protocol {}", self.name_as_string())?;
         if let Some(generics) = &self.generic_params {
             write!(f, "{generics}")?;
         }
@@ -1562,12 +1562,12 @@ impl std::fmt::Display for TraitDefinition {
     }
 }
 
-impl std::fmt::Display for TraitFunction {
+impl std::fmt::Display for ProtocolFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TraitFunction::Signature(sig) => write!(f, "{sig}"),
-            TraitFunction::Definition(def) => write!(f, "{def}"),
-            TraitFunction::StaticDefinition(static_def) => write!(f, "{static_def}"),
+            ProtocolFunction::Signature(sig) => write!(f, "{sig}"),
+            ProtocolFunction::Definition(def) => write!(f, "{def}"),
+            ProtocolFunction::StaticDefinition(static_def) => write!(f, "{static_def}"),
         }
     }
 }
@@ -1618,7 +1618,7 @@ impl std::fmt::Display for ImplBlock {
         if let Some(generics) = &self.generic_params {
             write!(f, "{generics}")?;
         }
-        write!(f, " {} for {}", self.trait_spec, self.type_spec)?;
+        write!(f, " {} for {}", self.protocol_spec, self.type_spec)?;
         if let Some(constraints) = &self.constraints {
             write!(f, " when {constraints}")?;
         }
@@ -1695,11 +1695,11 @@ impl std::fmt::Display for ConstraintExpression {
             }
             ConstraintExpression::Constraint {
                 type_param,
-                trait_bound,
+                protocol_bound,
                 ..
             } => {
                 write!(f, "{type_param}: ")?;
-                for (i, bound) in trait_bound.iter().enumerate() {
+                for (i, bound) in protocol_bound.iter().enumerate() {
                     if i > 0 {
                         write!(f, ".")?;
                     }

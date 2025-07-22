@@ -1,5 +1,5 @@
 // Type system parsing module
-// Handles struct definitions, trait definitions, implementations, generics, and constraints
+// Handles struct definitions, protocol definitions, implementations, generics, and constraints
 
 use crate::ast::*;
 use crate::error::*;
@@ -209,28 +209,28 @@ impl OutrunParser {
         Ok(methods)
     }
 
-    /// Parse a trait definition
-    pub(crate) fn parse_trait_definition(
+    /// Parse a protocol definition
+    pub(crate) fn parse_protocol_definition(
         pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<TraitDefinition> {
+    ) -> ParseResult<ProtocolDefinition> {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
         // Parse attributes first
         let mut attributes = Vec::new();
-        let mut trait_keyword_found = false;
+        let mut protocol_keyword_found = false;
         let mut name_pair: Option<pest::iterators::Pair<Rule>> = None;
 
-        // Parse attributes and find the trait keyword and name
+        // Parse attributes and find the protocol keyword and name
         for inner_pair in inner_pairs.by_ref() {
             match inner_pair.as_rule() {
                 Rule::attribute => {
                     attributes.push(Self::parse_attribute(inner_pair)?);
                 }
-                Rule::keyword_trait => {
-                    trait_keyword_found = true;
+                Rule::keyword_protocol => {
+                    protocol_keyword_found = true;
                 }
-                Rule::module_path if trait_keyword_found => {
+                Rule::module_path if protocol_keyword_found => {
                     name_pair = Some(inner_pair);
                     break;
                 }
@@ -238,7 +238,7 @@ impl OutrunParser {
             }
         }
 
-        // Parse trait name
+        // Parse protocol name
         let name = Self::parse_module_path(name_pair.unwrap())?;
 
         let mut generic_params = None;
@@ -250,17 +250,17 @@ impl OutrunParser {
                 Rule::generic_params => {
                     generic_params = Some(Self::parse_generic_params(remaining_pair)?);
                 }
-                Rule::trait_constraints => {
-                    constraints = Some(Self::parse_trait_constraints(remaining_pair)?);
+                Rule::protocol_constraints => {
+                    constraints = Some(Self::parse_protocol_constraints(remaining_pair)?);
                 }
-                Rule::trait_functions => {
-                    functions = crate::OutrunParser::parse_trait_functions(remaining_pair)?;
+                Rule::protocol_functions => {
+                    functions = crate::OutrunParser::parse_protocol_functions(remaining_pair)?;
                 }
                 _ => {} // Skip other rules like braces
             }
         }
 
-        Ok(TraitDefinition {
+        Ok(ProtocolDefinition {
             attributes,
             name,
             generic_params,
@@ -279,7 +279,7 @@ impl OutrunParser {
         let _impl_keyword = inner_pairs.next().unwrap();
 
         let mut generic_params = None;
-        let mut trait_spec = None;
+        let mut protocol_spec = None;
         let mut type_spec = None;
         let mut constraints = None;
         let mut methods = Vec::new();
@@ -289,8 +289,8 @@ impl OutrunParser {
                 Rule::generic_params => {
                     generic_params = Some(Self::parse_generic_params(remaining_pair)?);
                 }
-                Rule::trait_spec => {
-                    trait_spec = Some(Self::parse_type_spec(remaining_pair)?);
+                Rule::protocol_spec => {
+                    protocol_spec = Some(Self::parse_type_spec(remaining_pair)?);
                 }
                 Rule::type_spec => {
                     type_spec = Some(Self::parse_type_spec(remaining_pair)?);
@@ -305,11 +305,11 @@ impl OutrunParser {
             }
         }
 
-        let trait_spec = trait_spec.ok_or_else(|| {
+        let protocol_spec = protocol_spec.ok_or_else(|| {
             ParseError::unexpected_token(
                 "".to_string(),
                 miette::SourceSpan::from(span.start..span.end),
-                "Implementation block missing trait specification".to_string(),
+                "Implementation block missing protocol specification".to_string(),
             )
         })?;
 
@@ -323,7 +323,7 @@ impl OutrunParser {
 
         Ok(ImplBlock {
             generic_params,
-            trait_spec,
+            protocol_spec,
             type_spec,
             constraints,
             methods,
@@ -435,8 +435,8 @@ impl OutrunParser {
         })
     }
 
-    /// Parse trait constraints
-    pub(crate) fn parse_trait_constraints(
+    /// Parse protocol constraints
+    pub(crate) fn parse_protocol_constraints(
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<ConstraintExpression> {
         let mut inner_pairs = pair.into_inner();
@@ -518,16 +518,16 @@ impl OutrunParser {
 
         match first.as_rule() {
             Rule::type_identifier => {
-                // Type constraint: T: Trait
+                // Type constraint: T: Protocol
                 let type_param = Self::parse_type_identifier(first)?;
 
-                // Parse trait bound (module path) - next pair should be module_path
-                let trait_bound_pair = inner_pairs.next().unwrap();
-                let trait_bound = Self::parse_module_path(trait_bound_pair)?;
+                // Parse protocol bound (module path) - next pair should be module_path
+                let protocol_bound_pair = inner_pairs.next().unwrap();
+                let protocol_bound = Self::parse_module_path(protocol_bound_pair)?;
 
                 Ok(ConstraintExpression::Constraint {
                     type_param,
-                    trait_bound,
+                    protocol_bound,
                     span,
                 })
             }

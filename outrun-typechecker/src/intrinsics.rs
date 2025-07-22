@@ -692,7 +692,7 @@ pub fn get_intrinsic_function_definitions() -> Vec<FunctionDefinition> {
             ],
             create_simple_type("Outrun.Core.Boolean"),
         ),
-        // Universal inspect operation for default trait implementation
+        // Universal inspect operation for default protocol implementation
         create_function_def(
             "inspect_value",
             vec![("value", create_simple_type("Self"))],

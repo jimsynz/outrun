@@ -1,8 +1,8 @@
 @Doc(content: """
-Binary trait for byte-level data manipulation.
+Binary protocol for byte-level data manipulation.
 
-This trait defines the core operations for working with binary data
-at the byte level. Unlike the String trait which works with UTF-8
+This protocol defines the core operations for working with binary data
+at the byte level. Unlike the String protocol which works with UTF-8
 codepoints, Binary operations work with raw bytes.
 
 ## Examples
@@ -19,80 +19,80 @@ Binary.concat(lhs: data1, rhs: data2)       # Concatenate byte sequences
 All index-based operations use byte positions, not codepoint positions.
 This provides direct access to the underlying byte representation.
 """)
-trait Binary {
+protocol Binary {
     @Doc(content: """
     Returns the size of the binary data in bytes.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.byte_size(value: data)  # 42
     ```
     """)
     def byte_size(value: Self): Integer
-    
+
     @Doc(content: """
     Returns the byte value at the given index as an Option.
-    
+
     Index is in bytes, not codepoints.
     Returns None if index is out of bounds.
     Byte values are in range 0-255.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.byte_at(value: data, index: 0)   # Some(65) for 'A'
     Binary.byte_at(value: data, index: 100) # None if out of bounds
     ```
     """)
     def byte_at(value: Self, index: Integer): Option<Integer>
-    
+
     @Doc(content: """
     Extracts a slice from start to end (exclusive) in bytes.
-    
+
     Both indices are in bytes.
     Returns empty binary if start >= end or indices are out of bounds.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.slice(value: data, start: 1, end: 4)  # Bytes 1-3
     Binary.slice(value: data, start: 0, end: 10) # First 10 bytes
     ```
     """)
     def slice(value: Self, start: Integer, end: Integer): Self
-    
+
     @Doc(content: """
     Concatenates two binary data sequences together.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.concat(lhs: data1, rhs: data2)  # Combined binary data
     ```
     """)
     def concat(lhs: Self, rhs: Self): Self
-    
+
     @Doc(content: """
     Finds the first occurrence of a byte sequence and returns its index.
-    
+
     Returns None if the sequence is not found.
     Index is in bytes.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.index_of(value: data, search: pattern)  # Some(42)
     Binary.index_of(value: data, search: missing)  # None
     ```
     """)
     def index_of(value: Self, search: Self): Option<Integer>
-    
+
     @Doc(content: """
     Checks if the binary data contains a given byte sequence.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.contains?(value: data, search: pattern)  # true
     Binary.contains?(value: data, search: missing)  # false
@@ -101,12 +101,12 @@ trait Binary {
     def contains?(value: Self, search: Self): Boolean {
         Option.some?(value: index_of(value: value, search: search))
     }
-    
+
     @Doc(content: """
     Checks if the binary data starts with a given prefix.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.starts_with?(value: data, prefix: header)  # true
     Binary.starts_with?(value: data, prefix: other)   # false
@@ -117,12 +117,12 @@ trait Binary {
         let value_slice = slice(value: value, start: 0, end: prefix_size)
         value_slice == prefix
     }
-    
+
     @Doc(content: """
     Checks if the binary data ends with a given suffix.
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.ends_with?(value: data, suffix: trailer)  # true
     Binary.ends_with?(value: data, suffix: other)    # false
@@ -135,40 +135,40 @@ trait Binary {
         let value_slice = slice(value: value, start: start_pos, end: value_size)
         value_slice == suffix
     }
-    
+
     @Doc(content: """
     Converts the binary data to a hexadecimal string representation.
-    
+
     Each byte is represented as two hexadecimal digits (lowercase).
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.to_hex(value: data)  # "48656c6c6f" for "Hello"
     ```
     """)
     def to_hex(value: Self): String
-    
+
     @Doc(content: """
     Creates binary data from a hexadecimal string.
-    
+
     Returns None if the hex string is invalid (odd length or invalid chars).
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.from_hex(value: "48656c6c6f")  # Some(binary_data)
     Binary.from_hex(value: "invalid")     # None
     ```
     """)
     def from_hex(value: String): Option<Self>
-    
-    
+
+
     @Doc(content: """
     Checks if the binary data is empty (size 0).
-    
+
     ## Examples
-    
+
     ```outrun
     Binary.empty?(value: data)   # false
     Binary.empty?(value: empty)  # true

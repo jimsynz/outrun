@@ -7,7 +7,7 @@
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use crate::compilation::compiler_environment::TypeNameId;
 use crate::unification::UnificationContext;
-use outrun_parser::{StructDefinition, TraitDefinition};
+use outrun_parser::{ProtocolDefinition, StructDefinition};
 use std::collections::HashMap;
 
 // Import types needed for FunctionCallContext (using placeholder types for now)
@@ -29,8 +29,8 @@ pub struct TypeCheckingContext {
     /// Struct definitions indexed by TypeNameId for type checking
     pub structs: HashMap<TypeNameId, StructDefinition>,
 
-    /// Trait definitions indexed by TypeNameId for trait resolution
-    pub traits: HashMap<TypeNameId, TraitDefinition>,
+    /// Protocol definitions indexed by TypeNameId for protocol resolution
+    pub protocols: HashMap<TypeNameId, ProtocolDefinition>,
 }
 
 impl TypeCheckingContext {
@@ -38,13 +38,13 @@ impl TypeCheckingContext {
     pub fn new(
         unification_context: UnificationContext,
         structs: HashMap<TypeNameId, StructDefinition>,
-        traits: HashMap<TypeNameId, TraitDefinition>,
+        protocols: HashMap<TypeNameId, ProtocolDefinition>,
     ) -> Self {
         Self {
             unification_context,
             compiler_environment: None,
             structs,
-            traits,
+            protocols,
         }
     }
 
@@ -53,13 +53,13 @@ impl TypeCheckingContext {
         unification_context: UnificationContext,
         compiler_environment: CompilerEnvironment,
         structs: HashMap<TypeNameId, StructDefinition>,
-        traits: HashMap<TypeNameId, TraitDefinition>,
+        protocols: HashMap<TypeNameId, ProtocolDefinition>,
     ) -> Self {
         Self {
             unification_context,
             compiler_environment: Some(compiler_environment),
             structs,
-            traits,
+            protocols,
         }
     }
 
@@ -76,15 +76,15 @@ impl TypeCheckingContext {
         }
     }
 
-    /// Look up a trait implementation function
+    /// Look up a protocol implementation function
     pub fn lookup_impl_function(
         &self,
-        trait_type: &crate::unification::StructuredType,
+        protocol_type: &crate::unification::StructuredType,
         impl_type: &crate::unification::StructuredType,
         function_name: crate::compilation::compiler_environment::AtomId,
     ) -> Option<crate::compilation::UnifiedFunctionEntry> {
         if let Some(compiler_env) = &self.compiler_environment {
-            compiler_env.lookup_impl_function(trait_type, impl_type, function_name)
+            compiler_env.lookup_impl_function(protocol_type, impl_type, function_name)
         } else {
             None
         }
@@ -113,11 +113,11 @@ impl TypeCheckingContext {
             unification_context: compilation_result.type_context.clone(),
             compiler_environment: None, // No longer stored in UnificationContext
             structs: compilation_result.structs.clone(),
-            traits: compilation_result.traits.clone(),
+            protocols: compilation_result.protocols.clone(),
         }
     }
 
-    /// Get a reference to the compiler environment for type operations  
+    /// Get a reference to the compiler environment for type operations
     pub fn compiler_environment(
         &self,
     ) -> &Option<crate::compilation::compiler_environment::CompilerEnvironment> {
@@ -134,9 +134,9 @@ impl TypeCheckingContext {
         self.structs.insert(type_id, struct_def);
     }
 
-    /// Add a trait definition to the context
-    pub fn add_trait(&mut self, type_id: TypeNameId, trait_def: TraitDefinition) {
-        self.traits.insert(type_id, trait_def);
+    /// Add a protocol definition to the context
+    pub fn add_protocol(&mut self, type_id: TypeNameId, protocol_def: ProtocolDefinition) {
+        self.protocols.insert(type_id, protocol_def);
     }
 
     /// Look up a struct definition by TypeNameId
@@ -144,9 +144,9 @@ impl TypeCheckingContext {
         self.structs.get(type_id)
     }
 
-    /// Look up a trait definition by TypeNameId
-    pub fn get_trait(&self, type_id: &TypeNameId) -> Option<&TraitDefinition> {
-        self.traits.get(type_id)
+    /// Look up a protocol definition by TypeNameId
+    pub fn get_protocol(&self, type_id: &TypeNameId) -> Option<&ProtocolDefinition> {
+        self.protocols.get(type_id)
     }
 
     /// Create a minimal context for testing
@@ -157,7 +157,7 @@ impl TypeCheckingContext {
             unification_context: UnificationContext::new(),
             compiler_environment: Some(compiler_env),
             structs: HashMap::new(),
-            traits: HashMap::new(),
+            protocols: HashMap::new(),
         }
     }
 }
@@ -240,11 +240,11 @@ impl<'a> FunctionCallContext<'a> {
         )
     }
 
-    /// Check if this is a trait method call
-    pub fn is_trait_call(&self) -> bool {
+    /// Check if this is a protocol method call
+    pub fn is_protocol_call(&self) -> bool {
         matches!(
             self.dispatch_strategy,
-            crate::checker::DispatchMethod::Trait { .. }
+            crate::checker::DispatchMethod::Protocol { .. }
         )
     }
 }
@@ -323,12 +323,13 @@ impl CompilationPhaseContext {
     pub fn for_type_checking(
         unification_context: crate::unification::UnificationContext,
         structs: HashMap<TypeNameId, StructDefinition>,
-        traits: HashMap<TypeNameId, TraitDefinition>,
+        protocols: HashMap<TypeNameId, ProtocolDefinition>,
         implementations: Vec<outrun_parser::ImplBlock>,
         compilation_order: Vec<String>,
         external_variables: HashMap<String, crate::unification::StructuredType>,
     ) -> Self {
-        let type_checking_context = TypeCheckingContext::new(unification_context, structs, traits);
+        let type_checking_context =
+            TypeCheckingContext::new(unification_context, structs, protocols);
 
         Self {
             type_checking_context,
@@ -359,7 +360,7 @@ mod tests {
 
         // Verify context is properly initialized
         assert!(context.structs.is_empty());
-        assert!(context.traits.is_empty());
+        assert!(context.protocols.is_empty());
         // CompilerEnvironment starts empty by default
     }
 
@@ -373,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_struct_and_trait_operations() {
+    fn test_struct_and_protocol_operations() {
         let mut context = TypeCheckingContext::minimal_for_testing();
 
         // Add a mock struct definition

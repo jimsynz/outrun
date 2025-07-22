@@ -5,8 +5,8 @@ file_extensions: [outrun]
 scope: source.outrun
 
 variables:
-  identifier: '[a-zA-Z_][a-zA-Z0-9_]*'
-  type_identifier: '[A-Z][a-zA-Z0-9_]*'
+  identifier: "[a-zA-Z_][a-zA-Z0-9_]*"
+  type_identifier: "[A-Z][a-zA-Z0-9_]*"
   module_path: '{{type_identifier}}(\.{{type_identifier}})*'
 
 contexts:
@@ -20,14 +20,14 @@ contexts:
 
   # Comments
   comments:
-    - match: '###'
+    - match: "###"
       scope: punctuation.definition.comment.begin.outrun
       push:
         - meta_scope: comment.block.outrun
-        - match: '###'
+        - match: "###"
           scope: punctuation.definition.comment.end.outrun
           pop: true
-    - match: '#'
+    - match: "#"
       scope: punctuation.definition.comment.outrun
       push:
         - meta_scope: comment.line.outrun
@@ -36,7 +36,7 @@ contexts:
 
   # Keywords and control flow
   keywords:
-    - match: \b(def|let|const|if|else|case|when|struct|trait|impl|macro|alias|import|except|only)\b
+    - match: \b(def|let|const|if|else|case|when|struct|protocol|impl|macro|alias|import|except|only)\b
       scope: keyword.control.outrun
     - match: \b(true|false)\b
       scope: constant.language.boolean.outrun
@@ -45,9 +45,9 @@ contexts:
 
   # Type annotations and definitions
   types:
-    - match: '{{type_identifier}}'
+    - match: "{{type_identifier}}"
       scope: support.type.outrun
-    - match: '{{module_path}}'
+    - match: "{{module_path}}"
       scope: support.type.module.outrun
     - match: ':(?=\s*{{type_identifier}})'
       scope: punctuation.separator.type.outrun
@@ -116,7 +116,7 @@ contexts:
 
   # Atom literals
   atoms:
-    - match: ':{{identifier}}'
+    - match: ":{{identifier}}"
       scope: constant.other.symbol.atom.outrun
     - match: ':"'
       scope: punctuation.definition.symbol.begin.outrun
@@ -157,7 +157,7 @@ contexts:
     - match: '&&|\|\||!'
       scope: keyword.operator.logical.outrun
     # Comparison operators
-    - match: '==|!=|<=|>=|<|>'
+    - match: "==|!=|<=|>=|<|>"
       scope: keyword.operator.comparison.outrun
     # Bitwise operators
     - match: '&|\||\^|~|<<|>>'
@@ -176,7 +176,7 @@ contexts:
   punctuation:
     - match: '[(){}\[\]]'
       scope: punctuation.definition.group.outrun
-    - match: '[,;]'
+    - match: "[,;]"
       scope: punctuation.separator.outrun
-    - match: '=>'
+    - match: "=>"
       scope: punctuation.separator.mapping.outrun

@@ -1,10 +1,10 @@
 @Doc(content: """
-Integer trait for integer-like types.
+Integer protocol for integer-like types.
 
-The Integer trait is a composite trait that requires implementing types to support
+The Integer protocol is a composite protocol that requires implementing types to support
 all fundamental integer operations: arithmetic, comparison, bitwise, and unary operations.
 
-This trait serves as a unified interface for integer-like types, ensuring they provide
+This protocol serves as a unified interface for integer-like types, ensuring they provide
 complete mathematical and logical operations expected from integer values.
 
 ## Requirements
@@ -18,12 +18,12 @@ Types implementing Integer must also implement:
 ## Examples
 
 ```outrun
-def add_integers<T>(a: T, b: T): T 
+def add_integers<T>(a: T, b: T): T
 where T: Integer {
     BinaryAddition.add(lhs: a, rhs: b)
 }
 
-def compare_integers<T>(a: T, b: T): Outrun.Core.Boolean 
+def compare_integers<T>(a: T, b: T): Outrun.Core.Boolean
 where T: Integer {
     Comparison.greater?(lhs: a, rhs: b)
 }
@@ -33,16 +33,16 @@ where T: Integer {
 
 - `Outrun.Core.Integer64` - 64-bit signed integer
 """)
-trait Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: BinaryMultiplication && Self: BinaryDivision && Self: BinaryModulo && Self: BinaryExponentiation && Self: UnaryPlus && Self: UnaryMinus && Self: Equality && Self: Comparison && Self: BitwiseAnd && Self: BitwiseOr && Self: BitwiseXor && Self: BitwiseNot && Self: ShiftLeft && Self: ShiftRight {
+protocol Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: BinaryMultiplication && Self: BinaryDivision && Self: BinaryModulo && Self: BinaryExponentiation && Self: UnaryPlus && Self: UnaryMinus && Self: Equality && Self: Comparison && Self: BitwiseAnd && Self: BitwiseOr && Self: BitwiseXor && Self: BitwiseNot && Self: ShiftLeft && Self: ShiftRight {
     @Doc(content: """
     Convert this integer to its string representation in the specified radix (base).
-    
+
     Returns the string representation of the integer value in the given base.
     Supports bases from 2 (binary) to 36 (using digits 0-9 and letters A-Z).
     Negative integers include a leading minus sign.
-    
+
     ## Examples
-    
+
     ```outrun
     Integer.to_string_radix(value: 42, radix: 10)   # "42" (decimal)
     Integer.to_string_radix(value: 42, radix: 16)   # "2A" (hexadecimal)
@@ -54,12 +54,12 @@ trait Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: Bina
 
     @Doc(content: """
     Get the absolute value of this integer.
-    
+
     Returns the non-negative value with the same magnitude.
     For the most negative value, behavior is implementation-defined.
-    
+
     ## Examples
-    
+
     ```outrun
     Integer.abs(value: -42)  # 42
     Integer.abs(value: 17)   # 17
@@ -69,11 +69,11 @@ trait Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: Bina
 
     @Doc(content: """
     Check if this integer is zero.
-    
+
     Returns true if the value equals zero, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Integer.zero?(value: 0)   # true
     Integer.zero?(value: 42)  # false
@@ -83,11 +83,11 @@ trait Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: Bina
 
     @Doc(content: """
     Check if this integer is positive (greater than zero).
-    
+
     Returns true if the value is greater than zero, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Integer.positive?(value: 42)   # true
     Integer.positive?(value: 0)    # false
@@ -98,11 +98,11 @@ trait Integer when Self: BinaryAddition && Self: BinarySubtraction && Self: Bina
 
     @Doc(content: """
     Check if this integer is negative (less than zero).
-    
+
     Returns true if the value is less than zero, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Integer.negative?(value: -17)  # true
     Integer.negative?(value: 0)    # false

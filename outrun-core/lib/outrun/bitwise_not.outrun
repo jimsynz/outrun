@@ -1,7 +1,7 @@
 @Doc(content: """
-Bitwise NOT trait for the ~ operator.
+Bitwise NOT protocol for the ~ operator.
 
-The BitwiseNot trait defines the behaviour for the ~ (bitwise complement) operator.
+The BitwiseNot protocol defines the behaviour for the ~ (bitwise complement) operator.
 When you write `~a`, it becomes `BitwiseNot.not(value: a)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `~a`, it becomes `BitwiseNot.not(value: a)`.
 ~flags                        # BitwiseNot.not(value: flags): Integer64
 ```
 """)
-trait BitwiseNot {
+protocol BitwiseNot {
     @Doc(content: "Perform bitwise NOT on a value")
     def not(value: Self): Self
 }

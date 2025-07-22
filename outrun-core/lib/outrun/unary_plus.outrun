@@ -1,7 +1,7 @@
 @Doc(content: """
-Unary plus trait for the unary + operator.
+Unary plus protocol for the unary + operator.
 
-The UnaryPlus trait defines the behaviour for the unary + operator.
+The UnaryPlus protocol defines the behaviour for the unary + operator.
 When you write `+a`, it becomes `UnaryPlus.plus(value: a)`.
 
 ## Requirements
@@ -17,7 +17,7 @@ When you write `+a`, it becomes `UnaryPlus.plus(value: a)`.
 +3.14                         # UnaryPlus.plus(value: 3.14): Float64
 ```
 """)
-trait UnaryPlus {
+protocol UnaryPlus {
     @Doc(content: "Apply unary plus to a value")
     def plus(value: Self): Self
 }

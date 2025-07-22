@@ -1,10 +1,10 @@
 @Doc(content: """
-Float trait for floating-point-like types.
+Float protocol for floating-point-like types.
 
-The Float trait is a composite trait that requires implementing types to support
+The Float protocol is a composite protocol that requires implementing types to support
 all fundamental floating-point operations: arithmetic, comparison, and unary operations.
 
-This trait serves as a unified interface for floating-point-like types, ensuring they provide
+This protocol serves as a unified interface for floating-point-like types, ensuring they provide
 complete mathematical operations expected from floating-point values.
 
 ## Requirements
@@ -30,15 +30,15 @@ def compare_floats(a: Float64, b: Float64): Boolean {
 
 - `Outrun.Core.Float64` - 64-bit IEEE 754 floating-point
 """)
-trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: BinaryMultiplication && Self: BinaryDivision && Self: BinaryModulo && Self: BinaryExponentiation && Self: UnaryPlus && Self: UnaryMinus && Self: Equality && Self: Comparison {
+protocol Float when Self: BinaryAddition && Self: BinarySubtraction && Self: BinaryMultiplication && Self: BinaryDivision && Self: BinaryModulo && Self: BinaryExponentiation && Self: UnaryPlus && Self: UnaryMinus && Self: Equality && Self: Comparison {
 
     @Doc(content: """
     Get the absolute value of this float.
-    
+
     Returns the non-negative value with the same magnitude.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.abs(value: -3.14)  # 3.14
     Float.abs(value: 2.5)    # 2.5
@@ -48,13 +48,13 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float is zero.
-    
+
     Returns true if the value equals zero, false otherwise.
     Note: This performs exact equality comparison, which may not behave
     as expected with floating-point arithmetic precision.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.zero?(value: 0.0)   # true
     Float.zero?(value: 3.14)  # false
@@ -64,11 +64,11 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float is positive (greater than zero).
-    
+
     Returns true if the value is greater than zero, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.positive?(value: 3.14)   # true
     Float.positive?(value: 0.0)    # false
@@ -79,11 +79,11 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float is negative (less than zero).
-    
+
     Returns true if the value is less than zero, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.negative?(value: -2.5)   # true
     Float.negative?(value: 0.0)    # false
@@ -94,11 +94,11 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float represents a finite value.
-    
+
     Returns false for infinite values and NaN, true otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.finite?(value: 3.14)     # true
     Float.finite?(value: 0.0)      # true
@@ -108,11 +108,11 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float represents an infinite value.
-    
+
     Returns true for positive or negative infinity, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.infinite?(value: 3.14)   # false
     ```
@@ -121,11 +121,11 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Check if this float is Not-a-Number (NaN).
-    
+
     Returns true if the value is NaN, false otherwise.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.nan?(value: 3.14)   # false
     ```
@@ -134,12 +134,12 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Round this float up to the nearest integer or specified precision.
-    
+
     When precision is None, rounds up to the nearest integer.
     When precision is provided, rounds to that number of decimal places.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.ceil(value: 3.14, precision: Option.none())      # 4.0
     Float.ceil(value: 3.14159, precision: Option.some(2))  # 3.15
@@ -150,12 +150,12 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Round this float down to the nearest integer or specified precision.
-    
+
     When precision is None, rounds down to the nearest integer.
     When precision is provided, rounds to that number of decimal places.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.floor(value: 3.14, precision: Option.none())      # 3.0
     Float.floor(value: 3.14159, precision: Option.some(2))  # 3.14
@@ -166,12 +166,12 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Round this float to the nearest integer or specified precision.
-    
+
     When precision is None, rounds to the nearest integer using "round half to even" strategy.
     When precision is provided, rounds to that number of decimal places.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.round(value: 3.14, precision: Option.none())      # 3.0
     Float.round(value: 3.14159, precision: Option.some(2))  # 3.14
@@ -183,12 +183,12 @@ trait Float when Self: BinaryAddition && Self: BinarySubtraction && Self: Binary
 
     @Doc(content: """
     Truncate this float towards zero.
-    
+
     Removes the fractional part, keeping only the integer portion.
     This is equivalent to rounding towards zero.
-    
+
     ## Examples
-    
+
     ```outrun
     Float.trunc(value: 3.14)   # 3.0
     Float.trunc(value: -3.14)  # -3.0

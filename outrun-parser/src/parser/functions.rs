@@ -347,19 +347,20 @@ impl OutrunParser {
         })
     }
 
-    /// Parse trait functions
-    pub(crate) fn parse_trait_functions(
+    /// Parse protocol functions
+    pub(crate) fn parse_protocol_functions(
         pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<Vec<TraitFunction>> {
+    ) -> ParseResult<Vec<ProtocolFunction>> {
         let mut functions = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::trait_item {
-                for trait_item_pair in inner_pair.into_inner() {
-                    match trait_item_pair.as_rule() {
-                        Rule::trait_function => {
-                            let trait_function = Self::parse_trait_function(trait_item_pair)?;
-                            functions.push(trait_function);
+            if inner_pair.as_rule() == Rule::protocol_item {
+                for protocol_item_pair in inner_pair.into_inner() {
+                    match protocol_item_pair.as_rule() {
+                        Rule::protocol_function => {
+                            let protocol_function =
+                                Self::parse_protocol_function(protocol_item_pair)?;
+                            functions.push(protocol_function);
                         }
                         Rule::comment => {
                             // Comments are pre-collected at program level - skip
@@ -373,26 +374,26 @@ impl OutrunParser {
         Ok(functions)
     }
 
-    /// Parse a trait function (signature, definition, or static definition)
-    pub(crate) fn parse_trait_function(
+    /// Parse a protocol function (signature, definition, or static definition)
+    pub(crate) fn parse_protocol_function(
         pair: pest::iterators::Pair<Rule>,
-    ) -> ParseResult<TraitFunction> {
+    ) -> ParseResult<ProtocolFunction> {
         let inner = pair.into_inner().next().unwrap();
 
         match inner.as_rule() {
             Rule::function_signature => {
                 let signature = Self::parse_function_signature(inner)?;
-                Ok(TraitFunction::Signature(signature))
+                Ok(ProtocolFunction::Signature(signature))
             }
             Rule::function_definition => {
                 let definition = Self::parse_function_definition(inner)?;
-                Ok(TraitFunction::Definition(definition))
+                Ok(ProtocolFunction::Definition(definition))
             }
             Rule::static_function_definition => {
                 let static_def = Self::parse_static_function_definition(inner)?;
-                Ok(TraitFunction::StaticDefinition(static_def))
+                Ok(ProtocolFunction::StaticDefinition(static_def))
             }
-            _ => unreachable!("Invalid trait function rule"),
+            _ => unreachable!("Invalid protocol function rule"),
         }
     }
 

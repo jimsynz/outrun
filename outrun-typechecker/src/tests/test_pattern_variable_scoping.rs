@@ -5,14 +5,14 @@ use outrun_parser::parse_program;
 #[test]
 fn test_let_binding_identifier_pattern_simple() {
     let source = r#"
-trait MyTrait {
-    def test(): MyTrait
+protocol MyProtocol {
+    def test(): MyProtocol
 }
 
 struct MyStruct {}
 
-impl MyTrait for MyStruct {
-    def test(): MyTrait {
+impl MyProtocol for MyStruct {
+    def test(): MyProtocol {
         let x = MyStruct {}
         x
     }

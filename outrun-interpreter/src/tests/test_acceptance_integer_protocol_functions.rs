@@ -1,4 +1,4 @@
-//! Acceptance tests for Integer trait functions
+//! Acceptance tests for Integer protocol functions
 
 use crate::test_harness::OutrunTestHarness;
 
@@ -360,7 +360,7 @@ fn test_predicate_functions_with_variables() {
 }
 
 #[test]
-fn test_combined_integer_trait_functions() {
+fn test_combined_integer_protocol_functions() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Set up variables for complex tests

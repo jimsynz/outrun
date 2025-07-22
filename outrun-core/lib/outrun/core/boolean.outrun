@@ -1,7 +1,7 @@
 @Doc(content: """
 Boolean concrete type.
 
-This is the default concrete implementation of the Boolean trait in Outrun.
+This is the default concrete implementation of the Boolean protocol in Outrun.
 Boolean literals `true` and `false` default to this type.
 
 ## Examples
@@ -13,7 +13,7 @@ false                 # Defaults to Outrun.Core.Boolean
 """)
 struct Outrun.Core.Boolean() {}
 
-# Display trait implementation
+# Display protocol implementation
 impl Display for Outrun.Core.Boolean {
     def to_string(value: Self): Outrun.Core.String {
         if value {
@@ -25,14 +25,14 @@ impl Display for Outrun.Core.Boolean {
 }
 
 
-# Equality trait implementation
+# Equality protocol implementation
 impl Equality for Outrun.Core.Boolean {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.bool_eq(lhs: lhs, rhs: rhs)
     }
 }
 
-# Logical operator trait implementations
+# Logical operator protocol implementations
 impl LogicalAnd for Outrun.Core.Boolean {
     def and(lhs: Self, rhs: Self): Self {
         Outrun.Intrinsic.bool_and(lhs: lhs, rhs: rhs)
@@ -51,14 +51,14 @@ impl LogicalNot for Outrun.Core.Boolean {
     }
 }
 
-# Boolean trait implementation
+# Boolean protocol implementation
 impl Boolean for Outrun.Core.Boolean {
     def true?(value: Self): Outrun.Core.Boolean {
         value
     }
 }
 
-# Default trait implementation
+# Default protocol implementation
 impl Default for Outrun.Core.Boolean {
     def default(): Self {
         false

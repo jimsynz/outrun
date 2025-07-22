@@ -1,7 +1,7 @@
 @Doc(content: """
-Binary multiplication trait for the * operator.
+Binary multiplication protocol for the * operator.
 
-The BinaryMultiplication trait defines the behaviour for the * operator.
+The BinaryMultiplication protocol defines the behaviour for the * operator.
 When you write `a * b`, it becomes `BinaryMultiplication.multiply(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -17,7 +17,7 @@ When you write `a * b`, it becomes `BinaryMultiplication.multiply(lhs: a, rhs: b
 3.14 * 2.0                    # BinaryMultiplication.multiply(lhs: 3.14, rhs: 2.0): Float64
 ```
 """)
-trait BinaryMultiplication {
+protocol BinaryMultiplication {
     @Doc(content: "Multiply two values")
     def multiply(lhs: Self, rhs: Self): Self
 }

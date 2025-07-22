@@ -36,7 +36,7 @@ fn load_core_library() -> ProgramCollection {
 fn test_exponentiate_with_generic_types() {
     // Test case that reproduces the ArgumentTypeMismatch error
     let test_source = r#"
-trait Option<T> {
+protocol Option<T> {
     def unwrap(value: Self): T
 }
 

@@ -1,7 +1,7 @@
 @Doc(content: """
-Binary modulo trait for the % operator.
+Binary modulo protocol for the % operator.
 
-The BinaryModulo trait defines the behaviour for the % operator.
+The BinaryModulo protocol defines the behaviour for the % operator.
 When you write `a % b`, it becomes `BinaryModulo.modulo(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `a % b`, it becomes `BinaryModulo.modulo(lhs: a, rhs: b)`.
 3.14 % 2.0                    # BinaryModulo.modulo(lhs: 3.14, rhs: 2.0): Float64
 ```
 """)
-trait BinaryModulo {
+protocol BinaryModulo {
     @Doc(content: "Calculate the remainder of dividing left by right")
     def modulo(lhs: Self, rhs: Self): Option<Self>
 }

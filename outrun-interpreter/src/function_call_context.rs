@@ -67,9 +67,9 @@ impl<'a> FunctionCallContext<'a> {
         matches!(self.dispatch_strategy, DispatchMethod::Static { .. })
     }
 
-    /// Check if this is a trait method call
-    pub fn is_trait_call(&self) -> bool {
-        matches!(self.dispatch_strategy, DispatchMethod::Trait { .. })
+    /// Check if this is a protocol method call
+    pub fn is_protocol_call(&self) -> bool {
+        matches!(self.dispatch_strategy, DispatchMethod::Protocol { .. })
     }
 
     /// Get the function ID for static calls
@@ -80,17 +80,17 @@ impl<'a> FunctionCallContext<'a> {
         }
     }
 
-    /// Get trait information for trait calls
-    pub fn trait_info(
+    /// Get protocol information for protocol calls
+    pub fn protocol_info(
         &self,
     ) -> Option<(&str, &str, &outrun_typechecker::unification::StructuredType)> {
         match self.dispatch_strategy {
-            DispatchMethod::Trait {
-                trait_name,
+            DispatchMethod::Protocol {
+                protocol_name,
                 function_name,
                 impl_type,
             } => Some((
-                trait_name.as_str(),
+                protocol_name.as_str(),
                 function_name.as_str(),
                 impl_type.as_ref(),
             )),
@@ -203,7 +203,7 @@ mod tests {
 
         assert_eq!(context.function_name(), "test_function");
         assert!(context.is_static_call());
-        assert!(!context.is_trait_call());
+        assert!(!context.is_protocol_call());
         assert_eq!(context.static_function_id(), Some("test::test_function"));
     }
 
@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn test_trait_method_call() {
+    fn test_protocol_method_call() {
         let function_path = TypedFunctionPath::Simple {
             name: "head".to_string(),
         };
@@ -237,8 +237,8 @@ mod tests {
             outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
         let list_type_id = compiler_env.intern_type_name("List");
         let impl_type = StructuredType::Simple(list_type_id);
-        let dispatch_strategy = DispatchMethod::Trait {
-            trait_name: "List".to_string(),
+        let dispatch_strategy = DispatchMethod::Protocol {
+            protocol_name: "List".to_string(),
             function_name: "head".to_string(),
             impl_type: Box::new(impl_type.clone()),
         };
@@ -249,10 +249,10 @@ mod tests {
 
         assert_eq!(context.function_name(), "head");
         assert!(!context.is_static_call());
-        assert!(context.is_trait_call());
+        assert!(context.is_protocol_call());
 
-        let (trait_name, function_name, _impl_type) = context.trait_info().unwrap();
-        assert_eq!(trait_name, "List");
+        let (protocol_name, function_name, _impl_type) = context.protocol_info().unwrap();
+        assert_eq!(protocol_name, "List");
         assert_eq!(function_name, "head");
     }
 }

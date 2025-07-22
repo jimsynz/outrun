@@ -56,7 +56,7 @@ pub enum Value {
         tuple_type: StructuredType,
     },
 
-    // Struct instances (created by static trait functions like Option.some, Result.ok, etc.)
+    // Struct instances (created by static protocol functions like Option.some, Result.ok, etc.)
     /// Generic struct instance
     Struct {
         /// Type identifier for this struct

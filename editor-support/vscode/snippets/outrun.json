@@ -37,27 +37,27 @@
     ],
     "description": "Define a struct with multiple fields"
   },
-  "Trait Definition": {
-    "prefix": "trait",
+  "Protocol Definition": {
+    "prefix": "protocol",
     "body": [
-      "trait ${1:TraitName}<${2:T}> {",
+      "protocol ${1:ProtocolName}<${2:T}> {",
       "\tdef ${3:method_name}(${4:param}: ${5:Type}): ${6:ReturnType}",
       "\t$0",
       "}"
     ],
-    "description": "Define a trait"
+    "description": "Define a protocol"
   },
   "Implementation Block": {
     "prefix": "impl",
     "body": [
-      "impl ${1:TraitName}<${2:T}> for ${3:Type} {",
+      "impl ${1:ProtocolName}<${2:T}> for ${3:Type} {",
       "\tdef ${4:method_name}(${5:param}: ${6:Type}): ${7:ReturnType} {",
       "\t\t${8:// implementation}",
       "\t\t$0",
       "\t}",
       "}"
     ],
-    "description": "Implement a trait for a type"
+    "description": "Implement a protocol for a type"
   },
   "Case Expression": {
     "prefix": "case",

@@ -5,7 +5,7 @@ fn test_core_library_function_bodies_have_statements() {
     let core_compilation = get_core_library_compilation();
 
     println!("📊 Core library compilation statistics:");
-    println!("  - Traits: {}", core_compilation.traits.len());
+    println!("  - Protocols: {}", core_compilation.protocols.len());
     println!("  - Structs: {}", core_compilation.structs.len());
     println!(
         "  - Implementations: {}",
@@ -20,7 +20,7 @@ fn test_core_library_function_bodies_have_statements() {
         .sum();
     println!("  - Typed program items: {total_items}");
 
-    // Look for List trait implementation functions
+    // Look for List protocol implementation functions
     for (program_name, typed_program) in &core_compilation.typed_programs {
         println!("\n📄 Program: {program_name}");
         for (i, item) in typed_program.items.iter().enumerate() {

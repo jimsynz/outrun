@@ -1,9 +1,9 @@
 @Doc(content: """
-Map trait for key-value collections.
+Map protocol for key-value collections.
 
-This trait defines the most basic operations for map-like data structures.
+This protocol defines the most basic operations for map-like data structures.
 More complex operations like iteration, filtering, and transformation are provided
-through the Iterator trait.
+through the Iterator protocol.
 
 ## Examples
 
@@ -14,28 +14,28 @@ Map.has_key?(map: {name: "James"}, key: :age) # false
 Map.size(map: {name: "James", age: 35})      # 2
 ```
 """)
-trait Map<K, V> {
+protocol Map<K, V> {
     @Doc(content: """
     Retrieves the value associated with a key.
-    
+
     Returns None if the key is not found.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.get(map: {name: "James"}, key: :name)    # Some("James")
     Map.get(map: {name: "James"}, key: :missing) # None
     ```
     """)
     def get(map: Self, key: K): Option<V>
-    
+
     @Doc(content: """
     Returns a new map with the key-value pair added or updated.
-    
+
     If the key already exists, its value is replaced.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.put(map: {}, key: :name, value: "James")           # {name: "James"}
     Map.put(map: {name: "James"}, key: :age, value: 35)    # {name: "James", age: 35}
@@ -43,26 +43,26 @@ trait Map<K, V> {
     ```
     """)
     def put(map: Self, key: K, value: V): Self
-    
+
     @Doc(content: """
     Returns a new map with the key-value pair removed.
-    
+
     If the key doesn't exist, returns the original map unchanged.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.remove(map: {name: "James", age: 35}, key: :age)     # {name: "James"}
     Map.remove(map: {name: "James"}, key: :missing)         # {name: "James"}
     ```
     """)
     def remove(map: Self, key: K): Self
-    
+
     @Doc(content: """
     Checks if the map contains the given key.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.has_key?(map: {name: "James"}, key: :name)    # true
     Map.has_key?(map: {name: "James"}, key: :missing) # false
@@ -71,24 +71,24 @@ trait Map<K, V> {
     def has_key?(map: Self, key: K): Boolean {
         Option.some?(value: Map.get(map: map, key: key))
     }
-    
+
     @Doc(content: """
     Returns the number of key-value pairs in the map.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.size(map: {name: "James", age: 35})  # 2
     Map.size(map: {})                        # 0
     ```
     """)
     def size(map: Self): Integer
-    
+
     @Doc(content: """
     Checks if the map is empty.
-    
+
     ## Examples
-    
+
     ```outrun
     Map.empty?(map: {})              # true
     Map.empty?(map: {name: "James"}) # false

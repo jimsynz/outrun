@@ -105,14 +105,14 @@ async function insertSnippet() {
       snippet: "struct ${1:StructName}(${2:field}: ${3:Type})",
     },
     {
-      label: "trait - Trait definition",
+      label: "protocol - Protocol definition",
       snippet:
-        "trait ${1:TraitName}<${2:T}> {\n\tdef ${3:method_name}(${4:param}: ${5:Type}): ${6:ReturnType}\n}",
+        "protocol ${1:ProtocolName}<${2:T}> {\n\tdef ${3:method_name}(${4:param}: ${5:Type}): ${6:ReturnType}\n}",
     },
     {
       label: "impl - Implementation block",
       snippet:
-        "impl ${1:TraitName}<${2:T}> for ${3:Type} {\n\tdef ${4:method_name}(${5:param}: ${6:Type}): ${7:ReturnType} {\n\t\t$0\n\t}\n}",
+        "impl ${1:ProtocolName}<${2:T}> for ${3:Type} {\n\tdef ${4:method_name}(${5:param}: ${6:Type}): ${7:ReturnType} {\n\t\t$0\n\t}\n}",
     },
     {
       label: "case - Pattern matching",

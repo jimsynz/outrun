@@ -16,7 +16,7 @@ This method uses the updated `languages.toml` configuration that references the 
    # Install Tree-sitter 0.20.8 (compatible with Helix)
    asdf install tree-sitter 0.20.8
    asdf set tree-sitter 0.20.8
-   
+
    # Verify version
    tree-sitter --version  # Should show 0.20.8
    ```
@@ -61,7 +61,7 @@ If you prefer to build the grammar manually:
    ```bash
    # Navigate to grammar directory
    cd editor-support/tree-sitter-outrun
-   
+
    # Generate and build with compatible version
    tree-sitter generate
    ```
@@ -105,22 +105,25 @@ You should now see proper syntax highlighting with keywords, types, and literals
 Open any `.outrun` file with Helix and enjoy syntax highlighting and code navigation features:
 
 - `]f` / `[f` - Navigate between functions
-- `]c` / `[c` - Navigate between classes (structs/traits)
+- `]c` / `[c` - Navigate between classes (structs/protocols)
 - `]t` / `[t` - Navigate between types
 - `]p` / `[p` - Navigate between parameters
 
 ## Troubleshooting
 
 **Tree-sitter version incompatibility:**
+
 - Error: "Incompatible language version 15. Expected minimum 13, maximum 14"
 - Solution: Use Tree-sitter 0.20.8: `asdf set tree-sitter 0.20.8` then regenerate grammar
 
 **Grammar not found:**
+
 - Ensure the grammar was built successfully with `hx --grammar build`
 - Check that `languages.toml` contains the correct path to the grammar
 - Verify query files are in the correct location (if using manual installation)
 
 **No syntax highlighting:**
+
 - Run `hx --health` to check grammar status (should show ✓ for outrun)
 - Check Helix logs with `:log-open` for error messages
 - Ensure `highlights.scm` exists in the queries directory (manual installation)
@@ -128,12 +131,14 @@ Open any `.outrun` file with Helix and enjoy syntax highlighting and code naviga
 - Verify Tree-sitter version compatibility (must be 0.20.8 or earlier)
 
 **Textobjects not working:**
+
 - Verify `textobjects.scm` exists in the queries directory (manual installation)
 - Check that the grammar built successfully
 
 ## Configuration
 
 The `languages.toml` file configures:
+
 - File type detection (`.outrun` files)
 - Comment syntax (`#` for line comments, `###` for block comments)
 - Indentation (2 spaces)

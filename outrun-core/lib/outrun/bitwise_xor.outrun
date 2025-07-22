@@ -1,7 +1,7 @@
 @Doc(content: """
-Bitwise XOR trait for the ^ operator.
+Bitwise XOR protocol for the ^ operator.
 
-The BitwiseXor trait defines the behaviour for the ^ operator.
+The BitwiseXor protocol defines the behaviour for the ^ operator.
 When you write `a ^ b`, it becomes `BitwiseXor.xor(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -19,7 +19,7 @@ When you write `a ^ b`, it becomes `BitwiseXor.xor(lhs: a, rhs: b)`.
 data ^ key                    # BitwiseXor.xor(lhs: data, rhs: key): Integer64
 ```
 """)
-trait BitwiseXor {
+protocol BitwiseXor {
     @Doc(content: "Perform bitwise XOR on two values")
     def xor(lhs: Self, rhs: Self): Self
 }

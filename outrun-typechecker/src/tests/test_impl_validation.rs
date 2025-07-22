@@ -11,8 +11,8 @@ fn create_program_from_source(source: &str) -> Program {
 
 #[test]
 fn test_impl_validation_missing_function() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def show(value: Self): String
     def debug(value: Self): String
 }
@@ -21,7 +21,7 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def show(value: Self): String {
         "MyType"
     }
@@ -29,14 +29,14 @@ impl TestTrait for MyType {
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -56,7 +56,7 @@ impl TestTrait for MyType {
                 0 // Function count no longer accessible through type_context
             );
             println!("Implementations: {}", success_result.implementations.len());
-            println!("Traits found: {}", success_result.traits.len());
+            println!("Protocols found: {}", success_result.protocols.len());
             println!("Structs found: {}", success_result.structs.len());
             panic!("Expected compilation to fail due to missing function");
         }
@@ -77,8 +77,8 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_impl_validation_extra_function() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def show(value: Self): String
 }
 "#;
@@ -86,25 +86,25 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def show(value: Self): String {
         "MyType"
     }
-    
+
     def extra_function(value: Self): String {
         "Extra"
     }
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -136,8 +136,8 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_impl_validation_wrong_parameter_name() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def show(value: Self): String
 }
 "#;
@@ -145,21 +145,21 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def show(item: Self): String {
         "MyType"
     }
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -192,8 +192,8 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_impl_validation_wrong_parameter_type() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def show(value: Self): String
 }
 "#;
@@ -201,21 +201,21 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def show(value: String): String {
         "MyType"
     }
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -247,8 +247,8 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_impl_validation_wrong_return_type() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def show(value: Self): String
 }
 "#;
@@ -256,21 +256,21 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def show(value: Self): Integer {
         42
     }
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::from_core_library();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -304,13 +304,13 @@ impl TestTrait for MyType {
 #[test]
 fn test_impl_validation_valid_implementation() {
     let combined_source = r#"
-trait TestTrait {
+protocol TestProtocol {
     def process(value: Self): Self
 }
 
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def process(value: Self): Self {
         value
     }
@@ -344,11 +344,11 @@ impl TestTrait for MyType {
 }
 
 #[test]
-fn test_impl_validation_undefined_trait() {
+fn test_impl_validation_undefined_protocol() {
     let impl_source = r#"
 struct MyType() {}
 
-impl UndefinedTrait for MyType {
+impl UndefinedProtocol for MyType {
     def some_function(value: Self): String {
         "MyType"
     }
@@ -371,21 +371,24 @@ impl UndefinedTrait for MyType {
         Ok(compilation_result) => {
             println!("Compilation succeeded unexpectedly!");
             println!(
-                "Traits found: {:?}",
-                compilation_result.traits.keys().collect::<Vec<_>>()
+                "Protocols found: {:?}",
+                compilation_result.protocols.keys().collect::<Vec<_>>()
             );
             println!(
                 "Implementations: {}",
                 compilation_result.implementations.len()
             );
 
-            // Let's debug what traits are available
-            for trait_def in compilation_result.traits.values() {
-                let trait_name = "Unknown".to_string(); // Type name resolution no longer available through type_context
-                println!("Available trait: {} -> {:?}", trait_name, trait_def.name);
+            // Let's debug what protocols are available
+            for protocol_def in compilation_result.protocols.values() {
+                let protocol_name = "Unknown".to_string(); // Type name resolution no longer available through type_context
+                println!(
+                    "Available protocol: {} -> {:?}",
+                    protocol_name, protocol_def.name
+                );
             }
 
-            panic!("Expected compilation to fail due to undefined trait, but it succeeded");
+            panic!("Expected compilation to fail due to undefined protocol, but it succeeded");
         }
         Err(errors) => {
             println!("Got {} errors:", errors.len());
@@ -395,25 +398,25 @@ impl UndefinedTrait for MyType {
 
             assert!(!errors.is_empty(), "Expected at least one error");
 
-            // Check that we get an UndefinedTrait error
-            let undefined_trait_error = errors.iter().find(|e| {
-                matches!(e, TypeError::UndefinedTrait { trait_name, .. } if trait_name == "UndefinedTrait")
+            // Check that we get an UndefinedProtocol error
+            let undefined_protocol_error = errors.iter().find(|e| {
+                matches!(e, TypeError::UndefinedProtocol { protocol_name, .. } if protocol_name == "UndefinedProtocol")
             });
 
             assert!(
-                undefined_trait_error.is_some(),
-                "Expected UndefinedTrait error"
+                undefined_protocol_error.is_some(),
+                "Expected UndefinedProtocol error"
             );
         }
     }
 }
 
 #[test]
-fn test_impl_validation_undefined_trait_span_information() {
+fn test_impl_validation_undefined_protocol_span_information() {
     let impl_source = r#"
 struct MyType() {}
 
-impl UndefinedTrait for MyType {
+impl UndefinedProtocol for MyType {
     def some_function(value: Self): String {
         "MyType"
     }
@@ -434,27 +437,29 @@ impl UndefinedTrait for MyType {
 
     match result {
         Ok(_compilation_result) => {
-            panic!("Expected compilation to fail due to undefined trait, but it succeeded");
+            panic!("Expected compilation to fail due to undefined protocol, but it succeeded");
         }
         Err(errors) => {
             assert!(!errors.is_empty(), "Expected at least one error");
 
-            // Check that we get an UndefinedTrait error with proper span
-            let undefined_trait_error = errors.iter().find(|e| {
-                matches!(e, TypeError::UndefinedTrait { trait_name, .. } if trait_name == "UndefinedTrait")
+            // Check that we get an UndefinedProtocol error with proper span
+            let undefined_protocol_error = errors.iter().find(|e| {
+                matches!(e, TypeError::UndefinedProtocol { protocol_name, .. } if protocol_name == "UndefinedProtocol")
             });
 
             assert!(
-                undefined_trait_error.is_some(),
-                "Expected UndefinedTrait error but got: {errors:?}"
+                undefined_protocol_error.is_some(),
+                "Expected UndefinedProtocol error but got: {errors:?}"
             );
 
             // Extract the span and verify it's not (0,0)
-            if let Some(TypeError::UndefinedTrait {
-                span, trait_name, ..
-            }) = undefined_trait_error
+            if let Some(TypeError::UndefinedProtocol {
+                span,
+                protocol_name,
+                ..
+            }) = undefined_protocol_error
             {
-                assert_eq!(trait_name, "UndefinedTrait");
+                assert_eq!(protocol_name, "UndefinedProtocol");
 
                 // Verify the span is not empty (0,0)
                 assert!(
@@ -466,18 +471,18 @@ impl UndefinedTrait for MyType {
                     "Span length should not be 0, got: {span:?}"
                 );
 
-                // The span should include the trait name, verify it contains "UndefinedTrait"
-                // The TypeSpec span might include additional context, so we check it contains the trait name
+                // The span should include the protocol name, verify it contains "UndefinedProtocol"
+                // The TypeSpec span might include additional context, so we check it contains the protocol name
                 let span_start = span.offset();
                 let span_end = span_start + span.len();
-                let trait_name_start = impl_source
-                    .find("UndefinedTrait")
-                    .expect("Should find UndefinedTrait in source");
-                let trait_name_end = trait_name_start + "UndefinedTrait".len();
+                let protocol_name_start = impl_source
+                    .find("UndefinedProtocol")
+                    .expect("Should find UndefinedProtocol in source");
+                let protocol_name_end = protocol_name_start + "UndefinedProtocol".len();
 
                 assert!(
-                    span_start <= trait_name_start && span_end >= trait_name_end,
-                    "Span [{span_start}, {span_end}) should include 'UndefinedTrait' at [{trait_name_start}, {trait_name_end})"
+                    span_start <= protocol_name_start && span_end >= protocol_name_end,
+                    "Span [{span_start}, {span_end}) should include 'UndefinedProtocol' at [{protocol_name_start}, {protocol_name_end})"
                 );
             }
         }

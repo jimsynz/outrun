@@ -1,7 +1,7 @@
 ; Keywords
 [
   "struct"
-  "trait" 
+  "protocol"
   "impl"
   "def"
   "defs"
@@ -36,7 +36,7 @@
 (module_path (type_identifier) @type)
 
 ; Function definitions - use more specific selectors
-(function_definition 
+(function_definition
   (identifier) @function)
 
 (static_function_definition
@@ -58,9 +58,9 @@
 (multiline_string) @string
 
 ; String interpolation
-(string_interpolation 
+(string_interpolation
   "#{" @punctuation.special
-  "}" @punctuation.special) 
+  "}" @punctuation.special)
 
 ; Escape sequences
 (escape_sequence) @escape
@@ -135,7 +135,7 @@
   (identifier) @attribute)
 
 ; Parameters
-(parameter_list 
+(parameter_list
   (identifier) @variable.parameter)
 
 ; Identifiers (keep this last so more specific patterns take precedence)

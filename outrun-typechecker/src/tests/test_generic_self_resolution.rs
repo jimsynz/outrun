@@ -38,11 +38,11 @@ fn test_option_some_with_generic_inference() {
     // When calling Option.some?(value: concrete_value), Self should be inferred as Option<ConcreteType>
 
     let test_source = r#"
-trait TestTrait {
+protocol TestProtocol {
     def index_of(haystack: Self, needle: String): Integer
 }
 
-impl TestTrait for String {
+impl TestProtocol for String {
     def index_of(haystack: Self, needle: String): Integer {
         42  # Simplified implementation
     }
@@ -53,7 +53,7 @@ def test_option_generic_inference(): Option<Integer> {
     let needle = "world"
     # This should infer Self = Option<Integer> for Option.some?
     # The argument type is Integer (from index_of), so Self should be Option<Integer>
-    Option.some?(value: TestTrait.index_of(haystack: text, needle: needle))
+    Option.some?(value: TestProtocol.index_of(haystack: text, needle: needle))
 }
 "#;
 

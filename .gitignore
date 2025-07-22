@@ -8,4 +8,5 @@ outrun/outrun_syntax.dump
 .outrun_history
 
 .env*
+.claude
 

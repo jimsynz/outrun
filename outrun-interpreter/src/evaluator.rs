@@ -562,10 +562,10 @@ impl ExpressionEvaluator {
                 // No clause matched
                 Err(EvaluationError::PatternMatchingFailed { span })
             }
-            TypedCaseVariant::Trait { .. } => {
-                // Trait case expressions not yet implemented
+            TypedCaseVariant::Protocol { .. } => {
+                // Protocol case expressions not yet implemented
                 Err(EvaluationError::Internal {
-                    message: "Trait case expressions not yet implemented".to_string(),
+                    message: "Protocol case expressions not yet implemented".to_string(),
                     span,
                 })
             }

@@ -9,8 +9,8 @@ def greet(name: String): String {
 # Struct definition
 struct Person(name: String, age: Integer)
 
-# Trait definition
-trait Display<T> {
+# Protocol definition
+protocol Display<T> {
     def display(value: T): String
 }
 
@@ -39,7 +39,7 @@ let config = {
 def describe_age(age: Integer): String {
     case age {
         age when Integer.less_than?(age, 18) -> "Young"
-        age when Integer.between?(age, 18, 65) -> "Adult"  
+        age when Integer.between?(age, 18, 65) -> "Adult"
         _ -> "Senior"
     }
 }

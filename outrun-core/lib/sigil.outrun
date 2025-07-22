@@ -1,8 +1,8 @@
 @Doc(content: """
-Trait for parsing sigil literals into custom types with structured input.
+Protocol for parsing sigil literals into custom types with structured input.
 Sigils allow custom syntax like ~JSON"{}" or ~SQL"SELECT * FROM #{table}" with safe interpolation.
 """)
-trait Sigil<T> {
+protocol Sigil<T> {
   @Doc(content: """
   Parse structured sigil content into this type.
   Input contains both literal strings and interpolated expressions as separate parts,
@@ -13,10 +13,10 @@ trait Sigil<T> {
 }
 
 @Doc(content: """
-Marker trait for sigil input parts.
+Marker protocol for sigil input parts.
 Sigil input consists of alternating string literals and interpolated expressions.
 """)
-trait Sigil.Input<T> {
+protocol Sigil.Input<T> {
 }
 
 @Doc(content: """
@@ -31,6 +31,6 @@ Contains a typed value that was interpolated using #{expression} syntax.
 """)
 struct Sigil.Input.Expression<T>(value: T)
 
-# Implement the marker trait for both concrete input types
+# Implement the marker protocol for both concrete input types
 impl Sigil.Input<T> for Sigil.Input.String { }
 impl Sigil.Input<T> for Sigil.Input.Expression<T> { }

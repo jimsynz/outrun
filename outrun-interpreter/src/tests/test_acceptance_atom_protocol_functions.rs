@@ -1,4 +1,4 @@
-//! Acceptance tests for Atom trait functions and behaviors
+//! Acceptance tests for Atom protocol functions and behaviors
 
 use crate::test_harness::OutrunTestHarness;
 

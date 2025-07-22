@@ -1,4 +1,4 @@
-//! Visitor trait system for traversing both parser and typed ASTs
+//! Visitor protocol system for traversing both parser and typed ASTs
 //!
 //! This module provides a unified visitor pattern that works across both
 //! the parser AST (from outrun-parser) and the typed AST (from outrun-typechecker).
@@ -10,16 +10,16 @@ use crate::error::TypeError;
 use outrun_parser::{
     Argument, BinaryOperation, Expression, ExpressionKind, FunctionCall, FunctionDefinition,
     FunctionPath, Identifier, ImplBlock, Item, ItemKind, LetBinding, Literal, Pattern, Program,
-    Span, Statement, StatementKind, StructDefinition, TraitDefinition, TypeIdentifier,
+    ProtocolDefinition, Span, Statement, StatementKind, StructDefinition, TypeIdentifier,
     UnaryOperation,
 };
 
 /// Result type for visitor methods that can fail
 pub type VisitorResult<T = ()> = Result<T, TypeError>;
 
-/// Generic visitor trait that can traverse both parser and typed ASTs
+/// Generic visitor protocol that can traverse both parser and typed ASTs
 ///
-/// This trait provides default implementations that perform depth-first traversal.
+/// This protocol provides default implementations that perform depth-first traversal.
 /// Implementors can override specific methods to add custom behaviour at particular
 /// AST nodes while maintaining the traversal structure.
 pub trait Visitor<T>: Sized {
@@ -33,7 +33,7 @@ pub trait Visitor<T>: Sized {
         walk_item(self, item)
     }
 
-    /// Visit an expression  
+    /// Visit an expression
     fn visit_expression(&mut self, expr: &Expression) -> VisitorResult {
         walk_expression(self, expr)
     }
@@ -81,8 +81,8 @@ pub trait Visitor<T>: Sized {
         Ok(())
     }
 
-    /// Visit a trait definition
-    fn visit_trait_definition(&mut self, _trait_def: &TraitDefinition) -> VisitorResult {
+    /// Visit a protocol definition
+    fn visit_protocol_definition(&mut self, _protocol_def: &ProtocolDefinition) -> VisitorResult {
         // Default: no traversal needed
         Ok(())
     }
@@ -109,9 +109,9 @@ pub trait Visitor<T>: Sized {
     }
 }
 
-/// Visitor trait specifically for typed ASTs
+/// Visitor protocol specifically for typed ASTs
 ///
-/// This trait works with the typed AST produced by the type checker.
+/// This protocol works with the typed AST produced by the type checker.
 /// It provides additional type information that can be used for
 /// more sophisticated analysis.
 pub trait TypedVisitor<T>: Sized {
@@ -169,7 +169,9 @@ pub fn walk_item<V: Visitor<T>, T>(visitor: &mut V, item: &Item) -> VisitorResul
         // Complex item types
         ItemKind::ImplBlock(impl_block) => visitor.visit_impl_block(impl_block),
         ItemKind::StructDefinition(struct_def) => visitor.visit_struct_definition(struct_def),
-        ItemKind::TraitDefinition(trait_def) => visitor.visit_trait_definition(trait_def),
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            visitor.visit_protocol_definition(protocol_def)
+        }
         ItemKind::LetBinding(let_binding) => visitor.visit_let_binding(let_binding),
         // Other items that we don't handle yet
         _ => Ok(()),
@@ -338,8 +340,8 @@ pub fn walk_typed_item<V: TypedVisitor<T>, T>(visitor: &mut V, item: &TypedItem)
         TypedItemKind::Expression(expr) => visitor.visit_typed_expression(expr),
         TypedItemKind::FunctionDefinition(_func_def) => Ok(()), // TODO: Add function definition visiting
         TypedItemKind::StructDefinition(_struct_def) => Ok(()), // TODO: Add struct definition visiting
-        TypedItemKind::TraitDefinition(_trait_def) => Ok(()), // TODO: Add trait definition visiting
-        TypedItemKind::ImplBlock(_impl_block) => Ok(()),      // TODO: Add impl block visiting
+        TypedItemKind::ProtocolDefinition(_protocol_def) => Ok(()), // TODO: Add protocol definition visiting
+        TypedItemKind::ImplBlock(_impl_block) => Ok(()),            // TODO: Add impl block visiting
         TypedItemKind::ConstDefinition(_const_def) => Ok(()), // TODO: Add const definition visiting
         TypedItemKind::LetBinding(_let_binding) => Ok(()),    // TODO: Add let binding visiting
         TypedItemKind::MacroDefinition(_macro_def) => Ok(()), // TODO: Add macro definition visiting

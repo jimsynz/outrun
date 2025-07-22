@@ -1,7 +1,7 @@
 @Doc(content: """
-Equality trait for == and != operators.
+Equality protocol for == and != operators.
 
-The Equality trait defines the behaviour for equality comparison operators.
+The Equality protocol defines the behaviour for equality comparison operators.
 When you write `a == b`, it becomes `Equality.equal?(lhs: a, rhs: b)`.
 When you write `a != b`, it becomes `Equality.not_equal?(lhs: a, rhs: b)`.
 
@@ -27,7 +27,7 @@ when Equality.equal?(lhs: x, rhs: 0) {
 }
 ```
 """)
-trait Equality {
+protocol Equality {
     @Doc(content: "Test if two values are equal")
     def equal?(lhs: Self, rhs: Self): Boolean
 

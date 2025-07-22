@@ -2,7 +2,7 @@
 Ok variant of the Result type.
 
 Represents a successful computation with a result value of type T.
-This is one of the two concrete implementations of the Result trait.
+This is one of the two concrete implementations of the Result protocol.
 
 ## Examples
 

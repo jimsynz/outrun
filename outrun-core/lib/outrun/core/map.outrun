@@ -21,7 +21,7 @@ Maps store key-value pairs with support for literal syntax and spread operations
 struct Outrun.Core.Map<K, V>() {}
 
 
-# Equality trait implementation - structural equality
+# Equality protocol implementation - structural equality
 impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         # Maps are equal if they have the same size and all key-value pairs match
@@ -33,7 +33,7 @@ impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
     }
 }
 
-# Map trait implementation
+# Map protocol implementation
 impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
     def get(map: Self, key: K): Option<V> {
         Outrun.Intrinsic.map_get(map: map, key: key)
@@ -52,7 +52,7 @@ impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
     }
 }
 
-# Default trait implementation
+# Default protocol implementation
 impl<K, V> Default for Outrun.Core.Map<K, V> {
     def default(): Self {
         {}

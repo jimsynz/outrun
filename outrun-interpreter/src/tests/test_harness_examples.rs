@@ -231,7 +231,7 @@ fn test_list_operations() {
     // harness.assert_evaluates_to("empty_list", "[]").unwrap();
 
     // Test list operations using static functions
-    // Note: Using concrete types for now until trait/concrete type unification is improved
+    // Note: Using concrete types for now until protocol/concrete type unification is improved
     harness
         .assert_evaluates_to(
             "List.head(value: [1, 2, 3])",
@@ -327,9 +327,9 @@ fn test_complex_expressions() {
         .assert_evaluates_to_integer("List.length(value: short_list)", 1)
         .unwrap();
 
-    // TODO: Re-enable these tests once Option trait implementations are complete
+    // TODO: Re-enable these tests once Option protocol implementations are complete
     // The Option.some? and Option.none? functions need actual implementations
-    // rather than just trait signatures
+    // rather than just protocol signatures
     // harness
     //     .assert_evaluates_to_integer("if Option.some?(value: maybe_value) { 1 } else { 0 }", 1)
     //     .unwrap();

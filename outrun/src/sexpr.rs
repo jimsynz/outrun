@@ -85,8 +85,8 @@ fn format_item_with_indent(item: &Item, indent: usize) -> String {
         ItemKind::StructDefinition(struct_def) => {
             format_struct_definition_with_indent(struct_def, indent)
         }
-        ItemKind::TraitDefinition(trait_def) => {
-            format_trait_definition_with_indent(trait_def, indent)
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            format_protocol_definition_with_indent(protocol_def, indent)
         }
         ItemKind::ImplBlock(impl_block) => format_impl_block_with_indent(impl_block, indent),
         ItemKind::FunctionDefinition(func_def) => {
@@ -365,23 +365,26 @@ fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: u
     }
 }
 
-fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usize) -> String {
-    let name = trait_def.name_as_string();
-    let functions_count = trait_def.functions.len();
+fn format_protocol_definition_with_indent(
+    protocol_def: &ProtocolDefinition,
+    indent: usize,
+) -> String {
+    let name = protocol_def.name_as_string();
+    let functions_count = protocol_def.functions.len();
 
     if functions_count == 0 {
-        format!("(trait {name})")
+        format!("(protocol {name})")
     } else {
         // Count different types of functions
         let mut signatures = 0;
         let mut definitions = 0;
         let mut static_definitions = 0;
 
-        for function in &trait_def.functions {
+        for function in &protocol_def.functions {
             match function {
-                TraitFunction::Signature(_) => signatures += 1,
-                TraitFunction::Definition(_) => definitions += 1,
-                TraitFunction::StaticDefinition(_) => static_definitions += 1,
+                ProtocolFunction::Signature(_) => signatures += 1,
+                ProtocolFunction::Definition(_) => definitions += 1,
+                ProtocolFunction::StaticDefinition(_) => static_definitions += 1,
             }
         }
 
@@ -397,7 +400,7 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
         }
 
         format!(
-            "(trait {}\n{}(functions {} [{}]))",
+            "(protocol {}\n{}(functions {} [{}]))",
             name,
             " ".repeat(indent + 2),
             functions_count,
@@ -407,13 +410,13 @@ fn format_trait_definition_with_indent(trait_def: &TraitDefinition, indent: usiz
 }
 
 fn format_impl_block_with_indent(impl_block: &ImplBlock, indent: usize) -> String {
-    let trait_name = format_type_path(&impl_block.trait_spec);
+    let protocol_name = format_type_path(&impl_block.protocol_spec);
     let type_name = format_type_path(&impl_block.type_spec);
     let methods_count = impl_block.methods.len();
 
     format!(
         "(impl {} for {}\n{}(methods {}))",
-        trait_name,
+        protocol_name,
         type_name,
         " ".repeat(indent + 2),
         methods_count

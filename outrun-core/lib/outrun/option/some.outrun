@@ -2,7 +2,7 @@
 Some variant of the Option type.
 
 Represents the presence of a value in an Option. Contains the wrapped value of type T.
-This is one of the two concrete implementations of the Option trait.
+This is one of the two concrete implementations of the Option protocol.
 
 ## Examples
 
@@ -22,16 +22,16 @@ rather than being constructed directly.
 """)
 struct Outrun.Option.Some<T>(value: T)
 
-# Implementation of Option trait for Some variant
+# Implementation of Option protocol for Some variant
 impl<T> Option<T> for Outrun.Option.Some<T> {
     def some?(value: Self): Boolean {
         true  # Some always contains a value
     }
-    
+
     def none?(value: Self): Boolean {
         false  # Some is never empty
     }
-    
+
     def unwrap(value: Self): T {
         value.value  # Return the contained value
     }

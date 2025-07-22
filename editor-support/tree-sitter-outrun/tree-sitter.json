@@ -16,7 +16,7 @@
   "metadata": {
     "version": "0.1.0",
     "license": "MIT",
-    "description": "A statically-typed, immutible, functional language where the trait is king!",
+    "description": "A statically-typed, immutible, functional language where the protocol is king!",
     "authors": [
       {
         "name": "James Harton",

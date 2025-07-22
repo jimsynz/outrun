@@ -1,19 +1,19 @@
 ; Functions
 (function_definition) @function.around
-(function_definition 
+(function_definition
   (function_body) @function.inside)
 
 (static_function_definition) @function.around
 (static_function_definition
   (function_body) @function.inside)
 
-; Types (structs, traits)
+; Types (structs, protocols)
 (struct_definition) @class.around
-(struct_definition 
+(struct_definition
   (struct_fields) @class.inside)
 
-(trait_definition) @class.around
-(trait_definition
+(protocol_definition) @class.around
+(protocol_definition
   (_) @class.inside)
 
 (impl_block) @class.around
@@ -22,7 +22,7 @@
 
 ; Parameters
 (parameter_list) @parameter.around
-(parameter_list 
+(parameter_list
   (identifier) @parameter.inside)
 
 ; Arguments in function calls
@@ -45,10 +45,10 @@
 
 ; Case expressions
 (case_expression) @conditional.around
-(case_clause 
+(case_clause
   (_) @conditional.inside)
 
-(trait_case_clause
+(protocol_case_clause
   (_) @conditional.inside)
 
 ; Loop constructs (for when they're added)
@@ -61,7 +61,7 @@
 
 ; Entry - treat each top-level item as an entry
 (struct_definition) @entry.around
-(trait_definition) @entry.around  
+(protocol_definition) @entry.around
 (impl_block) @entry.around
 (function_definition) @entry.around
 (constant_definition) @entry.around

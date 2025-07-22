@@ -40,7 +40,7 @@ def test_construction(): TestGeneric<Integer> {
 fn test_option_some_constructor() {
     // Test specifically Option.Some constructor with core library
     let test_source = r#"
-trait Option<T> {
+protocol Option<T> {
     defs some(value: T): Outrun.Option.Some<T> {
         Outrun.Option.Some { value: value }
     }

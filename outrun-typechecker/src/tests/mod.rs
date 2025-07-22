@@ -37,7 +37,7 @@ mod test_visitor_let_bindings;
 
 // Phase-specific visitor tests
 // TODO: Create these test files
-// mod test_trait_extraction_visitor;
+// mod test_protocol_extraction_visitor;
 // mod test_struct_extraction_visitor;
 // mod test_impl_extraction_visitor;
 // mod test_function_extraction_visitor;
@@ -50,7 +50,7 @@ mod test_visitor_let_bindings;
 // mod test_error_reporting;
 
 // Impl block validation tests
-mod test_default_trait_implementations;
+mod test_default_protocol_implementations;
 mod test_impl_validation;
 
 // Expression type checking tests

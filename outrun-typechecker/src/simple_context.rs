@@ -5,7 +5,7 @@
 
 use crate::compilation::compiler_environment::TypeNameId;
 use crate::unification::StructuredType;
-use outrun_parser::{StructDefinition, TraitDefinition};
+use outrun_parser::{ProtocolDefinition, StructDefinition};
 use std::collections::HashMap;
 
 /// Simplified type checking data that complements CompilerEnvironment
@@ -17,8 +17,8 @@ pub struct TypeCheckingData {
     /// Struct definitions indexed by TypeNameId for type checking
     pub structs: HashMap<TypeNameId, StructDefinition>,
 
-    /// Trait definitions indexed by TypeNameId for trait resolution
-    pub traits: HashMap<TypeNameId, TraitDefinition>,
+    /// Protocol definitions indexed by TypeNameId for protocol resolution
+    pub protocols: HashMap<TypeNameId, ProtocolDefinition>,
 
     /// Generic parameter substitutions for the current context
     pub generic_substitutions: HashMap<TypeNameId, StructuredType>,
@@ -35,7 +35,7 @@ impl TypeCheckingData {
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
-            traits: HashMap::new(),
+            protocols: HashMap::new(),
             generic_substitutions: HashMap::new(),
             expression_types: HashMap::new(),
             span_mapping: crate::desugaring::SpanMapping::new(),
@@ -47,9 +47,9 @@ impl TypeCheckingData {
         self.structs.insert(type_id, struct_def);
     }
 
-    /// Add a trait definition to the context
-    pub fn add_trait(&mut self, type_id: TypeNameId, trait_def: TraitDefinition) {
-        self.traits.insert(type_id, trait_def);
+    /// Add a protocol definition to the context
+    pub fn add_protocol(&mut self, type_id: TypeNameId, protocol_def: ProtocolDefinition) {
+        self.protocols.insert(type_id, protocol_def);
     }
 
     /// Look up a struct definition by TypeNameId
@@ -57,9 +57,9 @@ impl TypeCheckingData {
         self.structs.get(type_id)
     }
 
-    /// Look up a trait definition by TypeNameId
-    pub fn get_trait(&self, type_id: &TypeNameId) -> Option<&TraitDefinition> {
-        self.traits.get(type_id)
+    /// Look up a protocol definition by TypeNameId
+    pub fn get_protocol(&self, type_id: &TypeNameId) -> Option<&ProtocolDefinition> {
+        self.protocols.get(type_id)
     }
 
     /// Add a generic parameter substitution
@@ -140,7 +140,7 @@ mod tests {
 
         // Verify data is properly initialized
         assert!(data.structs.is_empty());
-        assert!(data.traits.is_empty());
+        assert!(data.protocols.is_empty());
         assert!(data.generic_substitutions.is_empty());
         assert!(data.expression_types.is_empty());
     }

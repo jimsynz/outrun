@@ -1,4 +1,4 @@
-//! Acceptance tests for String trait functions
+//! Acceptance tests for String protocol functions
 
 use crate::test_harness::OutrunTestHarness;
 
@@ -43,32 +43,56 @@ fn test_string_char_at() {
 
     // Valid indices
     harness
-        .assert_evaluates_to_string("String.char_at(value: \"hello\", index: 0) |> Option.unwrap()", "h")
+        .assert_evaluates_to_string(
+            "String.char_at(value: \"hello\", index: 0) |> Option.unwrap()",
+            "h",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("String.char_at(value: \"hello\", index: 1) |> Option.unwrap()", "e")
+        .assert_evaluates_to_string(
+            "String.char_at(value: \"hello\", index: 1) |> Option.unwrap()",
+            "e",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("String.char_at(value: \"hello\", index: 4) |> Option.unwrap()", "o")
+        .assert_evaluates_to_string(
+            "String.char_at(value: \"hello\", index: 4) |> Option.unwrap()",
+            "o",
+        )
         .unwrap();
 
     // Invalid indices (out of bounds)
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.char_at(value: \"hello\", index: 5))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.char_at(value: \"hello\", index: 5))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.char_at(value: \"hello\", index: -1))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.char_at(value: \"hello\", index: -1))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.char_at(value: \"\", index: 0))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.char_at(value: \"\", index: 0))",
+            true,
+        )
         .unwrap();
 
     // Unicode characters
     harness
-        .assert_evaluates_to_string("String.char_at(value: \"café\", index: 3) |> Option.unwrap()", "é")
+        .assert_evaluates_to_string(
+            "String.char_at(value: \"café\", index: 3) |> Option.unwrap()",
+            "é",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("String.char_at(value: \"🦀rust\", index: 0) |> Option.unwrap()", "🦀")
+        .assert_evaluates_to_string(
+            "String.char_at(value: \"🦀rust\", index: 0) |> Option.unwrap()",
+            "🦀",
+        )
         .unwrap();
 }
 
@@ -121,7 +145,10 @@ fn test_string_concat() {
 
     // Basic concatenation
     harness
-        .assert_evaluates_to_string("String.concat(lhs: \"hello\", rhs: \" world\")", "hello world")
+        .assert_evaluates_to_string(
+            "String.concat(lhs: \"hello\", rhs: \" world\")",
+            "hello world",
+        )
         .unwrap();
     harness
         .assert_evaluates_to_string("String.concat(lhs: \"foo\", rhs: \"bar\")", "foobar")
@@ -153,40 +180,70 @@ fn test_string_index_of() {
 
     // Found cases
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"hello world\", search: \"world\") |> Option.unwrap()", 6)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"hello world\", search: \"world\") |> Option.unwrap()",
+            6,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"hello\", search: \"h\") |> Option.unwrap()", 0)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"hello\", search: \"h\") |> Option.unwrap()",
+            0,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"hello\", search: \"o\") |> Option.unwrap()", 4)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"hello\", search: \"o\") |> Option.unwrap()",
+            4,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"hello\", search: \"ell\") |> Option.unwrap()", 1)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"hello\", search: \"ell\") |> Option.unwrap()",
+            1,
+        )
         .unwrap();
 
     // Not found cases
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.index_of(value: \"hello\", search: \"xyz\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.index_of(value: \"hello\", search: \"xyz\"))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.index_of(value: \"hello\", search: \"Hello\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.index_of(value: \"hello\", search: \"Hello\"))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: String.index_of(value: \"\", search: \"a\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: String.index_of(value: \"\", search: \"a\"))",
+            true,
+        )
         .unwrap();
 
     // Empty search string
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"hello\", search: \"\") |> Option.unwrap()", 0)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"hello\", search: \"\") |> Option.unwrap()",
+            0,
+        )
         .unwrap();
 
     // Unicode search
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"café latte\", search: \"é\") |> Option.unwrap()", 3)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"café latte\", search: \"é\") |> Option.unwrap()",
+            3,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("String.index_of(value: \"🦀rust lang\", search: \"🦀\") |> Option.unwrap()", 0)
+        .assert_evaluates_to_integer(
+            "String.index_of(value: \"🦀rust lang\", search: \"🦀\") |> Option.unwrap()",
+            0,
+        )
         .unwrap();
 }
 
@@ -196,13 +253,19 @@ fn test_string_contains() {
 
     // Contains cases
     harness
-        .assert_evaluates_to_boolean("String.contains?(value: \"hello world\", search: \"world\")", true)
+        .assert_evaluates_to_boolean(
+            "String.contains?(value: \"hello world\", search: \"world\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.contains?(value: \"hello\", search: \"ell\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.contains?(value: \"hello\", search: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "String.contains?(value: \"hello\", search: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not contain cases
@@ -210,7 +273,10 @@ fn test_string_contains() {
         .assert_evaluates_to_boolean("String.contains?(value: \"hello\", search: \"xyz\")", false)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.contains?(value: \"hello\", search: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "String.contains?(value: \"hello\", search: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.contains?(value: \"\", search: \"a\")", false)
@@ -223,7 +289,10 @@ fn test_string_contains() {
 
     // Unicode contains
     harness
-        .assert_evaluates_to_boolean("String.contains?(value: \"café latte\", search: \"é\")", true)
+        .assert_evaluates_to_boolean(
+            "String.contains?(value: \"café latte\", search: \"é\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.contains?(value: \"🦀rust\", search: \"🦀\")", true)
@@ -236,24 +305,39 @@ fn test_string_starts_with() {
 
     // Starts with cases
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"hello world\", prefix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"hello world\", prefix: \"hello\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.starts_with?(value: \"hello\", prefix: \"h\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"hello\", prefix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"hello\", prefix: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not start with cases
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"hello\", prefix: \"world\")", false)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"hello\", prefix: \"world\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"hello\", prefix: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"hello\", prefix: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"hello\", prefix: \"ello\")", false)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"hello\", prefix: \"ello\")",
+            false,
+        )
         .unwrap();
 
     // Empty prefix
@@ -271,10 +355,16 @@ fn test_string_starts_with() {
 
     // Unicode starts with
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"café latte\", prefix: \"café\")", true)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"café latte\", prefix: \"café\")",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.starts_with?(value: \"🦀rust\", prefix: \"🦀\")", true)
+        .assert_evaluates_to_boolean(
+            "String.starts_with?(value: \"🦀rust\", prefix: \"🦀\")",
+            true,
+        )
         .unwrap();
 }
 
@@ -284,24 +374,39 @@ fn test_string_ends_with() {
 
     // Ends with cases
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"hello world\", suffix: \"world\")", true)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"hello world\", suffix: \"world\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.ends_with?(value: \"hello\", suffix: \"o\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"hello\", suffix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"hello\", suffix: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not end with cases
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"hello\", suffix: \"world\")", false)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"hello\", suffix: \"world\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"hello\", suffix: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"hello\", suffix: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"hello\", suffix: \"hell\")", false)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"hello\", suffix: \"hell\")",
+            false,
+        )
         .unwrap();
 
     // Empty suffix
@@ -319,7 +424,10 @@ fn test_string_ends_with() {
 
     // Unicode ends with
     harness
-        .assert_evaluates_to_boolean("String.ends_with?(value: \"café latte\", suffix: \"latte\")", true)
+        .assert_evaluates_to_boolean(
+            "String.ends_with?(value: \"café latte\", suffix: \"latte\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("String.ends_with?(value: \"rust🦀\", suffix: \"🦀\")", true)
@@ -556,9 +664,15 @@ fn test_string_functions_with_variables() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Set up variables
-    harness.execute_let_binding("let text = \"Hello World\"").unwrap();
-    harness.execute_let_binding("let empty_text = \"\"").unwrap();
-    harness.execute_let_binding("let unicode_text = \"café 🦀\"").unwrap();
+    harness
+        .execute_let_binding("let text = \"Hello World\"")
+        .unwrap();
+    harness
+        .execute_let_binding("let empty_text = \"\"")
+        .unwrap();
+    harness
+        .execute_let_binding("let unicode_text = \"café 🦀\"")
+        .unwrap();
 
     // Test with variables
     harness
@@ -596,7 +710,10 @@ fn test_string_functions_with_variables() {
         .assert_evaluates_to_integer("String.length(value: unicode_text)", 6)
         .unwrap();
     harness
-        .assert_evaluates_to_string("String.char_at(value: unicode_text, index: 3) |> Option.unwrap()", "é")
+        .assert_evaluates_to_string(
+            "String.char_at(value: unicode_text, index: 3) |> Option.unwrap()",
+            "é",
+        )
         .unwrap();
 }
 
@@ -606,13 +723,22 @@ fn test_string_chained_operations() {
 
     // Chain multiple string operations
     harness
-        .assert_evaluates_to_string("String.trim(value: \"  hello  \") |> String.to_upper()", "HELLO")
+        .assert_evaluates_to_string(
+            "String.trim(value: \"  hello  \") |> String.to_upper()",
+            "HELLO",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("String.concat(lhs: \"hello\", rhs: \" world\") |> String.slice(start: 0, end: 5)", "hello")
+        .assert_evaluates_to_string(
+            "String.concat(lhs: \"hello\", rhs: \" world\") |> String.slice(start: 0, end: 5)",
+            "hello",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("String.concat(lhs: \"foo\", rhs: \"bar\") |> String.length()", 6)
+        .assert_evaluates_to_integer(
+            "String.concat(lhs: \"foo\", rhs: \"bar\") |> String.length()",
+            6,
+        )
         .unwrap();
 
     // Complex chaining with predicates
@@ -620,6 +746,9 @@ fn test_string_chained_operations() {
         .assert_evaluates_to_boolean("String.trim(value: \"  test  \") |> String.empty?()", false)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("String.to_upper(value: \"hello\") |> String.starts_with?(prefix: \"HEL\")", true)
+        .assert_evaluates_to_boolean(
+            "String.to_upper(value: \"hello\") |> String.starts_with?(prefix: \"HEL\")",
+            true,
+        )
         .unwrap();
 }

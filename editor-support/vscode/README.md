@@ -5,6 +5,7 @@ Complete language support for the [Outrun programming language](https://harton.d
 ## Features
 
 ### ✨ Syntax Highlighting
+
 - **Complete highlighting** for all Outrun language constructs
 - **String interpolation** support with `#{expression}` highlighting
 - **Sigil literals** with type-aware highlighting (`~Type"content"`)
@@ -14,6 +15,7 @@ Complete language support for the [Outrun programming language](https://harton.d
 - **Atoms** and **numeric literals** (decimal, hex, binary, octal)
 
 ### 🎯 Smart Editing Features
+
 - **Auto-closing pairs** for brackets, quotes, and Outrun-specific constructs
 - **Auto-indentation** based on language structure
 - **Bracket matching** and highlighting
@@ -22,31 +24,36 @@ Complete language support for the [Outrun programming language](https://harton.d
 - **Smart word selection** respecting Outrun identifier patterns
 
 ### 📝 Code Snippets
+
 Comprehensive snippet collection for rapid development:
 
 #### Core Language Constructs
+
 - `def` - Function definition
 - `defwhen` - Guard function with conditions
 - `struct` - Struct definition
-- `trait` - Trait definition
+- `protocol` - Protocol definition
 - `impl` - Implementation block
 - `case` - Pattern matching
 - `let` - Variable binding
 - `const` - Constants
 
 #### Control Flow & Patterns
+
 - `if` - If-else expressions
 - `casewhen` - Case with guard conditions
 - `pipe` - Pipe operator (`|>`)
 - `maybepipe` - Maybe pipe (`|?`)
 
 #### Imports & Organization
+
 - `import` - Module imports
 - `importas` - Import with alias
 - `importonly` - Selective imports
 - `alias` - Type aliases
 
 #### Common Types & Literals
+
 - `some`/`none` - Option types
 - `ok`/`error` - Result types
 - `list` - List literals
@@ -55,33 +62,39 @@ Comprehensive snippet collection for rapid development:
 - `atom` - Atom literals
 
 ### 🔧 Language Configuration
+
 - **Word patterns** optimized for Outrun identifiers
-- **Indentation rules** for functions, structs, traits, and case expressions
+- **Indentation rules** for functions, structs, protocols, and case expressions
 - **Auto-closing** for interpolation (`#{...}`) and block comments
 - **Bracket definitions** including generics (`<>`)
 
 ## Installation
 
 ### From VS Code Marketplace (Coming Soon)
+
 1. Open VS Code
 2. Go to Extensions (`Cmd+Shift+X` / `Ctrl+Shift+X`)
 3. Search for "Outrun Language Support"
 4. Click Install
 
 ### Manual Installation (Development)
+
 1. Clone the Outrun repository:
+
    ```bash
    git clone https://harton.dev/outrun/outrun.git
    cd outrun/editor-support/vscode
    ```
 
 2. Install dependencies and compile:
+
    ```bash
    npm install
    npm run compile
    ```
 
 3. Install the extension:
+
    ```bash
    # Link the extension for development
    ln -sf $(pwd) ~/.vscode/extensions/outrun-language
@@ -97,9 +110,11 @@ Comprehensive snippet collection for rapid development:
 ## Usage
 
 ### Basic Setup
+
 Once installed, the extension automatically activates when you open any `.outrun` file. The language will be detected by the file extension.
 
 ### Example Code
+
 Create a new file with `.outrun` extension and try this example:
 
 ```outrun
@@ -112,7 +127,7 @@ when Integer.non_zero?(b) {
 # Struct definition
 struct Person(name: String, age: Integer)
 
-# Trait implementation
+# Protocol implementation
 impl Display<Person> for Person {
     def display(person: Person): String {
         "#{person.name} is #{person.age} years old"
@@ -136,6 +151,7 @@ let result = maybe_person
 ```
 
 ### Snippets Usage
+
 Type any snippet prefix and press `Tab` to expand:
 
 - Type `def` + `Tab` → Function definition template
@@ -144,7 +160,9 @@ Type any snippet prefix and press `Tab` to expand:
 - Type `case` + `Tab` → Pattern matching template
 
 ### Code Formatting
+
 The extension sets recommended formatting defaults:
+
 - **Indentation**: 4 spaces (configurable)
 - **Line endings**: Auto-detect
 - **Trim whitespace**: Enabled
@@ -153,6 +171,7 @@ The extension sets recommended formatting defaults:
 ## Configuration
 
 ### Language-Specific Settings
+
 Add these to your VS Code `settings.json` for optimal Outrun development:
 
 ```json
@@ -169,6 +188,7 @@ Add these to your VS Code `settings.json` for optimal Outrun development:
 ```
 
 ### Custom Keybindings
+
 Add custom keybindings for Outrun-specific actions:
 
 ```json
@@ -186,15 +206,15 @@ Add custom keybindings for Outrun-specific actions:
 
 ## Features Comparison
 
-| Feature | Status | Description |
-|---------|---------|-------------|
+| Feature                 | Status      | Description                         |
+| ----------------------- | ----------- | ----------------------------------- |
 | **Syntax Highlighting** | ✅ Complete | All language constructs highlighted |
-| **Auto-completion** | 🚧 Planned | Context-aware suggestions |
-| **Error Checking** | 🚧 Planned | Real-time syntax/type errors |
-| **Go to Definition** | 🚧 Planned | Navigate to symbol definitions |
-| **Hover Information** | 🚧 Planned | Type info and documentation |
-| **Refactoring** | 🚧 Planned | Rename, extract, etc. |
-| **Debugging** | 🚧 Planned | Integrated debugger support |
+| **Auto-completion**     | 🚧 Planned  | Context-aware suggestions           |
+| **Error Checking**      | 🚧 Planned  | Real-time syntax/type errors        |
+| **Go to Definition**    | 🚧 Planned  | Navigate to symbol definitions      |
+| **Hover Information**   | 🚧 Planned  | Type info and documentation         |
+| **Refactoring**         | 🚧 Planned  | Rename, extract, etc.               |
+| **Debugging**           | 🚧 Planned  | Integrated debugger support         |
 
 ✅ = Available now
 🚧 = Planned for future releases
@@ -218,6 +238,7 @@ We're planning a full Language Server Protocol implementation that will provide:
 **Problem**: Syntax highlighting not working for `.outrun` files
 
 **Solutions**:
+
 1. Check that the file extension is exactly `.outrun`
 2. Restart VS Code after installation
 3. Check the language mode in the bottom-right corner of VS Code
@@ -228,6 +249,7 @@ We're planning a full Language Server Protocol implementation that will provide:
 **Problem**: Tab completion not expanding snippets
 
 **Solutions**:
+
 1. Ensure `editor.tabCompletion` is set to `"on"` or `"onlySnippets"`
 2. Try `Cmd+Shift+P` → "Insert Snippet" to browse available snippets
 3. Check that you're in an `.outrun` file
@@ -237,6 +259,7 @@ We're planning a full Language Server Protocol implementation that will provide:
 **Problem**: Some code highlighted incorrectly
 
 **Solutions**:
+
 1. Try reloading the window: `Cmd+Shift+P` → "Developer: Reload Window"
 2. Check for conflicting extensions that might override Outrun highlighting
 3. File an issue with a code sample on our [GitHub repository](https://harton.dev/outrun/outrun/issues)
@@ -246,6 +269,7 @@ We're planning a full Language Server Protocol implementation that will provide:
 **Problem**: VS Code slow with large Outrun files
 
 **Solutions**:
+
 1. Disable semantic highlighting: `"editor.semanticHighlighting.enabled": false`
 2. Increase tokenization timeout: `"editor.maxTokenizationLineLength": 20000`
 3. Consider breaking large files into smaller modules
@@ -253,6 +277,7 @@ We're planning a full Language Server Protocol implementation that will provide:
 ## Development
 
 ### Building from Source
+
 ```bash
 git clone https://harton.dev/outrun/outrun.git
 cd outrun/editor-support/vscode
@@ -261,6 +286,7 @@ npm run compile
 ```
 
 ### Testing
+
 ```bash
 # Open extension in development mode
 code --extensionDevelopmentPath=.
@@ -270,6 +296,7 @@ vsce package
 ```
 
 ### Contributing
+
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes to the extension
@@ -281,13 +308,16 @@ See the main [Outrun contributing guide](https://harton.dev/outrun/outrun/blob/m
 ## Related Extensions
 
 ### Recommended Extensions
+
 - **Error Lens** - Inline error/warning display
 - **Bracket Pair Colorizer** - Enhanced bracket highlighting
 - **GitLens** - Git integration and history
 - **Todo Highlight** - Highlight TODO comments
 
 ### Theme Recommendations
+
 The extension works with all VS Code themes, but these complement Outrun's syntax well:
+
 - **One Dark Pro**
 - **Dracula Official**
 - **Material Theme**
@@ -307,6 +337,7 @@ This extension is licensed under the MIT License. See the [LICENSE](https://hart
 ## Changelog
 
 ### 0.1.0 (Initial Release)
+
 - ✨ Complete syntax highlighting for all Outrun constructs
 - ✨ Comprehensive snippet collection (35+ snippets)
 - ✨ Smart auto-indentation and bracket matching

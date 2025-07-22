@@ -1,14 +1,14 @@
 @Doc(content: """
-Display trait for types that can be converted to a user-friendly string representation.
+Display protocol for types that can be converted to a user-friendly string representation.
 
-The Display trait is used to format values for user-facing output. It provides a
+The Display protocol is used to format values for user-facing output. It provides a
 single method for converting a value to a string that is appropriate for display
 to end users.
 
 ## Examples
 
 ```outrun
-def show_value(value: Outrun.Core.Float64): String 
+def show_value(value: Outrun.Core.Float64): String
 where Outrun.Core.Float64: Display {
     Display.to_string(value: value)
 }
@@ -32,15 +32,15 @@ where Outrun.Core.Integer64: Display {
 - `Outrun.Core.Boolean` - "true" or "false"
 - `Outrun.Core.Atom` - Atom literal representation
 """)
-trait Display {
+protocol Display {
     @Doc(content: """
     Convert this value to its user-friendly string representation.
-    
+
     Returns a string representation suitable for displaying to end users.
     This should be human-readable and appropriate for user interfaces.
-    
+
     ## Examples
-    
+
     ```outrun
     Display.to_string(value: 42)      # "42"
     Display.to_string(value: 3.14)    # "3.14"

@@ -1,7 +1,7 @@
 @Doc(content: """
-Bitwise OR trait for the | operator.
+Bitwise OR protocol for the | operator.
 
-The BitwiseOr trait defines the behaviour for the | operator.
+The BitwiseOr protocol defines the behaviour for the | operator.
 When you write `a | b`, it becomes `BitwiseOr.or(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -19,7 +19,7 @@ When you write `a | b`, it becomes `BitwiseOr.or(lhs: a, rhs: b)`.
 flags | FLAG_ENABLED          # BitwiseOr.or(lhs: flags, rhs: FLAG_ENABLED): Integer64
 ```
 """)
-trait BitwiseOr {
+protocol BitwiseOr {
     @Doc(content: "Perform bitwise OR on two values")
     def or(lhs: Self, rhs: Self): Self
 }

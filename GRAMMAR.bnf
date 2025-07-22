@@ -13,7 +13,7 @@ TYPE_IDENTIFIER ::= [A-Z][a-zA-Z0-9_]*
 MODULE_PATH ::= TYPE_IDENTIFIER ("." TYPE_IDENTIFIER)*
 
 # Keywords
-KEYWORDS ::= "struct" | "trait" | "impl" | "def" | "defs" | "defp" | "let" | "const" | "fn" | "if" | "else" | "case" | "when" | "alias" | "true" | "false" | "for" | "Self"
+KEYWORDS ::= "struct" | "protocol" | "impl" | "def" | "defs" | "defp" | "let" | "const" | "fn" | "if" | "else" | "case" | "when" | "alias" | "true" | "false" | "for" | "Self"
 
 # Literals
 INTEGER ::= DECIMAL | BINARY | OCTAL | HEXADECIMAL
@@ -51,7 +51,7 @@ PUNCTUATION ::= "(" | ")" | "{" | "}" | "[" | "]" | ":" | "," | "." | ".." | "..
 program ::= item*
 
 item ::= struct_definition
-       | trait_definition  
+       | protocol_definition
        | impl_block
        | function_definition
        | constant_definition
@@ -74,20 +74,20 @@ struct_fields ::= (IDENTIFIER ":" type_annotation ("," IDENTIFIER ":" type_annot
 
 struct_impl_block ::= function_definition*
 
-# Trait Definition  
-trait_definition ::= attribute* "trait" TYPE_IDENTIFIER generic_params? trait_constraints? "{" trait_body "}"
+# Protocol Definition
+protocol_definition ::= attribute* "protocol" TYPE_IDENTIFIER generic_params? protocol_constraints? "{" protocol_body "}"
 
-trait_body ::= trait_function*
-trait_function ::= function_signature | function_definition | static_function_definition
+protocol_body ::= protocol_function*
+protocol_function ::= function_signature | function_definition | static_function_definition
 
 static_function_definition ::= attribute* "defs" IDENTIFIER "(" parameter_list ")" return_type? function_body
 
 # Implementation Block
-impl_block ::= "impl" generic_params? trait_spec "for" type_spec trait_constraints? "{" impl_body "}"
+impl_block ::= "impl" generic_params? protocol_spec "for" type_spec protocol_constraints? "{" impl_body "}"
 
 impl_body ::= function_definition*
 
-trait_spec ::= MODULE_PATH generic_args?
+protocol_spec ::= MODULE_PATH generic_args?
 type_spec ::= MODULE_PATH generic_args?
 
 # Generic Parameters and Arguments
@@ -96,7 +96,7 @@ generic_param ::= TYPE_IDENTIFIER
 
 generic_args ::= "<" type_annotation ("," type_annotation)* ">"
 
-trait_constraints ::= "when" constraint_expression
+protocol_constraints ::= "when" constraint_expression
 constraint_expression ::= constraint_term (("&&" | "||") constraint_term)*
 constraint_term ::= guard_call | "(" constraint_expression ")"
 ```
@@ -182,7 +182,7 @@ unary_expression ::= UNARY_OP unary_expression
 
 postfix_expression ::= primary_expression postfix_operator*
 postfix_operator ::= "." IDENTIFIER                    # Field access
-                   | "." INTEGER                        # Tuple access  
+                   | "." INTEGER                        # Tuple access
                    | "(" argument_list ")"              # Function call
                    | "[" expression "]"                 # Index access
 
@@ -211,7 +211,7 @@ shorthand_argument ::= IDENTIFIER
 
 ```bnf
 literal ::= INTEGER
-          | FLOAT  
+          | FLOAT
           | STRING
           | MULTILINE_STRING
           | ATOM
@@ -245,21 +245,21 @@ struct_update ::= ".." expression
 # If Expression
 if_expression ::= "if" expression "{" function_body "}" ("else" "{" function_body "}")?
 
-# Case Expression  
-case_expression ::= concrete_case_expression | trait_case_expression
+# Case Expression
+case_expression ::= concrete_case_expression | protocol_case_expression
 
 concrete_case_expression ::= "case" expression "{" case_clause+ "}"
-trait_case_expression ::= "case" expression "as" TYPE_IDENTIFIER "{" trait_case_clause+ "}"
+protocol_case_expression ::= "case" expression "as" TYPE_IDENTIFIER "{" protocol_case_clause+ "}"
 
 case_clause ::= case_pattern "->" (expression | "{" function_body "}")
-trait_case_clause ::= trait_case_pattern "->" (expression | "{" function_body "}")
+protocol_case_clause ::= protocol_case_pattern "->" (expression | "{" function_body "}")
 
 case_pattern ::= destructure_pattern guard_clause?
-trait_case_pattern ::= TYPE_IDENTIFIER "{" struct_pattern_fields? "}" guard_clause?
+protocol_case_pattern ::= TYPE_IDENTIFIER "{" struct_pattern_fields? "}" guard_clause?
 
-destructure_pattern ::= struct_pattern 
+destructure_pattern ::= struct_pattern
                       | tuple_pattern
-                      | list_pattern  
+                      | list_pattern
                       | value_pattern
                       | identifier_pattern
 
@@ -337,7 +337,7 @@ WHITESPACE ::= [ \t\n\r]+
 
 # The parser uses context-sensitive rules to determine line continuation:
 # - Lines ending with operators, commas, opening braces/brackets continue
-# - Lines with unmatched braces/brackets continue  
+# - Lines with unmatched braces/brackets continue
 # - Complete expressions on their own line terminate
 ```
 
@@ -345,7 +345,7 @@ WHITESPACE ::= [ \t\n\r]+
 
 1. Postfix operators (`.`, `()`, `[]`)
 2. Unary operators (`+`, `-`, `!`, `~`)
-3. Exponentiation (`**`) 
+3. Exponentiation (`**`)
 4. Multiplicative (`*`, `/`, `%`)
 5. Additive (`+`, `-`)
 6. Shift (`<<`, `>>`)

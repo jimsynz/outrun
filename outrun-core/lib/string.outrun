@@ -1,11 +1,11 @@
 @Doc(content: """
-String trait for UTF-8 text manipulation.
+String protocol for UTF-8 text manipulation.
 
-This trait defines the core operations for working with UTF-8 strings.
+This protocol defines the core operations for working with UTF-8 strings.
 All operations work at the Unicode code point level, ensuring proper
 handling of multi-byte characters.
 
-For byte-level operations, see the Binary trait instead.
+For byte-level operations, see the Binary protocol instead.
 
 ## Examples
 
@@ -28,12 +28,12 @@ String.length(value: text)        # 4
 String.char_at(value: text, index: 3)  # Some("é")
 ```
 """)
-trait String {
+protocol String {
     @Doc(content: """
     Returns the length of the string in Unicode code points.
-    
+
     ## Examples
-    
+
     ```outrun
     String.length(value: "hello")     # 5
     String.length(value: "héllo")     # 5 (not 6 bytes)
@@ -41,30 +41,30 @@ trait String {
     ```
     """)
     def length(value: Self): Integer
-    
+
     @Doc(content: """
     Returns the character at the given index as an Option.
-    
+
     Index is in Unicode code points, not bytes.
     Returns None if index is out of bounds.
-    
+
     ## Examples
-    
+
     ```outrun
     String.char_at(value: "hello", index: 1)  # Some("e")
     String.char_at(value: "hello", index: 10) # None
     ```
     """)
     def char_at(value: Self, index: Integer): Option<Self>
-    
+
     @Doc(content: """
     Extracts a substring from start to end (exclusive).
-    
+
     Both indices are in Unicode code points.
     Returns empty string if start >= end or indices are out of bounds.
-    
+
     ## Examples
-    
+
     ```outrun
     String.slice(value: "hello", start: 1, end: 4)  # "ell"
     String.slice(value: "hello", start: 0, end: 5)  # "hello"
@@ -72,39 +72,39 @@ trait String {
     ```
     """)
     def slice(value: Self, start: Integer, end: Integer): Self
-    
+
     @Doc(content: """
     Concatenates two strings together.
-    
+
     ## Examples
-    
+
     ```outrun
     String.concat(lhs: "hello", rhs: " world")  # "hello world"
     String.concat(lhs: "", rhs: "test")         # "test"
     ```
     """)
     def concat(lhs: Self, rhs: Self): Self
-    
+
     @Doc(content: """
     Finds the first occurrence of a substring and returns its index.
-    
+
     Returns None if the substring is not found.
     Index is in Unicode code points.
-    
+
     ## Examples
-    
+
     ```outrun
     String.index_of(value: "hello world", search: "world")  # Some(6)
     String.index_of(value: "hello", search: "xyz")          # None
     ```
     """)
     def index_of(value: Self, search: Self): Option<Integer>
-    
+
     @Doc(content: """
     Checks if the string contains a given substring.
-    
+
     ## Examples
-    
+
     ```outrun
     String.contains?(value: "hello world", search: "world")  # true
     String.contains?(value: "hello", search: "xyz")          # false
@@ -113,12 +113,12 @@ trait String {
     def contains?(value: Self, search: Self): Boolean {
         Option.some?(value: index_of(value: value, search: search))
     }
-    
+
     @Doc(content: """
     Checks if the string starts with a given prefix.
-    
+
     ## Examples
-    
+
     ```outrun
     String.starts_with?(value: "hello world", prefix: "hello")  # true
     String.starts_with?(value: "hello", prefix: "world")        # false
@@ -129,12 +129,12 @@ trait String {
         let value_slice = slice(value: value, start: 0, end: prefix_length)
         value_slice == prefix
     }
-    
+
     @Doc(content: """
     Checks if the string ends with a given suffix.
-    
+
     ## Examples
-    
+
     ```outrun
     String.ends_with?(value: "hello world", suffix: "world")  # true
     String.ends_with?(value: "hello", suffix: "world")        # false
@@ -147,105 +147,105 @@ trait String {
         let value_slice = slice(value: value, start: start_pos, end: value_length)
         value_slice == suffix
     }
-    
+
     @Doc(content: """
     Converts the string to uppercase.
-    
+
     Uses Unicode case mapping rules.
-    
+
     ## Examples
-    
+
     ```outrun
     String.to_upper(value: "hello")  # "HELLO"
     String.to_upper(value: "café")   # "CAFÉ"
     ```
     """)
     def to_upper(value: Self): Self
-    
+
     @Doc(content: """
     Converts the string to lowercase.
-    
+
     Uses Unicode case mapping rules.
-    
+
     ## Examples
-    
+
     ```outrun
     String.to_lower(value: "HELLO")  # "hello"
     String.to_lower(value: "CAFÉ")   # "café"
     ```
     """)
     def to_lower(value: Self): Self
-    
+
     @Doc(content: """
     Removes whitespace from both ends of the string.
-    
+
     Removes all Unicode whitespace characters.
-    
+
     ## Examples
-    
+
     ```outrun
     String.trim(value: "  hello  ")    # "hello"
     String.trim(value: "\t\ntest\r\n") # "test"
     ```
     """)
     def trim(value: Self): Self
-    
+
     @Doc(content: """
     Removes whitespace from the start of the string.
-    
+
     ## Examples
-    
+
     ```outrun
     String.trim_start(value: "  hello  ")  # "hello  "
     ```
     """)
     def trim_start(value: Self): Self
-    
+
     @Doc(content: """
     Removes whitespace from the end of the string.
-    
+
     ## Examples
-    
+
     ```outrun
     String.trim_end(value: "  hello  ")  # "  hello"
     ```
     """)
     def trim_end(value: Self): Self
-    
+
     @Doc(content: """
     Checks if the string is valid UTF-8.
-    
+
     All Outrun strings should be valid UTF-8, but this function
     can be used to validate external input.
-    
+
     ## Examples
-    
+
     ```outrun
     String.valid_utf8?(value: "hello")  # true
     String.valid_utf8?(value: "café")   # true
     ```
     """)
     def valid_utf8?(value: Self): Boolean
-    
+
     @Doc(content: """
     Converts the string to the core string type.
-    
+
     This provides a canonical conversion from any string implementation
     to the concrete Outrun.Core.String type.
-    
+
     ## Examples
-    
+
     ```outrun
     String.to_string(value: some_string)  # Outrun.Core.String
     ```
     """)
     def to_string(value: Self): Outrun.Core.String
-    
+
     @Doc(content: """
     Checks if the string is empty (length 0).
-    
+
     ## Examples
-    
+
     ```outrun
     String.empty?(value: "")      # true
     String.empty?(value: "test")  # false

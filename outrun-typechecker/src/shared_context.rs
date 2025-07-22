@@ -160,7 +160,7 @@ mod tests {
         let context = SharedCompilationContextFactory::create_from_core_library();
 
         // Verify core compilation is accessible
-        assert!(!context.core_compilation().traits.is_empty());
+        assert!(!context.core_compilation().protocols.is_empty());
         assert!(!context.core_compilation().structs.is_empty());
     }
 

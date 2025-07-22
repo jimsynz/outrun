@@ -10,9 +10,9 @@ use crate::checker::{
     TypedCaseVariant, TypedConstDefinition, TypedDebugInfo, TypedExpression, TypedExpressionKind,
     TypedFunctionDefinition, TypedFunctionPath, TypedFunctionTypeParam, TypedGenericContext,
     TypedGenericParam, TypedImplBlock, TypedItem, TypedItemKind, TypedLetBinding,
-    TypedMacroDefinition, TypedMapEntry, TypedParameter, TypedProgram, TypedStatement,
-    TypedStructDefinition, TypedStructField, TypedStructFieldDefinition, TypedTraitDefinition,
-    TypedTraitFunction, TypedTypeAnnotation, TypedTypeAnnotationKind, TypedWhenClause,
+    TypedMacroDefinition, TypedMapEntry, TypedParameter, TypedProgram, TypedProtocolDefinition,
+    TypedProtocolFunction, TypedStatement, TypedStructDefinition, TypedStructField,
+    TypedStructFieldDefinition, TypedTypeAnnotation, TypedTypeAnnotationKind, TypedWhenClause,
 };
 #[allow(unused_imports)]
 use crate::compilation::compiler_environment::{AtomId, TypeNameId};
@@ -25,9 +25,9 @@ use outrun_parser::{
     AnonymousClause, AnonymousFunction, Argument, BinaryOperator, Block, CaseExpression,
     ConstDefinition, Expression, ExpressionKind, FunctionCall, FunctionDefinition, FunctionPath,
     GenericParam, GenericParams, IfExpression, ImplBlock, Item, ItemKind, LetBinding, ListElement,
-    ListLiteral, MapEntry, MapLiteral, Parameter, Program, Span, Statement, StatementKind,
-    StructDefinition, StructField, StructLiteral, StructLiteralField, TraitDefinition,
-    TraitFunction, TupleLiteral, TypeSpec,
+    ListLiteral, MapEntry, MapLiteral, Parameter, Program, ProtocolDefinition, ProtocolFunction,
+    Span, Statement, StatementKind, StructDefinition, StructField, StructLiteral,
+    StructLiteralField, TupleLiteral, TypeSpec,
 };
 use std::collections::HashMap;
 
@@ -369,11 +369,11 @@ impl TypedASTBuilder {
                     TypedItemKind::Placeholder("Failed to convert struct definition".to_string())
                 }
             }
-            ItemKind::TraitDefinition(trait_def) => {
-                if let Some(typed_trait) = self.convert_trait_definition(trait_def) {
-                    TypedItemKind::TraitDefinition(typed_trait)
+            ItemKind::ProtocolDefinition(protocol_def) => {
+                if let Some(typed_protocol) = self.convert_protocol_definition(protocol_def) {
+                    TypedItemKind::ProtocolDefinition(typed_protocol)
                 } else {
-                    TypedItemKind::Placeholder("Failed to convert trait definition".to_string())
+                    TypedItemKind::Placeholder("Failed to convert protocol definition".to_string())
                 }
             }
             ItemKind::ImplBlock(impl_block) => {
@@ -1324,7 +1324,7 @@ impl TypedASTBuilder {
         })
     }
 
-    /// Convert case expression (concrete or trait variant)
+    /// Convert case expression (concrete or protocol variant)
     fn convert_case_expression(
         &mut self,
         case_expr: &CaseExpression,
@@ -1846,16 +1846,16 @@ impl TypedASTBuilder {
         })
     }
 
-    /// Convert trait definition with function signature validation
-    fn convert_trait_definition(
+    /// Convert protocol definition with function signature validation
+    fn convert_protocol_definition(
         &mut self,
-        trait_def: &TraitDefinition,
-    ) -> Option<TypedTraitDefinition> {
+        protocol_def: &ProtocolDefinition,
+    ) -> Option<TypedProtocolDefinition> {
         // Convert name path to string representation
-        let name: Vec<String> = trait_def.name.iter().map(|t| t.name.clone()).collect();
+        let name: Vec<String> = protocol_def.name.iter().map(|t| t.name.clone()).collect();
 
         // Convert generic parameters
-        let generic_params = if let Some(params) = &trait_def.generic_params {
+        let generic_params = if let Some(params) = &protocol_def.generic_params {
             self.convert_generic_params(params)
         } else {
             Vec::new()
@@ -1864,20 +1864,20 @@ impl TypedASTBuilder {
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
-        // Set module context for trait static functions
+        // Set module context for protocol static functions
         let previous_module_key = self.current_module_key.clone();
         if let Some(compiler_env) = &self.compiler_environment {
-            let trait_name = name.join(".");
-            let trait_type_id = compiler_env.intern_type_name(&trait_name);
+            let protocol_name = name.join(".");
+            let protocol_type_id = compiler_env.intern_type_name(&protocol_name);
             self.current_module_key = Some(
-                crate::compilation::compiler_environment::ModuleKey::Module(trait_type_id.hash),
+                crate::compilation::compiler_environment::ModuleKey::Module(protocol_type_id.hash),
             );
         }
 
-        // Convert trait functions
+        // Convert protocol functions
         let mut typed_functions = Vec::new();
-        for func in &trait_def.functions {
-            if let Some(typed_func) = self.convert_trait_function(func) {
+        for func in &protocol_def.functions {
+            if let Some(typed_func) = self.convert_protocol_function(func) {
                 typed_functions.push(typed_func);
             } else {
                 // Restore previous module context on failure
@@ -1889,23 +1889,26 @@ impl TypedASTBuilder {
         // Restore previous module context
         self.current_module_key = previous_module_key;
 
-        // Generate trait ID from name path
-        let trait_id = name.join(".");
+        // Generate protocol ID from name path
+        let protocol_id = name.join(".");
 
-        Some(TypedTraitDefinition {
+        Some(TypedProtocolDefinition {
             name,
             generic_params,
             constraints,
             functions: typed_functions,
-            trait_id,
-            span: trait_def.span,
+            protocol_id,
+            span: protocol_def.span,
         })
     }
 
-    /// Convert trait function (signature, definition, or static)
-    fn convert_trait_function(&mut self, func: &TraitFunction) -> Option<TypedTraitFunction> {
+    /// Convert protocol function (signature, definition, or static)
+    fn convert_protocol_function(
+        &mut self,
+        func: &ProtocolFunction,
+    ) -> Option<TypedProtocolFunction> {
         match func {
-            TraitFunction::Signature(sig) => {
+            ProtocolFunction::Signature(sig) => {
                 // Convert function signature
                 let mut typed_parameters = Vec::new();
                 for param in &sig.parameters {
@@ -1929,7 +1932,7 @@ impl TypedASTBuilder {
                     None
                 };
 
-                let typed_trait_function = TypedTraitFunction::Signature {
+                let typed_protocol_function = TypedProtocolFunction::Signature {
                     name: sig.name.name.clone(),
                     parameters: typed_parameters.clone(),
                     return_type: return_type.clone(),
@@ -1937,7 +1940,7 @@ impl TypedASTBuilder {
                     span: sig.span,
                 };
 
-                // Create a typed function definition for trait signatures to register their types
+                // Create a typed function definition for protocol signatures to register their types
                 // BUT mark them as non-executable to prevent interpreter from trying to run them
                 let empty_body = crate::checker::TypedBlock {
                     statements: Vec::new(),
@@ -1958,11 +1961,11 @@ impl TypedASTBuilder {
                     return_type: None, // TODO: Convert return type properly
                     guard: guard.clone(),
                     body: empty_body,
-                    function_id: format!("trait_signature::{}", sig.name.name),
+                    function_id: format!("protocol_signature::{}", sig.name.name),
                     span: sig.span,
                 };
 
-                // Update the compiler environment with the typed definition for trait signatures
+                // Update the compiler environment with the typed definition for protocol signatures
                 // These are needed for the type system but should not be executed
                 if let Some(compiler_env) = &self.compiler_environment {
                     if let Some(module_key) = &self.current_module_key {
@@ -1973,7 +1976,7 @@ impl TypedASTBuilder {
                             typed_function_def,
                         )
                     } else {
-                        // Fall back to legacy behavior for trait signatures
+                        // Fall back to legacy behavior for protocol signatures
                         compiler_env.update_function_with_typed_definition(
                             &sig.name.name,
                             typed_function_def,
@@ -1981,14 +1984,14 @@ impl TypedASTBuilder {
                     };
                 }
 
-                Some(typed_trait_function)
+                Some(typed_protocol_function)
             }
-            TraitFunction::Definition(def) => {
+            ProtocolFunction::Definition(def) => {
                 // Convert function definition
                 self.convert_function_definition(def)
-                    .map(TypedTraitFunction::Definition)
+                    .map(TypedProtocolFunction::Definition)
             }
-            TraitFunction::StaticDefinition(static_def) => {
+            ProtocolFunction::StaticDefinition(static_def) => {
                 // Convert static function definition
                 let mut typed_parameters = Vec::new();
                 for param in &static_def.parameters {
@@ -2010,7 +2013,7 @@ impl TypedASTBuilder {
                     return_type: return_type.clone(),
                     guard: None,
                     body: body.clone(),
-                    function_id: format!("static_trait::{}", static_def.name.name),
+                    function_id: format!("static_protocol::{}", static_def.name.name),
                     span: static_def.span,
                 };
 
@@ -2034,7 +2037,7 @@ impl TypedASTBuilder {
                     };
                 }
 
-                Some(TypedTraitFunction::StaticDefinition {
+                Some(TypedProtocolFunction::StaticDefinition {
                     name: static_def.name.name.clone(),
                     parameters: typed_parameters,
                     return_type,
@@ -2045,7 +2048,7 @@ impl TypedASTBuilder {
         }
     }
 
-    /// Convert impl block with trait validation and Self type resolution
+    /// Convert impl block with protocol validation and Self type resolution
     fn convert_impl_block(&mut self, impl_block: &ImplBlock) -> Option<TypedImplBlock> {
         // Convert generic parameters
         let generic_params = if let Some(params) = &impl_block.generic_params {
@@ -2054,13 +2057,13 @@ impl TypedASTBuilder {
             Vec::new()
         };
 
-        // Convert trait path
-        let trait_path = self.convert_type_spec(&impl_block.trait_spec);
+        // Convert protocol path
+        let protocol_path = self.convert_type_spec(&impl_block.protocol_spec);
 
         // Convert type path
         let type_path = self.convert_type_spec(&impl_block.type_spec);
 
-        // Resolve implementation type using the same method as trait registration
+        // Resolve implementation type using the same method as protocol registration
         let impl_type = if type_path.is_empty() {
             None
         } else {
@@ -2083,15 +2086,15 @@ impl TypedASTBuilder {
             }
         };
 
-        // Resolve trait type using the same method as trait registration
-        let trait_type = if trait_path.is_empty() {
+        // Resolve protocol type using the same method as protocol registration
+        let protocol_type = if protocol_path.is_empty() {
             None
         } else {
             match self
                 .compiler_environment
                 .as_ref()
                 .unwrap()
-                .convert_type_spec_to_structured_type(&impl_block.trait_spec)
+                .convert_type_spec_to_structured_type(&impl_block.protocol_spec)
             {
                 Ok(structured_type) => Some(structured_type),
                 Err(_) => {
@@ -2100,7 +2103,7 @@ impl TypedASTBuilder {
                         self.compiler_environment
                             .as_ref()
                             .unwrap()
-                            .intern_type_name(&trait_path.join(".")),
+                            .intern_type_name(&protocol_path.join(".")),
                     ))
                 }
             }
@@ -2113,21 +2116,21 @@ impl TypedASTBuilder {
         // Convert constraints (TODO: implement constraint parsing)
         let constraints = Vec::new(); // Placeholder for now
 
-        // Set module context for trait implementation functions
+        // Set module context for protocol implementation functions
         let previous_module_key = self.current_module_key.clone();
-        if let (Some(trait_type), Some(impl_type)) = (&trait_type, &impl_type) {
-            // IMPORTANT: Use the base trait type for module key consistency
-            // During registration, traits are stored with Simple types (e.g., Simple(Option))
+        if let (Some(protocol_type), Some(impl_type)) = (&protocol_type, &impl_type) {
+            // IMPORTANT: Use the base protocol type for module key consistency
+            // During registration, protocols are stored with Simple types (e.g., Simple(Option))
             // but resolved type specs create Generic types (e.g., Generic { base: Option, args: [T] })
             // We need to extract the base type to match the registration module key
-            let module_trait_type = match trait_type {
+            let module_protocol_type = match protocol_type {
                 StructuredType::Generic { base, .. } => StructuredType::Simple(base.clone()),
                 other => other.clone(),
             };
 
             self.current_module_key = Some(
-                crate::compilation::compiler_environment::ModuleKey::TraitImpl(
-                    Box::new(module_trait_type),
+                crate::compilation::compiler_environment::ModuleKey::ProtocolImpl(
+                    Box::new(module_protocol_type),
                     Box::new(impl_type.clone()),
                 ),
             );
@@ -2156,9 +2159,9 @@ impl TypedASTBuilder {
 
         Some(TypedImplBlock {
             generic_params,
-            trait_path,
+            protocol_path,
             type_path,
-            trait_type,
+            protocol_type,
             impl_type,
             constraints,
             functions: typed_functions,
@@ -2459,8 +2462,8 @@ impl TypedASTBuilder {
                 // TODO: Implement actual constraint validation
                 // For now, assume all constraints are valid
                 let _param_name = &constraint.param_name;
-                let _trait_path = &constraint.trait_path;
-                // Would check if substituted type implements required trait
+                let _protocol_path = &constraint.protocol_path;
+                // Would check if substituted type implements required protocol
             }
         }
         true // Placeholder - always valid for now

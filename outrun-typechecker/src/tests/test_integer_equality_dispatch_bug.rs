@@ -57,31 +57,31 @@ fn test_integer_equality_dispatch_bug() {
     };
 
     // Verify it's a function call to Equality.equal?
-    let (trait_name, function_name, dispatch_strategy, arguments) = match &equality_expr.kind {
+    let (protocol_name, function_name, dispatch_strategy, arguments) = match &equality_expr.kind {
         crate::checker::TypedExpressionKind::FunctionCall {
             function_path,
             arguments,
             dispatch_strategy,
             ..
         } => {
-            let (trait_name, function_name) = match function_path {
+            let (protocol_name, function_name) = match function_path {
                 crate::checker::TypedFunctionPath::Qualified { module, name } => {
                     (module.clone(), name.clone())
                 }
                 _ => panic!("Expected qualified function path"),
             };
-            (trait_name, function_name, dispatch_strategy, arguments)
+            (protocol_name, function_name, dispatch_strategy, arguments)
         }
         _ => panic!("Expected function call expression"),
     };
 
-    assert_eq!(trait_name, "Equality");
+    assert_eq!(protocol_name, "Equality");
     assert_eq!(function_name, "equal?");
     assert_eq!(arguments.len(), 2);
 
     // Verify dispatch strategy points to Integer64 implementation
     match dispatch_strategy {
-        crate::checker::DispatchMethod::Trait { impl_type, .. } => {
+        crate::checker::DispatchMethod::Protocol { impl_type, .. } => {
             // This should be Outrun.Core.Integer64, not Map
             let type_name = impl_type.to_string_representation();
             assert_eq!(
@@ -89,7 +89,7 @@ fn test_integer_equality_dispatch_bug() {
                 "Dispatch should resolve to Integer64, not Map"
             );
         }
-        _ => panic!("Expected trait dispatch method"),
+        _ => panic!("Expected protocol dispatch method"),
     }
 
     // The typechecker part is working correctly - this verifies that the dispatch

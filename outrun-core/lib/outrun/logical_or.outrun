@@ -1,7 +1,7 @@
 @Doc(content: """
-Logical OR trait for the || operator.
+Logical OR protocol for the || operator.
 
-The LogicalOr trait defines the behaviour for the || operator.
+The LogicalOr protocol defines the behaviour for the || operator.
 When you write `a || b`, it becomes `LogicalOr.or(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ true || false                 # LogicalOr.or(lhs: true, rhs: false): Boolean
 user.admin? || user.moderator?  # LogicalOr.or(lhs: user.admin?, rhs: user.moderator?): Boolean
 ```
 """)
-trait LogicalOr {
+protocol LogicalOr {
     @Doc(content: "Perform logical OR on two values")
     def or(lhs: Self, rhs: Self): Self
 }

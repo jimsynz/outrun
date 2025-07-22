@@ -10,11 +10,11 @@ fn create_program_from_source(source: &str) -> Program {
 }
 
 #[test]
-fn test_default_trait_implementation_not_required() {
-    let trait_source = r#"
-trait TestTrait {
+fn test_default_protocol_implementation_not_required() {
+    let protocol_source = r#"
+protocol TestProtocol {
     def required_function(value: Self): Self
-    
+
     def optional_function(value: Self): Self {
         value
     }
@@ -24,7 +24,7 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def required_function(value: Self): Self {
         value
     }
@@ -32,14 +32,14 @@ impl TestTrait for MyType {
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::new();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -79,10 +79,10 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_required_function_still_required() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def required_function(value: Self): Self
-    
+
     def optional_function(value: Self): Self {
         value
     }
@@ -92,7 +92,7 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def optional_function(value: Self): Self {
         value
     }
@@ -100,14 +100,14 @@ impl TestTrait for MyType {
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::new();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),
@@ -151,10 +151,10 @@ impl TestTrait for MyType {
 
 #[test]
 fn test_override_default_implementation() {
-    let trait_source = r#"
-trait TestTrait {
+    let protocol_source = r#"
+protocol TestProtocol {
     def required_function(value: Self): Self
-    
+
     def optional_function(value: Self): Self {
         value
     }
@@ -164,25 +164,25 @@ trait TestTrait {
     let impl_source = r#"
 struct MyType() {}
 
-impl TestTrait for MyType {
+impl TestProtocol for MyType {
     def required_function(value: Self): Self {
         value
     }
-    
+
     def optional_function(value: Self): Self {
         value
     }
 }
 "#;
 
-    let trait_program = create_program_from_source(trait_source);
+    let protocol_program = create_program_from_source(protocol_source);
     let impl_program = create_program_from_source(impl_source);
 
     let mut collection = ProgramCollection::new();
     collection.add_program(
-        "trait.outrun".to_string(),
-        trait_program,
-        trait_source.to_string(),
+        "protocol.outrun".to_string(),
+        protocol_program,
+        protocol_source.to_string(),
     );
     collection.add_program(
         "impl.outrun".to_string(),

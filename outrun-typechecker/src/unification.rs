@@ -2,7 +2,7 @@
 //!
 //! This module implements the comprehensive type unification algorithm described
 //! in the typechecker CLAUDE.md. It handles recursive unification of generic types,
-//! trait-based compatibility, and Self type resolution.
+//! protocol-based compatibility, and Self type resolution.
 
 use crate::compilation::compiler_environment::{
     AtomId as CompilerAtomId, CompilerEnvironment, TypeNameId,
@@ -29,9 +29,9 @@ pub enum UnificationError {
         expected: CompilerAtomId,
         found: CompilerAtomId,
     },
-    /// Trait implementation missing
-    TraitNotImplemented {
-        trait_id: TypeNameId,
+    /// Protocol implementation missing
+    ProtocolNotImplemented {
+        protocol_id: TypeNameId,
         type_id: TypeNameId,
     },
     /// Unbound type variable or Self in invalid context
@@ -93,10 +93,10 @@ pub enum StructuredType {
         fields: Vec<StructFieldDescriptor>,
     },
 
-    /// Concrete trait type
-    Trait {
+    /// Concrete protocol type
+    Protocol {
         name: TypeNameId,
-        functions: Vec<TraitFunctionDescriptor>,
+        functions: Vec<ProtocolFunctionDescriptor>,
     },
 
     /// Error type for recovery - represents a type that failed to resolve
@@ -117,9 +117,9 @@ pub struct StructFieldDescriptor {
     pub field_type: StructuredType,
 }
 
-/// Function descriptor for trait types
+/// Function descriptor for protocol types
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TraitFunctionDescriptor {
+pub struct ProtocolFunctionDescriptor {
     pub name: CompilerAtomId,
     pub params: Vec<FunctionParam>,
     pub return_type: StructuredType,
@@ -232,9 +232,9 @@ impl StructuredType {
         StructuredType::Struct { name, fields }
     }
 
-    /// Create a trait type
-    pub fn trait_type(name: TypeNameId, functions: Vec<TraitFunctionDescriptor>) -> Self {
-        StructuredType::Trait { name, functions }
+    /// Create a protocol type
+    pub fn protocol_type(name: TypeNameId, functions: Vec<ProtocolFunctionDescriptor>) -> Self {
+        StructuredType::Protocol { name, functions }
     }
 
     // =============================================================================
@@ -378,7 +378,7 @@ impl StructuredType {
                     field.field_type.collect_type_dependencies(deps);
                 }
             }
-            StructuredType::Trait { name, functions } => {
+            StructuredType::Protocol { name, functions } => {
                 if !deps.contains(name) {
                     deps.push(name.clone());
                 }
@@ -407,7 +407,7 @@ impl StructuredType {
     // Additional utility methods (replacing ConcreteType functionality)
     // =============================================================================
 
-    /// Check if a type can be used in conditionals (implements Boolean trait)
+    /// Check if a type can be used in conditionals (implements Boolean protocol)
     pub fn can_be_condition(&self) -> bool {
         // Only Boolean type can be used in conditionals (no truthiness in Outrun)
         matches!(self, StructuredType::Boolean)
@@ -441,9 +441,9 @@ impl StructuredType {
         matches!(self, StructuredType::Struct { .. })
     }
 
-    /// Check if this is a trait type
-    pub fn is_trait(&self) -> bool {
-        matches!(self, StructuredType::Trait { .. })
+    /// Check if this is a protocol type
+    pub fn is_protocol(&self) -> bool {
+        matches!(self, StructuredType::Protocol { .. })
     }
 
     /// Check if this is an error type (for error recovery)
@@ -514,12 +514,12 @@ impl StructuredType {
                     err_type.to_string_representation()
                 )
             }
-            // Concrete struct and trait types
+            // Concrete struct and protocol types
             StructuredType::Struct { name, .. } => {
                 format!("struct {name}")
             }
-            StructuredType::Trait { name, .. } => {
-                format!("trait {name}")
+            StructuredType::Protocol { name, .. } => {
+                format!("protocol {name}")
             }
             StructuredType::TypeError { fallback_type, .. } => {
                 // For error types, show the fallback type if available, otherwise show error marker
@@ -540,7 +540,7 @@ impl StructuredType {
 /// 2. Generic type unification with recursive argument checking
 /// 3. Tuple type unification with positional matching
 /// 4. Function type unification with named parameter matching
-/// 5. Simple type unification with trait-based compatibility
+/// 5. Simple type unification with protocol-based compatibility
 /// 6. Cross-type unification (always fails)
 pub fn unify_structured_types(
     type1: &StructuredType,
@@ -577,9 +577,9 @@ pub fn unify_structured_types(
         ) => {
             // Check if base types are identical first (e.g., Option vs Option)
             if base1 == base2 {
-                // Same base type - skip trait implementation checking and proceed to argument unification
+                // Same base type - skip protocol implementation checking and proceed to argument unification
             } else {
-                // Different base types - check trait implementation between them
+                // Different base types - check protocol implementation between them
                 let base1_module = compiler_env.get_module(base1.clone());
                 let base2_module = compiler_env.get_module(base2.clone());
 
@@ -589,12 +589,12 @@ pub fn unify_structured_types(
                         let struct_type1 = &module1.structured_type;
                         let struct_type2 = &module2.structured_type;
 
-                        // Check if one implements the other as a trait
+                        // Check if one implements the other as a protocol
                         // Try: does struct_type1 implement struct_type2? (e.g., Outrun.Core.Map<K,V> implements Map<K,V>)
-                        if compiler_env.implements_trait(struct_type1, struct_type2)
-                            || compiler_env.implements_trait(struct_type2, struct_type1)
+                        if compiler_env.implements_protocol(struct_type1, struct_type2)
+                            || compiler_env.implements_protocol(struct_type2, struct_type1)
                         {
-                            // Base types can unify via trait implementation - proceed with argument unification
+                            // Base types can unify via protocol implementation - proceed with argument unification
                         } else {
                             return Ok(None);
                         }
@@ -627,10 +627,10 @@ pub fn unify_structured_types(
             }
 
             // Choose the more concrete base type
-            let concrete_base = if compiler_env.is_trait(&StructuredType::Simple(base1.clone()))
-                && !compiler_env.is_trait(&StructuredType::Simple(base2.clone()))
+            let concrete_base = if compiler_env.is_protocol(&StructuredType::Simple(base1.clone()))
+                && !compiler_env.is_protocol(&StructuredType::Simple(base2.clone()))
             {
-                base2.clone() // base2 is concrete, base1 is trait - prefer concrete
+                base2.clone() // base2 is concrete, base1 is protocol - prefer concrete
             } else {
                 base1.clone() // base1 is concrete or both are same type category - prefer first
             };
@@ -717,24 +717,24 @@ pub fn unify_structured_types(
             }
         }
 
-        // 5. Simple Type Unification (handle trait compatibility)
+        // 5. Simple Type Unification (handle protocol compatibility)
         (StructuredType::Simple(type1), StructuredType::Simple(type2)) => {
             unify_simple_types(type1.clone(), type2.clone(), context, compiler_env)
         }
 
-        // 6. Trait-to-Generic Implementation Unification
-        // Handle cases like List (trait) vs Outrun.Core.List<T> (generic implementation)
-        (StructuredType::Simple(trait_type), StructuredType::Generic { base, args: _ }) => {
-            unify_trait_with_generic_implementation(
-                trait_type.clone(),
+        // 6. Protocol-to-Generic Implementation Unification
+        // Handle cases like List (protocol) vs Outrun.Core.List<T> (generic implementation)
+        (StructuredType::Simple(protocol_type), StructuredType::Generic { base, args: _ }) => {
+            unify_protocol_with_generic_implementation(
+                protocol_type.clone(),
                 base.clone(),
                 context,
                 compiler_env,
             )
         }
-        (StructuredType::Generic { base, args: _ }, StructuredType::Simple(trait_type)) => {
-            unify_trait_with_generic_implementation(
-                trait_type.clone(),
+        (StructuredType::Generic { base, args: _ }, StructuredType::Simple(protocol_type)) => {
+            unify_protocol_with_generic_implementation(
+                protocol_type.clone(),
                 base.clone(),
                 context,
                 compiler_env,
@@ -861,16 +861,19 @@ pub fn unify_structured_types(
             }
         }
 
-        // Trait type unification - name must match
-        (StructuredType::Trait { name: name1, .. }, StructuredType::Trait { name: name2, .. }) => {
+        // Protocol type unification - name must match
+        (
+            StructuredType::Protocol { name: name1, .. },
+            StructuredType::Protocol { name: name2, .. },
+        ) => {
             if name1 == name2 {
-                Ok(Some(type1.clone())) // Return either trait (they're the same)
+                Ok(Some(type1.clone())) // Return either protocol (they're the same)
             } else {
                 Ok(None)
             }
         }
 
-        // Mixed concrete/abstract unification - let trait-based compatibility handle this
+        // Mixed concrete/abstract unification - let protocol-based compatibility handle this
         (StructuredType::Simple(simple_type), concrete_type) => {
             // Try to unify simple type name with concrete type equivalent
             unify_simple_with_concrete(simple_type.clone(), concrete_type, context, compiler_env)
@@ -887,12 +890,12 @@ pub fn unify_structured_types(
     final_result
 }
 
-/// Simple type unification with trait-based compatibility
+/// Simple type unification with protocol-based compatibility
 ///
-/// This handles the relationship between traits and concrete types:
-/// - Boolean trait unifies with Outrun.Core.Boolean concrete type
-/// - Integer trait unifies with Outrun.Core.Integer64 concrete type
-/// - Generic type parameters (T, U, etc.) unify with concrete types implementing required traits
+/// This handles the relationship between protocols and concrete types:
+/// - Boolean protocol unifies with Outrun.Core.Boolean concrete type
+/// - Integer protocol unifies with Outrun.Core.Integer64 concrete type
+/// - Generic type parameters (T, U, etc.) unify with concrete types implementing required protocols
 /// - Etc.
 fn unify_simple_types(
     type1: TypeNameId,
@@ -915,7 +918,7 @@ fn unify_simple_types(
         if resolved_type1 == resolved_type2 {
             return Ok(Some(StructuredType::Simple(resolved_type1)));
         }
-        // Continue with trait-based unification using resolved types
+        // Continue with protocol-based unification using resolved types
         return unify_resolved_simple_types_new(
             resolved_type1,
             resolved_type2,
@@ -924,7 +927,7 @@ fn unify_simple_types(
         );
     }
 
-    // Original trait-based unification logic
+    // Original protocol-based unification logic
     unify_resolved_simple_types_new(type1, type2, context, compiler_env)
 }
 
@@ -1009,7 +1012,7 @@ fn is_generic_type_parameter(type_name: &str) -> bool {
     }
 }
 
-/// Unify already-resolved simple types with trait-based compatibility
+/// Unify already-resolved simple types with protocol-based compatibility
 /// Unified simple types using CompilerEnvironment (NEW VERSION)
 fn unify_resolved_simple_types_new(
     type1: TypeNameId,
@@ -1041,37 +1044,37 @@ fn unify_resolved_simple_types_new(
         }
     }
 
-    // Convert TypeNameId to StructuredType for trait checking
+    // Convert TypeNameId to StructuredType for protocol checking
     let type1_structured = StructuredType::Simple(type1.clone());
     let type2_structured = StructuredType::Simple(type2.clone());
 
-    // Check if types are traits using CompilerEnvironment
-    let type1_is_trait = compiler_env.is_trait(&type1_structured);
-    let type2_is_trait = compiler_env.is_trait(&type2_structured);
+    // Check if types are protocols using CompilerEnvironment
+    let type1_is_protocol = compiler_env.is_protocol(&type1_structured);
+    let type2_is_protocol = compiler_env.is_protocol(&type2_structured);
 
-    match (type1_is_trait, type2_is_trait) {
-        // Both traits: must be exactly equal (already checked above)
+    match (type1_is_protocol, type2_is_protocol) {
+        // Both protocols: must be exactly equal (already checked above)
         (true, true) => Ok(None),
 
-        // Type1 is trait, type2 is concrete: type2 must implement type1
+        // Type1 is protocol, type2 is concrete: type2 must implement type1
         (true, false) => {
-            if compiler_env.implements_trait(&type2_structured, &type1_structured) {
+            if compiler_env.implements_protocol(&type2_structured, &type1_structured) {
                 Ok(Some(type2_structured)) // Return the concrete type
             } else {
-                Err(UnificationError::TraitNotImplemented {
-                    trait_id: type1,
+                Err(UnificationError::ProtocolNotImplemented {
+                    protocol_id: type1,
                     type_id: type2,
                 })
             }
         }
 
-        // Type1 is concrete, type2 is trait: type1 must implement type2
+        // Type1 is concrete, type2 is protocol: type1 must implement type2
         (false, true) => {
-            if compiler_env.implements_trait(&type1_structured, &type2_structured) {
+            if compiler_env.implements_protocol(&type1_structured, &type2_structured) {
                 Ok(Some(type1_structured)) // Return the concrete type
             } else {
-                Err(UnificationError::TraitNotImplemented {
-                    trait_id: type2,
+                Err(UnificationError::ProtocolNotImplemented {
+                    protocol_id: type2,
                     type_id: type1,
                 })
             }
@@ -1082,34 +1085,34 @@ fn unify_resolved_simple_types_new(
     }
 }
 
-/// Unify a trait type with a generic implementation type
+/// Unify a protocol type with a generic implementation type
 ///
 /// This handles cases like:
-/// - List (trait) vs Outrun.Core.List<T> (generic implementation)
-/// - Option (trait) vs Outrun.Core.Option<T> (generic implementation)
+/// - List (protocol) vs Outrun.Core.List<T> (generic implementation)
+/// - Option (protocol) vs Outrun.Core.Option<T> (generic implementation)
 ///
-/// The unification succeeds if the generic type implements the trait.
-fn unify_trait_with_generic_implementation(
-    trait_type: TypeNameId,
+/// The unification succeeds if the generic type implements the protocol.
+fn unify_protocol_with_generic_implementation(
+    protocol_type: TypeNameId,
     implementation_base: TypeNameId,
     _context: &UnificationContext,
     compiler_env: &CompilerEnvironment,
 ) -> UnificationResult<Option<StructuredType>> {
-    // Convert to StructuredType for CompilerEnvironment trait checking
-    let trait_structured = StructuredType::Simple(trait_type.clone());
+    // Convert to StructuredType for CompilerEnvironment protocol checking
+    let protocol_structured = StructuredType::Simple(protocol_type.clone());
     let impl_structured = StructuredType::Simple(implementation_base.clone());
 
-    // Check if the trait is actually a trait
-    if !compiler_env.is_trait(&trait_structured) {
+    // Check if the protocol is actually a protocol
+    if !compiler_env.is_protocol(&protocol_structured) {
         return Ok(None);
     }
 
-    // Check if the implementation type implements the trait
-    if compiler_env.implements_trait(&impl_structured, &trait_structured) {
+    // Check if the implementation type implements the protocol
+    if compiler_env.implements_protocol(&impl_structured, &protocol_structured) {
         Ok(Some(impl_structured)) // Return the concrete implementation type
     } else {
-        Err(UnificationError::TraitNotImplemented {
-            trait_id: trait_type,
+        Err(UnificationError::ProtocolNotImplemented {
+            protocol_id: protocol_type,
             type_id: implementation_base,
         })
     }
@@ -1141,13 +1144,13 @@ fn unify_simple_with_concrete(
         ("Option", StructuredType::Option { .. }) => Some(concrete_type.clone()),
         ("Result", StructuredType::Result { .. }) => Some(concrete_type.clone()),
 
-        // Check if the simple type is a trait that the concrete type implements
+        // Check if the simple type is a protocol that the concrete type implements
         _ => {
             let simple_structured = StructuredType::Simple(simple_type.clone());
 
-            // If simple type is a trait, check if concrete type implements it
-            if compiler_env.is_trait(&simple_structured) {
-                // For concrete types, create a simple type representation for trait checking
+            // If simple type is a protocol, check if concrete type implements it
+            if compiler_env.is_protocol(&simple_structured) {
+                // For concrete types, create a simple type representation for protocol checking
                 let concrete_as_simple = match concrete_type {
                     StructuredType::Integer64 => {
                         StructuredType::Simple(compiler_env.intern_type_name("Integer64"))
@@ -1180,7 +1183,7 @@ fn unify_simple_with_concrete(
                 };
 
                 return Ok(
-                    if compiler_env.implements_trait(&concrete_as_simple, &simple_structured) {
+                    if compiler_env.implements_protocol(&concrete_as_simple, &simple_structured) {
                         Some(concrete_type.clone()) // Return the concrete type
                     } else {
                         None
@@ -1316,8 +1319,8 @@ impl UnificationContext {
                     fields: resolved_fields?,
                 })
             }
-            // Concrete trait types need function signature resolution
-            StructuredType::Trait { name, functions } => {
+            // Concrete protocol types need function signature resolution
+            StructuredType::Protocol { name, functions } => {
                 let resolved_functions: Result<Vec<_>, _> = functions
                     .iter()
                     .map(|func| {
@@ -1334,7 +1337,7 @@ impl UnificationContext {
                             .collect();
                         let resolved_return =
                             self.resolve_type(&func.return_type, _compiler_env)?;
-                        Ok(TraitFunctionDescriptor {
+                        Ok(ProtocolFunctionDescriptor {
                             name: func.name.clone(),
                             params: resolved_params?,
                             return_type: resolved_return,
@@ -1344,7 +1347,7 @@ impl UnificationContext {
                         })
                     })
                     .collect();
-                Ok(StructuredType::Trait {
+                Ok(StructuredType::Protocol {
                     name: name.clone(),
                     functions: resolved_functions?,
                 })
@@ -1469,23 +1472,23 @@ impl UnificationContext {
     /// Create a lightweight summary of this context for package interfaces
     pub fn create_summary(&self, compiler_env: &CompilerEnvironment) -> TypeContextSummary {
         let type_definitions = HashMap::new();
-        let mut trait_implementations = HashMap::new();
+        let mut protocol_implementations = HashMap::new();
 
         // Extract type definitions (simplified for now)
         // TODO: Implement proper type definition extraction
 
-        // Extract trait implementations from CompilerEnvironment
+        // Extract protocol implementations from CompilerEnvironment
         let modules = compiler_env.modules().read().unwrap();
         for (module_key, _module) in modules.iter() {
-            if let crate::compilation::compiler_environment::ModuleKey::TraitImpl(
-                trait_type,
+            if let crate::compilation::compiler_environment::ModuleKey::ProtocolImpl(
+                protocol_type,
                 impl_type,
             ) = module_key
             {
-                let trait_name = trait_type.to_string_representation();
+                let protocol_name = protocol_type.to_string_representation();
                 let impl_name = impl_type.to_string_representation();
-                trait_implementations
-                    .entry(trait_name)
+                protocol_implementations
+                    .entry(protocol_name)
                     .or_insert_with(Vec::new)
                     .push(impl_name);
             }
@@ -1493,7 +1496,7 @@ impl UnificationContext {
 
         TypeContextSummary {
             type_definitions,
-            trait_implementations,
+            protocol_implementations,
         }
     }
 }
@@ -1516,14 +1519,14 @@ mod tests {
         let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
         let core_boolean_id = compiler_env.intern_type_name("Outrun.Core.Boolean");
 
-        // Register trait implementations using CompilerEnvironment
+        // Register protocol implementations using CompilerEnvironment
         let string_structured = StructuredType::Simple(string_id);
         let boolean_structured = StructuredType::Simple(boolean_id);
         let core_string_structured = StructuredType::Simple(core_string_id);
         let core_boolean_structured = StructuredType::Simple(core_boolean_id);
 
-        compiler_env.register_trait_implementation(core_string_structured, string_structured);
-        compiler_env.register_trait_implementation(core_boolean_structured, boolean_structured);
+        compiler_env.register_protocol_implementation(core_string_structured, string_structured);
+        compiler_env.register_protocol_implementation(core_boolean_structured, boolean_structured);
 
         (context, compiler_env)
     }
@@ -1544,22 +1547,22 @@ mod tests {
     }
 
     #[test]
-    fn test_trait_concrete_unification() {
+    fn test_protocol_concrete_unification() {
         let (context, compiler_env) = create_test_context();
-        let string_trait_id = compiler_env.intern_type_name("String");
+        let string_protocol_id = compiler_env.intern_type_name("String");
         let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-        let trait_type = StructuredType::Simple(string_trait_id);
+        let protocol_type = StructuredType::Simple(string_protocol_id);
         let concrete_type = StructuredType::Simple(core_string_id);
 
-        // Trait should unify with implementing concrete type
+        // Protocol should unify with implementing concrete type
         assert!(
-            unify_structured_types(&trait_type, &concrete_type, &context, &compiler_env)
+            unify_structured_types(&protocol_type, &concrete_type, &context, &compiler_env)
                 .unwrap()
                 .is_some()
         );
         assert!(
-            unify_structured_types(&concrete_type, &trait_type, &context, &compiler_env)
+            unify_structured_types(&concrete_type, &protocol_type, &context, &compiler_env)
                 .unwrap()
                 .is_some()
         );
@@ -1569,22 +1572,25 @@ mod tests {
     fn test_generic_type_unification() {
         let (context, compiler_env) = create_test_context();
         let option_id = compiler_env.intern_type_name("Option");
-        let string_trait_id = compiler_env.intern_type_name("String");
+        let string_protocol_id = compiler_env.intern_type_name("String");
         let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-        let option_trait = StructuredType::generic(
+        let option_protocol = StructuredType::generic(
             option_id.clone(),
-            vec![StructuredType::Simple(string_trait_id)],
+            vec![StructuredType::Simple(string_protocol_id)],
         );
         let option_concrete =
             StructuredType::generic(option_id, vec![StructuredType::Simple(core_string_id)]);
 
         // Option<String> should unify with Option<Outrun.Core.String>
-        assert!(
-            unify_structured_types(&option_trait, &option_concrete, &context, &compiler_env)
-                .unwrap()
-                .is_some()
-        );
+        assert!(unify_structured_types(
+            &option_protocol,
+            &option_concrete,
+            &context,
+            &compiler_env
+        )
+        .unwrap()
+        .is_some());
     }
 
     #[test]
@@ -1637,7 +1643,7 @@ mod tests {
     // Self type resolution is now handled by the type parameter system in multi_program_compiler
 }
 
-/// Self type substitution system for trait function calls
+/// Self type substitution system for protocol function calls
 /// This module provides comprehensive Self -> concrete type substitution
 /// in generic contexts like Option<Self> -> Option<ConcreteType>
 pub mod self_substitution {
@@ -1769,7 +1775,7 @@ pub mod self_substitution {
                     fields: substituted_fields,
                 })
             }
-            StructuredType::Trait { name, functions } => {
+            StructuredType::Protocol { name, functions } => {
                 // Substitute Self in function signatures
                 let mut substituted_functions = Vec::new();
                 for func in functions {
@@ -1781,7 +1787,7 @@ pub mod self_substitution {
                         });
                     }
                     let substituted_return = substitute_self_in_type(&func.return_type, self_type)?;
-                    substituted_functions.push(TraitFunctionDescriptor {
+                    substituted_functions.push(ProtocolFunctionDescriptor {
                         name: func.name.clone(),
                         params: substituted_params,
                         return_type: substituted_return,
@@ -1790,7 +1796,7 @@ pub mod self_substitution {
                         has_default_impl: func.has_default_impl,
                     });
                 }
-                Ok(StructuredType::Trait {
+                Ok(StructuredType::Protocol {
                     name: name.clone(),
                     functions: substituted_functions,
                 })
@@ -1798,14 +1804,14 @@ pub mod self_substitution {
         }
     }
 
-    /// Infer Self type from function arguments for trait dispatch
+    /// Infer Self type from function arguments for protocol dispatch
     /// This performs bidirectional type inference to determine what Self should be
     pub fn infer_self_from_arguments(
-        trait_function_params: &[FunctionParam],
+        protocol_function_params: &[FunctionParam],
         call_arguments: &[StructuredType],
     ) -> Result<Option<StructuredType>, UnificationError> {
         // Find the first parameter that uses Self and infer from the corresponding argument
-        for (param, arg_type) in trait_function_params.iter().zip(call_arguments.iter()) {
+        for (param, arg_type) in protocol_function_params.iter().zip(call_arguments.iter()) {
             if let Some(inferred_self) = extract_self_from_parameter(&param.param_type, arg_type)? {
                 return Ok(Some(inferred_self));
             }
@@ -1867,16 +1873,16 @@ pub mod self_substitution {
         }
     }
 
-    /// Create a fully substituted function signature for trait dispatch
+    /// Create a fully substituted function signature for protocol dispatch
     /// This replaces all occurrences of Self with the concrete type
     pub fn create_concrete_function_signature(
-        trait_function_params: &[FunctionParam],
-        trait_function_return: &StructuredType,
+        protocol_function_params: &[FunctionParam],
+        protocol_function_return: &StructuredType,
         self_type: &StructuredType,
     ) -> Result<(Vec<FunctionParam>, StructuredType), UnificationError> {
         // Substitute Self in all parameters
         let mut concrete_params = Vec::new();
-        for param in trait_function_params {
+        for param in protocol_function_params {
             concrete_params.push(FunctionParam {
                 name: param.name.clone(),
                 param_type: substitute_self_in_type(&param.param_type, self_type)?,
@@ -1884,7 +1890,7 @@ pub mod self_substitution {
         }
 
         // Substitute Self in return type
-        let concrete_return = substitute_self_in_type(trait_function_return, self_type)?;
+        let concrete_return = substitute_self_in_type(protocol_function_return, self_type)?;
 
         Ok((concrete_params, concrete_return))
     }

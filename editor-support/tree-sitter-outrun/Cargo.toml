@@ -1,15 +1,15 @@
 [package]
-name = "tree-sitter-outrun"
-description = "A statically-typed, immutible, functional language where the trait is king!"
-version = "0.1.0"
 authors = ["James Harton <james@harton.dev>"]
-license = "MIT"
-readme = "README.md"
-keywords = ["incremental", "parsing", "tree-sitter", "outrun"]
-categories = ["parser-implementations", "parsing", "text-editors"]
-repository = "https://harton.dev/outrun/outrun"
-edition = "2021"
 autoexamples = false
+categories = ["parser-implementations", "parsing", "text-editors"]
+description = "A statically-typed, immutible, functional language where the protocol is king!"
+edition = "2021"
+keywords = ["incremental", "parsing", "tree-sitter", "outrun"]
+license = "MIT"
+name = "tree-sitter-outrun"
+readme = "README.md"
+repository = "https://harton.dev/outrun/outrun"
+version = "0.1.0"
 
 build = "bindings/rust/build.rs"
 include = [

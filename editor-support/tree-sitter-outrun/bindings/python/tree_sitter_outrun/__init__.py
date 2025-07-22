@@ -1,4 +1,4 @@
-"""A statically-typed, immutible, functional language where the trait is king!"""
+"""A statically-typed, immutible, functional language where the protocol is king!"""
 
 from importlib.resources import files as _files
 

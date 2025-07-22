@@ -118,13 +118,13 @@ def test_if_default(): Integer {
             for (i, error) in errors.iter().enumerate() {
                 println!("Error {}: {:?}", i + 1, error);
             }
-            // Should not fail due to Default trait requirement since Integer implements Default
-            let has_default_trait_error = errors.iter().any(|e| {
-                matches!(e, crate::error::TypeError::TraitNotImplemented { trait_name, .. }
-                    if trait_name == "Default")
+            // Should not fail due to Default protocol requirement since Integer implements Default
+            let has_default_protocol_error = errors.iter().any(|e| {
+                matches!(e, crate::error::TypeError::ProtocolNotImplemented { protocol_name, .. }
+                    if protocol_name == "Default")
             });
             assert!(
-                !has_default_trait_error,
+                !has_default_protocol_error,
                 "If expression Default requirement failed incorrectly for Integer"
             );
         }
@@ -137,11 +137,11 @@ fn test_enhanced_argument_type_mismatch_error() {
     let source = r#"
 struct TestType {}
 
-trait TestTrait {
+protocol TestProtocol {
     def add_numbers(lhs: Outrun.Core.Integer64, rhs: Outrun.Core.Integer64): Outrun.Core.Integer64
 }
 
-impl TestTrait for TestType {
+impl TestProtocol for TestType {
     def add_numbers(lhs: Outrun.Core.Integer64, rhs: Outrun.Core.Integer64): Outrun.Core.Integer64 {
         # This will use intrinsic addition, but that's okay for this test
         lhs + rhs

@@ -1,7 +1,7 @@
 @Doc(content: """
-Binary exponentiation trait for the ** operator.
+Binary exponentiation protocol for the ** operator.
 
-The BinaryExponentiation trait defines the behaviour for the ** operator.
+The BinaryExponentiation protocol defines the behaviour for the ** operator.
 When you write `a ** b`, it becomes `BinaryExponentiation.exponentiate(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -17,7 +17,7 @@ When you write `a ** b`, it becomes `BinaryExponentiation.exponentiate(lhs: a, r
 2.0 ** 3.0                    # BinaryExponentiation.exponentiate(lhs: 2.0, rhs: 3.0): Float64
 ```
 """)
-trait BinaryExponentiation {
+protocol BinaryExponentiation {
     @Doc(content: "Raise the left value to the power of the right value")
     def exponentiate(lhs: Self, rhs: Self): Self
 }

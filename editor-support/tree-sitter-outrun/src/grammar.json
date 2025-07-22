@@ -18,7 +18,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "trait_definition"
+          "name": "protocol_definition"
         },
         {
           "type": "SYMBOL",
@@ -128,7 +128,7 @@
         },
         {
           "type": "STRING",
-          "value": "trait"
+          "value": "protocol"
         },
         {
           "type": "STRING",
@@ -557,7 +557,7 @@
         }
       ]
     },
-    "trait_definition": {
+    "protocol_definition": {
       "type": "SEQ",
       "members": [
         {
@@ -569,7 +569,7 @@
         },
         {
           "type": "STRING",
-          "value": "trait"
+          "value": "protocol"
         },
         {
           "type": "CHOICE",
@@ -601,7 +601,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "trait_constraints"
+              "name": "protocol_constraints"
             },
             {
               "type": "BLANK"
@@ -715,7 +715,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "trait_spec"
+          "name": "protocol_spec"
         },
         {
           "type": "STRING",
@@ -730,7 +730,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "trait_constraints"
+              "name": "protocol_constraints"
             },
             {
               "type": "BLANK"
@@ -754,7 +754,7 @@
         }
       ]
     },
-    "trait_spec": {
+    "protocol_spec": {
       "type": "SEQ",
       "members": [
         {
@@ -872,7 +872,7 @@
         }
       ]
     },
-    "trait_constraints": {
+    "protocol_constraints": {
       "type": "SEQ",
       "members": [
         {
@@ -881,11 +881,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_trait_constraint_expression"
+          "name": "_protocol_constraint_expression"
         }
       ]
     },
-    "_trait_constraint_expression": {
+    "_protocol_constraint_expression": {
       "type": "PREC_LEFT",
       "value": 0,
       "content": {
@@ -893,14 +893,14 @@
         "members": [
           {
             "type": "SYMBOL",
-            "name": "trait_constraint_term"
+            "name": "protocol_constraint_term"
           },
           {
             "type": "SEQ",
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "_trait_constraint_expression"
+                "name": "_protocol_constraint_expression"
               },
               {
                 "type": "CHOICE",
@@ -917,7 +917,7 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "_trait_constraint_expression"
+                "name": "_protocol_constraint_expression"
               }
             ]
           },
@@ -930,7 +930,7 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "_trait_constraint_expression"
+                "name": "_protocol_constraint_expression"
               },
               {
                 "type": "STRING",
@@ -941,7 +941,7 @@
         ]
       }
     },
-    "trait_constraint_term": {
+    "protocol_constraint_term": {
       "type": "PREC",
       "value": 1,
       "content": {
@@ -2563,7 +2563,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "trait_case_expression"
+          "name": "protocol_case_expression"
         }
       ]
     },
@@ -2595,7 +2595,7 @@
         }
       ]
     },
-    "trait_case_expression": {
+    "protocol_case_expression": {
       "type": "SEQ",
       "members": [
         {
@@ -2622,7 +2622,7 @@
           "type": "REPEAT1",
           "content": {
             "type": "SYMBOL",
-            "name": "trait_case_clause"
+            "name": "protocol_case_clause"
           }
         },
         {
@@ -2677,7 +2677,7 @@
         ]
       }
     },
-    "trait_case_clause": {
+    "protocol_case_clause": {
       "type": "PREC",
       "value": 1,
       "content": {
@@ -2685,7 +2685,7 @@
         "members": [
           {
             "type": "SYMBOL",
-            "name": "trait_case_pattern"
+            "name": "protocol_case_pattern"
           },
           {
             "type": "STRING",
@@ -2744,7 +2744,7 @@
         }
       ]
     },
-    "trait_case_pattern": {
+    "protocol_case_pattern": {
       "type": "SEQ",
       "members": [
         {

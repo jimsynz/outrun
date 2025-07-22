@@ -104,12 +104,12 @@ fn test_empty_map_with_complex_type_hint() {
 #[test]
 fn test_empty_map_with_return_type_hint() {
     let source = r#"
-        trait MapMaker {
+        protocol MapMaker {
             def make_empty_map(): Map<String, Integer>
         }
-        
+
         struct MyMaker {}
-        
+
         impl MapMaker for MyMaker {
             def make_empty_map(): Map<String, Integer> {
                 {}

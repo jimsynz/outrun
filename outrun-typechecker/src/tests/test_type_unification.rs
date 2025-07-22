@@ -11,27 +11,27 @@ fn create_test_context() -> (
     let compiler_env = crate::compilation::compiler_environment::CompilerEnvironment::new();
 
     // Set up some basic types
-    let string_trait_id = compiler_env.intern_type_name("String");
-    let boolean_trait_id = compiler_env.intern_type_name("Boolean");
-    let integer_trait_id = compiler_env.intern_type_name("Integer");
+    let string_protocol_id = compiler_env.intern_type_name("String");
+    let boolean_protocol_id = compiler_env.intern_type_name("Boolean");
+    let integer_protocol_id = compiler_env.intern_type_name("Integer");
     let _option_id = compiler_env.intern_type_name("Option");
     let _map_id = compiler_env.intern_type_name("Map");
     let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
     let core_boolean_id = compiler_env.intern_type_name("Outrun.Core.Boolean");
     let core_integer_id = compiler_env.intern_type_name("Outrun.Core.Integer64");
 
-    // Register trait implementations using CompilerEnvironment
-    compiler_env.register_trait_implementation(
+    // Register protocol implementations using CompilerEnvironment
+    compiler_env.register_protocol_implementation(
         StructuredType::Simple(core_string_id.clone()),
-        StructuredType::Simple(string_trait_id.clone()),
+        StructuredType::Simple(string_protocol_id.clone()),
     );
-    compiler_env.register_trait_implementation(
+    compiler_env.register_protocol_implementation(
         StructuredType::Simple(core_boolean_id.clone()),
-        StructuredType::Simple(boolean_trait_id.clone()),
+        StructuredType::Simple(boolean_protocol_id.clone()),
     );
-    compiler_env.register_trait_implementation(
+    compiler_env.register_protocol_implementation(
         StructuredType::Simple(core_integer_id.clone()),
-        StructuredType::Simple(integer_trait_id.clone()),
+        StructuredType::Simple(integer_protocol_id.clone()),
     );
 
     (context, compiler_env)
@@ -53,42 +53,42 @@ fn test_exact_match_unification() {
 }
 
 #[test]
-fn test_trait_concrete_unification() {
+fn test_protocol_concrete_unification() {
     let (context, compiler_env) = create_test_context();
-    let string_trait_id = compiler_env.intern_type_name("String");
+    let string_protocol_id = compiler_env.intern_type_name("String");
     let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-    let trait_type = StructuredType::Simple(string_trait_id);
+    let protocol_type = StructuredType::Simple(string_protocol_id);
     let concrete_type = StructuredType::Simple(core_string_id);
 
-    // Trait should unify with implementing concrete type
+    // Protocol should unify with implementing concrete type
     assert!(
-        unify_structured_types(&trait_type, &concrete_type, &context, &compiler_env)
+        unify_structured_types(&protocol_type, &concrete_type, &context, &compiler_env)
             .unwrap()
             .is_some()
     );
     assert!(
-        unify_structured_types(&concrete_type, &trait_type, &context, &compiler_env)
+        unify_structured_types(&concrete_type, &protocol_type, &context, &compiler_env)
             .unwrap()
             .is_some()
     );
 }
 
 #[test]
-fn test_non_implementing_trait_unification() {
+fn test_non_implementing_protocol_unification() {
     let (context, compiler_env) = create_test_context();
-    let string_trait_id = compiler_env.intern_type_name("String");
+    let string_protocol_id = compiler_env.intern_type_name("String");
     let core_boolean_id = compiler_env.intern_type_name("Outrun.Core.Boolean");
 
-    let trait_type = StructuredType::Simple(string_trait_id);
+    let protocol_type = StructuredType::Simple(string_protocol_id);
     let concrete_type = StructuredType::Simple(core_boolean_id);
 
-    // String trait should not unify with Boolean concrete type
-    let result = unify_structured_types(&trait_type, &concrete_type, &context, &compiler_env);
+    // String protocol should not unify with Boolean concrete type
+    let result = unify_structured_types(&protocol_type, &concrete_type, &context, &compiler_env);
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
-        UnificationError::TraitNotImplemented { .. }
+        UnificationError::ProtocolNotImplemented { .. }
     ));
 }
 
@@ -96,19 +96,19 @@ fn test_non_implementing_trait_unification() {
 fn test_generic_type_unification() {
     let (context, compiler_env) = create_test_context();
     let option_id = compiler_env.intern_type_name("Option");
-    let string_trait_id = compiler_env.intern_type_name("String");
+    let string_protocol_id = compiler_env.intern_type_name("String");
     let core_string_id = compiler_env.intern_type_name("Outrun.Core.String");
 
-    let option_trait = StructuredType::generic(
+    let option_protocol = StructuredType::generic(
         option_id.clone(),
-        vec![StructuredType::Simple(string_trait_id)],
+        vec![StructuredType::Simple(string_protocol_id)],
     );
     let option_concrete =
         StructuredType::generic(option_id, vec![StructuredType::Simple(core_string_id)]);
 
     // Option<String> should unify with Option<Outrun.Core.String>
     assert!(
-        unify_structured_types(&option_trait, &option_concrete, &context, &compiler_env)
+        unify_structured_types(&option_protocol, &option_concrete, &context, &compiler_env)
             .unwrap()
             .is_some()
     );

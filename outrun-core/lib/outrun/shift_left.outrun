@@ -1,7 +1,7 @@
 @Doc(content: """
-Left shift trait for the << operator.
+Left shift protocol for the << operator.
 
-The ShiftLeft trait defines the behaviour for the << operator.
+The ShiftLeft protocol defines the behaviour for the << operator.
 When you write `a << b`, it becomes `ShiftLeft.shift_left(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -19,7 +19,7 @@ When you write `a << b`, it becomes `ShiftLeft.shift_left(lhs: a, rhs: b)`.
 value << shift_count          # ShiftLeft.shift_left(lhs: value, rhs: shift_count): Integer64
 ```
 """)
-trait ShiftLeft {
+protocol ShiftLeft {
     @Doc(content: "Shift bits left by the specified number of positions")
     def shift_left(lhs: Self, rhs: Self): Self
 }

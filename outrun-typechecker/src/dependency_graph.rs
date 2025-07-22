@@ -4,7 +4,7 @@
 //! ensuring that files are processed in the correct order without unresolved dependencies.
 
 use outrun_parser::{
-    Item, ItemKind, Program, TraitFunction, TypeAnnotation, TypeIdentifier, TypeSpec,
+    Item, ItemKind, Program, ProtocolFunction, TypeAnnotation, TypeIdentifier, TypeSpec,
 };
 use petgraph::{algo, Graph as PetGraph};
 use std::collections::{HashMap, HashSet};
@@ -65,7 +65,7 @@ impl DependencyGraph {
     }
 
     /// Add a program to the dependency graph, analyzing only type declarations
-    /// (not trait function signatures or implementations)
+    /// (not protocol function signatures or implementations)
     pub fn add_program_declarations_only(
         &mut self,
         file_path: String,
@@ -74,7 +74,7 @@ impl DependencyGraph {
         // Add node for this file if it doesn't exist
         let node_idx = self.get_or_create_node(&file_path);
 
-        // First pass: collect all type definitions from this file (structs and traits)
+        // First pass: collect all type definitions from this file (structs and protocols)
         let mut defined_types = Vec::new();
         for item in &program.items {
             match &item.kind {
@@ -94,8 +94,8 @@ impl DependencyGraph {
 
                     self.type_definitions.insert(type_name, file_path.clone());
                 }
-                ItemKind::TraitDefinition(trait_def) => {
-                    let type_name = self.resolve_type_path(&trait_def.name);
+                ItemKind::ProtocolDefinition(protocol_def) => {
+                    let type_name = self.resolve_type_path(&protocol_def.name);
                     defined_types.push(type_name.clone());
 
                     // Check for conflicting definitions
@@ -166,8 +166,8 @@ impl DependencyGraph {
 
                     self.type_definitions.insert(type_name, file_path.clone());
                 }
-                ItemKind::TraitDefinition(trait_def) => {
-                    let type_name = trait_def.name_as_string();
+                ItemKind::ProtocolDefinition(protocol_def) => {
+                    let type_name = protocol_def.name_as_string();
 
                     // Check for conflicting definitions
                     if let Some(existing_file) = self.type_definitions.get(&type_name) {
@@ -210,8 +210,8 @@ impl DependencyGraph {
                     ItemKind::StructDefinition(struct_def) => {
                         defined_types.push(self.resolve_type_path(&struct_def.name));
                     }
-                    ItemKind::TraitDefinition(trait_def) => {
-                        defined_types.push(trait_def.name_as_string());
+                    ItemKind::ProtocolDefinition(protocol_def) => {
+                        defined_types.push(protocol_def.name_as_string());
                     }
                     _ => {}
                 }
@@ -240,20 +240,20 @@ impl DependencyGraph {
         }
     }
 
-    /// Resolve dependencies allowing trait reference cycles
-    pub fn resolve_with_trait_cycles_allowed(&self) -> DependencyResult {
+    /// Resolve dependencies allowing protocol reference cycles
+    pub fn resolve_with_protocol_cycles_allowed(&self) -> DependencyResult {
         let mut result = self.resolve();
 
-        // If we have circular dependencies but they're all trait cycles,
+        // If we have circular dependencies but they're all protocol cycles,
         // provide a compilation order anyway by using a simple file order
         if !result.circular_dependencies.is_empty() && result.compilation_order.is_empty() {
-            // Check if cycles are structural (not implemented yet, assume all are trait cycles)
-            let all_trait_cycles = result
+            // Check if cycles are structural (not implemented yet, assume all are protocol cycles)
+            let all_protocol_cycles = result
                 .circular_dependencies
                 .iter()
                 .all(|cycle| !self.is_structural_cycle(cycle));
 
-            if all_trait_cycles {
+            if all_protocol_cycles {
                 // Provide a simple compilation order based on available files
                 result.compilation_order = self.programs.keys().cloned().collect();
                 // Sort for deterministic order
@@ -302,8 +302,8 @@ impl DependencyGraph {
                     ItemKind::StructDefinition(struct_def) => {
                         defined_types.push(self.resolve_type_path(&struct_def.name));
                     }
-                    ItemKind::TraitDefinition(trait_def) => {
-                        defined_types.push(trait_def.name_as_string());
+                    ItemKind::ProtocolDefinition(protocol_def) => {
+                        defined_types.push(protocol_def.name_as_string());
                     }
                     _ => {}
                 }
@@ -356,9 +356,9 @@ impl DependencyGraph {
     }
 
     /// Check if a dependency cycle is structural (involves struct field dependencies)
-    /// vs trait reference cycles (which are allowed)
+    /// vs protocol reference cycles (which are allowed)
     pub fn is_structural_cycle(&self, _cycle: &[String]) -> bool {
-        // For now, treat all cycles as trait cycles (allowed)
+        // For now, treat all cycles as protocol cycles (allowed)
         // This can be refined later to detect true structural cycles
         false
     }
@@ -408,16 +408,16 @@ impl DependencyGraph {
                         );
                     }
                 }
-                ItemKind::TraitDefinition(trait_def) => {
-                    // For traits, only collect constraint dependencies, not function signature dependencies
-                    if let Some(constraints) = &trait_def.constraints {
+                ItemKind::ProtocolDefinition(protocol_def) => {
+                    // For protocols, only collect constraint dependencies, not function signature dependencies
+                    if let Some(constraints) = &protocol_def.constraints {
                         self.collect_constraint_dependencies(
                             constraints,
                             defined_types,
                             dependencies,
                         );
                     }
-                    // Skip function signatures to avoid trait reference cycles
+                    // Skip function signatures to avoid protocol reference cycles
                 }
                 // Skip implementations entirely in declaration phase
                 _ => {}
@@ -438,9 +438,9 @@ impl DependencyGraph {
                 self.collect_constraint_dependencies(left, defined_types, dependencies);
                 self.collect_constraint_dependencies(right, defined_types, dependencies);
             }
-            ConstraintExpression::Constraint { trait_bound, .. } => {
-                for trait_name in trait_bound {
-                    let resolved_name = self.resolve_type_identifier(trait_name);
+            ConstraintExpression::Constraint { protocol_bound, .. } => {
+                for protocol_name in protocol_bound {
+                    let resolved_name = self.resolve_type_identifier(protocol_name);
                     if !defined_types.contains(&resolved_name)
                         && !self.is_builtin_type(&resolved_name)
                     {
@@ -493,19 +493,19 @@ impl DependencyGraph {
                     );
                 }
             }
-            ItemKind::TraitDefinition(trait_def) => {
+            ItemKind::ProtocolDefinition(protocol_def) => {
                 // Collect generic parameter names to exclude from dependencies
                 let mut generic_param_names = HashSet::new();
-                if let Some(generic_params) = &trait_def.generic_params {
+                if let Some(generic_params) = &protocol_def.generic_params {
                     for param in &generic_params.params {
                         generic_param_names.insert(param.name.name.clone());
                     }
                 }
 
                 // Collect dependencies from function signatures
-                for function in &trait_def.functions {
+                for function in &protocol_def.functions {
                     match function {
-                        TraitFunction::Signature(sig) => {
+                        ProtocolFunction::Signature(sig) => {
                             // Parameters
                             for param in &sig.parameters {
                                 self.collect_dependencies_from_type_annotation_with_generics(
@@ -523,7 +523,7 @@ impl DependencyGraph {
                                 dependencies,
                             );
                         }
-                        TraitFunction::Definition(def) => {
+                        ProtocolFunction::Definition(def) => {
                             // Parameters
                             for param in &def.parameters {
                                 self.collect_dependencies_from_type_annotation_with_generics(
@@ -541,7 +541,7 @@ impl DependencyGraph {
                                 dependencies,
                             );
                         }
-                        TraitFunction::StaticDefinition(def) => {
+                        ProtocolFunction::StaticDefinition(def) => {
                             // Parameters
                             for param in &def.parameters {
                                 self.collect_dependencies_from_type_annotation_with_generics(
@@ -563,9 +563,9 @@ impl DependencyGraph {
                 }
             }
             ItemKind::ImplBlock(impl_def) => {
-                // Collect dependencies from trait spec and type spec
+                // Collect dependencies from protocol spec and type spec
                 self.collect_dependencies_from_type_spec(
-                    &impl_def.trait_spec,
+                    &impl_def.protocol_spec,
                     defined_types,
                     dependencies,
                 );
@@ -696,7 +696,7 @@ impl DependencyGraph {
     fn resolve_type_identifier(&self, type_identifier: &TypeIdentifier) -> String {
         let name = &type_identifier.name;
         // For dependency tracking, use the actual type name without mapping
-        // The type checker will handle trait-to-concrete type resolution
+        // The type checker will handle protocol-to-concrete type resolution
         name.clone()
     }
 
@@ -757,15 +757,15 @@ mod tests {
     fn test_simple_dependency_resolution() {
         let mut graph = DependencyGraph::new();
 
-        // Add a trait that other types might implement
-        let trait_source = r#"
-trait Display {
+        // Add a protocol that other types might implement
+        let protocol_source = r#"
+protocol Display {
     def to_string(value: Self): String
 }
         "#;
-        let trait_program = parse_program(trait_source).unwrap();
+        let protocol_program = parse_program(protocol_source).unwrap();
         graph
-            .add_program("display.outrun".to_string(), trait_program)
+            .add_program("display.outrun".to_string(), protocol_program)
             .unwrap();
 
         // Add a struct
@@ -780,7 +780,7 @@ trait Display {
         assert!(result.circular_dependencies.is_empty());
         assert!(result.compilation_order.len() == 2);
 
-        // Display trait should come before or be independent of User struct
+        // Display protocol should come before or be independent of User struct
         // Both should compile successfully since User doesn't reference Display
     }
 

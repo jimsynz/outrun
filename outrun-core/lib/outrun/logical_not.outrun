@@ -1,7 +1,7 @@
 @Doc(content: """
-Logical NOT trait for the ! operator.
+Logical NOT protocol for the ! operator.
 
-The LogicalNot trait defines the behaviour for the ! (unary negation) operator.
+The LogicalNot protocol defines the behaviour for the ! (unary negation) operator.
 When you write `!a`, it becomes `LogicalNot.not(value: a)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `!a`, it becomes `LogicalNot.not(value: a)`.
 !(x > 0)                      # LogicalNot.not(value: (x > 0)): Boolean
 ```
 """)
-trait LogicalNot {
+protocol LogicalNot {
     @Doc(content: "Perform logical NOT on a value")
     def not(value: Self): Self
 }

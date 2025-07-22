@@ -6,7 +6,7 @@
 
 use crate::compilation::compiler_environment::{CompilerEnvironment, TypeNameId};
 use crate::unification::UnificationContext;
-use outrun_parser::{ImplBlock, Program, StructDefinition, TraitDefinition};
+use outrun_parser::{ImplBlock, Program, ProtocolDefinition, StructDefinition};
 use std::collections::HashMap;
 
 /// A collection of Outrun programs to be compiled together
@@ -31,8 +31,8 @@ pub struct CompilationResult {
     pub compilation_order: Vec<String>,
     /// Type checking context with all resolved types, expression types, and span mappings
     pub type_context: UnificationContext,
-    /// Collected traits from all programs (trait name TypeNameId -> definition)
-    pub traits: HashMap<TypeNameId, TraitDefinition>,
+    /// Collected protocols from all programs (protocol name TypeNameId -> definition)
+    pub protocols: HashMap<TypeNameId, ProtocolDefinition>,
     /// Collected structs from all programs (struct name TypeNameId -> definition)
     pub structs: HashMap<TypeNameId, StructDefinition>,
     /// Collected implementations from all programs
@@ -65,14 +65,14 @@ impl CompilationResult {
                 .merge_with(other.type_context)
                 .map_err(|e| vec![format!("Type context merge error: {:?}", e)])?;
 
-            // Merge traits - check for conflicts
-            for (trait_id, trait_def) in other.traits {
-                if let Some(existing) = merged.traits.get(&trait_id) {
-                    if !traits_compatible(existing, &trait_def) {
-                        conflicts.push(format!("Conflicting trait definition: {trait_id}"));
+            // Merge protocols - check for conflicts
+            for (protocol_id, protocol_def) in other.protocols {
+                if let Some(existing) = merged.protocols.get(&protocol_id) {
+                    if !protocols_compatible(existing, &protocol_def) {
+                        conflicts.push(format!("Conflicting protocol definition: {protocol_id}"));
                     }
                 } else {
-                    merged.traits.insert(trait_id, trait_def);
+                    merged.protocols.insert(protocol_id, protocol_def);
                 }
             }
 
@@ -119,8 +119,8 @@ impl CompilationResult {
     ) -> PackageSummary {
         PackageSummary {
             package_name: package_name.to_string(),
-            exported_traits: self.traits.clone(), // TODO: filter to public traits
-            exported_structs: self.structs.clone(), // TODO: filter to public structs
+            exported_protocols: self.protocols.clone(), // TODO: filter to public protocols
+            exported_structs: self.structs.clone(),     // TODO: filter to public structs
             exported_functions: HashMap::new(), // TODO: extract public functions from CompilerEnvironment
             exported_implementations: self.implementations.clone(), // All impls are public by nature
             type_context_summary: self.type_context.create_summary(compiler_env), // TODO: implement
@@ -131,11 +131,11 @@ impl CompilationResult {
     pub fn is_compatible_with(&self, other: &CompilationResult) -> Result<(), Vec<String>> {
         let mut conflicts = Vec::new();
 
-        // Check trait conflicts
-        for (trait_id, trait_def) in &other.traits {
-            if let Some(existing) = self.traits.get(trait_id) {
-                if !traits_compatible(existing, trait_def) {
-                    conflicts.push(format!("Incompatible trait: {trait_id}"));
+        // Check protocol conflicts
+        for (protocol_id, protocol_def) in &other.protocols {
+            if let Some(existing) = self.protocols.get(protocol_id) {
+                if !protocols_compatible(existing, protocol_def) {
+                    conflicts.push(format!("Incompatible protocol: {protocol_id}"));
                 }
             }
         }
@@ -161,7 +161,7 @@ impl CompilationResult {
 #[derive(Debug, Clone)]
 pub struct PackageSummary {
     pub package_name: String,
-    pub exported_traits: HashMap<TypeNameId, TraitDefinition>,
+    pub exported_protocols: HashMap<TypeNameId, ProtocolDefinition>,
     pub exported_structs: HashMap<TypeNameId, StructDefinition>,
     pub exported_functions: HashMap<String, FunctionSignature>, // TODO: define FunctionSignature
     pub exported_implementations: Vec<ImplBlock>,
@@ -177,7 +177,7 @@ impl PackageSummary {
             type_context: self
                 .type_context_summary
                 .to_unification_context(compiler_env), // TODO: implement
-            traits: self.exported_traits.clone(),
+            protocols: self.exported_protocols.clone(),
             structs: self.exported_structs.clone(),
             implementations: self.exported_implementations.clone(),
             typed_programs: HashMap::new(), // Package summaries don't include typed AST
@@ -190,7 +190,7 @@ impl PackageSummary {
 pub struct TypeContextSummary {
     // TODO: Define minimal type context information needed for package imports
     pub type_definitions: HashMap<String, String>, // type_name -> type_definition
-    pub trait_implementations: HashMap<String, Vec<String>>, // trait_name -> [implementing_type_names]
+    pub protocol_implementations: HashMap<String, Vec<String>>, // protocol_name -> [implementing_type_names]
 }
 
 impl TypeContextSummary {
@@ -198,18 +198,18 @@ impl TypeContextSummary {
     pub fn to_unification_context(&self, compiler_env: &CompilerEnvironment) -> UnificationContext {
         let context = UnificationContext::new();
 
-        // Reconstruct trait implementations from the summary
-        for (trait_name, implementing_types) in &self.trait_implementations {
-            let trait_id = compiler_env.intern_type_name(trait_name);
-            let trait_structured = crate::unification::StructuredType::Simple(trait_id);
+        // Reconstruct protocol implementations from the summary
+        for (protocol_name, implementing_types) in &self.protocol_implementations {
+            let protocol_id = compiler_env.intern_type_name(protocol_name);
+            let protocol_structured = crate::unification::StructuredType::Simple(protocol_id);
 
             for type_name in implementing_types {
                 let type_id = compiler_env.intern_type_name(type_name);
                 let impl_structured = crate::unification::StructuredType::Simple(type_id);
 
-                // Register trait implementation using CompilerEnvironment
+                // Register protocol implementation using CompilerEnvironment
                 compiler_env
-                    .register_trait_implementation(impl_structured, trait_structured.clone());
+                    .register_protocol_implementation(impl_structured, protocol_structured.clone());
             }
         }
 
@@ -229,10 +229,10 @@ pub struct FunctionSignature {
     pub constraints: Vec<String>, // "T: Display" etc
 }
 
-/// Check if two trait definitions are compatible for merging
-fn traits_compatible(trait1: &TraitDefinition, trait2: &TraitDefinition) -> bool {
+/// Check if two protocol definitions are compatible for merging
+fn protocols_compatible(protocol1: &ProtocolDefinition, protocol2: &ProtocolDefinition) -> bool {
     // For now, require exact equality - in future we could allow compatible extensions
-    trait1 == trait2
+    protocol1 == protocol2
 }
 
 /// Check if two struct definitions are compatible for merging

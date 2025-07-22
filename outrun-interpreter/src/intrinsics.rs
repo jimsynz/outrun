@@ -1455,7 +1455,7 @@ impl IntrinsicsHandler {
         Ok(Value::boolean(true))
     }
 
-    // Binary trait operations
+    // Binary protocol operations
 
     fn binary_byte_size(
         &mut self,
@@ -2121,7 +2121,7 @@ impl IntrinsicsHandler {
     // Inspect operations
 
     /// Universal inspect function that handles all value types
-    /// This is used as the default implementation for the Inspect trait
+    /// This is used as the default implementation for the Inspect protocol
     #[allow(clippy::only_used_in_recursion)]
     fn inspect_value(
         &mut self,
@@ -2588,7 +2588,7 @@ mod intrinsic_validation {
             "binary_byte_size",
             // Inspect operations
             "inspect_value",
-            // Default trait intrinsics
+            // Default protocol intrinsics
             "Default_default",
         ];
 

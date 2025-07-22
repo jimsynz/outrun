@@ -1,7 +1,7 @@
 @Doc(content: """
 64-bit floating point concrete type.
 
-This is the default concrete implementation of the Float trait in Outrun.
+This is the default concrete implementation of the Float protocol in Outrun.
 Float literals without explicit type annotations default to this type.
 
 ## Examples
@@ -90,7 +90,7 @@ impl Comparison for Outrun.Core.Float64 {
     }
 }
 
-# Display trait implementation
+# Display protocol implementation
 impl Display for Outrun.Core.Float64 {
     def to_string(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.f64_to_string(value: value)
@@ -98,7 +98,7 @@ impl Display for Outrun.Core.Float64 {
 }
 
 
-# Float trait implementation
+# Float protocol implementation
 impl Float for Outrun.Core.Float64 {
 
     def abs(value: Self): Self {
@@ -158,7 +158,7 @@ impl Float for Outrun.Core.Float64 {
     }
 }
 
-# Default trait implementation
+# Default protocol implementation
 impl Default for Outrun.Core.Float64 {
     def default(): Self {
         0.0

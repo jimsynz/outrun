@@ -200,13 +200,13 @@ impl OutrunParser {
                                                 StructDefinition
                                             );
                                         }
-                                        Rule::trait_definition => {
+                                        Rule::protocol_definition => {
                                             parse_and_wrap_item!(
                                                 items,
                                                 item_pair,
                                                 pair_span,
-                                                parse_trait_definition,
-                                                TraitDefinition
+                                                parse_protocol_definition,
+                                                ProtocolDefinition
                                             );
                                         }
                                         Rule::impl_block => {
@@ -500,7 +500,7 @@ impl OutrunParser {
         let inner = pair.into_inner().next().unwrap();
         let kind = match inner.as_rule() {
             Rule::keyword_struct => KeywordKind::Struct,
-            Rule::keyword_trait => KeywordKind::Trait,
+            Rule::keyword_protocol => KeywordKind::Protocol,
             Rule::keyword_impl => KeywordKind::Impl,
             Rule::keyword_def => KeywordKind::Def,
             Rule::keyword_defp => KeywordKind::Defp,

@@ -2,7 +2,7 @@
 Err variant of the Result type.
 
 Represents a failed computation with an error value of type E.
-This is one of the two concrete implementations of the Result trait.
+This is one of the two concrete implementations of the Result protocol.
 
 ## Examples
 

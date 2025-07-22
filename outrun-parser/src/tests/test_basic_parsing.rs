@@ -16,14 +16,14 @@ fn test_parse_single_keyword() {
 
 #[test]
 fn test_parse_multiple_keywords() {
-    let input = "struct trait impl def";
+    let input = "struct protocol impl def";
     let result = parse_program(input).unwrap();
 
     assert_eq!(result.items.len(), 4);
 
     let expected = [
         KeywordKind::Struct,
-        KeywordKind::Trait,
+        KeywordKind::Protocol,
         KeywordKind::Impl,
         KeywordKind::Def,
     ];
@@ -319,7 +319,7 @@ fn test_identifier_with_underscores() {
 
 #[test]
 fn test_comprehensive_mix() {
-    let input = "struct User {} true my_func 42 false MyTrait 123";
+    let input = "struct User {} true my_func 42 false MyProtocol 123";
     let result = parse_program(input).unwrap();
 
     assert_eq!(result.items.len(), 7);
@@ -330,7 +330,7 @@ fn test_comprehensive_mix() {
         ("my_func", "identifier"),
         ("42", "integer"),
         ("false", "boolean"),
-        ("MyTrait", "type_identifier"),
+        ("MyProtocol", "type_identifier"),
         ("123", "integer"),
     ];
 

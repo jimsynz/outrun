@@ -1,3 +1,3 @@
-@Doc(content: "This trait is automatically implemented by the type checker for all concrete types. It serves as a universal base trait that all types can be treated as.")
-trait Any {
+@Doc(content: "This protocol is automatically implemented by the type checker for all concrete types. It serves as a universal base protocol that all types can be treated as.")
+protocol Any {
 }

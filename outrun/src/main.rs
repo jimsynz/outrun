@@ -17,8 +17,8 @@ use repl::{ReplConfig, ReplSession};
     name = "outrun",
     version,
     about = "The Outrun programming language toolchain",
-    long_about = "Outrun is a statically-typed, functional programming language built around traits.",
-    before_help = format!("🌆 OUTRUN Programming Language v{} 🌃\n🟣 A statically-typed, functional language built around traits 🔮\n", env!("CARGO_PKG_VERSION"))
+    long_about = "Outrun is a statically-typed, functional programming language built around protocols.",
+    before_help = format!("🌆 OUTRUN Programming Language v{} 🌃\n🟣 A statically-typed, functional language built around protocols 🔮\n", env!("CARGO_PKG_VERSION"))
 )]
 struct Cli {
     #[command(subcommand)]
@@ -271,7 +271,7 @@ fn typecheck_core_library() -> Result<()> {
 
             println!("\n📊 COMPILATION SUMMARY:");
             println!("{}", "-".repeat(40));
-            println!("• Traits: {}", result.traits.len());
+            println!("• Protocols: {}", result.protocols.len());
             println!("• Structs: {}", result.structs.len());
             println!("• Implementations: {}", result.implementations.len());
             println!("• Functions: {}", compiler_env.function_count());

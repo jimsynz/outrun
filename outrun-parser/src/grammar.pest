@@ -64,7 +64,7 @@ COMMENT = ${ block_comment | comment }
 // Keywords with exactly one representation each (with word boundaries)
 
 keyword_struct = @{ "struct" ~ !ASCII_ALPHANUMERIC }
-keyword_trait = @{ "trait" ~ !ASCII_ALPHANUMERIC }
+keyword_protocol = @{ "protocol" ~ !ASCII_ALPHANUMERIC }
 keyword_impl = @{ "impl" ~ !ASCII_ALPHANUMERIC }
 keyword_def = @{ "def" ~ !ASCII_ALPHANUMERIC }
 keyword_defs = @{ "defs" ~ !ASCII_ALPHANUMERIC }
@@ -85,7 +85,7 @@ keyword_function = @{ "Function" ~ !ASCII_ALPHANUMERIC }
 
 // All keywords combined
 keyword = {
-    keyword_struct | keyword_trait | keyword_impl | keyword_def | keyword_defs | keyword_defp |
+    keyword_struct | keyword_protocol | keyword_impl | keyword_def | keyword_defs | keyword_defp |
     keyword_let | keyword_const | keyword_fn | keyword_if | keyword_else |
     keyword_case | keyword_when | keyword_alias | keyword_import | keyword_macro |
     keyword_for | keyword_self | keyword_function | keyword_as | keyword_only | keyword_except
@@ -207,8 +207,8 @@ function_call_postfix = !{ "(" ~ argument_list? ~ ")" }
 braced_expr = ${ "(" ~ ws_comment* ~ expression ~ ws_comment* ~ ")"}
 unary_expr = ${ (op_unary_minus | op_unary_plus | op_logical_not | op_bitwise_not) ~ primary_expr }
 
-primary_expr = ${ 
-    sigil | unary_expr | anonymous_function | braced_expr | if_expression | case_expression | function_call | function_capture | macro_injection | struct_literal | boolean | float | integer | string | atom | qualified_identifier | identifier | type_with_generics | type_identifier | list | map | tuple 
+primary_expr = ${
+    sigil | unary_expr | anonymous_function | braced_expr | if_expression | case_expression | function_call | function_capture | macro_injection | struct_literal | boolean | float | integer | string | atom | qualified_identifier | identifier | type_with_generics | type_identifier | list | map | tuple
 }
 
 // Type with generic arguments (atomic to avoid conflicts with comparison operators)
@@ -263,7 +263,7 @@ guard_expression = { expression }
 // Block statement: { statement1; statement2; ... }
 block = !{ "{" ~ statement_sequence? ~ "}" }
 
-// Statement sequence - statements naturally separate at keywords  
+// Statement sequence - statements naturally separate at keywords
 statement_sequence = { statement+ }
 statement = !{ let_binding | expression }
 
@@ -305,18 +305,18 @@ struct_field = { identifier ~ ":" ~ type_annotation }
 struct_methods = { struct_method_item+ }
 struct_method_item = !{ function_definition }
 
-// Trait definition: trait Name<T> [when constraints] { function signatures }
-trait_definition = { attribute* ~ keyword_trait ~ module_path ~ generic_params? ~ trait_constraints? ~ "{" ~ trait_functions? ~ "}" }
-trait_functions = { trait_item+ }
-trait_item = !{ trait_function }
-trait_function = { static_function_definition | function_definition | function_signature }
+// Protocol definition: protocol Name<T> [when constraints] { function signatures }
+protocol_definition = { attribute* ~ keyword_protocol ~ module_path ~ generic_params? ~ protocol_constraints? ~ "{" ~ protocol_functions? ~ "}" }
+protocol_functions = { protocol_item+ }
+protocol_item = !{ protocol_function }
+protocol_function = { static_function_definition | function_definition | function_signature }
 
 static_function_definition = { attribute* ~ keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { attribute* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
-// Implementation block: impl<T> TraitName<T> for TypeName<T> when T: Constraint { methods }
-impl_block = { keyword_impl ~ generic_params? ~ trait_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_methods? ~ "}" }
-trait_spec = { module_path ~ generic_args? }
+// Implementation block: impl<T> ProtocolName<T> for TypeName<T> when T: Constraint { methods }
+impl_block = { keyword_impl ~ generic_params? ~ protocol_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_methods? ~ "}" }
+protocol_spec = { module_path ~ generic_args? }
 type_spec = { module_path ~ generic_args? }
 impl_methods = { impl_method_item+ }
 impl_method_item = { function_definition }
@@ -331,8 +331,8 @@ generic_args = { "<" ~ generic_arg_list ~ ">" }
 generic_arg_list = { generic_arg ~ ("," ~ generic_arg)* ~ ","? }
 generic_arg = { type_annotation }
 
-// Trait constraints: when T: Trait && U: OtherTrait
-trait_constraints = { keyword_when ~ constraint_expression }
+// Protocol constraints: when T: Protocol && U: OtherProtocol
+protocol_constraints = { keyword_when ~ constraint_expression }
 impl_constraints = { keyword_when ~ constraint_expression }
 constraint_expression = { constraint_and }
 constraint_and = { constraint_primary ~ ("&&" ~ constraint_primary)* }
@@ -384,8 +384,8 @@ anonymous_function = !{ keyword_fn ~ "{" ~ anonymous_clauses ~ "}" }
 anonymous_clauses = { anonymous_clause+ }
 anonymous_clause = !{ anonymous_params ~ guard_clause? ~ arrow ~ anonymous_body }
 
-// Anonymous function parameters  
-anonymous_params = { 
+// Anonymous function parameters
+anonymous_params = {
     "(" ~ ")" |
     "(" ~ parameter ~ ("," ~ parameter)* ~ ","? ~ ")" |
     identifier ~ ":" ~ type_annotation
@@ -410,7 +410,7 @@ const_definition = { keyword_const ~ type_identifier ~ ":" ~ type_annotation ~ "
 program = ${ SOI ~ ws_comment* ~ (program_item ~ (item_separator ~ program_item)*)? ~ ws_comment* ~ EOI }
 
 // Program items (non-atomic to restore normal parsing within items)
-program_item = !{ alias_definition | import_definition | macro_definition | struct_definition | trait_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | expression | keyword }
+program_item = !{ alias_definition | import_definition | macro_definition | struct_definition | protocol_definition | impl_block | function_definition | const_definition | let_binding | if_expression | case_expression | expression | keyword }
 
 // Required separator between program items
 item_separator = { ws_comment+ }

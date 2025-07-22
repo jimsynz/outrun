@@ -2,10 +2,10 @@
 //!
 //! This module handles routing of function calls based on the dispatch strategy
 //! determined by the typechecker. It supports:
-//! - Static trait functions (e.g., Option.some, List.empty)
+//! - Static protocol functions (e.g., Option.some, List.empty)
 //! - Intrinsic functions (e.g., Outrun.Intrinsic.add_integer64)
 //! - User-defined functions (TODO: Phase 4)
-//! - Trait method dispatch (e.g., list.head where list: List<T>)
+//! - Protocol method dispatch (e.g., list.head where list: List<T>)
 
 use crate::context::InterpreterContext;
 use crate::function_call_context::FunctionCallContext;
@@ -24,12 +24,12 @@ pub enum DispatchError {
     #[error("Function '{name}' not found")]
     FunctionNotFound { name: String, span: Span },
 
-    #[error("Trait '{trait_name}' not found")]
-    TraitNotFound { trait_name: String, span: Span },
+    #[error("Protocol '{protocol_name}' not found")]
+    ProtocolNotFound { protocol_name: String, span: Span },
 
-    #[error("No implementation of trait '{trait_name}' for type '{type_name}'")]
-    NoTraitImplementation {
-        trait_name: String,
+    #[error("No implementation of protocol '{protocol_name}' for type '{type_name}'")]
+    NoProtocolImplementation {
+        protocol_name: String,
         type_name: String,
         _span: Span,
     },
@@ -86,14 +86,14 @@ impl FunctionDispatcher {
                 function_id,
                 &call_context,
             ),
-            DispatchMethod::Trait {
-                trait_name,
+            DispatchMethod::Protocol {
+                protocol_name,
                 function_name,
                 impl_type,
-            } => self.dispatch_trait_function_with_context(
+            } => self.dispatch_protocol_function_with_context(
                 interpreter_context,
                 evaluator,
-                trait_name,
+                protocol_name,
                 function_name,
                 impl_type.as_ref(),
                 &call_context,
@@ -140,8 +140,8 @@ impl FunctionDispatcher {
             )?);
         }
 
-        // Extract function name for lookup (trait functions have "trait::" prefix)
-        let function_name = if function_id.starts_with("trait::") {
+        // Extract function name for lookup (protocol functions have "protocol::" prefix)
+        let function_name = if function_id.starts_with("protocol::") {
             function_id.split("::").last().unwrap_or(function_id)
         } else {
             function_id
@@ -182,46 +182,47 @@ impl FunctionDispatcher {
         })
     }
 
-    /// Dispatch a trait function call using context object
-    fn dispatch_trait_function_with_context(
+    /// Dispatch a protocol function call using context object
+    fn dispatch_protocol_function_with_context(
         &mut self,
         interpreter_context: &mut InterpreterContext,
         evaluator: &mut crate::evaluator::ExpressionEvaluator,
-        trait_name: &str,
+        protocol_name: &str,
         function_name: &str,
         impl_type: &outrun_typechecker::unification::StructuredType,
         call_context: &FunctionCallContext,
     ) -> Result<Value, DispatchError> {
-        // Extract the base type ID for trait dispatch
+        // Extract the base type ID for protocol dispatch
         let _impl_type_id = match impl_type {
             outrun_typechecker::unification::StructuredType::Simple(type_id) => type_id.clone(),
             outrun_typechecker::unification::StructuredType::Generic { base, .. } => base.clone(),
             _ => {
                 return Err(DispatchError::Internal {
-                    message: format!("Unsupported impl_type for trait dispatch: {impl_type:?}"),
+                    message: format!("Unsupported impl_type for protocol dispatch: {impl_type:?}"),
                     span: call_context.span,
                 });
             }
         };
 
-        // Get trait TypeNameId from trait name
-        let trait_type_id = self.compiler_environment.intern_type_name(trait_name);
+        // Get protocol TypeNameId from protocol name
+        let protocol_type_id = self.compiler_environment.intern_type_name(protocol_name);
 
-        // IMPORTANT: Always use Simple trait type for lookups, even for generic traits
-        // Trait implementations are registered against the simple trait type (e.g., "List")
+        // IMPORTANT: Always use Simple protocol type for lookups, even for generic protocols
+        // Protocol implementations are registered against the simple protocol type (e.g., "List")
         // not the generic type (e.g., "List<T>")
-        let trait_type = outrun_typechecker::unification::StructuredType::Simple(trait_type_id);
+        let protocol_type =
+            outrun_typechecker::unification::StructuredType::Simple(protocol_type_id);
         let function_name_atom = self.compiler_environment.intern_atom_name(function_name);
 
         if let Some(function_entry) = self.compiler_environment.lookup_impl_function(
-            &trait_type,
+            &protocol_type,
             impl_type,
             function_name_atom,
         ) {
-            // Check if this is a trait signature (which should not be executed)
+            // Check if this is a protocol signature (which should not be executed)
             match function_entry.function_type() {
-                outrun_typechecker::compilation::FunctionType::TraitSignature => {
-                    // Trait signatures should never be executed - this indicates a dispatch error
+                outrun_typechecker::compilation::FunctionType::ProtocolSignature => {
+                    // Protocol signatures should never be executed - this indicates a dispatch error
                     let impl_type_name = match impl_type {
                         outrun_typechecker::unification::StructuredType::Simple(type_id) => self
                             .compiler_environment
@@ -236,8 +237,8 @@ impl FunctionDispatcher {
                         }
                         _ => format!("{impl_type:?}"),
                     };
-                    return Err(DispatchError::NoTraitImplementation {
-                        trait_name: trait_name.to_string(),
+                    return Err(DispatchError::NoProtocolImplementation {
+                        protocol_name: protocol_name.to_string(),
                         type_name: impl_type_name,
                         _span: call_context.span,
                     });
@@ -343,7 +344,7 @@ impl FunctionDispatcher {
 
         Err(DispatchError::Internal {
             message: format!(
-                "INTERPRETER BUG: Trait implementation for '{trait_name}' on type '{type_name}' was not loaded into trait registry. \
+                "INTERPRETER BUG: Protocol implementation for '{protocol_name}' on type '{type_name}' was not loaded into protocol registry. \
                  Since typechecking passed, this implementation must exist but was not properly loaded by the interpreter."
             ),
             span: call_context.span,
@@ -380,21 +381,21 @@ mod tests {
     }
 
     #[test]
-    fn test_trait_function_id_parsing() {
-        // Test the function name extraction logic for trait function IDs
-        let trait_function_id = "trait::Option::some";
-        let extracted_name = if trait_function_id.starts_with("trait::") {
-            trait_function_id
+    fn test_protocol_function_id_parsing() {
+        // Test the function name extraction logic for protocol function IDs
+        let protocol_function_id = "protocol::Option::some";
+        let extracted_name = if protocol_function_id.starts_with("protocol::") {
+            protocol_function_id
                 .split("::")
                 .last()
-                .unwrap_or(trait_function_id)
+                .unwrap_or(protocol_function_id)
         } else {
-            trait_function_id
+            protocol_function_id
         };
         assert_eq!(extracted_name, "some");
 
         let regular_function_id = "regular_function";
-        let extracted_name = if regular_function_id.starts_with("trait::") {
+        let extracted_name = if regular_function_id.starts_with("protocol::") {
             regular_function_id
                 .split("::")
                 .last()

@@ -1,6 +1,6 @@
-//! Tests for type system item support in typed AST (struct/trait/impl/const definitions)
+//! Tests for type system item support in typed AST (struct/protocol/impl/const definitions)
 
-use crate::checker::{TypedItemKind, TypedTraitFunction};
+use crate::checker::{TypedItemKind, TypedProtocolFunction};
 use crate::compilation::compiler_environment::CompilerEnvironment;
 use outrun_parser::parse_program;
 
@@ -84,7 +84,7 @@ fn test_struct_with_functions_typed_ast() {
             def greet(self: Self): String {
                 "Hello, #{self.name}!"
             }
-            
+
             def get_email(self: Self): String {
                 self.email
             }
@@ -166,28 +166,28 @@ fn test_generic_struct_definition_typed_ast() {
 }
 
 #[test]
-fn test_simple_trait_definition_typed_ast() {
+fn test_simple_protocol_definition_typed_ast() {
     let source = r#"
-        trait Drawable {
+        protocol Drawable {
             def draw(self: Self): String
         }
     "#;
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
-            TypedItemKind::TraitDefinition(trait_def) => {
-                // Verify trait name
-                assert_eq!(trait_def.name, vec!["Drawable"]);
+            TypedItemKind::ProtocolDefinition(protocol_def) => {
+                // Verify protocol name
+                assert_eq!(protocol_def.name, vec!["Drawable"]);
 
                 // Verify no generic parameters
-                assert_eq!(trait_def.generic_params.len(), 0);
+                assert_eq!(protocol_def.generic_params.len(), 0);
 
                 // Verify functions
-                assert_eq!(trait_def.functions.len(), 1);
+                assert_eq!(protocol_def.functions.len(), 1);
 
                 // Verify function signature
-                match &trait_def.functions[0] {
-                    TypedTraitFunction::Signature {
+                match &protocol_def.functions[0] {
+                    TypedProtocolFunction::Signature {
                         name, parameters, ..
                     } => {
                         assert_eq!(name, "draw");
@@ -197,14 +197,14 @@ fn test_simple_trait_definition_typed_ast() {
                     _ => panic!("Expected function signature"),
                 }
 
-                // Verify trait ID is set
-                assert_eq!(trait_def.trait_id, "Drawable");
+                // Verify protocol ID is set
+                assert_eq!(protocol_def.protocol_id, "Drawable");
 
-                println!("✓ Simple trait definition successfully converted to typed AST");
+                println!("✓ Simple protocol definition successfully converted to typed AST");
             }
             TypedItemKind::Placeholder(_) => {
                 println!(
-                    "Trait definitions not yet fully integrated - placeholder found (expected)"
+                    "Protocol definitions not yet fully integrated - placeholder found (expected)"
                 );
             }
             _ => {
@@ -213,17 +213,17 @@ fn test_simple_trait_definition_typed_ast() {
         }
     } else {
         println!(
-            "Compilation failed - this is expected until trait definitions are fully integrated"
+            "Compilation failed - this is expected until protocol definitions are fully integrated"
         );
     }
 }
 
 #[test]
-fn test_trait_with_default_implementation_typed_ast() {
+fn test_protocol_with_default_implementation_typed_ast() {
     let source = r#"
-        trait Comparable {
+        protocol Comparable {
             def compare(self: Self, other: Self): Integer
-            
+
             def equals(self: Self, other: Self): Boolean {
                 self.compare(other: other) == 0
             }
@@ -232,35 +232,37 @@ fn test_trait_with_default_implementation_typed_ast() {
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
-            TypedItemKind::TraitDefinition(trait_def) => {
-                // Verify trait name
-                assert_eq!(trait_def.name, vec!["Comparable"]);
+            TypedItemKind::ProtocolDefinition(protocol_def) => {
+                // Verify protocol name
+                assert_eq!(protocol_def.name, vec!["Comparable"]);
 
                 // Verify functions
-                assert_eq!(trait_def.functions.len(), 2);
+                assert_eq!(protocol_def.functions.len(), 2);
 
                 // Verify first function is signature
-                match &trait_def.functions[0] {
-                    TypedTraitFunction::Signature { name, .. } => {
+                match &protocol_def.functions[0] {
+                    TypedProtocolFunction::Signature { name, .. } => {
                         assert_eq!(name, "compare");
                     }
                     _ => panic!("Expected function signature"),
                 }
 
                 // Verify second function is default implementation
-                match &trait_def.functions[1] {
-                    TypedTraitFunction::Definition(func_def) => {
+                match &protocol_def.functions[1] {
+                    TypedProtocolFunction::Definition(func_def) => {
                         assert_eq!(func_def.name, "equals");
                         assert_eq!(func_def.parameters.len(), 2);
                     }
                     _ => panic!("Expected function definition"),
                 }
 
-                println!("✓ Trait with default implementation successfully converted to typed AST");
+                println!(
+                    "✓ Protocol with default implementation successfully converted to typed AST"
+                );
             }
             TypedItemKind::Placeholder(_) => {
                 println!(
-                    "Trait definitions not yet fully integrated - placeholder found (expected)"
+                    "Protocol definitions not yet fully integrated - placeholder found (expected)"
                 );
             }
             _ => {
@@ -269,7 +271,7 @@ fn test_trait_with_default_implementation_typed_ast() {
         }
     } else {
         println!(
-            "Compilation failed - this is expected until trait definitions are fully integrated"
+            "Compilation failed - this is expected until protocol definitions are fully integrated"
         );
     }
 }
@@ -287,8 +289,8 @@ fn test_impl_block_typed_ast() {
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
             TypedItemKind::ImplBlock(impl_block) => {
-                // Verify trait path
-                assert_eq!(impl_block.trait_path, vec!["Drawable"]);
+                // Verify protocol path
+                assert_eq!(impl_block.protocol_path, vec!["Drawable"]);
 
                 // Verify type path
                 assert_eq!(impl_block.type_path, vec!["User"]);
@@ -328,8 +330,8 @@ fn test_generic_impl_block_typed_ast() {
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
             TypedItemKind::ImplBlock(impl_block) => {
-                // Verify trait path
-                assert_eq!(impl_block.trait_path, vec!["Serializable"]);
+                // Verify protocol path
+                assert_eq!(impl_block.protocol_path, vec!["Serializable"]);
 
                 // Verify type path
                 assert_eq!(impl_block.type_path, vec!["Container"]);

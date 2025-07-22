@@ -125,9 +125,9 @@ fn test_complex_generic_struct() {
 }
 
 #[test]
-fn test_generic_trait_definition() {
+fn test_generic_protocol_definition() {
     let source = r#"
-        trait Iterator<T> {
+        protocol Iterator<T> {
             def next(iter: Self): Option<T>
             def map(iter: Self, mapper: Function<(value: T) -> String>): Iterator<String>
         }
@@ -135,28 +135,32 @@ fn test_generic_trait_definition() {
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
-            TypedItemKind::TraitDefinition(trait_def) => {
-                // Verify trait name
-                assert_eq!(trait_def.name, vec!["Iterator"]);
+            TypedItemKind::ProtocolDefinition(protocol_def) => {
+                // Verify protocol name
+                assert_eq!(protocol_def.name, vec!["Iterator"]);
 
                 // Verify generic parameter
-                assert_eq!(trait_def.generic_params.len(), 1);
-                assert_eq!(trait_def.generic_params[0].name, "T");
+                assert_eq!(protocol_def.generic_params.len(), 1);
+                assert_eq!(protocol_def.generic_params[0].name, "T");
 
-                // Verify trait functions with generic types
-                assert_eq!(trait_def.functions.len(), 2);
+                // Verify protocol functions with generic types
+                assert_eq!(protocol_def.functions.len(), 2);
 
-                println!("✓ Generic trait definition successfully processed");
+                println!("✓ Generic protocol definition successfully processed");
             }
             TypedItemKind::Placeholder(_) => {
-                println!("Generic traits not yet fully integrated - placeholder found (expected)");
+                println!(
+                    "Generic protocols not yet fully integrated - placeholder found (expected)"
+                );
             }
             _ => {
                 println!("Unexpected item type: {:?}", typed_item.kind);
             }
         }
     } else {
-        println!("Compilation failed - this is expected until generic traits are fully integrated");
+        println!(
+            "Compilation failed - this is expected until generic protocols are fully integrated"
+        );
     }
 }
 
@@ -177,8 +181,8 @@ fn test_generic_impl_block_with_self() {
                 assert_eq!(impl_block.generic_params.len(), 1);
                 assert_eq!(impl_block.generic_params[0].name, "T");
 
-                // Verify trait and type paths
-                assert_eq!(impl_block.trait_path, vec!["Display"]);
+                // Verify protocol and type paths
+                assert_eq!(impl_block.protocol_path, vec!["Display"]);
                 assert_eq!(impl_block.type_path, vec!["Container"]);
 
                 // Verify function with Self type
@@ -214,7 +218,7 @@ fn test_generic_impl_block_with_self() {
 fn test_function_type_annotations() {
     let source = r#"
         def process_with_function(
-            items: List<String>, 
+            items: List<String>,
             processor: Function<(item: String) -> Integer>
         ): List<Integer> {
             # Implementation would map over items
@@ -268,7 +272,7 @@ fn test_tuple_type_annotations() {
         def get_coordinates(): (Float, Float) {
             (0.0, 0.0)
         }
-        
+
         def process_pair(pair: (String, Integer)): String {
             "result"
         }
@@ -353,10 +357,10 @@ fn test_nested_generic_types() {
 #[test]
 fn test_self_type_in_different_contexts() {
     let source = r#"
-        trait Cloneable {
+        protocol Cloneable {
             def clone(self: Self): Self
         }
-        
+
         impl Cloneable for String {
             def clone(self: Self): Self {
                 self
@@ -366,11 +370,11 @@ fn test_self_type_in_different_contexts() {
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
-            TypedItemKind::TraitDefinition(trait_def) => {
-                // Verify trait function uses Self
-                assert_eq!(trait_def.functions.len(), 1);
+            TypedItemKind::ProtocolDefinition(protocol_def) => {
+                // Verify protocol function uses Self
+                assert_eq!(protocol_def.functions.len(), 1);
 
-                println!("✓ Self type in trait definition successfully processed");
+                println!("✓ Self type in protocol definition successfully processed");
             }
             TypedItemKind::ImplBlock(impl_block) => {
                 // Verify impl block resolves Self to String
@@ -433,23 +437,23 @@ fn test_type_annotation_comprehensive_conversion() {
 #[test]
 fn test_generic_constraints_parsing() {
     let source = r#"
-        trait Comparable<T> {
+        protocol Comparable<T> {
             def compare(self: Self, other: T): Integer
         }
-        
+
         struct SortedList<T>(items: List<T>) {}
     "#;
 
     if let Some(typed_item) = compile_and_get_first_item(source) {
         match &typed_item.kind {
-            TypedItemKind::TraitDefinition(trait_def) => {
-                // Verify trait with generic parameter
-                assert_eq!(trait_def.name, vec!["Comparable"]);
-                assert_eq!(trait_def.generic_params.len(), 1);
-                assert_eq!(trait_def.generic_params[0].name, "T");
+            TypedItemKind::ProtocolDefinition(protocol_def) => {
+                // Verify protocol with generic parameter
+                assert_eq!(protocol_def.name, vec!["Comparable"]);
+                assert_eq!(protocol_def.generic_params.len(), 1);
+                assert_eq!(protocol_def.generic_params[0].name, "T");
 
                 // Constraints should be parsed (empty for now)
-                assert_eq!(trait_def.constraints.len(), 0);
+                assert_eq!(protocol_def.constraints.len(), 0);
 
                 println!("✓ Generic constraints foundation successfully processed");
             }

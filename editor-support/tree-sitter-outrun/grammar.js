@@ -12,7 +12,7 @@ module.exports = grammar({
 
     _item: $ => choice(
       $.struct_definition,
-      $.trait_definition,
+      $.protocol_definition,
       $.impl_block,
       $.function_definition,
       $.constant_definition,
@@ -32,7 +32,7 @@ module.exports = grammar({
 
     // Keywords
     _keyword: $ => choice(
-      'struct', 'trait', 'impl', 'def', 'defs', 'defp', 'let', 'const', 
+      'struct', 'protocol', 'impl', 'def', 'defs', 'defp', 'let', 'const',
       'fn', 'if', 'else', 'case', 'when', 'alias', 'macro', 'import',
       'for', 'Self', 'true', 'false', 'only', 'except'
     ),
@@ -101,13 +101,13 @@ module.exports = grammar({
       repeat(seq(',', $.identifier, ':', $.type_annotation))
     ),
 
-    // Trait Definition
-    trait_definition: $ => seq(
+    // Protocol Definition
+    protocol_definition: $ => seq(
       repeat($.attribute),
-      'trait',
+      'protocol',
       choice($.type_identifier, $.module_path),
       optional($.generic_params),
-      optional($.trait_constraints),
+      optional($.protocol_constraints),
       '{',
       repeat(choice(
         $.function_signature,
@@ -132,30 +132,30 @@ module.exports = grammar({
     impl_block: $ => seq(
       'impl',
       optional($.generic_params),
-      $.trait_spec,
+      $.protocol_spec,
       'for',
       $.type_spec,
-      optional($.trait_constraints),
+      optional($.protocol_constraints),
       '{',
       repeat($.function_definition),
       '}'
     ),
 
-    trait_spec: $ => seq($.module_path, optional($.generic_args)),
+    protocol_spec: $ => seq($.module_path, optional($.generic_args)),
     type_spec: $ => seq($.module_path, optional($.generic_args)),
 
     // Generic Parameters
     generic_params: $ => seq('<', seq($.type_identifier, repeat(seq(',', $.type_identifier))), '>'),
     generic_args: $ => seq('<', seq($.type_annotation, repeat(seq(',', $.type_annotation))), '>'),
 
-    trait_constraints: $ => seq('when', $._trait_constraint_expression),
-    _trait_constraint_expression: $ => prec.left(choice(
-      $.trait_constraint_term,
-      seq($._trait_constraint_expression, choice('&&', '||'), $._trait_constraint_expression),
-      seq('(', $._trait_constraint_expression, ')')
+    protocol_constraints: $ => seq('when', $._protocol_constraint_expression),
+    _protocol_constraint_expression: $ => prec.left(choice(
+      $.protocol_constraint_term,
+      seq($._protocol_constraint_expression, choice('&&', '||'), $._protocol_constraint_expression),
+      seq('(', $._protocol_constraint_expression, ')')
     )),
-    
-    trait_constraint_term: $ => prec(1, seq(
+
+    protocol_constraint_term: $ => prec(1, seq(
       choice($.type_identifier, 'Self'),
       ':',
       choice($.type_identifier, $.module_path)
@@ -397,7 +397,7 @@ module.exports = grammar({
 
     case_expression: $ => choice(
       $.concrete_case_expression,
-      $.trait_case_expression
+      $.protocol_case_expression
     ),
 
     concrete_case_expression: $ => seq(
@@ -408,13 +408,13 @@ module.exports = grammar({
       '}'
     ),
 
-    trait_case_expression: $ => seq(
+    protocol_case_expression: $ => seq(
       'case',
       $._expression,
       'as',
       $.type_identifier,
       '{',
-      repeat1($.trait_case_clause),
+      repeat1($.protocol_case_clause),
       '}'
     ),
 
@@ -424,8 +424,8 @@ module.exports = grammar({
       choice($._expression, seq('{', repeat($._statement), '}'))
     )),
 
-    trait_case_clause: $ => prec(1, seq(
-      $.trait_case_pattern,
+    protocol_case_clause: $ => prec(1, seq(
+      $.protocol_case_pattern,
       '->',
       choice($._expression, seq('{', repeat($._statement), '}'))
     )),
@@ -435,7 +435,7 @@ module.exports = grammar({
       optional($.guard_clause)
     ),
 
-    trait_case_pattern: $ => seq(
+    protocol_case_pattern: $ => seq(
       $.type_identifier,
       '{',
       optional($.struct_pattern_fields),
@@ -646,7 +646,7 @@ module.exports = grammar({
       $._attribute_arg,
       repeat(seq(',', $._attribute_arg))
     ),
-    
+
     _attribute_arg: $ => choice(
       $.named_argument,
       $._expression

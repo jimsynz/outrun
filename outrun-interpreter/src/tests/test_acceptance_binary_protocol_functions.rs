@@ -1,4 +1,4 @@
-//! Acceptance tests for Binary trait functions
+//! Acceptance tests for Binary protocol functions
 
 use crate::test_harness::OutrunTestHarness;
 
@@ -43,43 +43,76 @@ fn test_binary_byte_at() {
 
     // Valid indices for ASCII
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"hello\", index: 0) |> Option.unwrap()", 104)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"hello\", index: 0) |> Option.unwrap()",
+            104,
+        )
         .unwrap(); // 'h'
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"hello\", index: 1) |> Option.unwrap()", 101)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"hello\", index: 1) |> Option.unwrap()",
+            101,
+        )
         .unwrap(); // 'e'
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"hello\", index: 4) |> Option.unwrap()", 111)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"hello\", index: 4) |> Option.unwrap()",
+            111,
+        )
         .unwrap(); // 'o'
 
     // Valid indices for numbers and symbols
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"ABC\", index: 0) |> Option.unwrap()", 65)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"ABC\", index: 0) |> Option.unwrap()",
+            65,
+        )
         .unwrap(); // 'A'
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"123\", index: 0) |> Option.unwrap()", 49)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"123\", index: 0) |> Option.unwrap()",
+            49,
+        )
         .unwrap(); // '1'
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"!@#\", index: 0) |> Option.unwrap()", 33)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"!@#\", index: 0) |> Option.unwrap()",
+            33,
+        )
         .unwrap(); // '!'
 
     // Invalid indices (out of bounds)
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.byte_at(value: \"hello\", index: 5))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.byte_at(value: \"hello\", index: 5))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.byte_at(value: \"hello\", index: -1))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.byte_at(value: \"hello\", index: -1))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.byte_at(value: \"\", index: 0))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.byte_at(value: \"\", index: 0))",
+            true,
+        )
         .unwrap();
 
     // Multi-byte Unicode characters - checking individual bytes
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"café\", index: 3) |> Option.unwrap()", 195)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"café\", index: 3) |> Option.unwrap()",
+            195,
+        )
         .unwrap(); // First byte of 'é'
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: \"café\", index: 4) |> Option.unwrap()", 169)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: \"café\", index: 4) |> Option.unwrap()",
+            169,
+        )
         .unwrap(); // Second byte of 'é'
 }
 
@@ -123,7 +156,10 @@ fn test_binary_slice() {
         .assert_evaluates_to_string("Binary.slice(value: \"café\", start: 0, end: 3)", "caf")
         .unwrap(); // Just "caf" (before 'é')
     harness
-        .assert_evaluates_to_string("Binary.slice(value: \"hello🦀\", start: 0, end: 5)", "hello")
+        .assert_evaluates_to_string(
+            "Binary.slice(value: \"hello🦀\", start: 0, end: 5)",
+            "hello",
+        )
         .unwrap(); // Just "hello" (before emoji)
 }
 
@@ -133,7 +169,10 @@ fn test_binary_concat() {
 
     // Basic concatenation
     harness
-        .assert_evaluates_to_string("Binary.concat(lhs: \"hello\", rhs: \" world\")", "hello world")
+        .assert_evaluates_to_string(
+            "Binary.concat(lhs: \"hello\", rhs: \" world\")",
+            "hello world",
+        )
         .unwrap();
     harness
         .assert_evaluates_to_string("Binary.concat(lhs: \"foo\", rhs: \"bar\")", "foobar")
@@ -170,40 +209,70 @@ fn test_binary_index_of() {
 
     // Found cases with ASCII
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello world\", search: \"world\") |> Option.unwrap()", 6)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello world\", search: \"world\") |> Option.unwrap()",
+            6,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello\", search: \"h\") |> Option.unwrap()", 0)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello\", search: \"h\") |> Option.unwrap()",
+            0,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello\", search: \"o\") |> Option.unwrap()", 4)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello\", search: \"o\") |> Option.unwrap()",
+            4,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello\", search: \"ell\") |> Option.unwrap()", 1)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello\", search: \"ell\") |> Option.unwrap()",
+            1,
+        )
         .unwrap();
 
     // Not found cases
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.index_of(value: \"hello\", search: \"xyz\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.index_of(value: \"hello\", search: \"xyz\"))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.index_of(value: \"hello\", search: \"Hello\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.index_of(value: \"hello\", search: \"Hello\"))",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.index_of(value: \"\", search: \"a\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.index_of(value: \"\", search: \"a\"))",
+            true,
+        )
         .unwrap();
 
     // Empty search string
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello\", search: \"\") |> Option.unwrap()", 0)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello\", search: \"\") |> Option.unwrap()",
+            0,
+        )
         .unwrap();
 
     // Unicode search (byte-level search)
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"hello🦀rust\", search: \"rust\") |> Option.unwrap()", 9)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"hello🦀rust\", search: \"rust\") |> Option.unwrap()",
+            9,
+        )
         .unwrap(); // After hello(5) + crab(4)
     harness
-        .assert_evaluates_to_integer("Binary.index_of(value: \"café latte\", search: \"latte\") |> Option.unwrap()", 6)
+        .assert_evaluates_to_integer(
+            "Binary.index_of(value: \"café latte\", search: \"latte\") |> Option.unwrap()",
+            6,
+        )
         .unwrap(); // After café(5) + space(1)
 }
 
@@ -213,13 +282,19 @@ fn test_binary_contains() {
 
     // Contains cases
     harness
-        .assert_evaluates_to_boolean("Binary.contains?(value: \"hello world\", search: \"world\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.contains?(value: \"hello world\", search: \"world\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.contains?(value: \"hello\", search: \"ell\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.contains?(value: \"hello\", search: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.contains?(value: \"hello\", search: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not contain cases
@@ -227,7 +302,10 @@ fn test_binary_contains() {
         .assert_evaluates_to_boolean("Binary.contains?(value: \"hello\", search: \"xyz\")", false)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.contains?(value: \"hello\", search: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.contains?(value: \"hello\", search: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.contains?(value: \"\", search: \"a\")", false)
@@ -240,10 +318,16 @@ fn test_binary_contains() {
 
     // Unicode contains (byte-level)
     harness
-        .assert_evaluates_to_boolean("Binary.contains?(value: \"café latte\", search: \"latte\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.contains?(value: \"café latte\", search: \"latte\")",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.contains?(value: \"🦀rust\", search: \"rust\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.contains?(value: \"🦀rust\", search: \"rust\")",
+            true,
+        )
         .unwrap();
 }
 
@@ -253,24 +337,39 @@ fn test_binary_starts_with() {
 
     // Starts with cases
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello world\", prefix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"hello world\", prefix: \"hello\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello\", prefix: \"h\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello\", prefix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"hello\", prefix: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not start with cases
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello\", prefix: \"world\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"hello\", prefix: \"world\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello\", prefix: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"hello\", prefix: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"hello\", prefix: \"ello\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"hello\", prefix: \"ello\")",
+            false,
+        )
         .unwrap();
 
     // Empty prefix
@@ -288,10 +387,16 @@ fn test_binary_starts_with() {
 
     // Unicode starts with (byte-level)
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"café latte\", prefix: \"café\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"café latte\", prefix: \"café\")",
+            true,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.starts_with?(value: \"🦀rust\", prefix: \"🦀\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.starts_with?(value: \"🦀rust\", prefix: \"🦀\")",
+            true,
+        )
         .unwrap();
 }
 
@@ -301,24 +406,39 @@ fn test_binary_ends_with() {
 
     // Ends with cases
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello world\", suffix: \"world\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"hello world\", suffix: \"world\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello\", suffix: \"o\")", true)
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello\", suffix: \"hello\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"hello\", suffix: \"hello\")",
+            true,
+        )
         .unwrap();
 
     // Does not end with cases
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello\", suffix: \"world\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"hello\", suffix: \"world\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello\", suffix: \"Hello\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"hello\", suffix: \"Hello\")",
+            false,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"hello\", suffix: \"hell\")", false)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"hello\", suffix: \"hell\")",
+            false,
+        )
         .unwrap();
 
     // Empty suffix
@@ -336,7 +456,10 @@ fn test_binary_ends_with() {
 
     // Unicode ends with (byte-level)
     harness
-        .assert_evaluates_to_boolean("Binary.ends_with?(value: \"café latte\", suffix: \"latte\")", true)
+        .assert_evaluates_to_boolean(
+            "Binary.ends_with?(value: \"café latte\", suffix: \"latte\")",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.ends_with?(value: \"rust🦀\", suffix: \"🦀\")", true)
@@ -391,13 +514,22 @@ fn test_binary_from_hex() {
 
     // Valid hex strings
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: \"68656c6c6f\") |> Option.unwrap()", "hello")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: \"68656c6c6f\") |> Option.unwrap()",
+            "hello",
+        )
         .unwrap(); // hex for "hello"
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: \"414243\") |> Option.unwrap()", "ABC")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: \"414243\") |> Option.unwrap()",
+            "ABC",
+        )
         .unwrap(); // hex for "ABC"
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: \"313233\") |> Option.unwrap()", "123")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: \"313233\") |> Option.unwrap()",
+            "123",
+        )
         .unwrap(); // hex for "123"
 
     // Empty hex string
@@ -418,12 +550,18 @@ fn test_binary_from_hex() {
         .assert_evaluates_to_string("Binary.from_hex(value: \"c3a9\") |> Option.unwrap()", "é")
         .unwrap(); // hex for "é"
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: \"f09fa680\") |> Option.unwrap()", "🦀")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: \"f09fa680\") |> Option.unwrap()",
+            "🦀",
+        )
         .unwrap(); // hex for crab emoji
 
     // Invalid hex strings (should return None)
     harness
-        .assert_evaluates_to_boolean("Option.none?(value: Binary.from_hex(value: \"invalid\"))", true)
+        .assert_evaluates_to_boolean(
+            "Option.none?(value: Binary.from_hex(value: \"invalid\"))",
+            true,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Option.none?(value: Binary.from_hex(value: \"xyz\"))", true)
@@ -440,7 +578,10 @@ fn test_binary_from_hex() {
 
     // Case insensitive hex (if supported)
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: \"41424344\") |> Option.unwrap()", "ABCD")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: \"41424344\") |> Option.unwrap()",
+            "ABCD",
+        )
         .unwrap();
     harness
         .assert_evaluates_to_string("Binary.from_hex(value: \"ABCD\") |> Option.unwrap()", "«CD")
@@ -476,17 +617,28 @@ fn test_binary_functions_with_variables() {
     let mut harness = OutrunTestHarness::new().unwrap();
 
     // Set up variables
-    harness.execute_let_binding("let data = \"Hello World\"").unwrap();
-    harness.execute_let_binding("let empty_data = \"\"").unwrap();
-    harness.execute_let_binding("let unicode_data = \"café 🦀\"").unwrap();
-    harness.execute_let_binding("let hex_string = \"68656c6c6f\"").unwrap(); // "hello"
+    harness
+        .execute_let_binding("let data = \"Hello World\"")
+        .unwrap();
+    harness
+        .execute_let_binding("let empty_data = \"\"")
+        .unwrap();
+    harness
+        .execute_let_binding("let unicode_data = \"café 🦀\"")
+        .unwrap();
+    harness
+        .execute_let_binding("let hex_string = \"68656c6c6f\"")
+        .unwrap(); // "hello"
 
     // Test with variables
     harness
         .assert_evaluates_to_integer("Binary.byte_size(value: data)", 11)
         .unwrap();
     harness
-        .assert_evaluates_to_integer("Binary.byte_at(value: data, index: 0) |> Option.unwrap()", 72)
+        .assert_evaluates_to_integer(
+            "Binary.byte_at(value: data, index: 0) |> Option.unwrap()",
+            72,
+        )
         .unwrap(); // 'H'
     harness
         .assert_evaluates_to_string("Binary.slice(value: data, start: 0, end: 5)", "Hello")
@@ -516,7 +668,10 @@ fn test_binary_functions_with_variables() {
 
     // Test hex conversion with variables
     harness
-        .assert_evaluates_to_string("Binary.from_hex(value: hex_string) |> Option.unwrap()", "hello")
+        .assert_evaluates_to_string(
+            "Binary.from_hex(value: hex_string) |> Option.unwrap()",
+            "hello",
+        )
         .unwrap();
     harness
         .assert_evaluates_to_string("Binary.to_hex(value: data)", "48656c6c6f20576f726c64")
@@ -529,25 +684,40 @@ fn test_binary_hex_roundtrip() {
 
     // ASCII roundtrip
     harness
-        .assert_evaluates_to_string("Binary.to_hex(value: \"hello\") |> Binary.from_hex() |> Option.unwrap()", "hello")
+        .assert_evaluates_to_string(
+            "Binary.to_hex(value: \"hello\") |> Binary.from_hex() |> Option.unwrap()",
+            "hello",
+        )
         .unwrap();
 
     // Unicode roundtrip
     harness
-        .assert_evaluates_to_string("Binary.to_hex(value: \"café\") |> Binary.from_hex() |> Option.unwrap()", "café")
+        .assert_evaluates_to_string(
+            "Binary.to_hex(value: \"café\") |> Binary.from_hex() |> Option.unwrap()",
+            "café",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("Binary.to_hex(value: \"🦀\") |> Binary.from_hex() |> Option.unwrap()", "🦀")
+        .assert_evaluates_to_string(
+            "Binary.to_hex(value: \"🦀\") |> Binary.from_hex() |> Option.unwrap()",
+            "🦀",
+        )
         .unwrap();
 
     // Empty string roundtrip
     harness
-        .assert_evaluates_to_string("Binary.to_hex(value: \"\") |> Binary.from_hex() |> Option.unwrap()", "")
+        .assert_evaluates_to_string(
+            "Binary.to_hex(value: \"\") |> Binary.from_hex() |> Option.unwrap()",
+            "",
+        )
         .unwrap();
 
     // Complex string roundtrip
     harness
-        .assert_evaluates_to_string("Binary.to_hex(value: \"Hello 🌍!\") |> Binary.from_hex() |> Option.unwrap()", "Hello 🌍!")
+        .assert_evaluates_to_string(
+            "Binary.to_hex(value: \"Hello 🌍!\") |> Binary.from_hex() |> Option.unwrap()",
+            "Hello 🌍!",
+        )
         .unwrap();
 }
 
@@ -557,18 +727,30 @@ fn test_binary_chained_operations() {
 
     // Chain multiple binary operations
     harness
-        .assert_evaluates_to_string("Binary.concat(lhs: \"hello\", rhs: \" world\") |> Binary.slice(start: 0, end: 5)", "hello")
+        .assert_evaluates_to_string(
+            "Binary.concat(lhs: \"hello\", rhs: \" world\") |> Binary.slice(start: 0, end: 5)",
+            "hello",
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_integer("Binary.concat(lhs: \"foo\", rhs: \"bar\") |> Binary.byte_size()", 6)
+        .assert_evaluates_to_integer(
+            "Binary.concat(lhs: \"foo\", rhs: \"bar\") |> Binary.byte_size()",
+            6,
+        )
         .unwrap();
     harness
-        .assert_evaluates_to_string("Binary.slice(value: \"hello world\", start: 6, end: 11) |> Binary.to_hex()", "776f726c64")
+        .assert_evaluates_to_string(
+            "Binary.slice(value: \"hello world\", start: 6, end: 11) |> Binary.to_hex()",
+            "776f726c64",
+        )
         .unwrap(); // "world" in hex
 
     // Complex chaining with predicates
     harness
-        .assert_evaluates_to_boolean("Binary.concat(lhs: \"test\", rhs: \"data\") |> Binary.empty?()", false)
+        .assert_evaluates_to_boolean(
+            "Binary.concat(lhs: \"test\", rhs: \"data\") |> Binary.empty?()",
+            false,
+        )
         .unwrap();
     harness
         .assert_evaluates_to_boolean("Binary.slice(value: \"hello\", start: 0, end: 2) |> Binary.starts_with?(prefix: \"he\")", true)

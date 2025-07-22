@@ -42,9 +42,9 @@ pub enum ConcreteType {
         name: TypeNameId,
         fields: Vec<StructField>,
     },
-    Trait {
+    Protocol {
         name: TypeNameId,
-        functions: Vec<TraitFunction>,
+        functions: Vec<ProtocolFunction>,
     },
 
     // Function types
@@ -62,9 +62,9 @@ pub struct StructField {
     pub span: Span,
 }
 
-/// Function in a trait definition
+/// Function in a protocol definition
 #[derive(Debug, Clone, PartialEq)]
-pub struct TraitFunction {
+pub struct ProtocolFunction {
     pub name: AtomId,
     pub signature: FunctionSignature,
     pub span: Span,
@@ -202,7 +202,7 @@ impl TypeCompatibility {
         Self::are_equal(from, to)
     }
 
-    /// Check if a type implements the Boolean trait (for conditionals)
+    /// Check if a type implements the Boolean protocol (for conditionals)
     pub fn can_be_condition(concrete_type: &ConcreteType) -> bool {
         // Only Boolean type can be used in conditionals (no truthiness)
         matches!(concrete_type, ConcreteType::Boolean)

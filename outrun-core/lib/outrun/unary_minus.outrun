@@ -1,7 +1,7 @@
 @Doc(content: """
-Unary minus trait for the unary - operator.
+Unary minus protocol for the unary - operator.
 
-The UnaryMinus trait defines the behaviour for the unary - operator (negation).
+The UnaryMinus protocol defines the behaviour for the unary - operator (negation).
 When you write `-a`, it becomes `UnaryMinus.minus(value: a)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `-a`, it becomes `UnaryMinus.minus(value: a)`.
 --5                           # UnaryMinus.minus(value: UnaryMinus.minus(value: 5)): Integer64  -> 5
 ```
 """)
-trait UnaryMinus {
+protocol UnaryMinus {
     @Doc(content: "Apply unary minus (negation) to a value")
     def minus(value: Self): Self
 }

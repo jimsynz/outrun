@@ -18,8 +18,8 @@ fn test_basic_impl_block() {
             assert!(impl_block.constraints.is_none());
             assert_eq!(impl_block.methods.len(), 1);
 
-            assert_eq!(impl_block.trait_spec.path.len(), 1);
-            assert_eq!(impl_block.trait_spec.path[0].name, "Drawable");
+            assert_eq!(impl_block.protocol_spec.path.len(), 1);
+            assert_eq!(impl_block.protocol_spec.path[0].name, "Drawable");
 
             assert_eq!(impl_block.type_spec.path.len(), 1);
             assert_eq!(impl_block.type_spec.path[0].name, "User");
@@ -48,8 +48,8 @@ fn test_impl_with_generics() {
             assert_eq!(generics.params.len(), 1);
             assert_eq!(generics.params[0].name.name, "T");
 
-            assert_eq!(impl_block.trait_spec.path[0].name, "Serializable");
-            assert!(impl_block.trait_spec.generic_args.is_some());
+            assert_eq!(impl_block.protocol_spec.path[0].name, "Serializable");
+            assert!(impl_block.protocol_spec.generic_args.is_some());
 
             assert_eq!(impl_block.type_spec.path[0].name, "Container");
             assert!(impl_block.type_spec.generic_args.is_some());
@@ -75,12 +75,12 @@ fn test_impl_with_constraints() {
             match impl_block.constraints.as_ref().unwrap() {
                 ConstraintExpression::Constraint {
                     type_param,
-                    trait_bound,
+                    protocol_bound,
                     ..
                 } => {
                     assert_eq!(type_param.name, "T");
-                    assert_eq!(trait_bound.len(), 1);
-                    assert_eq!(trait_bound[0].name, "Orderable");
+                    assert_eq!(protocol_bound.len(), 1);
+                    assert_eq!(protocol_bound[0].name, "Orderable");
                 }
                 _ => panic!("Expected simple constraint"),
             }
@@ -112,22 +112,22 @@ fn test_impl_with_complex_constraints() {
                     match left.as_ref() {
                         ConstraintExpression::Constraint {
                             type_param,
-                            trait_bound,
+                            protocol_bound,
                             ..
                         } => {
                             assert_eq!(type_param.name, "T");
-                            assert_eq!(trait_bound[0].name, "Serializable");
+                            assert_eq!(protocol_bound[0].name, "Serializable");
                         }
                         _ => panic!("Expected T: Serializable constraint"),
                     }
                     match right.as_ref() {
                         ConstraintExpression::Constraint {
                             type_param,
-                            trait_bound,
+                            protocol_bound,
                             ..
                         } => {
                             assert_eq!(type_param.name, "U");
-                            assert_eq!(trait_bound[0].name, "Deserializable");
+                            assert_eq!(protocol_bound[0].name, "Deserializable");
                         }
                         _ => panic!("Expected U: Deserializable constraint"),
                     }
@@ -152,9 +152,9 @@ fn test_impl_with_qualified_types() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            assert_eq!(impl_block.trait_spec.path.len(), 2);
-            assert_eq!(impl_block.trait_spec.path[0].name, "Http");
-            assert_eq!(impl_block.trait_spec.path[1].name, "Client");
+            assert_eq!(impl_block.protocol_spec.path.len(), 2);
+            assert_eq!(impl_block.protocol_spec.path[0].name, "Http");
+            assert_eq!(impl_block.protocol_spec.path[1].name, "Client");
 
             assert_eq!(impl_block.type_spec.path.len(), 2);
             assert_eq!(impl_block.type_spec.path[0].name, "Http");

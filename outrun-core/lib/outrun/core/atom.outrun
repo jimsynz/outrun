@@ -1,7 +1,7 @@
 @Doc(content: """
 Atom concrete type.
 
-This is the default concrete implementation of the Atom trait in Outrun.
+This is the default concrete implementation of the Atom protocol in Outrun.
 Atom literals without explicit type annotations default to this type.
 Atoms are interned for fast equality comparisons.
 
@@ -17,14 +17,14 @@ Atoms are interned for fast equality comparisons.
 """)
 struct Outrun.Core.Atom() {}
 
-# Equality trait implementation
+# Equality protocol implementation
 impl Equality for Outrun.Core.Atom {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.atom_eq(lhs: lhs, rhs: rhs)
     }
 }
 
-# Display trait implementation
+# Display protocol implementation
 impl Display for Outrun.Core.Atom {
     def to_string(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.atom_to_string(value: value)
@@ -32,7 +32,7 @@ impl Display for Outrun.Core.Atom {
 }
 
 
-# Atom trait implementation
+# Atom protocol implementation
 impl Atom for Outrun.Core.Atom {
-    # Empty implementation - behavior comes from constrained traits
+    # Empty implementation - behavior comes from constrained protocols
 }

@@ -24,15 +24,15 @@ pub enum TypeError {
         found: String,
     },
 
-    #[error("Trait {trait_name} not implemented for type {type_name}")]
+    #[error("Protocol {protocol_name} not implemented for type {type_name}")]
     #[diagnostic(
-        code(outrun::types::trait_not_implemented),
-        help("Implement the {trait_name} trait for {type_name} or use a type that implements it")
+        code(outrun::types::protocol_not_implemented),
+        help("Implement the {protocol_name} protocol for {type_name} or use a type that implements it")
     )]
-    TraitNotImplemented {
-        #[label("trait {trait_name} not implemented for {type_name}")]
+    ProtocolNotImplemented {
+        #[label("protocol {protocol_name} not implemented for {type_name}")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         type_name: String,
     },
 
@@ -251,23 +251,23 @@ pub enum TypeError {
         field_name: String,
     },
 
-    #[error("Circular trait dependency")]
+    #[error("Circular protocol dependency")]
     #[diagnostic(
         code(outrun::typechecker::circular_dependency),
-        help("Trait dependencies must not form cycles")
+        help("Protocol dependencies must not form cycles")
     )]
-    CircularTraitDependency {
+    CircularProtocolDependency {
         #[label("circular dependency detected")]
         span: SourceSpan,
         cycle: Vec<String>,
     },
 
-    #[error("Invalid trait constraint")]
+    #[error("Invalid protocol constraint")]
     #[diagnostic(
         code(outrun::typechecker::invalid_constraint),
-        help("Trait constraint {constraint} is not satisfied")
+        help("Protocol constraint {constraint} is not satisfied")
     )]
-    InvalidTraitConstraint {
+    InvalidProtocolConstraint {
         #[label("constraint not satisfied")]
         span: SourceSpan,
         constraint: String,
@@ -312,9 +312,9 @@ pub enum TypeError {
         help("Add cases for missing types: {missing_types}")
     )]
     CaseNotExhaustive {
-        #[label("missing cases for trait {trait_name}")]
+        #[label("missing cases for protocol {protocol_name}")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         missing_types: String,
     },
 
@@ -353,7 +353,7 @@ pub enum TypeError {
     #[error("List elements have incompatible types")]
     #[diagnostic(
         code(outrun::types::mixed_list_elements),
-        help("Either make all elements the same type, or add a type annotation like `let mixed: List<SomeTraitType> = [...]` if the elements implement a common trait")
+        help("Either make all elements the same type, or add a type annotation like `let mixed: List<SomeProtocolType> = [...]` if the elements implement a common protocol")
     )]
     MixedListElements {
         #[label("this element has type {found_type}")]
@@ -384,58 +384,60 @@ pub enum TypeError {
         message: String,
     },
 
-    #[error("Undefined trait {trait_name}")]
+    #[error("Undefined protocol {protocol_name}")]
     #[diagnostic(
-        code(outrun::typechecker::undefined_trait),
-        help("Define the trait {trait_name} or import it from another module")
+        code(outrun::typechecker::undefined_protocol),
+        help("Define the protocol {protocol_name} or import it from another module")
     )]
-    UndefinedTrait {
-        #[label("undefined trait")]
+    UndefinedProtocol {
+        #[label("undefined protocol")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
     },
 
-    #[error("Duplicate implementation of trait {trait_name} for type {type_name}")]
+    #[error("Duplicate implementation of protocol {protocol_name} for type {type_name}")]
     #[diagnostic(
         code(outrun::typechecker::duplicate_implementation),
-        help("Each type can only implement a trait once")
+        help("Each type can only implement a protocol once")
     )]
     DuplicateImplementation {
         #[label("duplicate implementation")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         type_name: String,
     },
 
-    #[error("Missing implementation of function {function_name} in trait {trait_name} for type {type_name}")]
+    #[error("Missing implementation of function {function_name} in protocol {protocol_name} for type {type_name}")]
     #[diagnostic(
         code(outrun::typechecker::missing_implementation),
-        help("All trait functions must be implemented")
+        help("All protocol functions must be implemented")
     )]
     MissingImplementation {
         #[label("missing function implementation")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         type_name: String,
         function_name: String,
     },
 
-    #[error("Extra implementation of function {function_name} not declared in trait {trait_name}")]
+    #[error(
+        "Extra implementation of function {function_name} not declared in protocol {protocol_name}"
+    )]
     #[diagnostic(
         code(outrun::typechecker::extra_implementation),
-        help("Only functions declared in the trait can be implemented")
+        help("Only functions declared in the protocol can be implemented")
     )]
     ExtraImplementation {
         #[label("extra function implementation")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         function_name: String,
     },
 
     #[error("Function signature mismatch for {function_name}")]
     #[diagnostic(
         code(outrun::typechecker::signature_mismatch),
-        help("Implementation signature must match trait signature exactly")
+        help("Implementation signature must match protocol signature exactly")
     )]
     SignatureMismatch {
         #[label("signature mismatch")]
@@ -502,10 +504,10 @@ pub enum TypeError {
         found_pattern: String,
     },
 
-    #[error("String interpolation error: type {type_name} does not implement Display trait")]
+    #[error("String interpolation error: type {type_name} does not implement Display protocol")]
     #[diagnostic(
         code(outrun::typechecker::string_interpolation_display),
-        help("Only types that implement the Display trait can be interpolated in strings. Implement Display for {type_name} or convert the value explicitly.")
+        help("Only types that implement the Display protocol can be interpolated in strings. Implement Display for {type_name} or convert the value explicitly.")
     )]
     StringInterpolationDisplayError {
         #[label("expression of type {type_name} cannot be displayed")]
@@ -536,15 +538,15 @@ pub enum TypeError {
         missing_values: Vec<String>,
     },
 
-    #[error("Trait case statement is not exhaustive")]
+    #[error("Protocol case statement is not exhaustive")]
     #[diagnostic(
-        code(outrun::exhaustiveness::trait_not_exhaustive),
-        help("Trait case statements must handle all implementing types. Missing: {}", missing_types.join(", "))
+        code(outrun::exhaustiveness::protocol_not_exhaustive),
+        help("Protocol case statements must handle all implementing types. Missing: {}", missing_types.join(", "))
     )]
-    TraitNotExhaustive {
-        #[label("missing trait implementation patterns")]
+    ProtocolNotExhaustive {
+        #[label("missing protocol implementation patterns")]
         span: SourceSpan,
-        trait_name: String,
+        protocol_name: String,
         missing_types: Vec<String>,
     },
 
@@ -620,11 +622,15 @@ impl TypeError {
         }
     }
 
-    /// Create a trait not implemented error
-    pub fn trait_not_implemented(trait_name: String, type_name: String, span: SourceSpan) -> Self {
-        Self::TraitNotImplemented {
+    /// Create a protocol not implemented error
+    pub fn protocol_not_implemented(
+        protocol_name: String,
+        type_name: String,
+        span: SourceSpan,
+    ) -> Self {
+        Self::ProtocolNotImplemented {
             span,
-            trait_name,
+            protocol_name,
             type_name,
         }
     }
@@ -755,28 +761,28 @@ impl TypeError {
         }
     }
 
-    /// Create a trait not exhaustive error
-    pub fn trait_not_exhaustive(
-        trait_name: String,
+    /// Create a protocol not exhaustive error
+    pub fn protocol_not_exhaustive(
+        protocol_name: String,
         missing_types: Vec<String>,
         span: SourceSpan,
     ) -> Self {
-        Self::TraitNotExhaustive {
+        Self::ProtocolNotExhaustive {
             span,
-            trait_name,
+            protocol_name,
             missing_types,
         }
     }
 
-    /// Create a case not exhaustive error (for trait cases)
-    pub fn case_not_exhaustive_trait(
-        trait_name: String,
+    /// Create a case not exhaustive error (for protocol cases)
+    pub fn case_not_exhaustive_protocol(
+        protocol_name: String,
         missing_types: String,
         span: SourceSpan,
     ) -> Self {
         Self::CaseNotExhaustive {
             span,
-            trait_name,
+            protocol_name,
             missing_types,
         }
     }
@@ -787,7 +793,7 @@ pub fn span_to_source_span(span: outrun_parser::Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.end - span.start)
 }
 
-/// Extension trait for easier span conversion
+/// Extension protocol for easier span conversion
 pub trait SpanExt {
     /// Convert to miette::SourceSpan
     fn to_source_span(self) -> SourceSpan;
@@ -896,7 +902,7 @@ pub struct TypeErrorWithSource {
     pub filename: String,
 }
 
-// Implement miette traits manually since we need special handling
+// Implement miette protocols manually since we need special handling
 impl std::fmt::Display for TypeErrorWithSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.inner)
@@ -1019,7 +1025,7 @@ impl TypeErrorReport {
         let mut type_mismatches = 0;
         let mut undefined_functions = 0;
         let mut undefined_variables = 0;
-        let mut trait_errors = 0;
+        let mut protocol_errors = 0;
         let mut other_errors = 0;
 
         for error in &self.errors {
@@ -1035,13 +1041,13 @@ impl TypeErrorReport {
                 TypeError::UndefinedVariable { .. } => {
                     undefined_variables += 1;
                 }
-                TypeError::TraitNotImplemented { .. }
-                | TypeError::UndefinedTrait { .. }
+                TypeError::ProtocolNotImplemented { .. }
+                | TypeError::UndefinedProtocol { .. }
                 | TypeError::DuplicateImplementation { .. }
                 | TypeError::MissingImplementation { .. }
                 | TypeError::ExtraImplementation { .. }
                 | TypeError::SignatureMismatch { .. } => {
-                    trait_errors += 1;
+                    protocol_errors += 1;
                 }
                 _ => {
                     other_errors += 1;
@@ -1054,7 +1060,7 @@ impl TypeErrorReport {
             type_mismatches,
             undefined_functions,
             undefined_variables,
-            trait_errors,
+            protocol_errors,
             other_errors,
         }
     }
@@ -1064,7 +1070,7 @@ impl TypeErrorReport {
         let mut groups = Vec::new();
         let mut function_errors = Vec::new();
         let mut type_mismatch_errors = Vec::new();
-        let mut trait_errors = Vec::new();
+        let mut protocol_errors = Vec::new();
         let mut other_errors = Vec::new();
 
         for error in &self.errors {
@@ -1081,13 +1087,13 @@ impl TypeErrorReport {
                 | TypeError::InvalidGuardType { .. } => {
                     type_mismatch_errors.push(error.clone());
                 }
-                TypeError::TraitNotImplemented { .. }
-                | TypeError::UndefinedTrait { .. }
+                TypeError::ProtocolNotImplemented { .. }
+                | TypeError::UndefinedProtocol { .. }
                 | TypeError::DuplicateImplementation { .. }
                 | TypeError::MissingImplementation { .. }
                 | TypeError::ExtraImplementation { .. }
                 | TypeError::SignatureMismatch { .. } => {
-                    trait_errors.push(error.clone());
+                    protocol_errors.push(error.clone());
                 }
                 _ => {
                     other_errors.push(error.clone());
@@ -1111,11 +1117,11 @@ impl TypeErrorReport {
             });
         }
 
-        if !trait_errors.is_empty() {
+        if !protocol_errors.is_empty() {
             groups.push(ErrorGroup {
-                category: "Trait System Errors".to_string(),
-                description: "Issues with trait definitions or implementations".to_string(),
-                errors: trait_errors,
+                category: "Protocol System Errors".to_string(),
+                description: "Issues with protocol definitions or implementations".to_string(),
+                errors: protocol_errors,
             });
         }
 
@@ -1153,7 +1159,7 @@ pub struct ErrorSummary {
     pub type_mismatches: usize,
     pub undefined_functions: usize,
     pub undefined_variables: usize,
-    pub trait_errors: usize,
+    pub protocol_errors: usize,
     pub other_errors: usize,
 }
 
@@ -1191,11 +1197,11 @@ impl std::fmt::Display for ErrorSummary {
                 }
             ));
         }
-        if self.trait_errors > 0 {
+        if self.protocol_errors > 0 {
             parts.push(format!(
-                "{} trait error{}",
-                self.trait_errors,
-                if self.trait_errors == 1 { "" } else { "s" }
+                "{} protocol error{}",
+                self.protocol_errors,
+                if self.protocol_errors == 1 { "" } else { "s" }
             ));
         }
         if self.other_errors > 0 {
@@ -1242,12 +1248,15 @@ impl From<crate::unification::UnificationError> for TypeError {
                     ),
                 }
             }
-            UnificationError::TraitNotImplemented { trait_id, type_id } => {
+            UnificationError::ProtocolNotImplemented {
+                protocol_id,
+                type_id,
+            } => {
                 let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::TraitNotImplemented {
+                TypeError::ProtocolNotImplemented {
                     span,
-                    trait_name: format!("{trait_id:?}"), // TODO: Use proper name lookup
-                    type_name: format!("{type_id:?}"),   // TODO: Use proper name lookup
+                    protocol_name: format!("{protocol_id:?}"), // TODO: Use proper name lookup
+                    type_name: format!("{type_id:?}"),         // TODO: Use proper name lookup
                 }
             }
             UnificationError::UnboundTypeVariable { name } => {

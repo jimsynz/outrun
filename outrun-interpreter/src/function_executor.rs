@@ -57,11 +57,14 @@ impl FunctionExecutor {
     ) -> Result<Value, FunctionExecutionError> {
         // Check that the function body is not empty
         if typed_function.body.statements.is_empty() {
-            // Check if this is a trait signature being incorrectly dispatched
-            if typed_function.function_id.starts_with("trait_signature::") {
+            // Check if this is a protocol signature being incorrectly dispatched
+            if typed_function
+                .function_id
+                .starts_with("protocol_signature::")
+            {
                 return Err(FunctionExecutionError::Internal {
                     message: format!(
-                        "Attempted to execute trait signature '{}'. This indicates a dispatch error - trait signatures are not executable, only concrete implementations should be dispatched.",
+                        "Attempted to execute protocol signature '{}'. This indicates a dispatch error - protocol signatures are not executable, only concrete implementations should be dispatched.",
                         typed_function.name
                     ),
                     span,

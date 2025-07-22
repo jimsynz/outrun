@@ -1,7 +1,7 @@
 @Doc(content: """
-Binary addition trait for the + operator.
+Binary addition protocol for the + operator.
 
-The BinaryAddition trait defines the behaviour for the + operator.
+The BinaryAddition protocol defines the behaviour for the + operator.
 When you write `a + b`, it becomes `BinaryAddition.add(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `a + b`, it becomes `BinaryAddition.add(lhs: a, rhs: b)`.
 "hello" + " world"            # BinaryAddition.add(lhs: "hello", rhs: " world"): String
 ```
 """)
-trait BinaryAddition {
+protocol BinaryAddition {
     @Doc(content: "Add two values of the same type")
     def add(lhs: Self, rhs: Self): Self
 }

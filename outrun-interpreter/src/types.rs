@@ -140,7 +140,7 @@ impl TypeIntegration {
         }
     }
 
-    /// Note: Default value creation is handled by Outrun's `Default` trait
+    /// Note: Default value creation is handled by Outrun's `Default` protocol
     /// through the normal function dispatch system, not by the interpreter directly.
     ///
     /// Validate that a Value matches the expected StructuredType

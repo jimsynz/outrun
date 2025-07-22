@@ -1,24 +1,24 @@
-//! Trait dispatch system
+//! Protocol dispatch system
 //!
 //! This module builds and manages dispatch tables for efficient runtime
-//! trait method resolution in the interpreter.
+//! protocol method resolution in the interpreter.
 
 pub mod lookup;
 
 use crate::compilation::compiler_environment::TypeNameId;
-use crate::types::traits::FunctionId;
+use crate::types::protocols::FunctionId;
 use outrun_parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 
-/// Opaque module identifier for trait implementations
+/// Opaque module identifier for protocol implementations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpaqueModuleId(pub u32);
 
-/// Main dispatch table for runtime trait method resolution
+/// Main dispatch table for runtime protocol method resolution
 #[derive(Debug, Clone)]
 pub struct DispatchTable {
-    // Core trait dispatch: (TypeNameId, TypeNameId) -> OpaqueModuleId
-    trait_dispatch: HashMap<(TypeNameId, TypeNameId), OpaqueModuleId>,
+    // Core protocol dispatch: (TypeNameId, TypeNameId) -> OpaqueModuleId
+    protocol_dispatch: HashMap<(TypeNameId, TypeNameId), OpaqueModuleId>,
 
     // Static function lookup: TypeNameId -> function mappings
     static_functions: HashMap<TypeNameId, HashMap<String, FunctionId>>,
@@ -35,7 +35,7 @@ impl DispatchTable {
     /// Create a new empty dispatch table
     pub fn new() -> Self {
         Self {
-            trait_dispatch: HashMap::new(),
+            protocol_dispatch: HashMap::new(),
             static_functions: HashMap::new(),
             binary_ops: HashMap::new(),
             unary_ops: HashMap::new(),
@@ -43,24 +43,25 @@ impl DispatchTable {
         }
     }
 
-    /// Register a trait implementation for dispatch
-    pub fn register_trait_impl(
+    /// Register a protocol implementation for dispatch
+    pub fn register_protocol_impl(
         &mut self,
-        trait_id: TypeNameId,
+        protocol_id: TypeNameId,
         type_id: TypeNameId,
     ) -> OpaqueModuleId {
         let module_id = self.next_opaque_module_id();
-        self.trait_dispatch.insert((trait_id, type_id), module_id);
+        self.protocol_dispatch
+            .insert((protocol_id, type_id), module_id);
         module_id
     }
 
-    /// Look up trait implementation
-    pub fn lookup_trait_impl(
+    /// Look up protocol implementation
+    pub fn lookup_protocol_impl(
         &self,
-        trait_id: TypeNameId,
+        protocol_id: TypeNameId,
         type_id: TypeNameId,
     ) -> Option<OpaqueModuleId> {
-        self.trait_dispatch.get(&(trait_id, type_id)).copied()
+        self.protocol_dispatch.get(&(protocol_id, type_id)).copied()
     }
 
     /// Register a static function for a type
@@ -134,7 +135,7 @@ impl DispatchTable {
     /// Get statistics about the dispatch table
     pub fn stats(&self) -> DispatchStats {
         DispatchStats {
-            trait_implementations: self.trait_dispatch.len(),
+            protocol_implementations: self.protocol_dispatch.len(),
             static_functions: self.static_functions.values().map(|m| m.len()).sum(),
             binary_operators: self.binary_ops.len(),
             unary_operators: self.unary_ops.len(),
@@ -151,7 +152,7 @@ impl Default for DispatchTable {
 /// Statistics about dispatch table contents
 #[derive(Debug, Clone)]
 pub struct DispatchStats {
-    pub trait_implementations: usize,
+    pub protocol_implementations: usize,
     pub static_functions: usize,
     pub binary_operators: usize,
     pub unary_operators: usize,

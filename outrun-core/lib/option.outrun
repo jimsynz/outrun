@@ -1,7 +1,7 @@
 @Doc(content: """
-Option trait for optional values.
+Option protocol for optional values.
 
-The Option trait represents values that may or may not be present. This is Outrun's
+The Option protocol represents values that may or may not be present. This is Outrun's
 approach to handling nullable values safely, avoiding null pointer exceptions
 by making the absence of a value explicit in the type system.
 
@@ -33,7 +33,7 @@ case user_name {
 
 - `T` - The type of the optional value
 """)
-trait Option<T> {
+protocol Option<T> {
     @Doc(content: "Create a Some variant containing the given value")
     defs some(value: T): Outrun.Option.Some<T> {
         Outrun.Option.Some { value: value }

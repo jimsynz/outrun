@@ -25,7 +25,7 @@ fn compile_program(source: &str) -> Result<(), Vec<TypeError>> {
 
     let mut compiler_env = CompilerEnvironment::new();
 
-    // Load core library first to get trait implementations
+    // Load core library first to get protocol implementations
     let _core_result =
         crate::core_library::compile_core_library_with_environment(&mut compiler_env);
 
@@ -71,8 +71,8 @@ def test(): Integer {
 fn test_empty_list_with_type_hint_success() {
     // Use simpler test without core library to debug the duplication issue
     let source = r#"
-trait List<T> {
-    # Empty trait for testing
+protocol List<T> {
+    # Empty protocol for testing
 }
 
 struct String {
@@ -163,7 +163,7 @@ def test(): Integer {
 
 #[test]
 fn test_type_hint_validation_success() {
-    // This test assumes we have some trait that both Integer and Float implement
+    // This test assumes we have some protocol that both Integer and Float implement
     // For now, we'll test with same types which should always work
     let source = r#"
 def test(): Integer {
@@ -211,9 +211,9 @@ def test(): Integer {
     assert!(
         has_error_type(&errors, |e| matches!(
             e,
-            TypeError::TypeMismatch { .. } | TypeError::TraitNotImplemented { .. }
+            TypeError::TypeMismatch { .. } | TypeError::ProtocolNotImplemented { .. }
         )),
-        "Should have TypeMismatch or TraitNotImplemented error for hint validation, but got: {errors:?}"
+        "Should have TypeMismatch or ProtocolNotImplemented error for hint validation, but got: {errors:?}"
     );
 }
 
@@ -271,7 +271,7 @@ def test(): Integer {
 #[test]
 fn test_list_in_let_binding_with_complex_type_annotation() {
     let source = r#"
-trait Display {
+protocol Display {
     def show(value: Self): String
 }
 
@@ -283,7 +283,7 @@ def test(): Integer {
 
     let result = compile_program(source);
     if let Err(errors) = &result {
-        // Filter out unrelated errors (trait not found, etc.)
+        // Filter out unrelated errors (protocol not found, etc.)
         let list_errors: Vec<_> = errors
             .iter()
             .filter(|e| matches!(e, TypeError::CannotInferListType { .. }))
@@ -291,7 +291,7 @@ def test(): Integer {
 
         assert!(
             list_errors.is_empty(),
-            "Empty list with trait type hint should not have CannotInferListType error, but got: {list_errors:?}"
+            "Empty list with protocol type hint should not have CannotInferListType error, but got: {list_errors:?}"
         );
     }
 }

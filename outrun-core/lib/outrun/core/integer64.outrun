@@ -1,7 +1,7 @@
 @Doc(content: """
 64-bit signed integer concrete type.
 
-This is the default concrete implementation of the Integer trait in Outrun.
+This is the default concrete implementation of the Integer protocol in Outrun.
 Integer literals without explicit type annotations default to this type.
 
 ## Examples
@@ -128,7 +128,7 @@ impl ShiftRight for Outrun.Core.Integer64 {
     }
 }
 
-# Display trait implementation
+# Display protocol implementation
 impl Display for Outrun.Core.Integer64 {
     def to_string(value: Self): Outrun.Core.String {
         Outrun.Intrinsic.i64_to_string_radix(value: value, radix: 10)
@@ -136,7 +136,7 @@ impl Display for Outrun.Core.Integer64 {
 }
 
 
-# Integer trait implementation
+# Integer protocol implementation
 impl Integer for Outrun.Core.Integer64 {
     def to_string_radix(value: Self, radix: Integer): Outrun.Core.String {
         Outrun.Intrinsic.i64_to_string_radix(value: value, radix: radix)
@@ -159,7 +159,7 @@ impl Integer for Outrun.Core.Integer64 {
     }
 }
 
-# Default trait implementation
+# Default protocol implementation
 impl Default for Outrun.Core.Integer64 {
     def default(): Self {
         0

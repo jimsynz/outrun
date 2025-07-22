@@ -31,9 +31,9 @@ pub enum DispatchMethod {
     Static {
         function_id: String, // Reference to function registry
     },
-    /// Trait function call - dispatched at runtime
-    Trait {
-        trait_name: String,
+    /// Protocol function call - dispatched at runtime
+    Protocol {
+        protocol_name: String,
         function_name: String,
         impl_type: Box<StructuredType>,
     },
@@ -178,10 +178,10 @@ pub enum TypedCaseVariant {
         expression: Box<TypedExpression>,
         when_clauses: Vec<TypedWhenClause>,
     },
-    /// Trait case: trait implementation dispatch
-    Trait {
+    /// Protocol case: protocol implementation dispatch
+    Protocol {
         expression: Box<TypedExpression>,
-        trait_name: String,
+        protocol_name: String,
         as_clauses: Vec<TypedAsClause>,
     },
 }
@@ -195,13 +195,13 @@ pub struct TypedWhenClause {
     pub span: Span,
 }
 
-/// As clause for trait case expressions with type checking
+/// As clause for protocol case expressions with type checking
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedAsClause {
-    pub type_path: Vec<String>, // Type implementing the trait
+    pub type_path: Vec<String>, // Type implementing the protocol
     pub pattern: Option<crate::patterns::TypedPattern>, // Optional destructuring pattern
     pub result: Box<TypedExpression>,
-    pub impl_verified: bool, // Whether trait implementation was verified
+    pub impl_verified: bool, // Whether protocol implementation was verified
     pub span: Span,
 }
 
@@ -296,20 +296,20 @@ pub struct TypedStructFieldDefinition {
     pub span: outrun_parser::Span,
 }
 
-/// Typed trait definition with signature validation
+/// Typed protocol definition with signature validation
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedTraitDefinition {
-    pub name: Vec<String>,                      // Module path for the trait
+pub struct TypedProtocolDefinition {
+    pub name: Vec<String>,                      // Module path for the protocol
     pub generic_params: Vec<TypedGenericParam>, // Generic parameters with constraints
-    pub constraints: Vec<TypedConstraint>,      // Validated trait constraints
-    pub functions: Vec<TypedTraitFunction>,     // Validated trait functions
-    pub trait_id: String,                       // Reference to trait registry
+    pub constraints: Vec<TypedConstraint>,      // Validated protocol constraints
+    pub functions: Vec<TypedProtocolFunction>,  // Validated protocol functions
+    pub protocol_id: String,                    // Reference to protocol registry
     pub span: outrun_parser::Span,
 }
 
-/// Typed trait function variants
+/// Typed protocol function variants
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedTraitFunction {
+pub enum TypedProtocolFunction {
     /// Function signature without implementation
     Signature {
         name: String,
@@ -330,17 +330,17 @@ pub enum TypedTraitFunction {
     },
 }
 
-/// Typed impl block with trait validation
+/// Typed impl block with protocol validation
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedImplBlock {
     pub generic_params: Vec<TypedGenericParam>, // Generic parameters
-    pub trait_path: Vec<String>,                // Trait being implemented
-    pub type_path: Vec<String>,                 // Type implementing the trait
-    pub trait_type: Option<StructuredType>,     // Resolved trait type
+    pub protocol_path: Vec<String>,             // Protocol being implemented
+    pub type_path: Vec<String>,                 // Type implementing the protocol
+    pub protocol_type: Option<StructuredType>,  // Resolved protocol type
     pub impl_type: Option<StructuredType>,      // Resolved implementation type
     pub constraints: Vec<TypedConstraint>,      // Validated constraints
     pub functions: Vec<TypedFunctionDefinition>, // Implementation functions
-    pub impl_verified: bool,                    // Whether trait implementation is valid
+    pub impl_verified: bool,                    // Whether protocol implementation is valid
     pub span: outrun_parser::Span,
 }
 
@@ -358,16 +358,16 @@ pub struct TypedConstDefinition {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedGenericParam {
     pub name: String,
-    pub constraints: Vec<TypedConstraint>, // Trait constraints for this parameter
+    pub constraints: Vec<TypedConstraint>, // Protocol constraints for this parameter
     pub span: outrun_parser::Span,
 }
 
 /// Type constraint (e.g., T: Orderable)
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedConstraint {
-    pub param_name: String,                 // Generic parameter being constrained
-    pub trait_path: Vec<String>,            // Trait that must be implemented
-    pub trait_type: Option<StructuredType>, // Resolved trait type
+    pub param_name: String,         // Generic parameter being constrained
+    pub protocol_path: Vec<String>, // Protocol that must be implemented
+    pub protocol_type: Option<StructuredType>, // Resolved protocol type
     pub span: outrun_parser::Span,
 }
 
@@ -560,7 +560,7 @@ pub enum TypedItemKind {
     Expression(Box<TypedExpression>),
     FunctionDefinition(TypedFunctionDefinition),
     StructDefinition(TypedStructDefinition),
-    TraitDefinition(TypedTraitDefinition),
+    ProtocolDefinition(TypedProtocolDefinition),
     ImplBlock(TypedImplBlock),
     ConstDefinition(TypedConstDefinition),
     LetBinding(Box<TypedLetBinding>),
@@ -602,9 +602,9 @@ pub enum ErrorContext {
         struct_name: String,
         field_name: String,
     },
-    /// Error in trait implementation checking
-    TraitImplementation {
-        trait_name: String,
+    /// Error in protocol implementation checking
+    ProtocolImplementation {
+        protocol_name: String,
         type_name: String,
     },
     /// Error in pattern matching type checking
@@ -720,9 +720,9 @@ impl TypeChecker {
             .collect();
 
         let compilation_summary = format!(
-            "Compiled {} items, {} traits, {} structs, {} implementations",
+            "Compiled {} items, {} protocols, {} structs, {} implementations",
             typed_items.len(),
-            compilation_result.traits.len(),
+            compilation_result.protocols.len(),
             compilation_result.structs.len(),
             compilation_result.implementations.len()
         );
@@ -810,8 +810,8 @@ impl TypeChecker {
             ItemKind::StructDefinition(_) => {
                 TypedItemKind::Placeholder("Struct definition".to_string())
             }
-            ItemKind::TraitDefinition(_) => {
-                TypedItemKind::Placeholder("Trait definition".to_string())
+            ItemKind::ProtocolDefinition(_) => {
+                TypedItemKind::Placeholder("Protocol definition".to_string())
             }
             ItemKind::ImplBlock(_) => TypedItemKind::Placeholder("Impl block".to_string()),
             _ => {

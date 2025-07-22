@@ -1,15 +1,31 @@
 {
   "name": "Outrun",
   "scopeName": "source.outrun",
-  "fileTypes": ["outrun"],
+  "fileTypes": [
+    "outrun"
+  ],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#keywords" },
-    { "include": "#types" },
-    { "include": "#literals" },
-    { "include": "#operators" },
-    { "include": "#punctuation" },
-    { "include": "#identifiers" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#literals"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    },
+    {
+      "include": "#identifiers"
+    }
   ],
   "repository": {
     "comments": {
@@ -18,18 +34,24 @@
           "name": "comment.block.outrun",
           "begin": "###",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.begin.outrun" }
+            "0": {
+              "name": "punctuation.definition.comment.begin.outrun"
+            }
           },
           "end": "###",
           "endCaptures": {
-            "0": { "name": "punctuation.definition.comment.end.outrun" }
+            "0": {
+              "name": "punctuation.definition.comment.end.outrun"
+            }
           }
         },
         {
           "name": "comment.line.number-sign.outrun",
           "begin": "#",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.outrun" }
+            "0": {
+              "name": "punctuation.definition.comment.outrun"
+            }
           },
           "end": "$"
         }
@@ -39,7 +61,7 @@
       "patterns": [
         {
           "name": "keyword.control.outrun",
-          "match": "\\b(def|let|const|if|else|case|when|struct|trait|impl|macro|alias|import|except|only)\\b"
+          "match": "\\b(def|let|const|if|else|case|when|struct|protocol|impl|macro|alias|import|except|only)\\b"
         },
         {
           "name": "constant.language.boolean.outrun",
@@ -69,54 +91,84 @@
     },
     "literals": {
       "patterns": [
-        { "include": "#multiline-strings" },
-        { "include": "#basic-strings" },
-        { "include": "#sigils" },
-        { "include": "#atoms" },
-        { "include": "#numbers" }
+        {
+          "include": "#multiline-strings"
+        },
+        {
+          "include": "#basic-strings"
+        },
+        {
+          "include": "#sigils"
+        },
+        {
+          "include": "#atoms"
+        },
+        {
+          "include": "#numbers"
+        }
       ]
     },
     "multiline-strings": {
       "name": "string.quoted.triple.outrun",
       "begin": "\"\"\"",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.begin.outrun"
+        }
       },
       "end": "\"\"\"",
       "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.end.outrun"
+        }
       },
       "patterns": [
-        { "include": "#string-interpolation" }
+        {
+          "include": "#string-interpolation"
+        }
       ]
     },
     "basic-strings": {
       "name": "string.quoted.double.outrun",
       "begin": "\"",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.begin.outrun"
+        }
       },
       "end": "\"",
       "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.end.outrun"
+        }
       },
       "patterns": [
-        { "include": "#string-interpolation" },
-        { "include": "#string-escapes" }
+        {
+          "include": "#string-interpolation"
+        },
+        {
+          "include": "#string-escapes"
+        }
       ]
     },
     "string-interpolation": {
       "name": "meta.interpolation.outrun",
       "begin": "#{",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.interpolation.begin.outrun" }
+        "0": {
+          "name": "punctuation.definition.interpolation.begin.outrun"
+        }
       },
       "end": "}",
       "endCaptures": {
-        "0": { "name": "punctuation.definition.interpolation.end.outrun" }
+        "0": {
+          "name": "punctuation.definition.interpolation.end.outrun"
+        }
       },
       "patterns": [
-        { "include": "$self" }
+        {
+          "include": "$self"
+        }
       ]
     },
     "string-escapes": {
@@ -139,14 +191,20 @@
       "name": "string.other.sigil.outrun",
       "begin": "~[A-Z][a-zA-Z0-9_]*\"",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.begin.outrun"
+        }
       },
       "end": "\"",
       "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.outrun" }
+        "0": {
+          "name": "punctuation.definition.string.end.outrun"
+        }
       },
       "patterns": [
-        { "include": "#string-interpolation" }
+        {
+          "include": "#string-interpolation"
+        }
       ]
     },
     "atoms": {
@@ -159,14 +217,20 @@
           "name": "constant.other.symbol.quoted.outrun",
           "begin": ":\"",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.symbol.begin.outrun" }
+            "0": {
+              "name": "punctuation.definition.symbol.begin.outrun"
+            }
           },
           "end": "\"",
           "endCaptures": {
-            "0": { "name": "punctuation.definition.symbol.end.outrun" }
+            "0": {
+              "name": "punctuation.definition.symbol.end.outrun"
+            }
           },
           "patterns": [
-            { "include": "#string-escapes" }
+            {
+              "include": "#string-escapes"
+            }
           ]
         }
       ]

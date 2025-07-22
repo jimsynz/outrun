@@ -4,7 +4,7 @@ struct Person {
     age: Integer
 }
 
-trait Greetable<T> {
+protocol Greetable<T> {
     def greet(person: T): String when T.has_name?()
 }
 
@@ -18,7 +18,7 @@ impl Greetable<Person> for String {
 def main(): Boolean {
     let person = Person { name: "Alice", age: 30 }
     let message = String.greet(person: person)
-    
+
     case message {
         ~r"Hello, .+!" => true,
         _ => false

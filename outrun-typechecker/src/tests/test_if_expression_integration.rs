@@ -115,7 +115,7 @@ fn test_if_without_else_compilation_success() {
                     // Verify result type is resolved (should be Integer)
                     assert!(result_type.is_some(), "Result type should be resolved for if without else when type implements Default");
 
-                    println!("✓ If without else successfully compiled with Default trait");
+                    println!("✓ If without else successfully compiled with Default protocol");
                 }
                 TypedExpressionKind::Placeholder(msg) => {
                     panic!("Expected typed if expression, got placeholder: {msg}");
@@ -239,7 +239,7 @@ fn test_if_without_else_with_non_default_type_failure() {
         "If without else should fail when type doesn't implement Default"
     );
 
-    // Check that the error mentions Default trait or TraitNotImplemented
+    // Check that the error mentions Default protocol or ProtocolNotImplemented
     if let Err(errors) = result {
         let error_messages = errors
             .iter()
@@ -247,8 +247,8 @@ fn test_if_without_else_with_non_default_type_failure() {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            error_messages.contains("Default") || error_messages.contains("TraitNotImplemented"),
-            "Should mention Default trait requirement, got: {error_messages}"
+            error_messages.contains("Default") || error_messages.contains("ProtocolNotImplemented"),
+            "Should mention Default protocol requirement, got: {error_messages}"
         );
     }
 }

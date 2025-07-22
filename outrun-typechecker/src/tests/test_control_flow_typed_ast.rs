@@ -154,7 +154,7 @@ fn test_concrete_case_expression_typed_ast() {
 }
 
 #[test]
-fn test_trait_case_expression_typed_ast() {
+fn test_protocol_case_expression_typed_ast() {
     let source = r#"
         case value as Display {
             String {} -> "string"
@@ -168,21 +168,21 @@ fn test_trait_case_expression_typed_ast() {
                 variant,
                 result_type: _,
             } => {
-                // Should be trait variant
+                // Should be protocol variant
                 match variant {
-                    TypedCaseVariant::Trait {
+                    TypedCaseVariant::Protocol {
                         expression: _,
-                        trait_name,
+                        protocol_name,
                         as_clauses,
                     } => {
-                        // Verify trait name
-                        assert_eq!(trait_name, "Display");
+                        // Verify protocol name
+                        assert_eq!(protocol_name, "Display");
 
                         // Verify as clauses are converted
                         assert_eq!(as_clauses.len(), 2);
-                        println!("✓ Trait case expression successfully converted to typed AST");
+                        println!("✓ Protocol case expression successfully converted to typed AST");
                     }
-                    _ => panic!("Expected trait case variant"),
+                    _ => panic!("Expected protocol case variant"),
                 }
             }
             TypedExpressionKind::Placeholder(_) => {

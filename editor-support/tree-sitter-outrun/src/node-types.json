@@ -337,7 +337,7 @@
           "named": true
         },
         {
-          "type": "trait_case_expression",
+          "type": "protocol_case_expression",
           "named": true
         }
       ]
@@ -746,11 +746,11 @@
           "named": true
         },
         {
-          "type": "trait_constraints",
+          "type": "protocol_constraints",
           "named": true
         },
         {
-          "type": "trait_spec",
+          "type": "protocol_spec",
           "named": true
         },
         {
@@ -1339,7 +1339,7 @@
           "named": true
         },
         {
-          "type": "trait_definition",
+          "type": "protocol_definition",
           "named": true
         }
       ]
@@ -1605,7 +1605,7 @@
     }
   },
   {
-    "type": "trait_case_clause",
+    "type": "protocol_case_clause",
     "named": true,
     "fields": {},
     "children": {
@@ -1625,14 +1625,14 @@
           "named": true
         },
         {
-          "type": "trait_case_pattern",
+          "type": "protocol_case_pattern",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "trait_case_expression",
+    "type": "protocol_case_expression",
     "named": true,
     "fields": {},
     "children": {
@@ -1644,7 +1644,7 @@
           "named": true
         },
         {
-          "type": "trait_case_clause",
+          "type": "protocol_case_clause",
           "named": true
         },
         {
@@ -1655,7 +1655,7 @@
     }
   },
   {
-    "type": "trait_case_pattern",
+    "type": "protocol_case_pattern",
     "named": true,
     "fields": {},
     "children": {
@@ -1678,7 +1678,7 @@
     }
   },
   {
-    "type": "trait_constraint_term",
+    "type": "protocol_constraint_term",
     "named": true,
     "fields": {},
     "children": {
@@ -1697,7 +1697,7 @@
     }
   },
   {
-    "type": "trait_constraints",
+    "type": "protocol_constraints",
     "named": true,
     "fields": {},
     "children": {
@@ -1705,14 +1705,14 @@
       "required": true,
       "types": [
         {
-          "type": "trait_constraint_term",
+          "type": "protocol_constraint_term",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "trait_definition",
+    "type": "protocol_definition",
     "named": true,
     "fields": {},
     "children": {
@@ -1744,7 +1744,7 @@
           "named": true
         },
         {
-          "type": "trait_constraints",
+          "type": "protocol_constraints",
           "named": true
         },
         {
@@ -1755,7 +1755,7 @@
     }
   },
   {
-    "type": "trait_spec",
+    "type": "protocol_spec",
     "named": true,
     "fields": {},
     "children": {
@@ -2204,7 +2204,7 @@
     "named": false
   },
   {
-    "type": "trait",
+    "type": "protocol",
     "named": false
   },
   {

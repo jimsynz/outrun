@@ -1,6 +1,6 @@
 +++
 title = "Outrun Programming Language"
-description = "A modern programming language where everything is a trait. Built for elegance, type safety, and synthwave aesthetics."
+description = "A modern programming language where everything is a protocol. Built for elegance, type safety, and synthwave aesthetics."
 template = "index.html"
 +++
 
@@ -17,7 +17,9 @@ Named after the retro-futuristic aesthetic of synthwave music and 80s culture, O
 ## Key Features
 
 ### 🎯 Everything is Protocols
+
 All operators, control flow, and behaviour is defined through protocols:
+
 - `+` calls `BinaryAddition.add()`
 - `|>` calls `Pipe.pipe_into()`
 - `|?` calls `Maybe.maybe_pipe()`
@@ -25,7 +27,9 @@ All operators, control flow, and behaviour is defined through protocols:
 - `~Sigil""` calls `Sigil.parse()`
 
 ### 🏷️ Named Parameters Only
+
 Crystal clear function calls with no confusion about argument order:
+
 ```outrun
 user = User.create(
     name: "Neo",
@@ -36,16 +40,20 @@ divide(numerator: 10, denominator: 2)
 ```
 
 ### 🛡️ Powerful Guard System
+
 Functions ending in `?` must be side-effect-free and return Boolean:
+
 ```outrun
-def divide(a: Integer, b: Integer): Float 
+def divide(a: Integer, b: Integer): Float
 when Integer.non_zero?(b) {
     Float.from_integer(a) / Float.from_integer(b)
 }
 ```
 
 ### 🔮 Hygienic Macros
+
 Same syntax as the language, using `^` for argument injection:
+
 ```outrun
 macro unless(condition, do_block) {
     if !^condition {
@@ -55,7 +63,9 @@ macro unless(condition, do_block) {
 ```
 
 ### 🏗️ Module System
+
 Types (structs/protocols) ARE modules! The file system maps directly to the module hierarchy:
+
 ```
 src/
   user.outrun           → User module
@@ -65,7 +75,9 @@ src/
 ```
 
 ### 🎭 No Nulls, No Exceptions
+
 Explicit error handling with `Result` and `Option` types:
+
 ```outrun
 case maybe_user {
     when Option.some?(maybe_user) -> {
@@ -145,4 +157,4 @@ Outrun draws inspiration from:
 
 ---
 
-*Built with 💜 for the future of programming*
+_Built with 💜 for the future of programming_

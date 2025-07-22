@@ -1,6 +1,6 @@
-//! Tests for static trait function definitions using `defs` keyword
+//! Tests for static protocol function definitions using `defs` keyword
 //!
-//! These tests verify that trait static functions can be parsed correctly
+//! These tests verify that protocol static functions can be parsed correctly
 //! and that the AST represents them properly.
 
 use crate::ast::*;
@@ -9,7 +9,7 @@ use crate::parse_program;
 #[test]
 fn test_parse_simple_static_function() {
     let input = r#"
-trait Result<T, E> {
+protocol Result<T, E> {
     defs ok(value: T): Result<T, E> {
         Result.Ok { value: value }
     }
@@ -20,12 +20,12 @@ trait Result<T, E> {
     assert_eq!(program.items.len(), 1);
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name_as_string(), "Result");
-            assert_eq!(trait_def.functions.len(), 1);
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            assert_eq!(protocol_def.name_as_string(), "Result");
+            assert_eq!(protocol_def.functions.len(), 1);
 
-            match &trait_def.functions[0] {
-                TraitFunction::StaticDefinition(static_def) => {
+            match &protocol_def.functions[0] {
+                ProtocolFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "ok");
                     assert_eq!(static_def.parameters.len(), 1);
                     assert_eq!(static_def.parameters[0].name.name, "value");
@@ -33,18 +33,18 @@ trait Result<T, E> {
                 }
                 _ => panic!(
                     "Expected StaticDefinition, got {:?}",
-                    trait_def.functions[0]
+                    protocol_def.functions[0]
                 ),
             }
         }
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_parse_static_function_no_parameters() {
     let input = r#"
-trait Option<T> {
+protocol Option<T> {
     defs none(): Option<T> {
         Option.None {}
     }
@@ -55,26 +55,26 @@ trait Option<T> {
     assert_eq!(program.items.len(), 1);
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name_as_string(), "Option");
-            assert_eq!(trait_def.functions.len(), 1);
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            assert_eq!(protocol_def.name_as_string(), "Option");
+            assert_eq!(protocol_def.functions.len(), 1);
 
-            match &trait_def.functions[0] {
-                TraitFunction::StaticDefinition(static_def) => {
+            match &protocol_def.functions[0] {
+                ProtocolFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "none");
                     assert_eq!(static_def.parameters.len(), 0);
                 }
                 _ => panic!("Expected StaticDefinition"),
             }
         }
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_parse_static_function_multiple_parameters() {
     let input = r#"
-trait Range<T> {
+protocol Range<T> {
     defs from_to(start: T, end: T): Range<T> {
         Range.Inclusive { start: start, end: end }
     }
@@ -84,8 +84,8 @@ trait Range<T> {
     let program = parse_program(input).unwrap();
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => match &trait_def.functions[0] {
-            TraitFunction::StaticDefinition(static_def) => {
+        ItemKind::ProtocolDefinition(protocol_def) => match &protocol_def.functions[0] {
+            ProtocolFunction::StaticDefinition(static_def) => {
                 assert_eq!(static_def.name.name, "from_to");
                 assert_eq!(static_def.parameters.len(), 2);
                 assert_eq!(static_def.parameters[0].name.name, "start");
@@ -93,20 +93,20 @@ trait Range<T> {
             }
             _ => panic!("Expected StaticDefinition"),
         },
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_parse_mixed_static_and_instance_functions() {
     let input = r#"
-trait Result<T, E> {
+protocol Result<T, E> {
     defs ok(value: T): Result<T, E> {
         Result.Ok { value: value }
     }
-    
+
     def is_ok?(self: Self): Boolean
-    
+
     defs error(error: E): Result<T, E> {
         Result.Error { error: error }
     }
@@ -116,38 +116,38 @@ trait Result<T, E> {
     let program = parse_program(input).unwrap();
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.functions.len(), 3);
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            assert_eq!(protocol_def.functions.len(), 3);
 
-            match &trait_def.functions[0] {
-                TraitFunction::StaticDefinition(static_def) => {
+            match &protocol_def.functions[0] {
+                ProtocolFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "ok");
                 }
                 _ => panic!("Expected first function to be static"),
             }
 
-            match &trait_def.functions[1] {
-                TraitFunction::Signature(sig) => {
+            match &protocol_def.functions[1] {
+                ProtocolFunction::Signature(sig) => {
                     assert_eq!(sig.name.name, "is_ok?");
                 }
                 _ => panic!("Expected second function to be signature"),
             }
 
-            match &trait_def.functions[2] {
-                TraitFunction::StaticDefinition(static_def) => {
+            match &protocol_def.functions[2] {
+                ProtocolFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "error");
                 }
                 _ => panic!("Expected third function to be static"),
             }
         }
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_static_function_display_formatting() {
     let input = r#"
-trait Test {
+protocol Test {
     defs create(value: Integer): Test {
         Test { value: value }
     }
@@ -165,7 +165,7 @@ trait Test {
 #[test]
 fn test_complex_static_function_body() {
     let input = r#"
-trait Calculator {
+protocol Calculator {
     defs compute(a: Integer, b: Integer): Integer {
         let result = a + b
         if result > 100 {
@@ -180,8 +180,8 @@ trait Calculator {
     let program = parse_program(input).unwrap();
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => match &trait_def.functions[0] {
-            TraitFunction::StaticDefinition(static_def) => {
+        ItemKind::ProtocolDefinition(protocol_def) => match &protocol_def.functions[0] {
+            ProtocolFunction::StaticDefinition(static_def) => {
                 assert_eq!(static_def.name.name, "compute");
                 assert_eq!(static_def.parameters.len(), 2);
 
@@ -189,13 +189,13 @@ trait Calculator {
             }
             _ => panic!("Expected StaticDefinition"),
         },
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }
 
 #[test]
 fn test_static_function_source_reconstruction() {
-    let input = r#"trait Result<T, E> {
+    let input = r#"protocol Result<T, E> {
     defs ok(value: T): Result<T, E> {
         Result.Ok { value: value }
     }
@@ -212,7 +212,7 @@ fn test_static_function_source_reconstruction() {
 #[test]
 fn test_static_function_with_attributes() {
     let input = r#"
-trait Option<T> {
+protocol Option<T> {
     @Doc(content: "Create a Some variant")
     defs some(value: T): Option<T> {
         Option.Some { value: value }
@@ -224,12 +224,12 @@ trait Option<T> {
     assert_eq!(program.items.len(), 1);
 
     match &program.items[0].kind {
-        ItemKind::TraitDefinition(trait_def) => {
-            assert_eq!(trait_def.name_as_string(), "Option");
-            assert_eq!(trait_def.functions.len(), 1);
+        ItemKind::ProtocolDefinition(protocol_def) => {
+            assert_eq!(protocol_def.name_as_string(), "Option");
+            assert_eq!(protocol_def.functions.len(), 1);
 
-            match &trait_def.functions[0] {
-                TraitFunction::StaticDefinition(static_def) => {
+            match &protocol_def.functions[0] {
+                ProtocolFunction::StaticDefinition(static_def) => {
                     assert_eq!(static_def.name.name, "some");
                     assert_eq!(static_def.attributes.len(), 1);
 
@@ -241,6 +241,6 @@ trait Option<T> {
                 _ => panic!("Expected StaticDefinition"),
             }
         }
-        _ => panic!("Expected trait definition"),
+        _ => panic!("Expected protocol definition"),
     }
 }

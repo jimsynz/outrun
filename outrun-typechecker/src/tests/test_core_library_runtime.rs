@@ -17,7 +17,7 @@ fn test_lazy_static_compilation_caching() {
     );
 
     // Verify the compilation has expected content
-    assert!(!compilation1.traits.is_empty(), "Should have traits");
+    assert!(!compilation1.protocols.is_empty(), "Should have protocols");
     assert!(!compilation1.structs.is_empty(), "Should have structs");
     assert!(
         !compilation1.compilation_order.is_empty(),
@@ -62,9 +62,9 @@ fn test_core_library_stats() {
         stats.parsed_files
     );
     assert!(
-        stats.total_traits >= 5,
-        "Should have at least 5 traits, got {}",
-        stats.total_traits
+        stats.total_protocols >= 5,
+        "Should have at least 5 protocols, got {}",
+        stats.total_protocols
     );
     assert!(
         stats.total_structs >= 5,
@@ -76,22 +76,22 @@ fn test_core_library_stats() {
 }
 
 #[test]
-fn test_unary_traits_loaded() {
+fn test_unary_protocols_loaded() {
     let compilation = get_core_library_compilation();
 
-    // Debug: Print all trait names
-    println!("All loaded traits:");
-    for name in compilation.traits.keys() {
+    // Debug: Print all protocol names
+    println!("All loaded protocols:");
+    for name in compilation.protocols.keys() {
         println!("  - {name}");
     }
 
-    // Look for traits that contain "Unary" in their name
+    // Look for protocols that contain "Unary" in their name
     let unary_plus_found = compilation
-        .traits
+        .protocols
         .keys()
         .any(|name| name.to_string().contains("UnaryPlus"));
     let unary_minus_found = compilation
-        .traits
+        .protocols
         .keys()
         .any(|name| name.to_string().contains("UnaryMinus"));
 
@@ -103,7 +103,7 @@ fn test_unary_traits_loaded() {
     for impl_block in &compilation.implementations {
         println!(
             "  - impl {} for {}",
-            impl_block.trait_spec, impl_block.type_spec
+            impl_block.protocol_spec, impl_block.type_spec
         );
     }
 }
@@ -134,13 +134,13 @@ fn test_no_build_rs_dependencies() {
 
     // If this test passes, it means we successfully loaded and compiled
     // the core library at runtime without needing build.rs
-    assert!(!compilation.traits.is_empty());
+    assert!(!compilation.protocols.is_empty());
     assert!(!compilation.compilation_order.is_empty());
 
     println!("✅ Runtime core library loading works without build.rs!");
     println!(
-        "   Loaded {} traits, {} structs",
-        compilation.traits.len(),
+        "   Loaded {} protocols, {} structs",
+        compilation.protocols.len(),
         compilation.structs.len()
     );
 }

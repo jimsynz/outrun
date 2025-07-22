@@ -1,6 +1,6 @@
 //! # Outrun Type Checker
 //!
-//! A comprehensive static type checker for the Outrun programming language that validates trait constraints,
+//! A comprehensive static type checker for the Outrun programming language that validates protocol constraints,
 //! function signatures, and expressions at compile time, generating efficient dispatch tables for the interpreter.
 
 // TypeNameId and AtomId are safe as HashMap keys despite containing Arc<RwLock<_>>
@@ -25,7 +25,7 @@
 //! // This would work once core library is loaded
 //! // let typed_program = typecheck_program_with_source(program, source, "example.outrun").unwrap();
 //!
-//! // Access type information  
+//! // Access type information
 //! // println!("Type checking successful!");
 //! // println!("Program has {} items", typed_program.items.len());
 //! ```
@@ -55,11 +55,11 @@
 //! ## Features
 //!
 //! - **Complete expression type checking** - All Outrun expressions with comprehensive validation
-//! - **Trait system support** - Definition, implementation, dispatch, and constraint validation
+//! - **Protocol system support** - Definition, implementation, dispatch, and constraint validation
 //! - **Generic type support** - Complete generic parameter handling with arity validation
 //! - **Pattern matching** - Comprehensive pattern validation with exhaustiveness checking
 //! - **Beautiful error reporting** - Production-quality error display with source highlighting
-//! - **Dispatch table generation** - Pre-computed lookup tables for efficient runtime trait method calls
+//! - **Dispatch table generation** - Pre-computed lookup tables for efficient runtime protocol method calls
 //! - **Anonymous functions** - Higher-order function support with multi-clause validation
 //!
 //! ## Usage Examples
@@ -72,7 +72,7 @@
 //!
 //! let source = r#"
 //!     struct Point(x: Float, y: Float)
-//!     
+//!
 //!     def distance(p1: Point, p2: Point): Float {
 //!         let dx = Point.x(p1) - Point.x(p2)
 //!         let dy = Point.y(p1) - Point.y(p2)
@@ -99,7 +99,7 @@
 //! use outrun_parser::parse_program;
 //! use outrun_typechecker::typecheck_status;
 //!
-//! // Simple CLI-friendly type checking  
+//! // Simple CLI-friendly type checking
 //! let source = "def add(x: Integer, y: Integer): Integer { x + y }";
 //! let program = parse_program(source).unwrap();
 //!
@@ -149,7 +149,7 @@
 //! The Outrun type checker supports:
 //!
 //! - **Static typing** with compile-time verification
-//! - **Trait-based dispatch** for method resolution
+//! - **Protocol-based dispatch** for method resolution
 //! - **Generic types** with constraint validation
 //! - **Pattern matching** with exhaustiveness checking
 //! - **Function overloading** with guard-based resolution
@@ -220,7 +220,7 @@
 //!         &source,
 //!         path.to_string_lossy().as_ref(),
 //!     ).unwrap();
-//!     
+//!
 //!     // Use typed_program for code generation
 //!     generate_code(&typed_program)?;
 //!     Ok(())
@@ -290,7 +290,7 @@ use outrun_parser::Program;
 /// * `Ok(TypedProgram)` - Successfully typed program with complete type information and dispatch tables
 /// * `Err(Vec<TypeError>)` - Collection of type errors encountered during checking
 pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError>> {
-    // First desugar the program to transform operators into trait function calls
+    // First desugar the program to transform operators into protocol function calls
     let program_source = format!("{program}"); // Get source before move
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
@@ -356,7 +356,7 @@ pub fn typecheck_program(program: Program) -> Result<TypedProgram, Vec<TypeError
 ///     Err(error_report) => {
 ///         // Beautiful error display with miette integration
 ///         eprintln!("{:?}", error_report);
-///         
+///
 ///         // Access structured error information
 ///         println!("Summary: {}", error_report.error_summary());
 ///         for group in error_report.group_related_errors() {
@@ -370,7 +370,7 @@ pub fn typecheck_program_with_source(
     source: &str,
     filename: &str,
 ) -> Result<TypedProgram, TypeErrorReport> {
-    // First desugar the program to transform operators into trait function calls
+    // First desugar the program to transform operators into protocol function calls
     let desugared_program = DesugaringVisitor::desugar_program(program);
 
     // Use the modern multi-program API with core library
@@ -387,8 +387,8 @@ pub fn typecheck_program_with_source(
                     type_context: compilation_result.type_context,
                     compilation_order: compilation_result.compilation_order,
                     compilation_summary: format!(
-                        "Compiled {} traits, {} structs, {} implementations",
-                        compilation_result.traits.len(),
+                        "Compiled {} protocols, {} structs, {} implementations",
+                        compilation_result.protocols.len(),
                         compilation_result.structs.len(),
                         compilation_result.implementations.len()
                     ),
@@ -431,9 +431,9 @@ pub fn typecheck_program_with_source(
 /// # Features
 /// - **Multi-program support** - Compile multiple files with dependencies
 /// - **Dependency resolution** - Automatic ordering with circular dependency detection
-/// - **Phase-based compilation** - Separate phases for traits, structs, impls, functions, type checking
+/// - **Phase-based compilation** - Separate phases for protocols, structs, impls, functions, type checking
 /// - **Visitor pattern** - Extensible compilation phases
-/// - **Comprehensive type unification** - Proper generic type and trait compatibility checking
+/// - **Comprehensive type unification** - Proper generic type and protocol compatibility checking
 /// - **Shared type interning** - Consistent type IDs across compilation units
 ///
 /// # Example
@@ -464,7 +464,7 @@ pub fn typecheck_program_with_source(
 ///     Ok(result) => {
 ///         println!("✓ Multi-program compilation successful!");
 ///         println!("  Compilation order: {:?}", result.compilation_order);
-///         println!("  Traits: {}", result.traits.len());
+///         println!("  Protocols: {}", result.protocols.len());
 ///         println!("  Structs: {}", result.structs.len());
 ///         println!("  Implementations: {}", result.implementations.len());
 ///     }
@@ -913,12 +913,12 @@ pub fn format_type_for_hover(structured_type: &StructuredType) -> String {
             format!("Type: Result<{ok_str}, {err_str}>")
         }
 
-        // Concrete struct and trait types
+        // Concrete struct and protocol types
         StructuredType::Struct { name, .. } => {
             format!("Type: struct {name}")
         }
-        StructuredType::Trait { name, .. } => {
-            format!("Type: trait {name}")
+        StructuredType::Protocol { name, .. } => {
+            format!("Type: protocol {name}")
         }
 
         StructuredType::TypeError {

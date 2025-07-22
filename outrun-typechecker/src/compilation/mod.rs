@@ -17,4 +17,4 @@ pub use compiler_environment::{
 // FunctionType enum kept temporarily for compatibility with function_type() method
 pub use program_collection::{CompilationResult, ProgramCollection};
 pub use type_checking::TypeCheckingVisitor;
-pub use visitors::{ImplExtractionVisitor, StructExtractionVisitor, TraitExtractionVisitor};
+pub use visitors::{ImplExtractionVisitor, ProtocolExtractionVisitor, StructExtractionVisitor};

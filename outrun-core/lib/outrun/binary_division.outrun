@@ -1,7 +1,7 @@
 @Doc(content: """
-Binary division trait for the / operator.
+Binary division protocol for the / operator.
 
-The BinaryDivision trait defines the behaviour for the / operator.
+The BinaryDivision protocol defines the behaviour for the / operator.
 When you write `a / b`, it becomes `BinaryDivision.divide(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -18,7 +18,7 @@ When you write `a / b`, it becomes `BinaryDivision.divide(lhs: a, rhs: b)`.
 3.14 / 2.0                    # BinaryDivision.divide(lhs: 3.14, rhs: 2.0): Float64
 ```
 """)
-trait BinaryDivision {
+protocol BinaryDivision {
     @Doc(content: "Divide the left value by the right value")
     def divide(lhs: Self, rhs: Self): Option<Self>
 }

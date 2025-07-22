@@ -1,7 +1,7 @@
 @Doc(content: """
-Right shift trait for the >> operator.
+Right shift protocol for the >> operator.
 
-The ShiftRight trait defines the behaviour for the >> operator.
+The ShiftRight protocol defines the behaviour for the >> operator.
 When you write `a >> b`, it becomes `ShiftRight.shift_right(lhs: a, rhs: b)`.
 
 ## Requirements
@@ -20,7 +20,7 @@ When you write `a >> b`, it becomes `ShiftRight.shift_right(lhs: a, rhs: b)`.
 value >> shift_count          # ShiftRight.shift_right(lhs: value, rhs: shift_count): Integer64
 ```
 """)
-trait ShiftRight {
+protocol ShiftRight {
     @Doc(content: "Shift bits right by the specified number of positions")
     def shift_right(lhs: Self, rhs: Self): Self
 }

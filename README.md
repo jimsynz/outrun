@@ -6,24 +6,26 @@
 
 ## 🎵 About Outrun
 
-Outrun is a modern programming language designed around the principle that **everything is a trait**. Born from the desire to build elegant, type-safe systems without sacrificing expressiveness, Outrun brings together the best ideas from functional programming, trait-based polymorphism, and actor-model concurrency.
+Outrun is a modern programming language designed around the principle that **everything is a protocol**. Born from the desire to build elegant, type-safe systems without sacrificing expressiveness, Outrun brings together the best ideas from functional programming, protocol-based polymorphism, and actor-model concurrency.
 
 Named after the retro-futuristic aesthetic of synthwave music and 80s culture, Outrun aims to capture that same sense of speed, style, and limitless possibility in code.
 
 ## ✨ Key Features
 
-### 🎯 Everything is Traits
+### 🎯 Everything is Protocols
+
 ```outrun
-# Operators are just trait method calls
+# Operators are just protocol method calls
 result = value |> transform() |? validate() |> save()
 # |> calls Pipe.pipe_into(), |? calls Maybe.maybe_pipe()
 
-# Even attributes are traits!
-@Derive(traits: [Debug, Display])
+# Even attributes are protocols!
+@Derive(protocols: [Debug, Display])
 struct NeonCar(model: String, speed: Integer) {}
 ```
 
 ### 🏷️ Named Parameters Only
+
 ```outrun
 # Crystal clear function calls
 user = User.create(
@@ -36,6 +38,7 @@ divide(numerator: 10, denominator: 2)
 ```
 
 ### 🛡️ Powerful Guard System
+
 ```outrun
 def divide(a: Integer, b: Integer): Result<Float, Error>
 when Integer.non_zero?(b) {
@@ -49,6 +52,7 @@ when Integer.zero?(b) {
 ```
 
 ### 🔮 Hygienic Macros
+
 ```outrun
 macro unless(condition, do_block) {
     if !^condition {        # ^ injects argument from call site
@@ -62,6 +66,7 @@ unless(user.banned?, {
 ```
 
 ### 🏗️ Module System
+
 Modules are types! The file system maps directly to the module hierarchy:
 
 ```
@@ -73,6 +78,7 @@ src/
 ```
 
 ### 🎭 No Nulls, No Exceptions
+
 ```outrun
 # Explicit error handling with Result and Option
 case maybe_user {
@@ -91,8 +97,8 @@ case maybe_user {
 - ✅ **Language Specification** - Complete syntax and semantics defined
 - ✅ **BNF Grammar** - Formal grammar specification written
 - ✅ **Parser Implementation** - Complete Pest-based parser with 449 tests
-- ✅ **Expression Desugarer** - All operators transformed to trait calls
-- ✅ **Type Checker** - Comprehensive type checking with trait system (223 tests)
+- ✅ **Expression Desugarer** - All operators transformed to protocol calls
+- ✅ **Type Checker** - Comprehensive type checking with protocol system (223 tests)
 - ✅ **Core Library** - Bootstrap library with dependency resolution
 - ✅ **CLI Tool** - Parse and typecheck commands with beautiful error reporting
 - ✅ **Example Programs** - Working code demonstrating features
@@ -131,10 +137,11 @@ impl Application for HelloApp {
 
 ## 🎨 Syntax Highlights
 
-### Trait-Based Operators
+### Protocol-Based Operators
+
 ```outrun
-# All operators are trait implementations
-trait BinaryAddition<T> {
+# All operators are protocol implementations
+protocol BinaryAddition<T> {
     def add(left: Self, right: T): Self
 }
 
@@ -143,6 +150,7 @@ result = 1 + 2
 ```
 
 ### String Interpolation
+
 ```outrun
 let name = "Outrun"
 let version = "0.1.0"
@@ -150,6 +158,7 @@ let message = "Welcome to #{name} v#{version}!"
 ```
 
 ### Destructuring
+
 ```outrun
 let (x, y, z) = coordinates
 let User { name, email } = user_data
@@ -157,6 +166,7 @@ let [first, second, ..rest] = items
 ```
 
 ### Pipe Operators
+
 ```outrun
 # Standard pipe for function composition
 result = data
@@ -172,6 +182,7 @@ user_profile = user_id
 ```
 
 ### Anonymous Functions
+
 ```outrun
 classifier = fn {
     x: Integer when Integer.positive?(x) -> "positive"
@@ -209,7 +220,7 @@ Outrun is in active development and we welcome contributions! Check out:
 ### Areas Needing Help
 
 - 🔧 **Compiler Implementation** - Rust-based compiler using Cranelift
-- 📚 **Standard Library** - Core traits and data structures
+- 📚 **Standard Library** - Core protocols and data structures
 - 🎨 **Language Server** - IDE support and tooling
 - 📝 **Documentation** - Tutorials and guides
 - 🧪 **Testing** - Comprehensive test suite
@@ -230,7 +241,7 @@ Outrun embraces the idea that programming languages should be:
 
 Outrun draws inspiration from:
 
-- **Rust** - Zero-cost abstractions and trait system
+- **Rust** - Zero-cost abstractions and protocol system
 - **Elixir** - Actor model and functional programming
 - **Haskell** - Type system and purity
 - **Swift** - Protocols and modern syntax design
@@ -242,7 +253,7 @@ MIT License - see [`LICENSE`](LICENSE) for details.
 
 ---
 
-*Built with 💜 for the future of programming*
+_Built with 💜 for the future of programming_
 
 ```
 ┌─────────────────────────────────────┐

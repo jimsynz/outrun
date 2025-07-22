@@ -1,14 +1,14 @@
 @Doc(content: """
-Default trait for types that have a meaningful default or empty value.
+Default protocol for types that have a meaningful default or empty value.
 
-The Default trait provides a standard way to create a "default" or "empty" value
+The Default protocol provides a standard way to create a "default" or "empty" value
 for a type. This is useful for initialization, fallback values, and various
 programming patterns where a neutral starting value is needed.
 
 ## Examples
 
 ```outrun
-def initialize_flag(): Boolean 
+def initialize_flag(): Boolean
 where Boolean: Default {
     Default.default()  # Returns false for Boolean
 }
@@ -41,16 +41,16 @@ where Float64: Default {
 - `Outrun.Core.List<T>` - `[]` (empty list)
 - `Outrun.Core.Map<K, V>` - `{}` (empty map)
 """)
-trait Default {
+protocol Default {
     @Doc(content: """
     Create the default value for this type.
-    
+
     Returns the "default" or "empty" value for the implementing type.
     This should be a neutral value that makes sense as a starting point
     or fallback for the type.
-    
+
     ## Examples
-    
+
     ```outrun
     Default.default()  # false (for Boolean)
     Default.default()  # 0 (for Integer64)

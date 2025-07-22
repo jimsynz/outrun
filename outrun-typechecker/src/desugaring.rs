@@ -1,15 +1,15 @@
 //! Expression desugaring for Outrun
 //!
-//! This module transforms syntactic sugar operators into explicit trait function calls.
-//! All binary operators like `+`, `-` become calls to trait functions like `BinaryAddition.add()`.
+//! This module transforms syntactic sugar operators into explicit protocol function calls.
+//! All binary operators like `+`, `-` become calls to protocol functions like `BinaryAddition.add()`.
 
 use outrun_parser::{
     Argument, ArgumentFormat, BinaryOperation, BinaryOperator, Block, CaseClause, CaseExpression,
     CaseResult, Expression, ExpressionKind, FieldAccess, FunctionCall, FunctionDefinition,
     FunctionPath, Identifier, IfExpression, ImplBlock, Item, ItemKind, ListLiteral, MapLiteral,
-    Program, Span, Statement, StatementKind, StaticFunctionDefinition, StringLiteral, StringPart,
-    StructLiteral, TraitDefinition, TraitFunction, TupleLiteral, TypeIdentifier, UnaryOperation,
-    UnaryOperator,
+    Program, ProtocolDefinition, ProtocolFunction, Span, Statement, StatementKind,
+    StaticFunctionDefinition, StringLiteral, StringPart, StructLiteral, TupleLiteral,
+    TypeIdentifier, UnaryOperation, UnaryOperator,
 };
 use std::collections::HashMap;
 
@@ -39,7 +39,7 @@ impl SpanMapping {
         self.original_to_desugared.get(&original).copied()
     }
 
-    /// Get the original span for a desugared span  
+    /// Get the original span for a desugared span
     pub fn get_original_span(&self, desugared: Span) -> Option<Span> {
         self.desugared_to_original.get(&desugared).copied()
     }
@@ -53,7 +53,7 @@ impl SpanMapping {
     }
 }
 
-/// Transformer that desugars operator expressions into trait function calls
+/// Transformer that desugars operator expressions into protocol function calls
 pub struct DesugaringVisitor;
 
 impl DesugaringVisitor {
@@ -81,7 +81,7 @@ impl DesugaringVisitor {
         (desugared_program, span_mapping)
     }
 
-    /// Desugar an item (trait, struct, function, etc.)
+    /// Desugar an item (protocol, struct, function, etc.)
     fn desugar_item(item: Item) -> Item {
         Item {
             kind: Self::desugar_item_kind(item.kind),
@@ -92,15 +92,15 @@ impl DesugaringVisitor {
     /// Desugar item kinds
     fn desugar_item_kind(kind: ItemKind) -> ItemKind {
         match kind {
-            ItemKind::TraitDefinition(trait_def) => {
-                ItemKind::TraitDefinition(Self::desugar_trait_definition(trait_def))
+            ItemKind::ProtocolDefinition(protocol_def) => {
+                ItemKind::ProtocolDefinition(Self::desugar_protocol_definition(protocol_def))
             }
             ItemKind::FunctionDefinition(func_def) => {
                 ItemKind::FunctionDefinition(Self::desugar_function_definition(func_def))
             }
             ItemKind::ImplBlock(impl_block) => ItemKind::ImplBlock(ImplBlock {
                 generic_params: impl_block.generic_params,
-                trait_spec: impl_block.trait_spec,
+                protocol_spec: impl_block.protocol_spec,
                 type_spec: impl_block.type_spec,
                 constraints: impl_block.constraints,
                 methods: impl_block
@@ -122,33 +122,35 @@ impl DesugaringVisitor {
         }
     }
 
-    /// Desugar trait definition to handle function bodies
-    fn desugar_trait_definition(trait_def: TraitDefinition) -> TraitDefinition {
-        TraitDefinition {
-            name: trait_def.name,
-            generic_params: trait_def.generic_params,
-            constraints: trait_def.constraints,
-            functions: trait_def
+    /// Desugar protocol definition to handle function bodies
+    fn desugar_protocol_definition(protocol_def: ProtocolDefinition) -> ProtocolDefinition {
+        ProtocolDefinition {
+            name: protocol_def.name,
+            generic_params: protocol_def.generic_params,
+            constraints: protocol_def.constraints,
+            functions: protocol_def
                 .functions
                 .into_iter()
-                .map(Self::desugar_trait_function)
+                .map(Self::desugar_protocol_function)
                 .collect(),
-            span: trait_def.span,
-            attributes: trait_def.attributes,
+            span: protocol_def.span,
+            attributes: protocol_def.attributes,
         }
     }
 
-    /// Desugar trait function (handles function bodies in trait definitions)
-    fn desugar_trait_function(trait_func: TraitFunction) -> TraitFunction {
-        match trait_func {
-            TraitFunction::Definition(func_def) => {
-                TraitFunction::Definition(Self::desugar_function_definition(func_def))
+    /// Desugar protocol function (handles function bodies in protocol definitions)
+    fn desugar_protocol_function(protocol_func: ProtocolFunction) -> ProtocolFunction {
+        match protocol_func {
+            ProtocolFunction::Definition(func_def) => {
+                ProtocolFunction::Definition(Self::desugar_function_definition(func_def))
             }
-            TraitFunction::StaticDefinition(static_func_def) => TraitFunction::StaticDefinition(
-                Self::desugar_static_function_definition(static_func_def),
-            ),
+            ProtocolFunction::StaticDefinition(static_func_def) => {
+                ProtocolFunction::StaticDefinition(Self::desugar_static_function_definition(
+                    static_func_def,
+                ))
+            }
             // Signatures don't have bodies, no desugaring needed
-            TraitFunction::Signature(sig) => TraitFunction::Signature(sig),
+            ProtocolFunction::Signature(sig) => ProtocolFunction::Signature(sig),
         }
     }
 
@@ -406,9 +408,9 @@ impl DesugaringVisitor {
         }
     }
 
-    /// Transform binary operation to trait function call
+    /// Transform binary operation to protocol function call
     fn desugar_binary_operation(op: BinaryOperation) -> Expression {
-        let trait_name = match op.operator {
+        let protocol_name = match op.operator {
             BinaryOperator::Add => "BinaryAddition",
             BinaryOperator::Subtract => "BinarySubtraction",
             BinaryOperator::Multiply => "BinaryMultiplication",
@@ -431,7 +433,7 @@ impl DesugaringVisitor {
             BinaryOperator::Pipe => "Pipe",
             BinaryOperator::PipeMaybe => "PipeMaybe",
             BinaryOperator::As => {
-                // `as Type` expressions are type annotations, not trait calls
+                // `as Type` expressions are type annotations, not protocol calls
                 // They should pass through unchanged during desugaring
                 let span = op.span;
                 return Expression {
@@ -466,12 +468,12 @@ impl DesugaringVisitor {
             BinaryOperator::As => unreachable!("As operator should be handled above"),
         };
 
-        // Create trait function call: TraitName.function_name(lhs: left, rhs: right)
+        // Create protocol function call: ProtocolName.function_name(lhs: left, rhs: right)
         Expression {
             kind: ExpressionKind::FunctionCall(FunctionCall {
                 path: FunctionPath::Qualified {
                     module: TypeIdentifier {
-                        name: trait_name.to_string(),
+                        name: protocol_name.to_string(),
                         span: op.span,
                     },
                     name: Identifier {
@@ -505,21 +507,21 @@ impl DesugaringVisitor {
         }
     }
 
-    /// Transform unary operation to trait function call
+    /// Transform unary operation to protocol function call
     fn desugar_unary_operation(op: UnaryOperation) -> Expression {
-        let (trait_name, function_name) = match op.operator {
+        let (protocol_name, function_name) = match op.operator {
             UnaryOperator::Plus => ("UnaryPlus", "plus"),
             UnaryOperator::Minus => ("UnaryMinus", "minus"),
             UnaryOperator::LogicalNot => ("LogicalNot", "not"),
             UnaryOperator::BitwiseNot => ("BitwiseNot", "not"),
         };
 
-        // Create trait function call: TraitName.function_name(value: operand)
+        // Create protocol function call: ProtocolName.function_name(value: operand)
         Expression {
             kind: ExpressionKind::FunctionCall(FunctionCall {
                 path: FunctionPath::Qualified {
                     module: TypeIdentifier {
-                        name: trait_name.to_string(),
+                        name: protocol_name.to_string(),
                         span: op.span,
                     },
                     name: Identifier {
@@ -668,15 +670,15 @@ impl DesugaringVisitor {
     /// Desugar item kinds with span mapping
     fn desugar_item_kind_with_mapping(kind: ItemKind, span_mapping: &mut SpanMapping) -> ItemKind {
         match kind {
-            ItemKind::TraitDefinition(trait_def) => ItemKind::TraitDefinition(
-                Self::desugar_trait_definition_with_mapping(trait_def, span_mapping),
+            ItemKind::ProtocolDefinition(protocol_def) => ItemKind::ProtocolDefinition(
+                Self::desugar_protocol_definition_with_mapping(protocol_def, span_mapping),
             ),
             ItemKind::FunctionDefinition(func_def) => ItemKind::FunctionDefinition(
                 Self::desugar_function_definition_with_mapping(func_def, span_mapping),
             ),
             ItemKind::ImplBlock(impl_block) => ItemKind::ImplBlock(ImplBlock {
                 generic_params: impl_block.generic_params,
-                trait_spec: impl_block.trait_spec,
+                protocol_spec: impl_block.protocol_spec,
                 type_spec: impl_block.type_spec,
                 constraints: impl_block.constraints,
                 methods: impl_block
@@ -705,33 +707,35 @@ impl DesugaringVisitor {
         }
     }
 
-    /// Desugar trait definition with span mapping
-    fn desugar_trait_definition_with_mapping(
-        trait_def: TraitDefinition,
+    /// Desugar protocol definition with span mapping
+    fn desugar_protocol_definition_with_mapping(
+        protocol_def: ProtocolDefinition,
         span_mapping: &mut SpanMapping,
-    ) -> TraitDefinition {
-        TraitDefinition {
-            attributes: trait_def.attributes,
-            name: trait_def.name,
-            generic_params: trait_def.generic_params,
-            constraints: trait_def.constraints,
-            functions: trait_def
+    ) -> ProtocolDefinition {
+        ProtocolDefinition {
+            attributes: protocol_def.attributes,
+            name: protocol_def.name,
+            generic_params: protocol_def.generic_params,
+            constraints: protocol_def.constraints,
+            functions: protocol_def
                 .functions
                 .into_iter()
                 .map(|func| match func {
-                    TraitFunction::Signature(sig) => TraitFunction::Signature(sig),
-                    TraitFunction::Definition(def) => TraitFunction::Definition(
+                    ProtocolFunction::Signature(sig) => ProtocolFunction::Signature(sig),
+                    ProtocolFunction::Definition(def) => ProtocolFunction::Definition(
                         Self::desugar_function_definition_with_mapping(def, span_mapping),
                     ),
-                    TraitFunction::StaticDefinition(static_def) => TraitFunction::StaticDefinition(
-                        Self::desugar_static_function_definition_with_mapping(
-                            static_def,
-                            span_mapping,
-                        ),
-                    ),
+                    ProtocolFunction::StaticDefinition(static_def) => {
+                        ProtocolFunction::StaticDefinition(
+                            Self::desugar_static_function_definition_with_mapping(
+                                static_def,
+                                span_mapping,
+                            ),
+                        )
+                    }
                 })
                 .collect(),
-            span: trait_def.span,
+            span: protocol_def.span,
         }
     }
 
@@ -935,7 +939,7 @@ impl DesugaringVisitor {
         }
     }
 
-    /// Transform binary operation to trait function call with span mapping
+    /// Transform binary operation to protocol function call with span mapping
     fn desugar_binary_operation_with_mapping(
         op: BinaryOperation,
         span_mapping: &mut SpanMapping,
@@ -949,7 +953,7 @@ impl DesugaringVisitor {
         desugared_expr
     }
 
-    /// Transform unary operation to trait function call with span mapping
+    /// Transform unary operation to protocol function call with span mapping
     fn desugar_unary_operation_with_mapping(
         op: UnaryOperation,
         span_mapping: &mut SpanMapping,
@@ -977,7 +981,7 @@ impl DesugaringVisitor {
         desugared_expr
     }
 
-    /// Transform sigil literal to trait function call
+    /// Transform sigil literal to protocol function call
     pub(crate) fn desugar_sigil_literal(
         sigil_lit: outrun_parser::SigilLiteral,
         span: Span,

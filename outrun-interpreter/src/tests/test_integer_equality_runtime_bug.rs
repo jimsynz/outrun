@@ -58,34 +58,38 @@ fn test_integer_equality_runtime_dispatch_bug() {
             dispatch_strategy,
             ..
         } => match dispatch_strategy {
-            outrun_typechecker::checker::DispatchMethod::Trait { impl_type, .. } => {
+            outrun_typechecker::checker::DispatchMethod::Protocol { impl_type, .. } => {
                 let type_name = impl_type.to_string_representation();
                 assert_eq!(type_name, "Outrun.Core.Integer64");
                 println!("✅ Typechecker dispatch strategy: {type_name}");
             }
-            _ => panic!("Expected trait dispatch method"),
+            _ => panic!("Expected protocol dispatch method"),
         },
         _ => panic!("Expected function call expression"),
     }
 
     // Extract dispatch details for debugging
-    let (trait_name, function_name, impl_type) = match &equality_expr.kind {
+    let (protocol_name, function_name, impl_type) = match &equality_expr.kind {
         outrun_typechecker::checker::TypedExpressionKind::FunctionCall {
             dispatch_strategy,
             ..
         } => match dispatch_strategy {
-            outrun_typechecker::checker::DispatchMethod::Trait {
-                trait_name,
+            outrun_typechecker::checker::DispatchMethod::Protocol {
+                protocol_name,
                 function_name,
                 impl_type,
-            } => (trait_name.clone(), function_name.clone(), impl_type.clone()),
-            _ => panic!("Expected trait dispatch method"),
+            } => (
+                protocol_name.clone(),
+                function_name.clone(),
+                impl_type.clone(),
+            ),
+            _ => panic!("Expected protocol dispatch method"),
         },
         _ => panic!("Expected function call expression"),
     };
 
     println!("🔍 Debug dispatch details:");
-    println!("  trait_name: {trait_name}");
+    println!("  protocol_name: {protocol_name}");
     println!("  function_name: {function_name}");
     println!("  impl_type: {}", impl_type.to_string_representation());
 
