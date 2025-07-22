@@ -41,6 +41,7 @@ impl DesugaringEngine {
     }
 
     /// Desugar all operators in a program, transforming them into protocol function calls
+    #[allow(clippy::result_large_err)]
     pub fn desugar_program(&mut self, program: &mut Program) -> Result<(), TypecheckError> {
         for item in &mut program.items {
             self.desugar_item(item)?;
@@ -49,6 +50,7 @@ impl DesugaringEngine {
     }
 
     /// Desugar operators in a single item
+    #[allow(clippy::result_large_err)]
     fn desugar_item(&mut self, item: &mut Item) -> Result<(), TypecheckError> {
         match &mut item.kind {
             ItemKind::Expression(expr) => {
@@ -74,6 +76,7 @@ impl DesugaringEngine {
     }
 
     /// Recursively desugar all operators in an expression tree
+    #[allow(clippy::result_large_err)]
     pub fn desugar_expression(&mut self, expr: &mut Expression) -> Result<(), TypecheckError> {
         match &mut expr.kind {
             ExpressionKind::BinaryOp(binary_op) => {
@@ -109,12 +112,8 @@ impl DesugaringEngine {
             }
             ExpressionKind::List(list_literal) => {
                 for element in &mut list_literal.elements {
-                    match element {
-                        outrun_parser::ListElement::Expression(expr) => {
-                            self.desugar_expression(expr)?;
-                        }
-                        // Spread elements don't contain expressions to desugar
-                        _ => {}
+                    if let outrun_parser::ListElement::Expression(expr) = element {
+                        self.desugar_expression(expr)?;
                     }
                 }
             }
@@ -169,6 +168,7 @@ impl DesugaringEngine {
     }
 
     /// Transform a binary operation into a protocol function call
+    #[allow(clippy::result_large_err)]
     fn desugar_binary_operation(&mut self, binary_op: &BinaryOperation) -> Result<FunctionCall, TypecheckError> {
         let (protocol_name, function_name, param_names) = match binary_op.operator {
             // Arithmetic operators
@@ -260,6 +260,7 @@ impl DesugaringEngine {
     }
 
     /// Special case: Transform `a != b` into `!Equality.equal?(left: a, right: b)`
+    #[allow(clippy::result_large_err)]
     fn desugar_not_equal_operation(&mut self, binary_op: &BinaryOperation) -> Result<FunctionCall, TypecheckError> {
         // Record the transformation
         self.transformations.push("Binary not_equal → !Equality.equal?".to_string());
@@ -331,6 +332,7 @@ impl DesugaringEngine {
     }
 
     /// Transform a unary operation into a protocol function call
+    #[allow(clippy::result_large_err)]
     fn desugar_unary_operation(&mut self, unary_op: &UnaryOperation) -> Result<FunctionCall, TypecheckError> {
         let (protocol_name, function_name) = match unary_op.operator {
             UnaryOperator::Plus => ("UnaryPlus", "plus"),
