@@ -4,7 +4,7 @@
 //! Handles protocol implementation verification, logical operators, and orphan rules.
 
 use crate::error::ConstraintError;
-use crate::types::{Constraint, ProtocolId, Substitution, Type, TypeVarId};
+use crate::types::{Constraint, ProtocolId, SelfBindingContext, Substitution, Type, TypeVarId};
 use std::collections::{HashMap, HashSet};
 
 /// Context information about available protocol implementations
@@ -104,6 +104,12 @@ impl ConstraintSolver {
                 span,
             } => self.solve_implements_constraint(*type_var, protocol, substitution, *span),
 
+            Constraint::SelfImplements {
+                self_context,
+                protocol,
+                span,
+            } => self.solve_self_implements_constraint(self_context, protocol, *span),
+
             Constraint::LogicalOr { left, right, span } => {
                 // T: Display || T: Debug - either constraint must be satisfiable
                 let left_result = self.solve_constraint(left, substitution);
@@ -133,6 +139,12 @@ impl ConstraintSolver {
             Constraint::Equality { left, right, span } => {
                 self.solve_equality_constraint(left, right, substitution, *span)
             }
+
+            Constraint::SelfBinding {
+                self_context,
+                bound_type,
+                span,
+            } => self.solve_self_binding_constraint(self_context, bound_type, substitution, *span),
         }
     }
 
@@ -198,10 +210,9 @@ impl ConstraintSolver {
                 }
             }
 
-            Type::SelfType { .. } => {
-                // Self types need special handling based on binding context
-                // For now, assume they're valid (will be refined in Self semantics task)
-                Ok(())
+            Type::SelfType { binding_context, .. } => {
+                // Self types are handled by resolving them based on their binding context
+                self.solve_self_implements_constraint(&binding_context, protocol, span)
             }
 
             Type::Function { .. } => {
@@ -277,6 +288,123 @@ impl ConstraintSolver {
         }
     }
 
+    /// Solve a Self implements constraint: Self: Protocol
+    fn solve_self_implements_constraint(
+        &mut self,
+        self_context: &SelfBindingContext,
+        protocol: &ProtocolId,
+        span: Option<outrun_parser::Span>,
+    ) -> Result<(), ConstraintError> {
+        match self_context {
+            SelfBindingContext::Implementation {
+                implementing_type,
+                implementing_args,
+                ..
+            } => {
+                // In implementation context, Self is bound to the concrete implementing type
+                let type_name = if implementing_args.is_empty() {
+                    implementing_type.name().to_string()
+                } else {
+                    // For generic implementations like impl Display for List<T>
+                    format!(
+                        "{}[{}]",
+                        implementing_type.name(),
+                        implementing_args
+                            .iter()
+                            .map(|arg| self.type_to_string(arg))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+
+                if !self
+                    .implementation_context
+                    .has_implementation(protocol, &type_name)
+                {
+                    return Err(ConstraintError::MissingImplementation {
+                        type_name,
+                        protocol_name: protocol.0.clone(),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    });
+                }
+
+                Ok(())
+            }
+
+            SelfBindingContext::ProtocolDefinition { protocol_id, .. } => {
+                // In protocol definition context, Self: Protocol is valid if:
+                // 1. The protocol is the same as the defining protocol (trivially true)
+                // 2. The protocol is a super-protocol of the defining protocol
+                if protocol_id == protocol {
+                    // Self: SameProtocol is trivially satisfied
+                    Ok(())
+                } else {
+                    // Check if there's a protocol hierarchy relationship
+                    // For now, assume no super-protocols (this would be extended in a full implementation)
+                    Err(ConstraintError::MissingImplementation {
+                        type_name: "Self".to_string(),
+                        protocol_name: protocol.0.clone(),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    })
+                }
+            }
+
+            SelfBindingContext::FunctionContext { parent_context, .. } => {
+                // Delegate to parent context
+                self.solve_self_implements_constraint(parent_context, protocol, span)
+            }
+        }
+    }
+
+    /// Solve a Self binding constraint: Self = SomeType
+    #[allow(clippy::only_used_in_recursion)]
+    fn solve_self_binding_constraint(
+        &mut self,
+        self_context: &SelfBindingContext,
+        bound_type: &Type,
+        substitution: &Substitution,
+        span: Option<outrun_parser::Span>,
+    ) -> Result<(), ConstraintError> {
+        // Apply substitution to the bound type
+        let resolved_bound_type = substitution.apply(bound_type);
+
+        match self_context {
+            SelfBindingContext::Implementation {
+                implementing_type,
+                implementing_args,
+                ..
+            } => {
+                // Self is already bound to the implementing type - check consistency
+                let expected_self = Type::Concrete {
+                    id: implementing_type.clone(),
+                    args: implementing_args.clone(),
+                    span: None,
+                };
+
+                if expected_self != resolved_bound_type {
+                    return Err(ConstraintError::Unsatisfiable {
+                        constraint: format!("Self = {resolved_bound_type}"),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    });
+                }
+
+                Ok(())
+            }
+
+            SelfBindingContext::ProtocolDefinition { .. } => {
+                // In protocol definition, Self binding constraints establish requirements
+                // for implementers. For now, accept any binding (would need more sophisticated
+                // validation in a full implementation)
+                Ok(())
+            }
+
+            SelfBindingContext::FunctionContext { parent_context, .. } => {
+                // Delegate to parent context
+                self.solve_self_binding_constraint(parent_context, bound_type, substitution, span)
+            }
+        }
+    }
+
     /// Check for constraint conflicts (currently minimal - no negative constraints in Outrun)
     pub fn check_conflicts(&mut self, _constraints: &[Constraint]) -> Result<(), ConstraintError> {
         // In Outrun's constraint system, we only have positive protocol constraints
@@ -308,7 +436,7 @@ impl Default for ConstraintSolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Level, TypeVarGenerator};
+    use crate::types::{Level, TypeId, TypeVarGenerator};
 
     fn create_test_context() -> ImplementationContext {
         let mut context = ImplementationContext::new();
@@ -636,5 +764,209 @@ mod tests {
             // Protocol types implement themselves
             assert!(result.is_ok());
         }
+    }
+
+    #[test]
+    fn test_self_implements_in_implementation_context() {
+        let mut solver = ConstraintSolver::with_context(create_test_context());
+
+        // Create Self: Display constraint in implementation context
+        let self_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("String"),
+            implementing_args: vec![],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("Display"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // String implements Display, so Self: Display should succeed
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_self_implements_in_implementation_context_missing() {
+        let mut solver = ConstraintSolver::with_context(create_test_context());
+
+        // Create Self: NonExistentProtocol constraint
+        let self_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("String"),
+            implementing_args: vec![],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("NonExistentProtocol"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // String doesn't implement NonExistentProtocol
+        assert!(result.is_err());
+
+        if let Err(ConstraintError::MissingImplementation { .. }) = result {
+            // Expected error type
+        } else {
+            panic!("Expected MissingImplementation error");
+        }
+    }
+
+    #[test]
+    fn test_self_implements_in_protocol_context_same_protocol() {
+        let mut solver = ConstraintSolver::new();
+
+        // Create Self: Display constraint in Display protocol definition
+        let self_context = SelfBindingContext::ProtocolDefinition {
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("Display"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // Self: SameProtocol is trivially satisfied
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_self_implements_in_protocol_context_different_protocol() {
+        let mut solver = ConstraintSolver::new();
+
+        // Create Self: Debug constraint in Display protocol definition
+        let self_context = SelfBindingContext::ProtocolDefinition {
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("Debug"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // Self: DifferentProtocol requires protocol hierarchy (not implemented yet)
+        assert!(result.is_err());
+
+        if let Err(ConstraintError::MissingImplementation { .. }) = result {
+            // Expected error type
+        } else {
+            panic!("Expected MissingImplementation error");
+        }
+    }
+
+    #[test]
+    fn test_self_binding_constraint_consistent() {
+        let mut solver = ConstraintSolver::new();
+
+        // Create Self = String constraint in String implementation context
+        let self_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("String"),
+            implementing_args: vec![],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfBinding {
+            self_context,
+            bound_type: Box::new(Type::concrete("String")),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // Self = String is consistent with String implementation context
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_self_binding_constraint_inconsistent() {
+        let mut solver = ConstraintSolver::new();
+
+        // Create Self = Integer constraint in String implementation context
+        let self_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("String"),
+            implementing_args: vec![],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfBinding {
+            self_context,
+            bound_type: Box::new(Type::concrete("Integer")),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // Self = Integer is inconsistent with String implementation context
+        assert!(result.is_err());
+
+        if let Err(ConstraintError::Unsatisfiable { .. }) = result {
+            // Expected error type
+        } else {
+            panic!("Expected Unsatisfiable error");
+        }
+    }
+
+    #[test]
+    fn test_self_with_generic_types() {
+        let mut context = ImplementationContext::new();
+        context.register_implementation(ProtocolId::new("Display"), "List[String]".to_string());
+        let mut solver = ConstraintSolver::with_context(context);
+
+        // Create Self: Display constraint in List<String> implementation context
+        let self_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("List"),
+            implementing_args: vec![Type::concrete("String")],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("Display"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // List<String> implements Display, so Self: Display should succeed
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_function_context_self_constraint() {
+        let mut solver = ConstraintSolver::with_context(create_test_context());
+
+        // Create Self: Display constraint in function context within String implementation
+        let parent_context = SelfBindingContext::Implementation {
+            implementing_type: TypeId::new("String"),
+            implementing_args: vec![],
+            protocol_id: ProtocolId::new("Display"),
+            protocol_args: vec![],
+        };
+        let self_context = SelfBindingContext::FunctionContext {
+            parent_context: Box::new(parent_context),
+            function_name: Some("to_string".to_string()),
+        };
+        let constraint = Constraint::SelfImplements {
+            self_context,
+            protocol: ProtocolId::new("Display"),
+            span: None,
+        };
+
+        let substitution = Substitution::new();
+        let result = solver.solve(&[constraint], &substitution);
+        // Should delegate to parent context and succeed
+        assert!(result.is_ok());
     }
 }

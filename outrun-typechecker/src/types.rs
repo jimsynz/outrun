@@ -82,9 +82,28 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelfBindingContext {
     /// Self in protocol definition (unbound - could be any implementer)
-    ProtocolDefinition { protocol_id: ProtocolId },
+    ProtocolDefinition { 
+        protocol_id: ProtocolId,
+        /// Generic parameters of the protocol (e.g., Container<T> where Self is Container)
+        protocol_args: Vec<Type>,
+    },
     /// Self in implementation (bound to specific implementing type)
-    Implementation { implementing_type: TypeId },
+    Implementation { 
+        implementing_type: TypeId,
+        /// Generic arguments of the implementing type (e.g., List<String> implementing Display)
+        implementing_args: Vec<Type>,
+        /// Protocol being implemented
+        protocol_id: ProtocolId,
+        /// Generic arguments for the protocol in this implementation
+        protocol_args: Vec<Type>,
+    },
+    /// Self in function signature within protocol/implementation context
+    FunctionContext {
+        /// The binding context this function is within
+        parent_context: Box<SelfBindingContext>,
+        /// Function name for error reporting
+        function_name: Option<String>,
+    },
 }
 
 impl Type {
@@ -135,6 +154,43 @@ impl Type {
         }
     }
 
+    /// Create a Self type in protocol definition context
+    pub fn self_in_protocol(protocol_id: ProtocolId, protocol_args: Vec<Type>) -> Self {
+        Self::SelfType {
+            binding_context: SelfBindingContext::ProtocolDefinition {
+                protocol_id,
+                protocol_args,
+            },
+            span: None,
+        }
+    }
+
+    /// Create a Self type in implementation context
+    pub fn self_in_implementation(
+        implementing_type: TypeId,
+        implementing_args: Vec<Type>,
+        protocol_id: ProtocolId,
+        protocol_args: Vec<Type>,
+    ) -> Self {
+        Self::SelfType {
+            binding_context: SelfBindingContext::Implementation {
+                implementing_type,
+                implementing_args,
+                protocol_id,
+                protocol_args,
+            },
+            span: None,
+        }
+    }
+
+    /// Create a Self type with span information
+    pub fn self_with_span(context: SelfBindingContext, span: Span) -> Self {
+        Self::SelfType {
+            binding_context: context,
+            span: Some(span),
+        }
+    }
+
     /// Get the span of this type if available
     pub fn span(&self) -> Option<&Span> {
         match self {
@@ -163,7 +219,68 @@ impl Type {
                     .any(|(_, param_type)| param_type.contains_var(target_var))
                     || return_type.contains_var(target_var)
             }
-            Self::SelfType { .. } => false, // Self doesn't contain other variables
+            Self::SelfType { binding_context, .. } => {
+                // Self types can contain variables in their binding context arguments
+                match binding_context {
+                    SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
+                        protocol_args.iter().any(|arg| arg.contains_var(target_var))
+                    }
+                    SelfBindingContext::Implementation { 
+                        implementing_args, protocol_args, .. 
+                    } => {
+                        implementing_args.iter().any(|arg| arg.contains_var(target_var))
+                            || protocol_args.iter().any(|arg| arg.contains_var(target_var))
+                    }
+                    SelfBindingContext::FunctionContext { parent_context, .. } => {
+                        // Recursively check parent context
+                        match parent_context.as_ref() {
+                            SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
+                                protocol_args.iter().any(|arg| arg.contains_var(target_var))
+                            }
+                            SelfBindingContext::Implementation { 
+                                implementing_args, protocol_args, .. 
+                            } => {
+                                implementing_args.iter().any(|arg| arg.contains_var(target_var))
+                                    || protocol_args.iter().any(|arg| arg.contains_var(target_var))
+                            }
+                            SelfBindingContext::FunctionContext { .. } => false, // Avoid infinite recursion
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check if this is a Self type
+    pub fn is_self_type(&self) -> bool {
+        matches!(self, Self::SelfType { .. })
+    }
+
+    /// Get the binding context if this is a Self type
+    pub fn self_binding_context(&self) -> Option<&SelfBindingContext> {
+        match self {
+            Self::SelfType { binding_context, .. } => Some(binding_context),
+            _ => None,
+        }
+    }
+
+    /// Resolve Self to its concrete type if in implementation context
+    pub fn resolve_self(&self) -> Option<Type> {
+        match self {
+            Self::SelfType { 
+                binding_context: SelfBindingContext::Implementation { 
+                    implementing_type, implementing_args, .. 
+                }, 
+                span 
+            } => {
+                Some(Type::Concrete {
+                    id: implementing_type.clone(),
+                    args: implementing_args.clone(),
+                    span: *span,
+                })
+            }
+            Self::SelfType { .. } => None, // Self is unbound in protocol definitions
+            _ => None,
         }
     }
 }
@@ -175,6 +292,13 @@ pub enum Constraint {
     /// T: Display
     Implements {
         type_var: TypeVarId,
+        protocol: ProtocolId,
+        span: Option<Span>,
+    },
+
+    /// Self: Display (Self type constraint)
+    SelfImplements {
+        self_context: SelfBindingContext,
         protocol: ProtocolId,
         span: Option<Span>,
     },
@@ -197,6 +321,13 @@ pub enum Constraint {
     Equality {
         left: Box<Type>,
         right: Box<Type>,
+        span: Option<Span>,
+    },
+
+    /// Self = SomeType (Self type binding constraint)
+    SelfBinding {
+        self_context: SelfBindingContext,
+        bound_type: Box<Type>,
         span: Option<Span>,
     },
 }
@@ -411,6 +542,9 @@ impl fmt::Display for Constraint {
             } => {
                 write!(f, "T{}: {}", type_var.0, protocol.0)
             }
+            Self::SelfImplements { protocol, .. } => {
+                write!(f, "Self: {}", protocol.0)
+            }
             Self::LogicalOr { left, right, .. } => {
                 write!(f, "({left} || {right})")
             }
@@ -419,6 +553,9 @@ impl fmt::Display for Constraint {
             }
             Self::Equality { left, right, .. } => {
                 write!(f, "{left} = {right}")
+            }
+            Self::SelfBinding { bound_type, .. } => {
+                write!(f, "Self = {bound_type}")
             }
         }
     }
