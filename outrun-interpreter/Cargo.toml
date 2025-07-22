@@ -7,4 +7,4 @@ edition = "2024"
 outrun-parser = { path = "../outrun-parser" }
 outrun-typechecker = { path = "../outrun-typechecker" }
 miette = "7.0"
-thiserror = "1.0"
+thiserror = "2.0"
