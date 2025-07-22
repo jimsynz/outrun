@@ -20,3 +20,6 @@ string-interner = "0.15" # Type name interning for performance
 
 [dev-dependencies]
 proptest = "1.4"       # Property-based testing for type soundness
+
+[[example]]
+name = "error_reporting_demo"

@@ -7,6 +7,15 @@ use crate::error::{to_source_span, UnificationError};
 use crate::types::{Level, Substitution, Type, TypeVarId};
 use outrun_parser::Span;
 
+/// A unification task for iterative processing
+#[derive(Debug, Clone)]
+struct UnifyTask {
+    left: Type,
+    right: Type,
+    left_context: Option<String>,
+    right_context: Option<String>,
+}
+
 /// Unification algorithm implementing Hindley-Milner type inference
 #[derive(Debug)]
 pub struct Unifier {
@@ -40,6 +49,7 @@ impl Unifier {
     }
 
     /// Unify two types with source context for better error messages
+    /// Uses iterative work queue to prevent stack overflow on deep type hierarchies
     #[allow(clippy::result_large_err)]
     pub fn unify_with_context(
         &mut self,
@@ -48,6 +58,55 @@ impl Unifier {
         left_context: Option<&str>,
         right_context: Option<&str>,
     ) -> Result<Substitution, UnificationError> {
+        // Use iterative work queue approach to prevent stack overflow
+        self.unify_iterative(left, right, left_context, right_context)
+    }
+    
+    /// Iterative unification implementation using work queue
+    #[allow(clippy::result_large_err)]
+    fn unify_iterative(
+        &mut self,
+        initial_left: &Type,
+        initial_right: &Type,
+        initial_left_context: Option<&str>,
+        initial_right_context: Option<&str>,
+    ) -> Result<Substitution, UnificationError> {
+        
+        let mut work_queue = std::collections::VecDeque::new();
+        let mut result_substitution = Substitution::new();
+        
+        // Add initial task
+        work_queue.push_back(UnifyTask {
+            left: initial_left.clone(),
+            right: initial_right.clone(),
+            left_context: initial_left_context.map(String::from),
+            right_context: initial_right_context.map(String::from),
+        });
+        
+        while let Some(task) = work_queue.pop_front() {
+            let left = &task.left;
+            let right = &task.right;
+            let left_context = task.left_context.as_deref();
+            let right_context = task.right_context.as_deref();
+            
+            let task_substitution = self.unify_single_step(left, right, left_context, right_context, &mut work_queue)?;
+            result_substitution = result_substitution.compose(&task_substitution);
+        }
+        
+        Ok(result_substitution)
+    }
+    
+    /// Handle a single unification step, potentially adding sub-tasks to the work queue
+    #[allow(clippy::result_large_err)]
+    fn unify_single_step(
+        &mut self,
+        left: &Type,
+        right: &Type,
+        left_context: Option<&str>,
+        right_context: Option<&str>,
+        work_queue: &mut std::collections::VecDeque<UnifyTask>,
+    ) -> Result<Substitution, UnificationError> {
+        
         match (left, right) {
             // Variable unification
             (Type::Variable { var_id: var1, .. }, Type::Variable { var_id: var2, .. })
@@ -94,8 +153,16 @@ impl Unifier {
                     });
                 }
 
-                // Unify generic arguments
-                self.unify_args(args1, args2)
+                // Queue generic arguments for unification instead of recursing
+                for (i, (arg1, arg2)) in args1.iter().zip(args2.iter()).enumerate() {
+                    work_queue.push_back(UnifyTask {
+                        left: arg1.clone(),
+                        right: arg2.clone(),
+                        left_context: Some(format!("generic argument {}", i)),
+                        right_context: Some(format!("generic argument {}", i)),
+                    });
+                }
+                Ok(Substitution::new())
             }
 
             // Protocol type unification
@@ -128,7 +195,16 @@ impl Unifier {
                     });
                 }
 
-                self.unify_args(args1, args2)
+                // Queue protocol arguments for unification instead of recursing
+                for (i, (arg1, arg2)) in args1.iter().zip(args2.iter()).enumerate() {
+                    work_queue.push_back(UnifyTask {
+                        left: arg1.clone(),
+                        right: arg2.clone(),
+                        left_context: Some(format!("protocol argument {}", i)),
+                        right_context: Some(format!("protocol argument {}", i)),
+                    });
+                }
+                Ok(Substitution::new())
             }
 
             // Function type unification
@@ -152,25 +228,25 @@ impl Unifier {
                     });
                 }
 
-                // Unify parameter types
-                let mut substitution = Substitution::new();
+                // Queue parameter types for unification instead of recursing
                 for ((name1, type1), (name2, type2)) in params1.iter().zip(params2.iter()) {
-                    // Parameter names don't need to match for unification
-                    let param_subst = self.unify_with_context(
-                        type1,
-                        type2,
-                        Some(&format!("parameter '{name1}'")),
-                        Some(&format!("parameter '{name2}'")),
-                    )?;
-                    substitution = substitution.compose(&param_subst);
+                    work_queue.push_back(UnifyTask {
+                        left: type1.clone(),
+                        right: type2.clone(),
+                        left_context: Some(format!("parameter '{name1}'")),
+                        right_context: Some(format!("parameter '{name2}'")),
+                    });
                 }
 
-                // Unify return types
-                let return_subst =
-                    self.unify_with_context(ret1, ret2, Some("return type"), Some("return type"))?;
-                substitution = substitution.compose(&return_subst);
+                // Queue return types for unification instead of recursing
+                work_queue.push_back(UnifyTask {
+                    left: (**ret1).clone(),
+                    right: (**ret2).clone(),
+                    left_context: Some("return type".to_string()),
+                    right_context: Some("return type".to_string()),
+                });
 
-                Ok(substitution)
+                Ok(Substitution::new())
             }
 
             // Self type unification (handled differently based on context)
@@ -226,27 +302,6 @@ impl Unifier {
         Ok(substitution)
     }
 
-    /// Unify lists of types (for generic arguments)
-    #[allow(clippy::result_large_err)]
-    fn unify_args(
-        &mut self,
-        args1: &[Type],
-        args2: &[Type],
-    ) -> Result<Substitution, UnificationError> {
-        let mut substitution = Substitution::new();
-
-        for (i, (arg1, arg2)) in args1.iter().zip(args2.iter()).enumerate() {
-            let arg_subst = self.unify_with_context(
-                arg1,
-                arg2,
-                Some(&format!("generic argument {}", i + 1)),
-                Some(&format!("generic argument {}", i + 1)),
-            )?;
-            substitution = substitution.compose(&arg_subst);
-        }
-
-        Ok(substitution)
-    }
 
     /// Get type category for error messages
     fn type_category(&self, ty: &Type) -> String {

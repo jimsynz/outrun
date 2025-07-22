@@ -1,6 +1,12 @@
 //! Outrun Typechecker v3
 //!
 //! Hindley-Milner type inference with protocol constraint solving and exhaustiveness checking.
+
+// Allow clippy lints for development
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::single_match)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::useless_vec)]
 //!
 //! ## Architecture
 //!
@@ -44,7 +50,10 @@ pub use dispatch::{
     FunctionVisibility,
     ResolvedFunction,
 };
-pub use error::{CompilerError, ConstraintError, DispatchError, TypecheckError, UnificationError};
+pub use error::{
+    CompilerError, ConstraintError, DispatchError, ErrorContext, InferenceError, 
+    TypecheckError, UnificationError,
+};
 pub use inference::{TypeInferenceEngine, InferenceContext, InferenceResult};
 pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
 pub use types::{

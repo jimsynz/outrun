@@ -5,7 +5,7 @@
 
 use crate::{
     dispatch::{FunctionDispatcher, FunctionRegistry, FunctionInfo, FunctionVisibility as DispatchVisibility},
-    error::TypecheckError,
+    error::{TypecheckError, ErrorContext, InferenceError},
     registry::ProtocolRegistry,
     types::{Type, TypeVarId, Substitution, Constraint, SelfBindingContext, ModuleId, Level, ProtocolId},
 };
@@ -31,7 +31,10 @@ pub struct TypeInferenceEngine {
     type_variable_counter: usize,
     
     /// Symbol table mapping variable names to types in current scope
-    symbol_table: HashMap<String, Type>,
+    pub symbol_table: HashMap<String, Type>,
+    
+    /// Error context for enhanced error reporting
+    error_context: ErrorContext,
 }
 
 /// Context for type inference operations
@@ -78,6 +81,7 @@ impl TypeInferenceEngine {
             current_module: ModuleId::new("main"),
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
+            error_context: ErrorContext::new(),
         }
     }
     
@@ -100,6 +104,48 @@ impl TypeInferenceEngine {
             new_registry.set_current_module(module);
             self.protocol_registry = Rc::new(new_registry);
         }
+    }
+    
+    /// Update error context when we discover new symbols
+    fn update_error_context(&mut self) {
+        // Collect available variables from symbol table
+        self.error_context.available_variables = self.symbol_table.keys().cloned().collect();
+        
+        // TODO: Collect available types from type definitions
+        // TODO: Collect available protocols from protocol definitions
+        // For now, we'll add some common types and protocols
+        self.error_context.available_types = vec![
+            "String".to_string(),
+            "Integer64".to_string(),
+            "Float64".to_string(),
+            "Boolean".to_string(),
+            "List".to_string(),
+            "Map".to_string(),
+            "Tuple".to_string(),
+            "Option".to_string(),
+            "Result".to_string(),
+        ];
+        
+        self.error_context.available_protocols = vec![
+            "BinaryAddition".to_string(),
+            "BinarySubtraction".to_string(),
+            "BinaryMultiplication".to_string(),
+            "BinaryDivision".to_string(),
+            "Equality".to_string(),
+            "Comparison".to_string(),
+            "LogicalNot".to_string(),
+            "UnaryMinus".to_string(),
+            "ToString".to_string(),
+        ];
+        
+        // Set current module context
+        self.error_context.current_module = Some(self.current_module.name().to_string());
+    }
+    
+    /// Bind a variable in the current scope (used for testing and debugging)
+    pub fn bind_variable(&mut self, name: &str, var_type: Type) {
+        self.symbol_table.insert(name.to_string(), var_type);
+        self.update_error_context();
     }
     
     /// Type check a complete program
@@ -447,11 +493,15 @@ impl TypeInferenceEngine {
             });
         }
         
-        // Variable not found - this is a type error
-        Err(TypecheckError::InferenceError(crate::error::InferenceError::UndefinedVariable {
-            variable_name: var_name.clone(),
-            span: Some(crate::error::to_source_span(Some(identifier.span))).flatten(),
-        }))
+        // Variable not found - create enhanced error with suggestions
+        self.update_error_context();
+        Err(TypecheckError::InferenceError(
+            InferenceError::undefined_variable_with_suggestions(
+                var_name.clone(),
+                Some(identifier.span),
+                &self.error_context,
+            )
+        ))
     }
     
     /// Infer the type of a function call with dispatch integration

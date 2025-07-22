@@ -231,60 +231,67 @@ impl Type {
     }
 
     /// Check if this type contains the given type variable (for occurs check)
+    /// Uses iterative traversal to prevent stack overflow on deep type hierarchies
     pub fn contains_var(&self, target_var: TypeVarId) -> bool {
-        match self {
-            Self::Variable { var_id, .. } => *var_id == target_var,
-            Self::Concrete { args, .. } | Self::Protocol { args, .. } => {
-                args.iter().any(|arg| arg.contains_var(target_var))
+        let mut work_stack = vec![self];
+        let mut visited = std::collections::HashSet::new();
+        
+        while let Some(current_type) = work_stack.pop() {
+            // Prevent infinite loops on recursive type structures
+            let type_ptr = current_type as *const Type;
+            if !visited.insert(type_ptr) {
+                continue;
             }
-            Self::Function {
-                params,
-                return_type,
-                ..
-            } => {
-                params
-                    .iter()
-                    .any(|(_, param_type)| param_type.contains_var(target_var))
-                    || return_type.contains_var(target_var)
-            }
-            Self::SelfType {
-                binding_context, ..
-            } => {
-                // Self types can contain variables in their binding context arguments
-                match binding_context {
-                    SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
-                        protocol_args.iter().any(|arg| arg.contains_var(target_var))
-                    }
-                    SelfBindingContext::Implementation {
-                        implementing_args,
-                        protocol_args,
-                        ..
-                    } => {
-                        implementing_args
-                            .iter()
-                            .any(|arg| arg.contains_var(target_var))
-                            || protocol_args.iter().any(|arg| arg.contains_var(target_var))
-                    }
-                    SelfBindingContext::FunctionContext { parent_context, .. } => {
-                        // Recursively check parent context
-                        match parent_context.as_ref() {
-                            SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
-                                protocol_args.iter().any(|arg| arg.contains_var(target_var))
-                            }
-                            SelfBindingContext::Implementation {
-                                implementing_args,
-                                protocol_args,
-                                ..
-                            } => {
-                                implementing_args
-                                    .iter()
-                                    .any(|arg| arg.contains_var(target_var))
-                                    || protocol_args.iter().any(|arg| arg.contains_var(target_var))
-                            }
-                            SelfBindingContext::FunctionContext { .. } => false, // Avoid infinite recursion
-                        }
+            
+            match current_type {
+                Self::Variable { var_id, .. } => {
+                    if *var_id == target_var {
+                        return true;
                     }
                 }
+                Self::Concrete { args, .. } | Self::Protocol { args, .. } => {
+                    // Add all args to work stack
+                    work_stack.extend(args.iter());
+                }
+                Self::Function {
+                    params,
+                    return_type,
+                    ..
+                } => {
+                    // Add parameter types and return type to work stack
+                    work_stack.extend(params.iter().map(|(_, param_type)| param_type));
+                    work_stack.push(return_type.as_ref());
+                }
+                Self::SelfType {
+                    binding_context, ..
+                } => {
+                    // Add types from binding context to work stack
+                    self.collect_binding_context_types(binding_context, &mut work_stack);
+                }
+            }
+        }
+        
+        false
+    }
+    
+    /// Helper to collect types from SelfBindingContext for iterative traversal
+    #[allow(clippy::only_used_in_recursion)]
+    fn collect_binding_context_types<'a>(&self, context: &'a SelfBindingContext, work_stack: &mut Vec<&'a Type>) {
+        match context {
+            SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
+                work_stack.extend(protocol_args.iter());
+            }
+            SelfBindingContext::Implementation {
+                implementing_args,
+                protocol_args,
+                ..
+            } => {
+                work_stack.extend(implementing_args.iter());
+                work_stack.extend(protocol_args.iter());
+            }
+            SelfBindingContext::FunctionContext { parent_context, .. } => {
+                // Add parent context types (but limit depth to prevent infinite recursion)
+                self.collect_binding_context_types(parent_context.as_ref(), work_stack);
             }
         }
     }
@@ -404,14 +411,47 @@ impl Substitution {
         self.mappings.len()
     }
 
-    /// Apply this substitution to a type, recursively resolving variables
+    /// Apply this substitution to a type, iteratively resolving variables to prevent stack overflow
     pub fn apply(&self, ty: &Type) -> Type {
-        match ty {
-            Type::Variable { var_id, .. } => {
-                match self.get(*var_id) {
-                    Some(substituted) => self.apply(substituted), // Recursive resolution
-                    None => ty.clone(),                           // Unbound variable
+        self.apply_iterative(ty)
+    }
+    
+    /// Iterative implementation to prevent stack overflow on deep type chains
+    fn apply_iterative(&self, ty: &Type) -> Type {
+        // Handle variable chains iteratively to prevent stack overflow
+        if let Type::Variable { var_id, .. } = ty {
+            let mut current_var = *var_id;
+            let mut visited = std::collections::HashSet::new();
+            
+            // Follow the substitution chain iteratively
+            while let Some(substituted_type) = self.get(current_var) {
+                if !visited.insert(current_var) {
+                    // Circular substitution detected - return original type
+                    return ty.clone();
                 }
+                
+                if let Type::Variable { var_id: next_var, .. } = substituted_type {
+                    current_var = *next_var;
+                } else {
+                    // Found non-variable type, apply substitution to it and return
+                    return self.apply_to_structure(substituted_type);
+                }
+            }
+            
+            // No substitution found for this variable
+            return ty.clone();
+        }
+        
+        // For non-variable types, apply to structure
+        self.apply_to_structure(ty)
+    }
+    
+    /// Apply substitution to the structure of compound types
+    fn apply_to_structure(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Variable { .. } => {
+                // This should be handled by apply_iterative, but handle just in case
+                self.apply_iterative(ty)
             }
             Type::Concrete { id, args, span } => Type::Concrete {
                 id: id.clone(),

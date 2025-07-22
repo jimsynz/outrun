@@ -256,6 +256,7 @@ pub enum ExhaustivenessError {
 
 /// Type inference errors
 #[derive(Error, Diagnostic, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum InferenceError {
     #[error("Cannot infer type: ambiguous expression")]
     #[diagnostic(
@@ -275,8 +276,10 @@ pub enum InferenceError {
     )]
     UndefinedVariable {
         variable_name: String,
-        #[label("undefined variable")]
+        #[label("undefined variable '{variable_name}'")]
         span: Option<SourceSpan>,
+        similar_names: Vec<String>,
+        context: Option<String>,
     },
 
     #[error("Undefined type: {type_name}")]
@@ -286,8 +289,10 @@ pub enum InferenceError {
     )]
     UndefinedType {
         type_name: String,
-        #[label("undefined type")]
+        #[label("undefined type '{type_name}'")]
         span: Option<SourceSpan>,
+        similar_names: Vec<String>,
+        context: Option<String>,
     },
 
     #[error("Undefined protocol: {protocol_name}")]
@@ -297,8 +302,53 @@ pub enum InferenceError {
     )]
     UndefinedProtocol {
         protocol_name: String,
-        #[label("undefined protocol")]
+        #[label("undefined protocol '{protocol_name}'")]
         span: Option<SourceSpan>,
+        similar_names: Vec<String>,
+        context: Option<String>,
+    },
+
+    #[error("Type annotation required: cannot infer type of empty collection")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::empty_collection),
+        help("Add a type annotation like: let my_list: List<T> = []")
+    )]
+    EmptyCollectionNeedsAnnotation {
+        collection_type: String,
+        #[label("empty {collection_type} needs type annotation")]
+        span: Option<SourceSpan>,
+        examples: Vec<String>,
+    },
+
+    #[error("Function call error: {message}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::function_call_error)
+    )]
+    FunctionCallError {
+        message: String,
+        function_name: Option<String>,
+        expected_signature: Option<String>,
+        actual_arguments: Option<String>,
+        #[label("{message}")]
+        span: Option<SourceSpan>,
+        suggestions: Vec<String>,
+    },
+
+    #[error("Collection type mismatch: {message}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::collection_mismatch)
+    )]
+    CollectionMismatch {
+        message: String,
+        collection_type: String,
+        expected_element_type: Option<Type>,
+        found_element_type: Option<Type>,
+        #[label("inconsistent {collection_type} element types")]
+        span: Option<SourceSpan>,
+        #[label("expected {expected_element_type:?}")]
+        expected_span: Option<SourceSpan>,
+        #[label("found {found_element_type:?}")]
+        found_span: Option<SourceSpan>,
     },
 }
 
@@ -332,6 +382,30 @@ impl UnificationError {
             span: to_source_span(span),
         }
     }
+
+    /// Create enhanced type mismatch error with helpful suggestions
+    pub fn type_mismatch_with_suggestions(
+        expected: Type,
+        found: Type,
+        span: Option<Span>,
+        context: &str,
+    ) -> Self {
+        let suggestions = generate_type_conversion_suggestions(&expected, &found);
+        let expected_context = Some(context.to_string());
+        let found_context = if !suggestions.is_empty() {
+            Some(format!("Try: {}", suggestions.join(" or ")))
+        } else {
+            None
+        };
+        
+        Self::TypeMismatch {
+            expected,
+            found,
+            expected_context,
+            found_context,
+            span: to_source_span(span),
+        }
+    }
 }
 
 /// Protocol dispatch errors
@@ -349,6 +423,8 @@ pub enum DispatchError {
         type_name: String,
         #[label("type {type_name} does not implement {protocol_name}")]
         span: Option<SourceSpan>,
+        similar_implementations: Vec<String>,
+        suggestions: Vec<String>,
     },
 
     #[error("Ambiguous dispatch: multiple implementations found for {protocol_name}")]
@@ -403,4 +479,323 @@ pub enum DispatchError {
 /// Helper for creating source spans from optional spans  
 pub fn to_source_span(span: Option<Span>) -> Option<SourceSpan> {
     span.map(|s| SourceSpan::new(s.start.into(), s.end - s.start))
+}
+
+/// Error context builder for enhanced error reporting
+pub struct ErrorContext {
+    pub available_variables: Vec<String>,
+    pub available_types: Vec<String>,
+    pub available_protocols: Vec<String>,
+    pub current_function: Option<String>,
+    pub current_module: Option<String>,
+}
+
+impl ErrorContext {
+    pub fn new() -> Self {
+        Self {
+            available_variables: Vec::new(),
+            available_types: Vec::new(),
+            available_protocols: Vec::new(),
+            current_function: None,
+            current_module: None,
+        }
+    }
+
+    /// Find similar names using edit distance
+    pub fn find_similar_names(&self, target: &str, candidates: &[String]) -> Vec<String> {
+        let mut similar = candidates
+            .iter()
+            .filter_map(|name| {
+                let distance = levenshtein_distance(target, name);
+                // Consider similar if distance <= 2 and length difference <= 3
+                if distance <= 2 && target.len().abs_diff(name.len()) <= 3 {
+                    Some((name.clone(), distance))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        
+        // Sort by distance (closest first)
+        similar.sort_by_key(|(_, distance)| *distance);
+        similar.into_iter().map(|(name, _)| name).take(3).collect()
+    }
+
+    /// Generate context-aware suggestions for undefined variables
+    pub fn suggest_for_undefined_variable(&self, variable_name: &str) -> (Vec<String>, Option<String>) {
+        let similar = self.find_similar_names(variable_name, &self.available_variables);
+        let context = if similar.is_empty() {
+            Some("Make sure the variable is defined before use".to_string())
+        } else {
+            Some(format!("Did you mean one of: {}", similar.join(", ")))
+        };
+        (similar, context)
+    }
+
+    /// Generate context-aware suggestions for undefined types
+    pub fn suggest_for_undefined_type(&self, type_name: &str) -> (Vec<String>, Option<String>) {
+        let similar = self.find_similar_names(type_name, &self.available_types);
+        let context = if similar.is_empty() {
+            Some("Import the type or check for typos".to_string())
+        } else {
+            Some(format!("Did you mean one of: {}", similar.join(", ")))
+        };
+        (similar, context)
+    }
+
+    /// Generate context-aware suggestions for undefined protocols
+    pub fn suggest_for_undefined_protocol(&self, protocol_name: &str) -> (Vec<String>, Option<String>) {
+        let similar = self.find_similar_names(protocol_name, &self.available_protocols);
+        let context = if similar.is_empty() {
+            Some("Import the protocol or check for typos".to_string())
+        } else {
+            Some(format!("Did you mean one of: {}", similar.join(", ")))
+        };
+        (similar, context)
+    }
+}
+
+impl Default for ErrorContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Simple Levenshtein distance calculation for finding similar names
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
+
+    if a_len == 0 { return b_len; }
+    if b_len == 0 { return a_len; }
+
+    let mut matrix = vec![vec![0; b_len + 1]; a_len + 1];
+
+    // Initialize first row and column
+    for i in 0..=a_len { matrix[i][0] = i; }
+    for j in 0..=b_len { matrix[0][j] = j; }
+
+    for i in 1..=a_len {
+        for j in 1..=b_len {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            matrix[i][j] = (matrix[i - 1][j] + 1)
+                .min(matrix[i][j - 1] + 1)
+                .min(matrix[i - 1][j - 1] + cost);
+        }
+    }
+
+    matrix[a_len][b_len]
+}
+
+/// Generate helpful suggestions for type conversion
+fn generate_type_conversion_suggestions(expected: &Type, found: &Type) -> Vec<String> {
+    let mut suggestions = Vec::new();
+    
+    match (expected, found) {
+        // String to Integer conversion
+        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. }) 
+            if exp.name() == "Integer64" && fnd.name() == "String" => {
+            suggestions.push("String.to_integer(value)".to_string());
+        }
+        
+        // Integer to String conversion
+        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. }) 
+            if exp.name() == "String" && fnd.name() == "Integer64" => {
+            suggestions.push("Integer64.to_string(value)".to_string());
+        }
+        
+        // Float to Integer conversion
+        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. }) 
+            if exp.name() == "Integer64" && fnd.name() == "Float64" => {
+            suggestions.push("Float64.to_integer(value)".to_string());
+        }
+        
+        // Integer to Float conversion
+        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. }) 
+            if exp.name() == "Float64" && fnd.name() == "Integer64" => {
+            suggestions.push("Integer64.to_float(value)".to_string());
+        }
+        
+        // Boolean to String conversion
+        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. }) 
+            if exp.name() == "String" && fnd.name() == "Boolean" => {
+            suggestions.push("Boolean.to_string(value)".to_string());
+        }
+        
+        // Collection element type suggestions
+        (Type::Concrete { id: exp, args: exp_args, .. }, Type::Concrete { id: fnd, args: fnd_args, .. })
+            if exp == fnd && exp_args.len() == 1 && fnd_args.len() == 1 => {
+            match exp.name() {
+                "List" => {
+                    suggestions.push("convert list elements to expected type".to_string());
+                }
+                "Map" => {
+                    suggestions.push("ensure map values have consistent type".to_string());
+                }
+                _ => {}
+            }
+        }
+        
+        _ => {
+            // Generic suggestion for any type mismatch
+            suggestions.push("add explicit type conversion".to_string());
+        }
+    }
+    
+    suggestions
+}
+
+/// Enhanced error creation utilities
+impl InferenceError {
+    pub fn undefined_variable_with_suggestions(
+        variable_name: String,
+        span: Option<Span>,
+        context: &ErrorContext,
+    ) -> Self {
+        let (similar_names, ctx) = context.suggest_for_undefined_variable(&variable_name);
+        Self::UndefinedVariable {
+            variable_name,
+            span: to_source_span(span),
+            similar_names,
+            context: ctx,
+        }
+    }
+
+    pub fn undefined_type_with_suggestions(
+        type_name: String,
+        span: Option<Span>,
+        context: &ErrorContext,
+    ) -> Self {
+        let (similar_names, ctx) = context.suggest_for_undefined_type(&type_name);
+        Self::UndefinedType {
+            type_name,
+            span: to_source_span(span),
+            similar_names,
+            context: ctx,
+        }
+    }
+
+    pub fn undefined_protocol_with_suggestions(
+        protocol_name: String,
+        span: Option<Span>,
+        context: &ErrorContext,
+    ) -> Self {
+        let (similar_names, ctx) = context.suggest_for_undefined_protocol(&protocol_name);
+        Self::UndefinedProtocol {
+            protocol_name,
+            span: to_source_span(span),
+            similar_names,
+            context: ctx,
+        }
+    }
+
+    pub fn empty_collection_needs_annotation(
+        collection_type: String,
+        span: Option<Span>,
+    ) -> Self {
+        let examples = match collection_type.as_str() {
+            "List" => vec![
+                "let numbers: List<Integer64> = []".to_string(),
+                "let names: List<String> = []".to_string(),
+            ],
+            "Map" => vec![
+                "let scores: Map<String, Integer64> = {}".to_string(),
+                "let config: Map<String, Boolean> = {}".to_string(),
+            ],
+            "Tuple" => vec![
+                "let empty: Tuple<Integer64, String> = (0, \"\")".to_string(),
+            ],
+            _ => vec![format!("let value: {}<T> = empty_literal", collection_type)],
+        };
+
+        Self::EmptyCollectionNeedsAnnotation {
+            collection_type,
+            span: to_source_span(span),
+            examples,
+        }
+    }
+
+    pub fn collection_type_mismatch(
+        message: String,
+        collection_type: String,
+        expected_element_type: Option<Type>,
+        found_element_type: Option<Type>,
+        span: Option<Span>,
+        expected_span: Option<Span>,
+        found_span: Option<Span>,
+    ) -> Self {
+        Self::CollectionMismatch {
+            message,
+            collection_type,
+            expected_element_type,
+            found_element_type,
+            span: to_source_span(span),
+            expected_span: to_source_span(expected_span),
+            found_span: to_source_span(found_span),
+        }
+    }
+
+    pub fn function_call_error_with_suggestions(
+        message: String,
+        function_name: Option<String>,
+        expected_signature: Option<String>,
+        actual_arguments: Option<String>,
+        span: Option<Span>,
+        suggestions: Vec<String>,
+    ) -> Self {
+        Self::FunctionCallError {
+            message,
+            function_name,
+            expected_signature,
+            actual_arguments,
+            span: to_source_span(span),
+            suggestions,
+        }
+    }
+}
+
+/// Enhanced error creation utilities for dispatch errors
+impl DispatchError {
+    /// Create a NoImplementation error with helpful suggestions
+    pub fn no_implementation_with_suggestions(
+        protocol_name: String,
+        type_name: String,
+        span: Option<Span>,
+        similar_implementations: Vec<String>,
+    ) -> Self {
+        let mut suggestions = vec![
+            format!("impl {} for {}", protocol_name, type_name)
+        ];
+        
+        // Add suggestions based on common patterns
+        match protocol_name.as_str() {
+            "BinaryAddition" => {
+                suggestions.push("Define how to add two instances of this type".to_string());
+            }
+            "Equality" => {
+                suggestions.push("Define how to compare instances for equality".to_string());
+            }
+            "ToString" => {
+                suggestions.push("Define how to convert this type to a String".to_string());
+            }
+            _ => {}
+        }
+        
+        if !similar_implementations.is_empty() {
+            suggestions.push(format!(
+                "Similar implementations exist for: {}",
+                similar_implementations.join(", ")
+            ));
+        }
+        
+        Self::NoImplementation {
+            protocol_name,
+            type_name,
+            span: to_source_span(span),
+            similar_implementations,
+            suggestions,
+        }
+    }
 }

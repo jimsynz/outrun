@@ -75,95 +75,109 @@ impl DesugaringEngine {
         Ok(())
     }
 
-    /// Recursively desugar all operators in an expression tree
+    /// Iteratively desugar all operators in an expression tree to prevent stack overflow
     #[allow(clippy::result_large_err)]
     pub fn desugar_expression(&mut self, expr: &mut Expression) -> Result<(), TypecheckError> {
-        match &mut expr.kind {
-            ExpressionKind::BinaryOp(binary_op) => {
-                // First desugar operands recursively
-                self.desugar_expression(&mut binary_op.left)?;
-                self.desugar_expression(&mut binary_op.right)?;
-
-                // Then transform this binary operation
-                let desugared_call = self.desugar_binary_operation(binary_op)?;
-                
-                // Replace the binary operation with the desugared function call
-                expr.kind = ExpressionKind::FunctionCall(desugared_call);
-            }
-            ExpressionKind::UnaryOp(unary_op) => {
-                // First desugar operand recursively
-                self.desugar_expression(&mut unary_op.operand)?;
-
-                // Then transform this unary operation
-                let desugared_call = self.desugar_unary_operation(unary_op)?;
-                
-                // Replace the unary operation with the desugared function call
-                expr.kind = ExpressionKind::FunctionCall(desugared_call);
-            }
-            // Recursively process nested expressions
-            ExpressionKind::FunctionCall(func_call) => {
-                // Desugar arguments
-                for arg in &mut func_call.arguments {
-                    match arg {
-                        Argument::Named { expression, .. } => self.desugar_expression(expression)?,
-                        Argument::Spread { expression, .. } => self.desugar_expression(expression)?,
-                    }
+        // Use iterative approach to handle deep expression trees
+        let mut work_stack: Vec<&mut Expression> = vec![expr];
+        let mut transform_stack: Vec<*mut Expression> = Vec::new();
+        
+        // Phase 1: Collect all expressions that need desugaring (post-order traversal)
+        while let Some(current_expr) = work_stack.pop() {
+            let expr_ptr = current_expr as *mut Expression;
+            transform_stack.push(expr_ptr);
+            
+            // Add child expressions to work stack
+            match &mut current_expr.kind {
+                ExpressionKind::BinaryOp(binary_op) => {
+                    work_stack.push(&mut binary_op.left);
+                    work_stack.push(&mut binary_op.right);
                 }
-            }
-            ExpressionKind::List(list_literal) => {
-                for element in &mut list_literal.elements {
-                    if let outrun_parser::ListElement::Expression(expr) = element {
-                        self.desugar_expression(expr)?;
-                    }
+                ExpressionKind::UnaryOp(unary_op) => {
+                    work_stack.push(&mut unary_op.operand);
                 }
-            }
-            ExpressionKind::Tuple(tuple_literal) => {
-                for element in &mut tuple_literal.elements {
-                    self.desugar_expression(element)?;
-                }
-            }
-            ExpressionKind::Map(map_literal) => {
-                for entry in &mut map_literal.entries {
-                    match entry {
-                        outrun_parser::MapEntry::Assignment { key, value } => {
-                            self.desugar_expression(key)?;
-                            self.desugar_expression(value)?;
-                        }
-                        outrun_parser::MapEntry::Shorthand { value, .. } => {
-                            self.desugar_expression(value)?;
-                        }
-                        outrun_parser::MapEntry::Spread(_) => {
-                            // Spread entries just reference an identifier, no expression to desugar
+                ExpressionKind::FunctionCall(func_call) => {
+                    for arg in &mut func_call.arguments {
+                        match arg {
+                            Argument::Named { expression, .. } => work_stack.push(expression),
+                            Argument::Spread { expression, .. } => work_stack.push(expression),
                         }
                     }
                 }
-            }
-            ExpressionKind::IfExpression(if_expr) => {
-                self.desugar_expression(&mut if_expr.condition)?;
-                // if_expr.then_block and else_block are Block types, not Expression
-                // For now, we don't desugar block expressions
-                // TODO: Add block expression desugaring when implementing control flow
-                let _ = &if_expr.then_block;
-                let _ = &if_expr.else_block;
-            }
-            ExpressionKind::CaseExpression(case_expr) => {
-                self.desugar_expression(&mut case_expr.expression)?;
-                for clause in &mut case_expr.clauses {
-                    if let Some(ref mut guard) = clause.guard {
-                        self.desugar_expression(guard)?;
+                ExpressionKind::List(list_literal) => {
+                    for element in &mut list_literal.elements {
+                        if let outrun_parser::ListElement::Expression(expr) = element {
+                            work_stack.push(expr);
+                        }
                     }
-                    // clause.result is a CaseResult enum (Block or Expression)
-                    // For now, we don't desugar case results
-                    // TODO: Add case result desugaring when implementing control flow
-                    let _ = &clause.result;
                 }
+                ExpressionKind::Tuple(tuple_literal) => {
+                    for element in &mut tuple_literal.elements {
+                        work_stack.push(element);
+                    }
+                }
+                ExpressionKind::Map(map_literal) => {
+                    for entry in &mut map_literal.entries {
+                        match entry {
+                            outrun_parser::MapEntry::Assignment { key, value } => {
+                                work_stack.push(key);
+                                work_stack.push(value);
+                            }
+                            outrun_parser::MapEntry::Shorthand { value, .. } => {
+                                work_stack.push(value);
+                            }
+                            outrun_parser::MapEntry::Spread(_) => {
+                                // Spread entries just reference an identifier, no expression to desugar
+                            }
+                        }
+                    }
+                }
+                ExpressionKind::IfExpression(if_expr) => {
+                    work_stack.push(&mut if_expr.condition);
+                    // if_expr.then_block and else_block are Block types, not Expression
+                    // For now, we don't desugar block expressions
+                    // TODO: Add block expression desugaring when implementing control flow
+                }
+                ExpressionKind::CaseExpression(case_expr) => {
+                    work_stack.push(&mut case_expr.expression);
+                    for clause in &mut case_expr.clauses {
+                        if let Some(ref mut guard) = clause.guard {
+                            work_stack.push(guard);
+                        }
+                        // clause.result is a CaseResult enum (Block or Expression)
+                        // For now, we don't desugar case results
+                        // TODO: Add case result desugaring when implementing control flow
+                    }
+                }
+                ExpressionKind::Parenthesized(inner_expr) => {
+                    work_stack.push(inner_expr);
+                }
+                // Literals and identifiers don't contain nested expressions
+                _ => {}
             }
-            ExpressionKind::Parenthesized(inner_expr) => {
-                self.desugar_expression(inner_expr)?;
-            }
-            // Literals and identifiers don't contain nested expressions
-            _ => {}
         }
+        
+        // Phase 2: Transform expressions in post-order (children first)
+        for expr_ptr in transform_stack.into_iter().rev() {
+            unsafe {
+                let current_expr = &mut *expr_ptr;
+                match &mut current_expr.kind {
+                    ExpressionKind::BinaryOp(binary_op) => {
+                        // Transform this binary operation
+                        let desugared_call = self.desugar_binary_operation(binary_op)?;
+                        current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                    }
+                    ExpressionKind::UnaryOp(unary_op) => {
+                        // Transform this unary operation
+                        let desugared_call = self.desugar_unary_operation(unary_op)?;
+                        current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                    }
+                    // Other expressions don't need transformation, just traversal
+                    _ => {}
+                }
+            }
+        }
+        
         Ok(())
     }
 

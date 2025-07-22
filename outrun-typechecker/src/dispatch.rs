@@ -252,6 +252,8 @@ impl<'a> FunctionDispatcher<'a> {
                     protocol_name: "unknown".to_string(),
                     type_name: function_name.to_string(),
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    similar_implementations: Vec::new(),
+                    suggestions: Vec::new(),
                 })
             }
         }
@@ -300,6 +302,8 @@ impl<'a> FunctionDispatcher<'a> {
                         protocol_name: protocol_name.to_string(),
                         type_name: id.name().to_string(),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                        similar_implementations: Vec::new(),
+                        suggestions: Vec::new(),
                     })
                 }
             }
@@ -346,6 +350,8 @@ impl<'a> FunctionDispatcher<'a> {
                     protocol_name: module_name.to_string(),
                     type_name: function_name.to_string(),
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    similar_implementations: Vec::new(),
+                    suggestions: Vec::new(),
                 });
             }
 
@@ -359,6 +365,8 @@ impl<'a> FunctionDispatcher<'a> {
                 protocol_name: module_name.to_string(),
                 type_name: function_name.to_string(),
                 span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                similar_implementations: Vec::new(),
+                suggestions: Vec::new(),
             })
         }
     }
