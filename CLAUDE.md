@@ -32,6 +32,96 @@ outrun/
 - **Immutable and functional** - No mutation, rebinding allowed
 - **Actor model runtime** - Built for concurrent, distributed systems
 
+## ⚡ CRITICAL: Minimalist Development Philosophy
+
+**ABSOLUTE PRIORITY: Write as little code as humanly possible to achieve any feature.**
+
+### Code Minimization Rules
+
+**🚫 NEVER create new code when you can:**
+1. **Refactor existing code** to handle the new case
+2. **Extend existing abstractions** rather than create parallel ones  
+3. **Reuse existing data structures** with minor modifications
+4. **Generalize existing functions** to handle broader cases
+5. **Compose existing primitives** in new ways
+
+**✅ ONLY create new code when:**
+- **Absolutely no existing code can be refactored** to handle the requirement
+- **The new code enables significant reuse** in multiple future features
+- **Creating shared abstractions** that eliminate duplicate patterns
+
+### Refactoring-First Development Process
+
+**Before writing ANY new code:**
+
+1. **Survey existing codebase** - Search thoroughly for similar patterns, data structures, or logic
+2. **Identify refactoring opportunities** - Can existing code be generalized to handle your case?
+3. **Consider composition** - Can you build the feature by combining existing pieces?
+4. **Evaluate abstractions** - Would a small change to existing abstractions unlock your feature?
+5. **Only then create new code** - And design it for maximum reusability
+
+### Examples of Minimalist Thinking
+
+**❌ BAD: Creating parallel systems**
+```rust
+// Creating separate error handling for typechecker
+enum TypecheckerError { ... }
+impl TypecheckerError { ... }
+
+// When parser already has comprehensive error handling
+enum ParserError { ... }
+impl ParserError { ... }
+```
+
+**✅ GOOD: Extending existing systems**
+```rust
+// Extend existing error system to handle typechecker cases
+enum CompilerError {
+    Parser(ParserError),
+    Typechecker(TypecheckerError),  // Add new variant
+    // Reuse existing error infrastructure
+}
+```
+
+**❌ BAD: Duplicating data structures**
+```rust
+// Creating separate AST for typechecker
+struct TypecheckerAst { ... }
+
+// When parser AST could be extended
+struct ParserAst { ... }
+```
+
+**✅ GOOD: Extending existing structures**
+```rust
+// Add type information to existing AST
+struct Ast {
+    // Existing parser fields...
+    type_info: Option<TypeInfo>,  // Add what you need
+}
+```
+
+### Reuse-Oriented Design
+
+**Design every piece of code for maximum reuse:**
+
+- **Generic over specific** - Make functions work with traits/protocols, not concrete types
+- **Composable primitives** - Small, focused functions that combine well
+- **Data-driven behaviour** - Use configuration/parameters instead of separate code paths
+- **Orthogonal concerns** - Separate functionality that can be mixed and matched
+
+### Code Review Questions
+
+Before any code change, ask:
+
+1. **"Can I refactor existing code instead?"**
+2. **"What existing patterns am I duplicating?"**
+3. **"How can this be reused by future features?"**
+4. **"What's the smallest possible change?"**
+5. **"Am I creating abstractions that eliminate duplication?"**
+
+**Remember: The best code is code that doesn't exist. The second-best code is code that serves multiple purposes.**
+
 ## Key Language Features
 
 ### protocol-Based Everything
