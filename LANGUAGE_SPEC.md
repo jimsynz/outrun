@@ -607,6 +607,134 @@ let validator: Function<(email: String) -> Boolean> = &Email.valid?
 - **Struct fields**: Function types can be used in struct field definitions
 - **Higher-order functions**: Essential for map, filter, and other functional patterns
 
+## Type System Semantics
+
+### Concrete Types vs Protocol Constraints
+
+Outrun's type system distinguishes between **concrete types** (actual runtime values) and **protocol constraints** (compile-time interface requirements):
+
+**Concrete Types:**
+- `Outrun.Core.Integer64`, `Outrun.Core.Float64`, `Outrun.Core.String`
+- `Outrun.Core.List<Outrun.Core.Integer64>`, `Outrun.Result.Ok<User>`
+- Used at runtime for actual value representation
+- Always fully instantiated (no unbound generic parameters)
+
+**Protocol Constraints:**
+- `Integer`, `Display`, `Result<T, E>`
+- Used at compile time for type checking and dispatch resolution
+- Can have unbound generic parameters
+- Define behaviour requirements, not concrete representation
+
+### Self Type Semantics
+
+`Self` is a special generic type parameter with specific binding rules:
+
+**In Protocol Definitions:**
+- `Self` is a constraint meaning "any implementing concrete type"
+- Acts like a generic parameter: `protocol Drawable { def draw(self: Self): String }`
+- Gets bound to the concrete implementing type in each implementation
+
+**In Implementation Blocks:**
+- `Self` refers to the specific concrete type being implemented
+- For generic implementations: `impl<T> Display for Container<T>`, `Self` = `Container<T>`
+- Always refers to the complete type including all generic parameters
+
+### Generic Constraints
+
+**Constraint Locations:**
+- **Struct definitions**: `struct Container<T> when T: Display`
+- **Protocol definitions**: `protocol Serializable<T> when T: Display`
+- **Implementation blocks**: `impl Display for Container<T> when T: Display && T: Clone`
+
+**Constraint Transitivity:**
+- Constraints are **transitively verified** but **not transitively declared**
+- If `A<T>` requires `T: B` and `B<U>` requires `U: C`, implementing `A<SomeType>` automatically verifies `SomeType: C`
+- Programmer only declares direct constraints
+
+**Multiple Implementations:**
+- Only **one implementation per protocol-type pair** allowed
+- Use logical operators in constraints: `when T: Display || T: Debug`
+- Handle different cases within implementation using pattern matching
+
+### Orphan Rules
+
+Following Rust-style coherence rules to prevent conflicting implementations:
+
+**Rule:** At least one of the protocol or the type must be local to your module/package.
+
+✅ **Allowed:**
+- `impl MyProtocol for MyType` (both local)
+- `impl MyProtocol for ForeignType` (local protocol, foreign type)
+- `impl ForeignProtocol for MyType` (foreign protocol, local type)
+
+❌ **Forbidden:**
+- `impl ForeignProtocol for ForeignType` (both foreign)
+
+### Hindley-Milner Type Inference
+
+The typechecker uses full HM type inference with these rules:
+
+**Inference to Concrete Types:**
+- All inference produces concrete types: `let x = 42` → `Outrun.Core.Integer64`
+- Generic types must be fully instantiated or result in type errors
+- Ambiguous cases require type hints: `let empty: List<Integer> = List.new()`
+
+**Type Annotations as Constraints:**
+- `let x: Integer = 42` means "x has concrete type implementing Integer"
+- `let x: Outrun.Core.Integer64 = 42` means "x has exactly that concrete type"
+- Protocol annotations constrain to implementing types
+- Concrete type annotations constrain to exact types
+
+**Collection Literal Inference:**
+- **Homogeneous concrete types**: `[1, 2, 3]` → `List<Outrun.Core.Integer64>`
+- **Heterogeneous concrete types**: `[Result.ok(1), Result.none()]` → Type error without hint
+- **With type hint**: `let results: List<Result<Integer, String>> = [Result.ok(1), Result.none()]`
+
+**Function Type Inference:**
+- **From first clause**: Parameter and return types inferred from first clause
+- **Validation**: All subsequent clauses must match exactly
+- **Type hints**: Use annotations when inference insufficient: `fn { ... } as Function<(x: Integer) -> String>`
+
+### Protocol Dispatch Resolution
+
+All protocol function calls are **fully resolved at compile time**:
+
+**Static Resolution:**
+- HM inference determines exact concrete types
+- Typechecker looks up specific protocol implementations
+- Generates direct calls or optimized jump tables
+- No runtime dispatch overhead
+
+**Protocol Function Syntax:**
+- Drop generic parameters in calls: `Result.ok(...)` not `Result<T,E>.ok(...)`
+- Protocol static functions only callable via protocol name
+- Example: `Result.ok(value: x)` creates `Outrun.Result.Ok<T>`
+
+**Runtime Guards Only:**
+- Only guard-based function dispatch requires runtime checking
+- Multiple function clauses with different `when` conditions
+- All other dispatch resolved at compile time
+
+### Exhaustiveness Checking
+
+The typechecker performs exhaustiveness analysis for pattern matching:
+
+**Case Statement Exhaustiveness:**
+- **Pattern coverage**: All possible values of input type handled
+- **Protocol dispatch**: When using `case value as Protocol`, must handle all concrete types implementing that protocol
+- **Orphan rule analysis**: Uses orphan rules to determine complete implementation set
+- **Catch-all patterns**: Required for open-ended types
+
+**Multi-Head Function Exhaustiveness:**
+- **Guard coverage**: All possible input combinations handled by guard clauses
+- **Pattern + guard combinations**: Complete coverage verification
+- **Reachability analysis**: Warns about unreachable clauses
+
+**Implementation Strategy:**
+- **Pattern analysis**: Detects gaps in coverage using decision trees
+- **Boolean satisfiability**: Verifies guard expressions cover all cases
+- **Type inhabitance**: Determines if types have finite or infinite value sets
+
 ## Functions
 
 ### Function Definitions
