@@ -10,10 +10,9 @@ use outrun_typechecker::{
         TypecheckError, CompilerError
     },
     types::Type,
-    TypeInferenceEngine,
 };
-use outrun_parser::{parse_program, Span};
-use miette::{Diagnostic, NamedSource, Report};
+use outrun_parser::Span;
+use miette::{NamedSource, Report};
 
 fn main() {
     println!("🔍 Outrun Typechecker v3 - Enhanced Error Reporting Demo\n");
@@ -58,7 +57,7 @@ def login(usename: String, password: String): Result<User, LoginError> {
     let report = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -86,7 +85,7 @@ def format_message(text: String, count: Integer64): String {
     let report = Report::new(CompilerError::Typecheck(TypecheckError::UnificationError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -112,7 +111,7 @@ let sum = p1 + p2  // Missing BinaryAddition implementation
     let report = Report::new(CompilerError::Typecheck(TypecheckError::DispatchError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -141,7 +140,7 @@ let mixed = [1, 2, "three", 4]  // Type mismatch in list
     let report = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -173,7 +172,7 @@ let area = calculate_area(width: "10.5", height: 20.0)  // Wrong type
     let report = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -194,7 +193,7 @@ let empty_list = []  // Cannot infer element type
     let report = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(error)))
         .with_source_code(named_source);
         
-    println!("{:?}", report);
+    println!("{report:?}");
     println!();
 }
 
@@ -247,11 +246,11 @@ def handle_api_request(request: HttpRequest): HttpRespons {
     println!("Variable error:");
     let report1 = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(var_error)))
         .with_source_code(named_source.clone());
-    println!("{:?}", report1);
+    println!("{report1:?}");
     
     println!("\nType error:");
     let report2 = Report::new(CompilerError::Typecheck(TypecheckError::InferenceError(type_error)))
         .with_source_code(named_source);
-    println!("{:?}", report2);
+    println!("{report2:?}");
     println!();
 }

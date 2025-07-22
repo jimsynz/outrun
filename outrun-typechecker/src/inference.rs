@@ -16,6 +16,9 @@ use outrun_parser::{
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Result type for function clause inference to reduce complexity
+type FunctionClauseInferenceResult = (Vec<(String, Type)>, Type, Vec<crate::types::Constraint>);
+
 /// Main type inference engine that orchestrates all typechecker components
 pub struct TypeInferenceEngine {
     /// Registry of protocol implementations (shared)
@@ -452,6 +455,10 @@ impl TypeInferenceEngine {
             ExpressionKind::Map(map_literal) => {
                 // Map literal type inference
                 self.infer_map_literal(map_literal, context)
+            }
+            ExpressionKind::AnonymousFunction(anonymous_fn) => {
+                // Anonymous function type inference
+                self.infer_anonymous_function(anonymous_fn, context)
             }
             // TODO: Implement other expression types
             _ => {
@@ -1044,8 +1051,258 @@ impl TypeInferenceEngine {
         }
     }
     
-    /// Convert a parser type annotation to a typechecker type
+    /// Infer the type of an anonymous function
     #[allow(clippy::result_large_err)]
+    fn infer_anonymous_function(
+        &mut self,
+        anonymous_fn: &outrun_parser::AnonymousFunction,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Anonymous functions must have at least one clause
+        if anonymous_fn.clauses.is_empty() {
+            return Err(TypecheckError::InferenceError(
+                crate::error::InferenceError::AmbiguousType {
+                    span: crate::error::to_source_span(Some(anonymous_fn.span)),
+                    suggestions: vec!["Anonymous function must have at least one clause".to_string()],
+                }
+            ));
+        }
+        
+        // Infer function type from the first clause
+        let first_clause = &anonymous_fn.clauses[0];
+        let (param_types, return_type, first_constraints) = 
+            self.infer_function_clause_types(first_clause, context)?;
+        
+        // Create the function type from the first clause
+        let function_type = Type::Function {
+            params: param_types.clone(),
+            return_type: Box::new(return_type.clone()),
+            span: Some(anonymous_fn.span),
+        };
+        
+        // Validate that all remaining clauses have consistent signatures
+        let mut all_constraints = first_constraints;
+        for (clause_index, clause) in anonymous_fn.clauses.iter().enumerate().skip(1) {
+            let validation_result = self.validate_function_clause_consistency(
+                clause, 
+                &param_types, 
+                &return_type,
+                context,
+                clause_index + 1
+            )?;
+            all_constraints.extend(validation_result.constraints);
+        }
+        
+        Ok(InferenceResult {
+            inferred_type: function_type,
+            constraints: all_constraints,
+            substitution: context.substitution.clone(),
+        })
+    }
+    
+    /// Infer parameter and return types from a function clause
+    #[allow(clippy::result_large_err)]
+    fn infer_function_clause_types(
+        &mut self,
+        clause: &outrun_parser::AnonymousClause,
+        context: &mut InferenceContext,
+    ) -> Result<FunctionClauseInferenceResult, TypecheckError> {
+        let mut local_context = context.clone();
+        let mut constraints = context.constraints.clone();
+        
+        // Extract parameter types from the clause parameters
+        let param_types = self.extract_anonymous_function_parameters(&clause.parameters)?;
+        
+        // Bind parameters in local scope for body type inference
+        for (param_name, param_type) in &param_types {
+            local_context.bind_variable(param_name.clone(), param_type.clone());
+        }
+        
+        // Infer the return type from the body
+        let body_result = self.infer_anonymous_function_body(&clause.body, &mut local_context)?;
+        let return_type = body_result.inferred_type;
+        constraints.extend(body_result.constraints);
+        
+        // Handle guards if present
+        if let Some(guard_expr) = &clause.guard {
+            let guard_result = self.infer_expression(&mut guard_expr.clone(), &mut local_context)?;
+            constraints.extend(guard_result.constraints);
+            
+            // Guards must return Boolean
+            let boolean_constraint = crate::types::Constraint::Equality {
+                left: Box::new(Type::concrete("Outrun.Core.Boolean")),
+                right: Box::new(guard_result.inferred_type),
+                span: Some(guard_expr.span),
+            };
+            constraints.push(boolean_constraint);
+        }
+        
+        Ok((param_types, return_type, constraints))
+    }
+    
+    /// Extract parameter types from anonymous function parameters
+    #[allow(clippy::result_large_err)]
+    fn extract_anonymous_function_parameters(
+        &mut self,
+        parameters: &outrun_parser::AnonymousParameters,
+    ) -> Result<Vec<(String, Type)>, TypecheckError> {
+        use outrun_parser::AnonymousParameters;
+        
+        match parameters {
+            AnonymousParameters::None { .. } => Ok(vec![]),
+            AnonymousParameters::Single { parameter, .. } => {
+                let param_name = parameter.name.name.clone();
+                let param_type = self.convert_type_annotation(&parameter.type_annotation)?;
+                Ok(vec![(param_name, param_type)])
+            }
+            AnonymousParameters::Multiple { parameters, .. } => {
+                let mut param_types = Vec::new();
+                for param in parameters {
+                    let param_name = param.name.name.clone();
+                    let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                    param_types.push((param_name, param_type));
+                }
+                Ok(param_types)
+            }
+        }
+    }
+    
+    /// Infer the return type from an anonymous function body
+    #[allow(clippy::result_large_err)]
+    fn infer_anonymous_function_body(
+        &mut self,
+        body: &outrun_parser::AnonymousBody,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        use outrun_parser::AnonymousBody;
+        
+        match body {
+            AnonymousBody::Expression(expr) => {
+                // Single expression body
+                self.infer_expression(&mut (**expr).clone(), context)
+            }
+            AnonymousBody::Block(_block) => {
+                // Block body - for now, return a fresh type variable
+                // TODO: Implement proper block inference
+                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
+                Ok(InferenceResult {
+                    inferred_type,
+                    constraints: context.constraints.clone(),
+                    substitution: context.substitution.clone(),
+                })
+            }
+        }
+    }
+    
+    /// Validate that a function clause has consistent signature with the first clause
+    #[allow(clippy::result_large_err)]
+    fn validate_function_clause_consistency(
+        &mut self,
+        clause: &outrun_parser::AnonymousClause,
+        expected_param_types: &[(String, Type)],
+        expected_return_type: &Type,
+        context: &mut InferenceContext,
+        clause_number: usize,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Extract parameter types from this clause
+        let clause_param_types = self.extract_anonymous_function_parameters(&clause.parameters)?;
+        
+        // Check parameter count consistency
+        if clause_param_types.len() != expected_param_types.len() {
+            return Err(TypecheckError::InferenceError(
+                crate::error::InferenceError::FunctionCallError {
+                    message: format!(
+                        "Function clause {} has {} parameters, but first clause has {}",
+                        clause_number,
+                        clause_param_types.len(),
+                        expected_param_types.len()
+                    ),
+                    function_name: None,
+                    expected_signature: Some(format!(
+                        "({}) -> {}",
+                        expected_param_types.iter()
+                            .map(|(name, ty)| format!("{}: {}", name, ty))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        expected_return_type
+                    )),
+                    actual_arguments: Some(format!(
+                        "({})",
+                        clause_param_types.iter()
+                            .map(|(name, ty)| format!("{}: {}", name, ty))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    span: crate::error::to_source_span(Some(clause.span)),
+                    suggestions: vec![
+                        "All function clauses must have the same parameter signature".to_string(),
+                        "Consider adding or removing parameters to match the first clause".to_string(),
+                    ],
+                }
+            ));
+        }
+        
+        // Create constraints for parameter type consistency
+        let mut constraints = context.constraints.clone();
+        for ((expected_name, expected_type), (clause_name, clause_type)) in 
+            expected_param_types.iter().zip(clause_param_types.iter()) {
+            
+            // Parameter names should be consistent (warning, not error)
+            if expected_name != clause_name {
+                // For now, we allow different parameter names in different clauses
+                // In a full implementation, we might want to warn about this
+            }
+            
+            // Parameter types must be identical
+            let param_constraint = crate::types::Constraint::Equality {
+                left: Box::new(expected_type.clone()),
+                right: Box::new(clause_type.clone()),
+                span: Some(clause.span),
+            };
+            constraints.push(param_constraint);
+        }
+        
+        // Create local context with parameter bindings
+        let mut local_context = context.clone();
+        for (param_name, param_type) in &clause_param_types {
+            local_context.bind_variable(param_name.clone(), param_type.clone());
+        }
+        
+        // Infer return type from clause body
+        let body_result = self.infer_anonymous_function_body(&clause.body, &mut local_context)?;
+        constraints.extend(body_result.constraints);
+        
+        // Return type must be consistent
+        let return_constraint = crate::types::Constraint::Equality {
+            left: Box::new(expected_return_type.clone()),
+            right: Box::new(body_result.inferred_type.clone()),
+            span: Some(clause.span),
+        };
+        constraints.push(return_constraint);
+        
+        // Handle guards if present
+        if let Some(guard_expr) = &clause.guard {
+            let guard_result = self.infer_expression(&mut guard_expr.clone(), &mut local_context)?;
+            constraints.extend(guard_result.constraints);
+            
+            // Guards must return Boolean
+            let guard_constraint = crate::types::Constraint::Equality {
+                left: Box::new(Type::concrete("Outrun.Core.Boolean")),
+                right: Box::new(guard_result.inferred_type),
+                span: Some(guard_expr.span),
+            };
+            constraints.push(guard_constraint);
+        }
+        
+        Ok(InferenceResult {
+            inferred_type: body_result.inferred_type,
+            constraints,
+            substitution: local_context.substitution,
+        })
+    }
+    
+    /// Convert a parser type annotation to a typechecker type
+    #[allow(clippy::result_large_err, clippy::only_used_in_recursion)]
     fn convert_type_annotation(&mut self, type_annotation: &TypeAnnotation) -> Result<Type, TypecheckError> {
         match type_annotation {
             TypeAnnotation::Simple { path, .. } => {
@@ -1059,10 +1316,22 @@ impl TypeInferenceEngine {
                 // For now, treat as a placeholder concrete type
                 Ok(Type::concrete("Tuple"))
             }
-            TypeAnnotation::Function { .. } => {
-                // TODO: Implement function types in the typechecker
-                // For now, treat as a placeholder concrete type
-                Ok(Type::concrete("Function"))
+            TypeAnnotation::Function { params, return_type, .. } => {
+                // Parse Function<(params) -> ReturnType> syntax
+                let mut param_types = Vec::new();
+                for param in params {
+                    let param_name = param.name.name.clone();
+                    let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                    param_types.push((param_name, param_type));
+                }
+                
+                let ret_type = self.convert_type_annotation(return_type)?;
+                
+                Ok(Type::Function {
+                    params: param_types,
+                    return_type: Box::new(ret_type),
+                    span: None,
+                })
             }
         }
     }
