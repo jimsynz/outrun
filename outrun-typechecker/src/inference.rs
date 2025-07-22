@@ -395,6 +395,18 @@ impl TypeInferenceEngine {
                 // Function call inference with dispatch integration
                 self.infer_function_call(function_call, context)
             }
+            ExpressionKind::List(list_literal) => {
+                // List literal type inference
+                self.infer_list_literal(list_literal, context)
+            }
+            ExpressionKind::Tuple(tuple_literal) => {
+                // Tuple literal type inference
+                self.infer_tuple_literal(tuple_literal, context)
+            }
+            ExpressionKind::Map(map_literal) => {
+                // Map literal type inference
+                self.infer_map_literal(map_literal, context)
+            }
             // TODO: Implement other expression types
             _ => {
                 // For now, assign a fresh type variable to unknown expressions
@@ -711,6 +723,277 @@ impl TypeInferenceEngine {
         }
     }
     
+    /// Infer the type of a list literal
+    #[allow(clippy::result_large_err)]
+    fn infer_list_literal(
+        &mut self,
+        list_literal: &outrun_parser::ListLiteral,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        use outrun_parser::ListElement;
+        
+        // Handle empty list - require type hint or assign fresh type variable
+        if list_literal.elements.is_empty() {
+            if let Some(expected_type) = &context.expected_type {
+                // Use expected type if available
+                Ok(InferenceResult {
+                    inferred_type: expected_type.clone(),
+                    constraints: context.constraints.clone(),
+                    substitution: context.substitution.clone(),
+                })
+            } else {
+                // Empty list without type hint gets fresh type variable
+                let element_type = Type::variable(self.fresh_type_var(), Level(0));
+                let list_type = Type::Concrete {
+                    id: crate::types::TypeId::new("List"),
+                    args: vec![element_type],
+                    span: None,
+                };
+                Ok(InferenceResult {
+                    inferred_type: list_type,
+                    constraints: context.constraints.clone(),
+                    substitution: context.substitution.clone(),
+                })
+            }
+        } else {
+            // Non-empty list - infer element types
+            let mut element_types = Vec::new();
+            let mut all_constraints = context.constraints.clone();
+            
+            for element in &list_literal.elements {
+                match element {
+                    ListElement::Expression(expr) => {
+                        let element_result = self.infer_expression(&mut (**expr).clone(), context)?;
+                        element_types.push(element_result.inferred_type);
+                        all_constraints.extend(element_result.constraints);
+                    }
+                    ListElement::Spread(_spread_id) => {
+                        // Spread elements require the spread variable to be a List<T>
+                        // For now, we'll create a type variable for the spread
+                        // TODO: Implement proper spread inference
+                        let spread_element_type = Type::variable(self.fresh_type_var(), Level(0));
+                        element_types.push(spread_element_type);
+                    }
+                }
+            }
+            
+            // Check if all elements have the same type (homogeneous list)
+            if element_types.is_empty() {
+                // This shouldn't happen given our check above, but handle it defensively
+                let element_type = Type::variable(self.fresh_type_var(), Level(0));
+                let list_type = Type::Concrete {
+                    id: crate::types::TypeId::new("List"),
+                    args: vec![element_type],
+                    span: None,
+                };
+                return Ok(InferenceResult {
+                    inferred_type: list_type,
+                    constraints: all_constraints,
+                    substitution: context.substitution.clone(),
+                });
+            }
+            
+            // Take the first element as the expected type
+            let first_element_type = element_types[0].clone();
+            
+            // Create constraints that all other elements must match the first
+            for element_type in element_types.iter().skip(1) {
+                let constraint = Constraint::Equality {
+                    left: Box::new(first_element_type.clone()),
+                    right: Box::new(element_type.clone()),
+                    span: None,
+                };
+                all_constraints.push(constraint);
+            }
+            
+            // Create the List<ElementType> type
+            let list_type = Type::Concrete {
+                id: crate::types::TypeId::new("List"),
+                args: vec![first_element_type],
+                span: None,
+            };
+            
+            Ok(InferenceResult {
+                inferred_type: list_type,
+                constraints: all_constraints,
+                substitution: context.substitution.clone(),
+            })
+        }
+    }
+    
+    /// Infer the type of a tuple literal
+    #[allow(clippy::result_large_err)]
+    fn infer_tuple_literal(
+        &mut self,
+        tuple_literal: &outrun_parser::TupleLiteral,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Handle empty tuple
+        if tuple_literal.elements.is_empty() {
+            let tuple_type = Type::Concrete {
+                id: crate::types::TypeId::new("Tuple"),
+                args: vec![], // Empty tuple has no type arguments
+                span: None,
+            };
+            return Ok(InferenceResult {
+                inferred_type: tuple_type,
+                constraints: context.constraints.clone(),
+                substitution: context.substitution.clone(),
+            });
+        }
+        
+        // Infer types of all tuple elements
+        let mut element_types = Vec::new();
+        let mut all_constraints = context.constraints.clone();
+        
+        for element_expr in &tuple_literal.elements {
+            let element_result = self.infer_expression(&mut element_expr.clone(), context)?;
+            element_types.push(element_result.inferred_type);
+            all_constraints.extend(element_result.constraints);
+        }
+        
+        // Create Tuple<T1, T2, ..., Tn> type
+        let tuple_type = Type::Concrete {
+            id: crate::types::TypeId::new("Tuple"),
+            args: element_types,
+            span: None,
+        };
+        
+        Ok(InferenceResult {
+            inferred_type: tuple_type,
+            constraints: all_constraints,
+            substitution: context.substitution.clone(),
+        })
+    }
+    
+    /// Infer the type of a map literal
+    #[allow(clippy::result_large_err)]
+    fn infer_map_literal(
+        &mut self,
+        map_literal: &outrun_parser::MapLiteral,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        use outrun_parser::MapEntry;
+        
+        // Handle empty map
+        if map_literal.entries.is_empty() {
+            if let Some(expected_type) = &context.expected_type {
+                // Use expected type if available
+                Ok(InferenceResult {
+                    inferred_type: expected_type.clone(),
+                    constraints: context.constraints.clone(),
+                    substitution: context.substitution.clone(),
+                })
+            } else {
+                // Empty map without type hint gets fresh type variables
+                let key_type = Type::variable(self.fresh_type_var(), Level(0));
+                let value_type = Type::variable(self.fresh_type_var(), Level(0));
+                let map_type = Type::Concrete {
+                    id: crate::types::TypeId::new("Map"),
+                    args: vec![key_type, value_type],
+                    span: None,
+                };
+                Ok(InferenceResult {
+                    inferred_type: map_type,
+                    constraints: context.constraints.clone(),
+                    substitution: context.substitution.clone(),
+                })
+            }
+        } else {
+            // Non-empty map - infer key and value types
+            let mut key_types = Vec::new();
+            let mut value_types = Vec::new();
+            let mut all_constraints = context.constraints.clone();
+            
+            for entry in &map_literal.entries {
+                match entry {
+                    MapEntry::Assignment { key, value } => {
+                        // Infer key type
+                        let key_result = self.infer_expression(&mut (**key).clone(), context)?;
+                        key_types.push(key_result.inferred_type);
+                        all_constraints.extend(key_result.constraints);
+                        
+                        // Infer value type
+                        let value_result = self.infer_expression(&mut (**value).clone(), context)?;
+                        value_types.push(value_result.inferred_type);
+                        all_constraints.extend(value_result.constraints);
+                    }
+                    MapEntry::Shorthand { name: _, value } => {
+                        // Shorthand syntax: {name} where name is both key and value
+                        // Key is atom (symbol), value is expression
+                        key_types.push(Type::concrete("Outrun.Core.Atom"));
+                        
+                        let value_result = self.infer_expression(&mut (**value).clone(), context)?;
+                        value_types.push(value_result.inferred_type);
+                        all_constraints.extend(value_result.constraints);
+                    }
+                    MapEntry::Spread(_spread_id) => {
+                        // Spread entries require the spread variable to be a Map<K, V>
+                        // TODO: Implement proper spread inference
+                        let spread_key_type = Type::variable(self.fresh_type_var(), Level(0));
+                        let spread_value_type = Type::variable(self.fresh_type_var(), Level(0));
+                        key_types.push(spread_key_type);
+                        value_types.push(spread_value_type);
+                    }
+                }
+            }
+            
+            // Check if all keys and values have consistent types
+            if key_types.is_empty() || value_types.is_empty() {
+                // This shouldn't happen, but handle defensively
+                let key_type = Type::variable(self.fresh_type_var(), Level(0));
+                let value_type = Type::variable(self.fresh_type_var(), Level(0));
+                let map_type = Type::Concrete {
+                    id: crate::types::TypeId::new("Map"),
+                    args: vec![key_type, value_type],
+                    span: None,
+                };
+                return Ok(InferenceResult {
+                    inferred_type: map_type,
+                    constraints: all_constraints,
+                    substitution: context.substitution.clone(),
+                });
+            }
+            
+            // Take the first key and value types as expected
+            let first_key_type = key_types[0].clone();
+            let first_value_type = value_types[0].clone();
+            
+            // Create constraints that all other keys must match the first key type
+            for key_type in key_types.iter().skip(1) {
+                let constraint = Constraint::Equality {
+                    left: Box::new(first_key_type.clone()),
+                    right: Box::new(key_type.clone()),
+                    span: None,
+                };
+                all_constraints.push(constraint);
+            }
+            
+            // Create constraints that all other values must match the first value type
+            for value_type in value_types.iter().skip(1) {
+                let constraint = Constraint::Equality {
+                    left: Box::new(first_value_type.clone()),
+                    right: Box::new(value_type.clone()),
+                    span: None,
+                };
+                all_constraints.push(constraint);
+            }
+            
+            // Create Map<KeyType, ValueType> type
+            let map_type = Type::Concrete {
+                id: crate::types::TypeId::new("Map"),
+                args: vec![first_key_type, first_value_type],
+                span: None,
+            };
+            
+            Ok(InferenceResult {
+                inferred_type: map_type,
+                constraints: all_constraints,
+                substitution: context.substitution.clone(),
+            })
+        }
+    }
+    
     /// Convert a parser type annotation to a typechecker type
     #[allow(clippy::result_large_err)]
     fn convert_type_annotation(&mut self, type_annotation: &TypeAnnotation) -> Result<Type, TypecheckError> {
@@ -890,6 +1173,250 @@ mod tests {
                 // Expected - no function registered
             }
             _ => panic!("Expected dispatch error for unregistered function"),
+        }
+    }
+
+    #[test]
+    fn test_list_literal_homogeneous_inference() {
+        let mut engine = TypeInferenceEngine::new();
+        let mut context = InferenceContext::new();
+        
+        // Create mock list literal: [1, 2, 3]
+        use outrun_parser::{ListLiteral, ListElement, Expression, ExpressionKind, IntegerLiteral, IntegerFormat, Span};
+        
+        let list_literal = ListLiteral {
+            elements: vec![
+                ListElement::Expression(Box::new(Expression {
+                    kind: ExpressionKind::Integer(IntegerLiteral {
+                        value: 1,
+                        format: IntegerFormat::Decimal,
+                        raw_text: "1".to_string(),
+                        span: Span::new(1, 2),
+                    }),
+                    span: Span::new(1, 2),
+                    type_info: None,
+                })),
+                ListElement::Expression(Box::new(Expression {
+                    kind: ExpressionKind::Integer(IntegerLiteral {
+                        value: 2,
+                        format: IntegerFormat::Decimal,
+                        raw_text: "2".to_string(),
+                        span: Span::new(4, 5),
+                    }),
+                    span: Span::new(4, 5),
+                    type_info: None,
+                })),
+                ListElement::Expression(Box::new(Expression {
+                    kind: ExpressionKind::Integer(IntegerLiteral {
+                        value: 3,
+                        format: IntegerFormat::Decimal,
+                        raw_text: "3".to_string(),
+                        span: Span::new(7, 8),
+                    }),
+                    span: Span::new(7, 8),
+                    type_info: None,
+                })),
+            ],
+            span: Span::new(0, 9),
+        };
+        
+        let result = engine.infer_list_literal(&list_literal, &mut context).unwrap();
+        
+        // Should infer List<Outrun.Core.Integer64>
+        match &result.inferred_type {
+            Type::Concrete { id, args, .. } => {
+                assert_eq!(id.0, "List");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    Type::Concrete { id, .. } => {
+                        assert_eq!(id.0, "Outrun.Core.Integer64");
+                    }
+                    _ => panic!("Expected Integer64 element type"),
+                }
+            }
+            _ => panic!("Expected List<Integer64> type"),
+        }
+    }
+
+    #[test]
+    fn test_empty_list_inference() {
+        let mut engine = TypeInferenceEngine::new();
+        let mut context = InferenceContext::new();
+        
+        // Create empty list literal: []
+        use outrun_parser::{ListLiteral, Span};
+        
+        let list_literal = ListLiteral {
+            elements: vec![],
+            span: Span::new(0, 2),
+        };
+        
+        let result = engine.infer_list_literal(&list_literal, &mut context).unwrap();
+        
+        // Should infer List<T> where T is a type variable
+        match &result.inferred_type {
+            Type::Concrete { id, args, .. } => {
+                assert_eq!(id.0, "List");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    Type::Variable { .. } => {
+                        // Expected - fresh type variable for element type
+                    }
+                    _ => panic!("Expected type variable for empty list element type"),
+                }
+            }
+            _ => panic!("Expected List<T> type"),
+        }
+    }
+
+    #[test]
+    fn test_tuple_literal_inference() {
+        let mut engine = TypeInferenceEngine::new();
+        let mut context = InferenceContext::new();
+        
+        // Create tuple literal: (1, "hello", true)
+        use outrun_parser::{TupleLiteral, Expression, ExpressionKind, IntegerLiteral, StringLiteral, BooleanLiteral, IntegerFormat, StringFormat, Span};
+        
+        let tuple_literal = TupleLiteral {
+            elements: vec![
+                Expression {
+                    kind: ExpressionKind::Integer(IntegerLiteral {
+                        value: 1,
+                        format: IntegerFormat::Decimal,
+                        raw_text: "1".to_string(),
+                        span: Span::new(1, 2),
+                    }),
+                    span: Span::new(1, 2),
+                    type_info: None,
+                },
+                Expression {
+                    kind: ExpressionKind::String(StringLiteral {
+                        parts: vec![outrun_parser::StringPart::Text { content: "hello".to_string(), raw_content: "hello".to_string() }],
+                        format: StringFormat::Basic,
+                        span: Span::new(4, 11),
+                    }),
+                    span: Span::new(4, 11),
+                    type_info: None,
+                },
+                Expression {
+                    kind: ExpressionKind::Boolean(BooleanLiteral {
+                        value: true,
+                        span: Span::new(13, 17),
+                    }),
+                    span: Span::new(13, 17),
+                    type_info: None,
+                },
+            ],
+            span: Span::new(0, 18),
+        };
+        
+        let result = engine.infer_tuple_literal(&tuple_literal, &mut context).unwrap();
+        
+        // Should infer Tuple<Outrun.Core.Integer64, Outrun.Core.String, Outrun.Core.Boolean>
+        match &result.inferred_type {
+            Type::Concrete { id, args, .. } => {
+                assert_eq!(id.0, "Tuple");
+                assert_eq!(args.len(), 3);
+                
+                // Check first element is Integer64
+                match &args[0] {
+                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Integer64"),
+                    _ => panic!("Expected Integer64 first element"),
+                }
+                
+                // Check second element is String
+                match &args[1] {
+                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.String"),
+                    _ => panic!("Expected String second element"),
+                }
+                
+                // Check third element is Boolean
+                match &args[2] {
+                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Boolean"),
+                    _ => panic!("Expected Boolean third element"),
+                }
+            }
+            _ => panic!("Expected Tuple<Integer64, String, Boolean> type"),
+        }
+    }
+
+    #[test]
+    fn test_map_literal_inference() {
+        let mut engine = TypeInferenceEngine::new();
+        let mut context = InferenceContext::new();
+        
+        // Create map literal: {"key1": 42, "key2": 24}
+        use outrun_parser::{MapLiteral, MapEntry, Expression, ExpressionKind, StringLiteral, IntegerLiteral, StringFormat, IntegerFormat, Span, StringPart};
+        
+        let map_literal = MapLiteral {
+            entries: vec![
+                MapEntry::Assignment {
+                    key: Box::new(Expression {
+                        kind: ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text { content: "key1".to_string(), raw_content: "key1".to_string() }],
+                            format: StringFormat::Basic,
+                            span: Span::new(1, 7),
+                        }),
+                        span: Span::new(1, 7),
+                        type_info: None,
+                    }),
+                    value: Box::new(Expression {
+                        kind: ExpressionKind::Integer(IntegerLiteral {
+                            value: 42,
+                            format: IntegerFormat::Decimal,
+                            raw_text: "42".to_string(),
+                            span: Span::new(9, 11),
+                        }),
+                        span: Span::new(9, 11),
+                        type_info: None,
+                    }),
+                },
+                MapEntry::Assignment {
+                    key: Box::new(Expression {
+                        kind: ExpressionKind::String(StringLiteral {
+                            parts: vec![StringPart::Text { content: "key2".to_string(), raw_content: "key2".to_string() }],
+                            format: StringFormat::Basic,
+                            span: Span::new(13, 19),
+                        }),
+                        span: Span::new(13, 19),
+                        type_info: None,
+                    }),
+                    value: Box::new(Expression {
+                        kind: ExpressionKind::Integer(IntegerLiteral {
+                            value: 24,
+                            format: IntegerFormat::Decimal,
+                            raw_text: "24".to_string(),
+                            span: Span::new(21, 23),
+                        }),
+                        span: Span::new(21, 23),
+                        type_info: None,
+                    }),
+                },
+            ],
+            span: Span::new(0, 24),
+        };
+        
+        let result = engine.infer_map_literal(&map_literal, &mut context).unwrap();
+        
+        // Should infer Map<Outrun.Core.String, Outrun.Core.Integer64>
+        match &result.inferred_type {
+            Type::Concrete { id, args, .. } => {
+                assert_eq!(id.0, "Map");
+                assert_eq!(args.len(), 2);
+                
+                // Check key type is String
+                match &args[0] {
+                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.String"),
+                    _ => panic!("Expected String key type"),
+                }
+                
+                // Check value type is Integer64
+                match &args[1] {
+                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Integer64"),
+                    _ => panic!("Expected Integer64 value type"),
+                }
+            }
+            _ => panic!("Expected Map<String, Integer64> type"),
         }
     }
 }
