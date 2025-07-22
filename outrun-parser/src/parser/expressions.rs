@@ -7,6 +7,15 @@ use crate::ast::*;
 use crate::error::*;
 use crate::parser::{OutrunParser, Rule};
 
+/// Helper function to create Expression with None type_info (filled in by typechecker)
+fn expression(kind: ExpressionKind, span: Span) -> Expression {
+    Expression {
+        kind,
+        span,
+        type_info: None,
+    }
+}
+
 impl OutrunParser {
     /// Binary operator precedence parser
     /// Precedence levels from lowest to highest (following Ruby/Outrun precedence)
@@ -103,15 +112,15 @@ impl OutrunParser {
                     let right_end = right.span.end;
                     let span = Self::span_from_range(left_start, right_end);
 
-                    Ok(Expression {
-                        kind: ExpressionKind::BinaryOp(BinaryOperation {
+                    Ok(expression(
+                        ExpressionKind::BinaryOp(BinaryOperation {
                             left: Box::new(left),
                             operator,
                             right: Box::new(right),
                             span,
                         }),
                         span,
-                    })
+                    ))
                 },
             )
             .parse(pairs)
@@ -185,17 +194,11 @@ impl OutrunParser {
                     }
                     Rule::if_expression => {
                         let if_expr = Self::parse_if_expression(pair)?;
-                        return Ok(Expression {
-                            kind: ExpressionKind::IfExpression(if_expr),
-                            span,
-                        });
+                        return Ok(expression(ExpressionKind::IfExpression(if_expr), span));
                     }
                     Rule::case_expression => {
                         let case_expr = Self::parse_case_expression(pair)?;
-                        return Ok(Expression {
-                            kind: ExpressionKind::CaseExpression(case_expr),
-                            span,
-                        });
+                        return Ok(expression(ExpressionKind::CaseExpression(case_expr), span));
                     }
                     _ => {
                         return Err(ParseError::unexpected_token(
@@ -206,7 +209,7 @@ impl OutrunParser {
                     }
                 };
 
-                Ok(Expression { kind, span })
+                Ok(expression(kind, span))
             }
         }
     }
@@ -231,14 +234,14 @@ impl OutrunParser {
                         let end = field.span.end;
                         let span = Self::span_from_range(start, end);
 
-                        expr = Expression {
-                            kind: ExpressionKind::FieldAccess(FieldAccess {
+                        expr = expression(
+                            ExpressionKind::FieldAccess(FieldAccess {
                                 object: Box::new(expr),
                                 field,
                                 span,
                             }),
                             span,
-                        };
+                        );
                     }
                     Rule::function_call_postfix => {
                         let start = expr.span.start;
@@ -258,8 +261,8 @@ impl OutrunParser {
                             }
                         }
 
-                        expr = Expression {
-                            kind: ExpressionKind::FunctionCall(FunctionCall {
+                        expr = expression(
+                            ExpressionKind::FunctionCall(FunctionCall {
                                 path: FunctionPath::Expression {
                                     expression: Box::new(expr),
                                 },
@@ -267,7 +270,7 @@ impl OutrunParser {
                                 span,
                             }),
                             span,
-                        };
+                        );
                     }
                     _ => {} // Ignore unknown postfix operations
                 }
@@ -300,14 +303,14 @@ impl OutrunParser {
                 let operand_pair = inner_pairs.next().unwrap();
                 let operand = Self::parse_primary_expr(operand_pair)?;
 
-                Ok(Expression {
-                    kind: ExpressionKind::UnaryOp(UnaryOperation {
+                Ok(expression(
+                    ExpressionKind::UnaryOp(UnaryOperation {
                         operator,
                         operand: Box::new(operand),
                         span,
                     }),
                     span,
-                })
+                ))
             }
             _ => {
                 // Not a unary operation, parse as regular primary expression
@@ -315,66 +318,45 @@ impl OutrunParser {
                     Rule::expression => {
                         // Parenthesized expression
                         let expr = Self::parse_expression_from_pair(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Parenthesized(Box::new(expr)),
+                        Ok(expression(
+                            ExpressionKind::Parenthesized(Box::new(expr)),
                             span,
-                        })
+                        ))
                     }
                     Rule::boolean => {
                         let boolean = Self::parse_boolean(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Boolean(boolean),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Boolean(boolean), span))
                     }
                     Rule::integer => {
                         let integer = Self::parse_integer(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Integer(integer),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Integer(integer), span))
                     }
                     Rule::float => {
                         let float = Self::parse_float(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Float(float),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Float(float), span))
                     }
                     Rule::string => {
                         let string = Self::parse_string(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::String(string),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::String(string), span))
                     }
                     Rule::atom => {
                         let atom = Self::parse_atom(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Atom(atom),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Atom(atom), span))
                     }
                     Rule::sigil => {
                         let sigil = Self::parse_sigil(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Sigil(sigil),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Sigil(sigil), span))
                     }
                     Rule::qualified_identifier => {
                         let qualified_id = Self::parse_qualified_identifier(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::QualifiedIdentifier(qualified_id),
+                        Ok(expression(
+                            ExpressionKind::QualifiedIdentifier(qualified_id),
                             span,
-                        })
+                        ))
                     }
                     Rule::identifier => {
                         let identifier = Self::parse_identifier(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Identifier(identifier),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Identifier(identifier), span))
                     }
                     Rule::type_with_generics => {
                         // Parse type with generic arguments (e.g., Option<Integer>)
@@ -394,90 +376,63 @@ impl OutrunParser {
                         let full_name = format!("{}<{}>", type_name.name, arg_strings.join(", "));
 
                         // Create a generic type identifier expression
-                        Ok(Expression {
-                            kind: ExpressionKind::TypeIdentifier(TypeIdentifier {
+                        Ok(expression(
+                            ExpressionKind::TypeIdentifier(TypeIdentifier {
                                 name: full_name,
                                 span,
                             }),
                             span,
-                        })
+                        ))
                     }
                     Rule::type_identifier => {
                         let type_identifier = Self::parse_type_identifier(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::TypeIdentifier(type_identifier),
+                        Ok(expression(
+                            ExpressionKind::TypeIdentifier(type_identifier),
                             span,
-                        })
+                        ))
                     }
                     Rule::list => {
                         let list = Self::parse_list(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::List(list),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::List(list), span))
                     }
                     Rule::map => {
                         let map = Self::parse_map(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Map(map),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Map(map), span))
                     }
                     Rule::tuple => {
                         let tuple = Self::parse_tuple(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Tuple(tuple),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Tuple(tuple), span))
                     }
                     Rule::struct_literal => {
                         let struct_lit = Self::parse_struct_literal(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::Struct(struct_lit),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::Struct(struct_lit), span))
                     }
                     Rule::function_call => {
                         let function_call = Self::parse_function_call(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::FunctionCall(function_call),
+                        Ok(expression(
+                            ExpressionKind::FunctionCall(function_call),
                             span,
-                        })
+                        ))
                     }
                     Rule::if_expression => {
                         let if_expr = Self::parse_if_expression(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::IfExpression(if_expr),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::IfExpression(if_expr), span))
                     }
                     Rule::case_expression => {
                         let case_expr = Self::parse_case_expression(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::CaseExpression(case_expr),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::CaseExpression(case_expr), span))
                     }
                     Rule::macro_injection => {
                         let injection = Self::parse_macro_injection(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::MacroInjection(injection),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::MacroInjection(injection), span))
                     }
                     Rule::anonymous_function => {
                         let anon_fn = Self::parse_anonymous_function(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::AnonymousFunction(anon_fn),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::AnonymousFunction(anon_fn), span))
                     }
                     Rule::function_capture => {
                         let capture = Self::parse_function_capture(first_inner)?;
-                        Ok(Expression {
-                            kind: ExpressionKind::FunctionCapture(capture),
-                            span,
-                        })
+                        Ok(expression(ExpressionKind::FunctionCapture(capture), span))
                     }
                     Rule::unary_expr => {
                         // Parse unary expression using the new grammar structure
@@ -528,14 +483,14 @@ impl OutrunParser {
         let operand_pair = inner_pairs.next().unwrap();
         let operand = Self::parse_primary_expr(operand_pair)?;
 
-        Ok(Expression {
-            kind: ExpressionKind::UnaryOp(UnaryOperation {
+        Ok(expression(
+            ExpressionKind::UnaryOp(UnaryOperation {
                 operator,
                 operand: Box::new(operand),
                 span,
             }),
             span,
-        })
+        ))
     }
 
     /// Parse braced (parenthesized) expression using new grammar structure
@@ -548,10 +503,10 @@ impl OutrunParser {
         for inner_pair in pair.into_inner() {
             if inner_pair.as_rule() == Rule::expression {
                 let inner_expr = Self::parse_expression_from_pair(inner_pair)?;
-                return Ok(Expression {
-                    kind: ExpressionKind::Parenthesized(Box::new(inner_expr)),
+                return Ok(expression(
+                    ExpressionKind::Parenthesized(Box::new(inner_expr)),
                     span,
-                });
+                ));
             }
         }
 

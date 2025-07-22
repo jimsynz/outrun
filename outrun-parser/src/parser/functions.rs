@@ -110,6 +110,7 @@ impl OutrunParser {
                 let expression = Expression {
                     kind: ExpressionKind::Identifier(name.clone()),
                     span: name.span,
+                    type_info: None,
                 };
 
                 Ok(Argument::Named {

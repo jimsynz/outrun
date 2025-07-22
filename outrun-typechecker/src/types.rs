@@ -49,19 +49,19 @@ impl ModuleId {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
-    
+
     /// Create ModuleId from a TypeId (module is the type name itself)
     /// e.g., "Http.Client.Connection" -> module "Http.Client.Connection"
     pub fn from_type_id(type_id: &TypeId) -> Self {
         Self(type_id.name().to_string())
     }
-    
+
     /// Create ModuleId from a ProtocolId (module is the protocol name itself)
     /// e.g., "Display" -> module "Display"
     pub fn from_protocol_id(protocol_id: &ProtocolId) -> Self {
         Self(protocol_id.0.clone())
     }
-    
+
     pub fn name(&self) -> &str {
         &self.0
     }
@@ -110,13 +110,13 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelfBindingContext {
     /// Self in protocol definition (unbound - could be any implementer)
-    ProtocolDefinition { 
+    ProtocolDefinition {
         protocol_id: ProtocolId,
         /// Generic parameters of the protocol (e.g., Container<T> where Self is Container)
         protocol_args: Vec<Type>,
     },
     /// Self in implementation (bound to specific implementing type)
-    Implementation { 
+    Implementation {
         implementing_type: TypeId,
         /// Generic arguments of the implementing type (e.g., List<String> implementing Display)
         implementing_args: Vec<Type>,
@@ -247,16 +247,22 @@ impl Type {
                     .any(|(_, param_type)| param_type.contains_var(target_var))
                     || return_type.contains_var(target_var)
             }
-            Self::SelfType { binding_context, .. } => {
+            Self::SelfType {
+                binding_context, ..
+            } => {
                 // Self types can contain variables in their binding context arguments
                 match binding_context {
                     SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
                         protocol_args.iter().any(|arg| arg.contains_var(target_var))
                     }
-                    SelfBindingContext::Implementation { 
-                        implementing_args, protocol_args, .. 
+                    SelfBindingContext::Implementation {
+                        implementing_args,
+                        protocol_args,
+                        ..
                     } => {
-                        implementing_args.iter().any(|arg| arg.contains_var(target_var))
+                        implementing_args
+                            .iter()
+                            .any(|arg| arg.contains_var(target_var))
                             || protocol_args.iter().any(|arg| arg.contains_var(target_var))
                     }
                     SelfBindingContext::FunctionContext { parent_context, .. } => {
@@ -265,10 +271,14 @@ impl Type {
                             SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
                                 protocol_args.iter().any(|arg| arg.contains_var(target_var))
                             }
-                            SelfBindingContext::Implementation { 
-                                implementing_args, protocol_args, .. 
+                            SelfBindingContext::Implementation {
+                                implementing_args,
+                                protocol_args,
+                                ..
                             } => {
-                                implementing_args.iter().any(|arg| arg.contains_var(target_var))
+                                implementing_args
+                                    .iter()
+                                    .any(|arg| arg.contains_var(target_var))
                                     || protocol_args.iter().any(|arg| arg.contains_var(target_var))
                             }
                             SelfBindingContext::FunctionContext { .. } => false, // Avoid infinite recursion
@@ -287,7 +297,9 @@ impl Type {
     /// Get the binding context if this is a Self type
     pub fn self_binding_context(&self) -> Option<&SelfBindingContext> {
         match self {
-            Self::SelfType { binding_context, .. } => Some(binding_context),
+            Self::SelfType {
+                binding_context, ..
+            } => Some(binding_context),
             _ => None,
         }
     }
@@ -295,18 +307,19 @@ impl Type {
     /// Resolve Self to its concrete type if in implementation context
     pub fn resolve_self(&self) -> Option<Type> {
         match self {
-            Self::SelfType { 
-                binding_context: SelfBindingContext::Implementation { 
-                    implementing_type, implementing_args, .. 
-                }, 
-                span 
-            } => {
-                Some(Type::Concrete {
-                    id: implementing_type.clone(),
-                    args: implementing_args.clone(),
-                    span: *span,
-                })
-            }
+            Self::SelfType {
+                binding_context:
+                    SelfBindingContext::Implementation {
+                        implementing_type,
+                        implementing_args,
+                        ..
+                    },
+                span,
+            } => Some(Type::Concrete {
+                id: implementing_type.clone(),
+                args: implementing_args.clone(),
+                span: *span,
+            }),
             Self::SelfType { .. } => None, // Self is unbound in protocol definitions
             _ => None,
         }
@@ -472,6 +485,19 @@ impl TypeInfo {
             constraints,
             substitution: None,
         }
+    }
+
+    /// Convert to parser's lightweight ParsedTypeInfo for AST integration
+    pub fn to_parsed_type_info(&self) -> outrun_parser::ParsedTypeInfo {
+        outrun_parser::ParsedTypeInfo::new(format!("{}", self.resolved_type))
+    }
+
+    /// Convert to parser's ParsedTypeInfo with span information
+    pub fn to_parsed_type_info_with_span(
+        &self,
+        span: outrun_parser::Span,
+    ) -> outrun_parser::ParsedTypeInfo {
+        outrun_parser::ParsedTypeInfo::with_span(format!("{}", self.resolved_type), span)
     }
 }
 

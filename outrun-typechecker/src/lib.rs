@@ -18,6 +18,7 @@
 //! to expressions, eliminating duplication while enabling seamless integration.
 
 pub mod constraints;
+pub mod dispatch;
 pub mod error;
 pub mod exhaustiveness;
 pub mod inference;
@@ -27,10 +28,26 @@ pub mod unification;
 
 // Re-export public API
 pub use constraints::ConstraintSolver;
-pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
-pub use error::{CompilerError, ConstraintError, TypecheckError, UnificationError};
+pub use dispatch::{
+    build_dispatch_table,
+    // Legacy aliases
+    DispatchResolver,
+    DispatchResult,
+    DispatchTable,
+    DispatchTarget,
+    FunctionContext,
+    FunctionDispatcher,
+    FunctionInfo,
+    FunctionRegistry,
+    FunctionVisibility,
+    ResolvedFunction,
+};
+pub use error::{CompilerError, ConstraintError, DispatchError, TypecheckError, UnificationError};
 pub use inference::InferenceContext;
-pub use types::{Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId};
+pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
+pub use types::{
+    Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
+};
 pub use unification::Unifier;
 
 /// A collection of parsed programs representing a complete Outrun package
@@ -88,3 +105,175 @@ pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), Com
 
     Ok(())
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use crate::types::{Level, Type, TypeInfo, TypeVarGenerator};
+    use outrun_parser::{parse_program, ExpressionKind, ParsedTypeInfo};
+
+    #[test]
+    fn test_typechecker_typeinfo_conversion() {
+        // Create a typechecker TypeInfo
+        let resolved_type = Type::concrete("Integer");
+        let type_info = TypeInfo::new(resolved_type);
+
+        // Convert to parser's ParsedTypeInfo
+        let parsed_type_info = type_info.to_parsed_type_info();
+
+        // Verify the conversion
+        assert_eq!(parsed_type_info.resolved_type, "Integer");
+        assert!(parsed_type_info.type_span.is_none());
+    }
+
+    #[test]
+    fn test_typechecker_typeinfo_conversion_with_span() {
+        // Create a typechecker TypeInfo
+        let resolved_type = Type::concrete("String");
+        let type_info = TypeInfo::new(resolved_type);
+
+        // Create a span
+        let span = outrun_parser::Span::new(10, 20);
+
+        // Convert to parser's ParsedTypeInfo with span
+        let parsed_type_info = type_info.to_parsed_type_info_with_span(span);
+
+        // Verify the conversion
+        assert_eq!(parsed_type_info.resolved_type, "String");
+        assert_eq!(parsed_type_info.type_span, Some(span));
+    }
+
+    #[test]
+    fn test_parser_expression_with_type_info() {
+        // Parse a simple expression
+        let source = "42";
+        let mut program = parse_program(source).unwrap();
+
+        // Get the expression
+        if let Some(item) = program.items.first_mut() {
+            if let outrun_parser::ItemKind::Expression(ref mut expr) = item.kind {
+                // Initially, no type info should be present
+                assert!(expr.type_info.is_none());
+
+                // Simulate typechecker populating type info
+                let parsed_type_info = ParsedTypeInfo::new("Integer");
+                expr.type_info = Some(parsed_type_info);
+
+                // Verify type info is now present
+                assert!(expr.type_info.is_some());
+                assert_eq!(expr.type_info.as_ref().unwrap().resolved_type, "Integer");
+            } else {
+                panic!("Expected expression item");
+            }
+        } else {
+            panic!("Expected at least one item in program");
+        }
+    }
+
+    #[test]
+    fn test_complex_type_conversion() {
+        // Create a complex generic type
+        let inner_type = Type::concrete("String");
+        let list_type = Type::generic_concrete("List", vec![inner_type]);
+        let type_info = TypeInfo::new(list_type);
+
+        // Convert to parser's ParsedTypeInfo
+        let parsed_type_info = type_info.to_parsed_type_info();
+
+        // Verify the conversion shows the generic type structure
+        assert_eq!(parsed_type_info.resolved_type, "List<String>");
+        assert!(parsed_type_info.type_span.is_none());
+    }
+
+    #[test]
+    fn test_type_variable_conversion() {
+        // Create a type variable
+        let mut gen = TypeVarGenerator::new();
+        let type_var = gen.fresh(Level(0));
+        let type_info = TypeInfo::new(type_var);
+
+        // Convert to parser's ParsedTypeInfo
+        let parsed_type_info = type_info.to_parsed_type_info();
+
+        // Verify the conversion shows type variable representation
+        assert_eq!(parsed_type_info.resolved_type, "T0");
+        assert!(parsed_type_info.type_span.is_none());
+    }
+
+    #[test]
+    fn test_function_type_conversion() {
+        // Create a function type
+        let param_type = Type::concrete("Integer");
+        let return_type = Type::concrete("String");
+        let function_type = Type::Function {
+            params: vec![("x".to_string(), param_type)],
+            return_type: Box::new(return_type),
+            span: None,
+        };
+        let type_info = TypeInfo::new(function_type);
+
+        // Convert to parser's ParsedTypeInfo
+        let parsed_type_info = type_info.to_parsed_type_info();
+
+        // Verify the conversion shows function type structure
+        assert_eq!(
+            parsed_type_info.resolved_type,
+            "Function<(x: Integer) -> String>"
+        );
+        assert!(parsed_type_info.type_span.is_none());
+    }
+
+    #[test]
+    fn test_integration_workflow() {
+        // This test demonstrates the complete workflow:
+        // 1. Parse source code (creates AST with no type info)
+        // 2. Simulate typechecker adding type information
+        // 3. Verify the integration works end-to-end
+
+        let source = r#"
+            let x = 42
+            let y = "hello"
+        "#;
+
+        let mut program = parse_program(source).unwrap();
+
+        // Simulate what the typechecker would do
+        for item in program.items.iter_mut() {
+            if let outrun_parser::ItemKind::LetBinding(let_binding) = &mut item.kind {
+                // Simulate type inference on the expression
+                match &let_binding.expression.kind {
+                    ExpressionKind::Integer(_) => {
+                        let type_info = TypeInfo::new(Type::concrete("Integer"));
+                        let_binding.expression.type_info = Some(type_info.to_parsed_type_info());
+                    }
+                    ExpressionKind::String(_) => {
+                        let type_info = TypeInfo::new(Type::concrete("String"));
+                        let_binding.expression.type_info = Some(type_info.to_parsed_type_info());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Verify the type information was populated
+        let mut found_integer = false;
+        let mut found_string = false;
+
+        for item in &program.items {
+            if let outrun_parser::ItemKind::LetBinding(let_binding) = &item.kind {
+                if let Some(ref type_info) = let_binding.expression.type_info {
+                    match type_info.resolved_type.as_str() {
+                        "Integer" => found_integer = true,
+                        "String" => found_string = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        assert!(found_integer, "Should have found Integer type");
+        assert!(found_string, "Should have found String type");
+    }
+}
+
+#[cfg(test)]
+mod tests;

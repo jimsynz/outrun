@@ -31,6 +31,10 @@ pub enum TypecheckError {
     #[error("Type inference failed")]
     #[diagnostic(code(outrun::typecheck::inference_failed))]
     InferenceError(#[from] InferenceError),
+
+    #[error("Protocol dispatch failed")]
+    #[diagnostic(code(outrun::typecheck::dispatch_failed))]
+    DispatchError(#[from] DispatchError),
 }
 
 /// Unification errors following miette patterns
@@ -320,6 +324,72 @@ impl UnificationError {
             span: to_source_span(span),
         }
     }
+}
+
+/// Protocol dispatch errors
+#[derive(Error, Diagnostic, Debug)]
+pub enum DispatchError {
+    #[error(
+        "No implementation found: type {type_name} does not implement protocol {protocol_name}"
+    )]
+    #[diagnostic(
+        code(outrun::typecheck::dispatch::no_implementation),
+        help("Add an implementation block: impl {protocol_name} for {type_name}")
+    )]
+    NoImplementation {
+        protocol_name: String,
+        type_name: String,
+        #[label("type {type_name} does not implement {protocol_name}")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Ambiguous dispatch: multiple implementations found for {protocol_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::dispatch::ambiguous),
+        help("Add type annotations to disambiguate the call")
+    )]
+    AmbiguousDispatch {
+        protocol_name: String,
+        candidates: Vec<String>,
+        #[label("ambiguous protocol call")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error(
+        "Unresolved type variable: cannot dispatch on unknown type for protocol {protocol_name}"
+    )]
+    #[diagnostic(
+        code(outrun::typecheck::dispatch::unresolved_variable),
+        help("Type inference could not determine the concrete type")
+    )]
+    UnresolvedTypeVariable {
+        protocol_name: String,
+        #[label("type not resolved")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Unbound Self type: cannot dispatch on unresolved Self for protocol {protocol_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::dispatch::unbound_self),
+        help("Self type cannot be resolved in this context")
+    )]
+    UnboundSelfType {
+        protocol_name: String,
+        #[label("Self type not bound")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Invalid dispatch target: {protocol_name} cannot be called on {target_description}")]
+    #[diagnostic(
+        code(outrun::typecheck::dispatch::invalid_target),
+        help("Check that the protocol call is valid for this type")
+    )]
+    InvalidTarget {
+        protocol_name: String,
+        target_description: String,
+        #[label("invalid dispatch target")]
+        span: Option<SourceSpan>,
+    },
 }
 
 /// Helper for creating source spans from optional spans  

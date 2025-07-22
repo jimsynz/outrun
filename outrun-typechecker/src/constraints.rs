@@ -174,7 +174,9 @@ impl ConstraintSolver {
                 }
             }
 
-            Type::SelfType { binding_context, .. } => {
+            Type::SelfType {
+                binding_context, ..
+            } => {
                 // Self types are handled by resolving them based on their binding context
                 self.solve_self_implements_constraint(&binding_context, protocol, span)
             }
@@ -266,10 +268,11 @@ impl ConstraintSolver {
                 ..
             } => {
                 // In implementation context, Self is bound to the concrete implementing type
-                if !self
-                    .protocol_registry
-                    .has_implementation_with_args(protocol, implementing_type, implementing_args)
-                {
+                if !self.protocol_registry.has_implementation_with_args(
+                    protocol,
+                    implementing_type,
+                    implementing_args,
+                ) {
                     let type_name = if implementing_args.is_empty() {
                         implementing_type.name().to_string()
                     } else {
@@ -374,14 +377,14 @@ impl ConstraintSolver {
         // In Outrun's constraint system, we only have positive protocol constraints
         // (T: Display, T: Debug, etc.) with no negation operators, so direct conflicts
         // between constraints are not possible at the constraint level.
-        // 
+        //
         // Conflicts arise only when constraints cannot be satisfied by available
         // implementations, which is handled during constraint solving.
         //
         // Future: Could detect impossible constraint combinations like requiring
         // mutually exclusive protocols, but this would need semantic analysis
         // of protocol relationships.
-        
+
         Ok(())
     }
 
@@ -404,7 +407,7 @@ mod tests {
 
     fn create_test_registry() -> ProtocolRegistry {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Set up local modules for testing
         registry.add_local_module(crate::types::ModuleId::new("Integer"));
         registry.add_local_module(crate::types::ModuleId::new("String"));
@@ -415,50 +418,60 @@ mod tests {
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
 
         // Register some basic implementations for testing
-        registry.register_implementation(
-            TypeId::new("Integer"),
-            vec![],
-            ProtocolId::new("Display"),
-            vec![],
-            crate::types::ModuleId::new("Integer"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            ProtocolId::new("Display"),
-            vec![],
-            crate::types::ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            TypeId::new("Integer"),
-            vec![],
-            ProtocolId::new("Debug"),
-            vec![],
-            crate::types::ModuleId::new("Integer"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            ProtocolId::new("Debug"),
-            vec![],
-            crate::types::ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            ProtocolId::new("Clone"),
-            vec![],
-            crate::types::ModuleId::new("String"),
-            None,
-        ).unwrap();
+        registry
+            .register_implementation(
+                TypeId::new("Integer"),
+                vec![],
+                ProtocolId::new("Display"),
+                vec![],
+                crate::types::ModuleId::new("Integer"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                ProtocolId::new("Display"),
+                vec![],
+                crate::types::ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                TypeId::new("Integer"),
+                vec![],
+                ProtocolId::new("Debug"),
+                vec![],
+                crate::types::ModuleId::new("Integer"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                ProtocolId::new("Debug"),
+                vec![],
+                crate::types::ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                ProtocolId::new("Clone"),
+                vec![],
+                crate::types::ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
 
         registry
     }
@@ -714,7 +727,7 @@ mod tests {
         registry.add_local_module(crate::types::ModuleId::new("TestType"));
         registry.add_local_module(crate::types::ModuleId::new("TestProtocol"));
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
-        
+
         let protocol = ProtocolId::new("TestProtocol");
         let type_id = TypeId::new("TestType");
 
@@ -722,23 +735,27 @@ mod tests {
         assert!(!registry.has_implementation(&protocol, &type_id));
 
         // Register implementation
-        registry.register_implementation(
-            type_id.clone(),
-            vec![],
-            protocol.clone(),
-            vec![],
-            crate::types::ModuleId::new("TestType"),
-            None,
-        ).unwrap();
+        registry
+            .register_implementation(
+                type_id.clone(),
+                vec![],
+                protocol.clone(),
+                vec![],
+                crate::types::ModuleId::new("TestType"),
+                None,
+            )
+            .unwrap();
 
         // Now has implementation
         assert!(registry.has_implementation(&protocol, &type_id));
-        
+
         // Create constraint solver with this registry
         let solver = ConstraintSolver::with_registry(registry);
-        
+
         // Verify the solver can access the registry
-        assert!(solver.protocol_registry().has_implementation(&protocol, &type_id));
+        assert!(solver
+            .protocol_registry()
+            .has_implementation(&protocol, &type_id));
     }
 
     #[test]
@@ -955,14 +972,16 @@ mod tests {
         registry.add_local_module(crate::types::ModuleId::new("Display"));
         registry.add_local_module(crate::types::ModuleId::new("TestModule"));
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
-        registry.register_implementation(
-            TypeId::new("List"),
-            vec![Type::concrete("String")],
-            ProtocolId::new("Display"),
-            vec![],
-            crate::types::ModuleId::new("List"),
-            None,
-        ).unwrap();
+        registry
+            .register_implementation(
+                TypeId::new("List"),
+                vec![Type::concrete("String")],
+                ProtocolId::new("Display"),
+                vec![],
+                crate::types::ModuleId::new("List"),
+                None,
+            )
+            .unwrap();
         let mut solver = ConstraintSolver::with_registry(registry);
 
         // Create Self: Display constraint in List<String> implementation context

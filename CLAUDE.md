@@ -335,6 +335,32 @@ When working on the language:
 4. **Maintain immutability** and functional approach
 5. **Document design decisions** in commit messages
 
+### ✅ Task Completion Protocol
+
+**CRITICAL: Never start new tasks until the previous task is explicitly confirmed as complete by the user.**
+
+When completing development tasks:
+
+1. **Implement the task fully** - Complete all implementation, tests, and documentation
+2. **Mark todo items as completed** - Update TodoWrite with completed status
+3. **Wait for user confirmation** - DO NOT proceed to next task automatically
+4. **Request explicit approval** - Ask user to confirm task completion before moving on
+
+This ensures:
+- **Quality control** - User can review and validate work before proceeding
+- **Priority alignment** - User can redirect to different tasks if priorities change
+- **Context preservation** - User maintains control over development flow
+- **Documentation accuracy** - Task completion status stays synchronized
+
+**Example workflow:**
+```
+Assistant: Task #1234 implementation is complete. All tests passing.
+User: "You can mark that task as done and proceed with task #1235"
+Assistant: [Updates task status and begins next task]
+```
+
+**Never assume task completion without explicit user confirmation.**
+
 ### Rust Test Organization Rules
 
 **IMPORTANT**: All Rust tests MUST follow these conventions:

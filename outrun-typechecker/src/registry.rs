@@ -205,7 +205,10 @@ impl ProtocolRegistry {
     }
 
     /// Get all implementations of a protocol
-    pub fn get_protocol_implementations(&self, protocol_id: &ProtocolId) -> Vec<&ImplementationInfo> {
+    pub fn get_protocol_implementations(
+        &self,
+        protocol_id: &ProtocolId,
+    ) -> Vec<&ImplementationInfo> {
         self.implementations
             .values()
             .filter(|info| info.protocol_id == *protocol_id)
@@ -234,6 +237,11 @@ impl ProtocolRegistry {
     pub fn clear(&mut self) {
         self.implementations.clear();
     }
+
+    /// Get an iterator over all implementation info (for dispatch table building)
+    pub fn all_implementations(&self) -> impl Iterator<Item = &ImplementationInfo> {
+        self.implementations.values()
+    }
 }
 
 impl Default for ProtocolRegistry {
@@ -252,7 +260,7 @@ mod tests {
 
     fn create_test_registry() -> ProtocolRegistry {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Set up local modules (simulating current package)
         registry.add_local_module(ModuleId::new("String"));
         registry.add_local_module(ModuleId::new("Integer"));
@@ -260,9 +268,9 @@ mod tests {
         registry.add_local_module(ModuleId::new("Display"));
         registry.add_local_module(ModuleId::new("Debug"));
         registry.add_local_module(ModuleId::new("Clone"));
-        
+
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         registry
     }
 
@@ -285,9 +293,9 @@ mod tests {
         let protocol_id = ProtocolId::new("Display");
         let type_id = TypeId::new("String");
         let args = vec![Type::concrete("Integer")];
-        
+
         let key = ImplementationKey::new(protocol_id.clone(), type_id.clone(), &args);
-        
+
         assert_eq!(key.protocol_id, protocol_id);
         assert_eq!(key.implementing_type, type_id);
         assert_eq!(key.type_args_signature, "Integer");
@@ -297,9 +305,9 @@ mod tests {
     fn test_implementation_key_with_no_args() {
         let protocol_id = ProtocolId::new("Display");
         let type_id = TypeId::new("String");
-        
+
         let key = ImplementationKey::new(protocol_id, type_id, &[]);
-        
+
         assert_eq!(key.type_args_signature, "");
     }
 
@@ -308,16 +316,16 @@ mod tests {
         let protocol_id = ProtocolId::new("Display");
         let type_id = TypeId::new("Map");
         let args = vec![Type::concrete("String"), Type::concrete("Integer")];
-        
+
         let key = ImplementationKey::new(protocol_id, type_id, &args);
-        
+
         assert_eq!(key.type_args_signature, "String,Integer");
     }
 
     #[test]
     fn test_successful_implementation_registration() {
         let mut registry = create_test_registry();
-        
+
         let result = registry.register_implementation(
             TypeId::new("String"),
             vec![],
@@ -326,7 +334,7 @@ mod tests {
             ModuleId::new("String"), // String is local, so this should succeed
             None,
         );
-        
+
         assert!(result.is_ok());
         assert_eq!(registry.implementation_count(), 1);
         assert!(!registry.is_empty());
@@ -335,7 +343,7 @@ mod tests {
     #[test]
     fn test_conflicting_implementation_error() {
         let mut registry = create_test_registry();
-        
+
         // Register first implementation
         let result1 = registry.register_implementation(
             TypeId::new("String"),
@@ -346,7 +354,7 @@ mod tests {
             None,
         );
         assert!(result1.is_ok());
-        
+
         // Try to register conflicting implementation
         let result2 = registry.register_implementation(
             TypeId::new("String"),
@@ -356,10 +364,14 @@ mod tests {
             ModuleId::new("String"),
             None,
         );
-        
+
         assert!(result2.is_err());
         match result2.unwrap_err() {
-            ImplementationError::ConflictingImplementation { protocol_name, type_name, .. } => {
+            ImplementationError::ConflictingImplementation {
+                protocol_name,
+                type_name,
+                ..
+            } => {
                 assert_eq!(protocol_name, "Display");
                 assert_eq!(type_name, "String");
             }
@@ -370,23 +382,27 @@ mod tests {
     #[test]
     fn test_orphan_rule_violation_both_foreign() {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Don't add any local modules - both protocol and type will be foreign
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         let result = registry.register_implementation(
             TypeId::new("ForeignType"),
             vec![],
             ProtocolId::new("ForeignProtocol"),
             vec![],
-            ModuleId::new("TestModule"), // Even though defining module is "local", 
-                                        // both protocol and type are foreign
+            ModuleId::new("TestModule"), // Even though defining module is "local",
+            // both protocol and type are foreign
             None,
         );
-        
+
         assert!(result.is_err());
         match result.unwrap_err() {
-            ImplementationError::OrphanRuleViolation { protocol_name, type_name, .. } => {
+            ImplementationError::OrphanRuleViolation {
+                protocol_name,
+                type_name,
+                ..
+            } => {
                 assert_eq!(protocol_name, "ForeignProtocol");
                 assert_eq!(type_name, "ForeignType");
             }
@@ -397,12 +413,12 @@ mod tests {
     #[test]
     fn test_orphan_rule_success_local_protocol() {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Add only protocol as local
         registry.add_local_module(ModuleId::new("Display"));
         registry.add_local_module(ModuleId::new("TestModule"));
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         let result = registry.register_implementation(
             TypeId::new("ForeignType"),
             vec![],
@@ -411,19 +427,19 @@ mod tests {
             ModuleId::new("TestModule"),
             None,
         );
-        
+
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_orphan_rule_success_local_type() {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Add only type as local
         registry.add_local_module(ModuleId::new("String"));
         registry.add_local_module(ModuleId::new("TestModule"));
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         let result = registry.register_implementation(
             TypeId::new("String"), // Local type
             vec![],
@@ -432,19 +448,19 @@ mod tests {
             ModuleId::new("TestModule"),
             None,
         );
-        
+
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_orphan_rule_violation_non_local_defining_module() {
         let mut registry = ProtocolRegistry::new();
-        
+
         // Add protocol and type as local, but not the defining module
         registry.add_local_module(ModuleId::new("Display"));
         registry.add_local_module(ModuleId::new("String"));
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         let result = registry.register_implementation(
             TypeId::new("String"),
             vec![],
@@ -453,7 +469,7 @@ mod tests {
             ModuleId::new("ForeignModule"), // Non-local defining module
             None,
         );
-        
+
         assert!(result.is_err());
         match result.unwrap_err() {
             ImplementationError::OrphanRuleViolation { .. } => {
@@ -466,16 +482,18 @@ mod tests {
     #[test]
     fn test_has_implementation_simple() {
         let mut registry = create_test_registry();
-        
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            ProtocolId::new("Display"),
-            vec![],
-            ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
+
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                ProtocolId::new("Display"),
+                vec![],
+                ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
         assert!(registry.has_implementation(&ProtocolId::new("Display"), &TypeId::new("String")));
         assert!(!registry.has_implementation(&ProtocolId::new("Debug"), &TypeId::new("String")));
         assert!(!registry.has_implementation(&ProtocolId::new("Display"), &TypeId::new("Integer")));
@@ -484,23 +502,25 @@ mod tests {
     #[test]
     fn test_has_implementation_with_generic_args() {
         let mut registry = create_test_registry();
-        
+
         let generic_args = vec![Type::concrete("String")];
-        registry.register_implementation(
-            TypeId::new("List"),
-            generic_args.clone(),
-            ProtocolId::new("Display"),
-            vec![],
-            ModuleId::new("List"),
-            None,
-        ).unwrap();
-        
+        registry
+            .register_implementation(
+                TypeId::new("List"),
+                generic_args.clone(),
+                ProtocolId::new("Display"),
+                vec![],
+                ModuleId::new("List"),
+                None,
+            )
+            .unwrap();
+
         assert!(registry.has_implementation_with_args(
             &ProtocolId::new("Display"),
             &TypeId::new("List"),
             &generic_args
         ));
-        
+
         // Different generic args should not match
         let different_args = vec![Type::concrete("Integer")];
         assert!(!registry.has_implementation_with_args(
@@ -513,23 +533,25 @@ mod tests {
     #[test]
     fn test_get_implementation_info() {
         let mut registry = create_test_registry();
-        
+
         let implementing_type = TypeId::new("String");
         let protocol_id = ProtocolId::new("Display");
         let defining_module = ModuleId::new("String");
-        
-        registry.register_implementation(
-            implementing_type.clone(),
-            vec![],
-            protocol_id.clone(),
-            vec![],
-            defining_module.clone(),
-            None,
-        ).unwrap();
-        
+
+        registry
+            .register_implementation(
+                implementing_type.clone(),
+                vec![],
+                protocol_id.clone(),
+                vec![],
+                defining_module.clone(),
+                None,
+            )
+            .unwrap();
+
         let info = registry.get_implementation(&protocol_id, &implementing_type, &[]);
         assert!(info.is_some());
-        
+
         let info = info.unwrap();
         assert_eq!(info.implementing_type, implementing_type);
         assert_eq!(info.protocol_id, protocol_id);
@@ -540,31 +562,35 @@ mod tests {
     #[test]
     fn test_get_protocol_implementations() {
         let mut registry = create_test_registry();
-        
+
         let protocol_id = ProtocolId::new("Display");
-        
+
         // Register multiple implementations of Display
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            protocol_id.clone(),
-            vec![],
-            ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            TypeId::new("Integer"),
-            vec![],
-            protocol_id.clone(),
-            vec![],
-            ModuleId::new("Integer"),
-            None,
-        ).unwrap();
-        
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                protocol_id.clone(),
+                vec![],
+                ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                TypeId::new("Integer"),
+                vec![],
+                protocol_id.clone(),
+                vec![],
+                ModuleId::new("Integer"),
+                None,
+            )
+            .unwrap();
+
         let implementations = registry.get_protocol_implementations(&protocol_id);
         assert_eq!(implementations.len(), 2);
-        
+
         let type_names: std::collections::HashSet<_> = implementations
             .iter()
             .map(|info| info.implementing_type.name())
@@ -576,31 +602,35 @@ mod tests {
     #[test]
     fn test_get_type_implementations() {
         let mut registry = create_test_registry();
-        
+
         let type_id = TypeId::new("String");
-        
+
         // Register multiple protocols for String
-        registry.register_implementation(
-            type_id.clone(),
-            vec![],
-            ProtocolId::new("Display"),
-            vec![],
-            ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
-        registry.register_implementation(
-            type_id.clone(),
-            vec![],
-            ProtocolId::new("Debug"),
-            vec![],
-            ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
+        registry
+            .register_implementation(
+                type_id.clone(),
+                vec![],
+                ProtocolId::new("Display"),
+                vec![],
+                ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
+        registry
+            .register_implementation(
+                type_id.clone(),
+                vec![],
+                ProtocolId::new("Debug"),
+                vec![],
+                ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
         let implementations = registry.get_type_implementations(&type_id);
         assert_eq!(implementations.len(), 2);
-        
+
         let protocol_names: std::collections::HashSet<_> = implementations
             .iter()
             .map(|info| info.protocol_id.0.clone())
@@ -612,21 +642,23 @@ mod tests {
     #[test]
     fn test_registry_clear() {
         let mut registry = create_test_registry();
-        
-        registry.register_implementation(
-            TypeId::new("String"),
-            vec![],
-            ProtocolId::new("Display"),
-            vec![],
-            ModuleId::new("String"),
-            None,
-        ).unwrap();
-        
+
+        registry
+            .register_implementation(
+                TypeId::new("String"),
+                vec![],
+                ProtocolId::new("Display"),
+                vec![],
+                ModuleId::new("String"),
+                None,
+            )
+            .unwrap();
+
         assert!(!registry.is_empty());
         assert_eq!(registry.implementation_count(), 1);
-        
+
         registry.clear();
-        
+
         assert!(registry.is_empty());
         assert_eq!(registry.implementation_count(), 0);
     }
@@ -634,18 +666,23 @@ mod tests {
     #[test]
     fn test_complex_generic_type_implementation() {
         let mut registry = create_test_registry();
-        
+
         // Register List<T> implementing Display where T: Display
-        let generic_args = vec![Type::variable(crate::types::TypeVarId(0), crate::types::Level(0))];
-        registry.register_implementation(
-            TypeId::new("List"),
-            generic_args.clone(),
-            ProtocolId::new("Display"),
-            vec![],
-            ModuleId::new("List"),
-            None,
-        ).unwrap();
-        
+        let generic_args = vec![Type::variable(
+            crate::types::TypeVarId(0),
+            crate::types::Level(0),
+        )];
+        registry
+            .register_implementation(
+                TypeId::new("List"),
+                generic_args.clone(),
+                ProtocolId::new("Display"),
+                vec![],
+                ModuleId::new("List"),
+                None,
+            )
+            .unwrap();
+
         assert!(registry.has_implementation_with_args(
             &ProtocolId::new("Display"),
             &TypeId::new("List"),
@@ -656,14 +693,14 @@ mod tests {
     #[test]
     fn test_current_module_setting() {
         let mut registry = ProtocolRegistry::new();
-        
+
         registry.set_current_module(ModuleId::new("TestModule"));
-        
+
         // The current module tracking is internal, but we can test it indirectly
         // by checking that local modules work correctly
         registry.add_local_module(ModuleId::new("TestModule"));
         registry.add_local_module(ModuleId::new("Display"));
-        
+
         let result = registry.register_implementation(
             TypeId::new("ForeignType"),
             vec![],
@@ -672,7 +709,7 @@ mod tests {
             ModuleId::new("TestModule"),
             None,
         );
-        
+
         assert!(result.is_ok());
     }
 }

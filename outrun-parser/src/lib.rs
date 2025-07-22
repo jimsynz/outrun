@@ -114,6 +114,14 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
         ParseError::InvalidSpreadElement { span } => {
             DiagnosticError::syntax_error("Invalid spread element".to_string(), span)
         }
+        ParseError::TypeError { span, message, .. } => {
+            let ast_span = Span::new(span.offset(), span.offset() + span.len());
+            DiagnosticError::syntax_error(format!("Type error: {message}"), ast_span)
+        }
+        ParseError::TypeAnnotationError { span, message, .. } => {
+            let ast_span = Span::new(span.offset(), span.offset() + span.len());
+            DiagnosticError::syntax_error(format!("Type annotation error: {message}"), ast_span)
+        }
     }
 }
 

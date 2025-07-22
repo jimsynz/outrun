@@ -116,6 +116,29 @@ pub enum ParseError {
         help("Spread elements must be '..identifier'")
     )]
     InvalidSpreadElement { span: crate::ast::Span },
+
+    #[error("Type error: {message}")]
+    #[diagnostic(code(outrun::parse::type_error))]
+    TypeError {
+        #[source_code]
+        src: String,
+        #[label("type error here")]
+        span: SourceSpan,
+        message: String,
+    },
+
+    #[error("Type annotation error: {message}")]
+    #[diagnostic(
+        code(outrun::parse::type_annotation_error),
+        help("Type annotations follow the pattern 'name: Type'")
+    )]
+    TypeAnnotationError {
+        #[source_code]
+        src: String,
+        #[label("invalid type annotation")]
+        span: SourceSpan,
+        message: String,
+    },
 }
 
 impl ParseError {
@@ -226,6 +249,16 @@ impl ParseError {
     /// Create an invalid string escape error
     pub fn invalid_string_escape(src: String, span: SourceSpan, found: String) -> Self {
         ParseError::InvalidStringEscape { src, span, found }
+    }
+
+    /// Create a type error
+    pub fn type_error(src: String, span: SourceSpan, message: String) -> Self {
+        ParseError::TypeError { src, span, message }
+    }
+
+    /// Create a type annotation error
+    pub fn type_annotation_error(src: String, span: SourceSpan, message: String) -> Self {
+        ParseError::TypeAnnotationError { src, span, message }
     }
 }
 

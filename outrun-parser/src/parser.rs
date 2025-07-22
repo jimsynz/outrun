@@ -268,6 +268,7 @@ impl OutrunParser {
                                             let expression = Expression {
                                                 kind: ExpressionKind::IfExpression(if_expr),
                                                 span: pair_span,
+                                                type_info: None,
                                             };
                                             Self::wrap_expression_item(
                                                 &mut items, expression, pair_span,
@@ -278,6 +279,7 @@ impl OutrunParser {
                                             let expression = Expression {
                                                 kind: ExpressionKind::CaseExpression(case_expr),
                                                 span: pair_span,
+                                                type_info: None,
                                             };
                                             Self::wrap_expression_item(
                                                 &mut items, expression, pair_span,

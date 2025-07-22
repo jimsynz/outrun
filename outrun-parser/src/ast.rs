@@ -670,11 +670,39 @@ pub enum CaseResult {
     Expression(Box<Expression>),
 }
 
-/// Expressions (placeholder for future development)
+/// Expressions with optional type information from typechecker integration
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
     pub kind: ExpressionKind,
     pub span: Span,
+    /// Type information attached by the typechecker (None during parsing, Some after type checking)
+    pub type_info: Option<ParsedTypeInfo>,
+}
+
+/// Minimal type information attached to expressions during parsing
+/// This is a lightweight interface that can be populated by any type checker
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedTypeInfo {
+    /// The resolved type name (e.g., "Integer", "String", "List<String>")
+    pub resolved_type: String,
+    /// Source location where type was inferred or annotated
+    pub type_span: Option<Span>,
+}
+
+impl ParsedTypeInfo {
+    pub fn new(resolved_type: impl Into<String>) -> Self {
+        Self {
+            resolved_type: resolved_type.into(),
+            type_span: None,
+        }
+    }
+
+    pub fn with_span(resolved_type: impl Into<String>, type_span: Span) -> Self {
+        Self {
+            resolved_type: resolved_type.into(),
+            type_span: Some(type_span),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -79,18 +79,8 @@ We use Vikunja (todo.harton.nz) to track all implementation tasks for typechecke
 3. **Completing Work**: **NEVER mark Vikunja tasks as "done" until James explicitly approves the work** - wait for user confirmation before marking tasks complete
 4. **Documentation**: Reference Vikunja task IDs in commit messages: `git commit -m "feat: implement unification algorithm (task #1316)"`
 
-### Current Task Status
+**📋 Full Task List**:
 
-**✅ Completed:**
-- Task #1317: Design typechecker v3 architecture and data structures
-
-**🚧 Next Priority Tasks:**
-- Task #1316: Implement Hindley-Milner unification algorithm (Priority 5)
-- Task #1318: Implement constraint solving for protocol bounds (Priority 4)
-- Task #1323: Implement Self type semantics and binding (Priority 4)
-- Task #1325: Build protocol implementation registry and orphan rule checking (Priority 4)
-
-**📋 Full Task List (14 total):**
 View complete task breakdown with descriptions at: https://todo.harton.nz/projects/22
 
 ### Using Vikunja During Development
