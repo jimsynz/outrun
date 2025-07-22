@@ -1,1271 +1,326 @@
-//! Type checking error definitions
+//! Error types for Outrun Typechecker v3
 //!
-//! This module defines all possible type checking errors with miette integration
-//! for beautiful error reporting with source highlighting.
+//! Following existing miette patterns from the parser for consistent error reporting.
 
+use crate::types::{Type, TypeVarId};
 use miette::{Diagnostic, SourceSpan};
+use outrun_parser::{ParseError, Span};
 use thiserror::Error;
 
-/// Result type for type checking operations
-pub type TypeResult<T> = Result<T, TypeError>;
+/// Main typechecker error type extending the existing parser error system
+#[derive(Error, Diagnostic, Debug)]
+#[allow(clippy::result_large_err)]
+pub enum TypecheckError {
+    #[error("Type unification failed")]
+    #[diagnostic(code(outrun::typecheck::unification_failed))]
+    UnificationError(#[from] UnificationError),
 
-/// All possible type checking errors
-#[derive(Error, Diagnostic, Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypeError {
-    #[error("Type mismatch")]
+    #[error("Constraint solving failed")]
+    #[diagnostic(code(outrun::typecheck::constraint_failed))]
+    ConstraintError(#[from] ConstraintError),
+
+    #[error("Protocol implementation error")]
+    #[diagnostic(code(outrun::typecheck::implementation_error))]
+    ImplementationError(#[from] ImplementationError),
+
+    #[error("Exhaustiveness check failed")]
+    #[diagnostic(code(outrun::typecheck::exhaustiveness_failed))]
+    ExhaustivenessError(#[from] ExhaustivenessError),
+
+    #[error("Type inference failed")]
+    #[diagnostic(code(outrun::typecheck::inference_failed))]
+    InferenceError(#[from] InferenceError),
+}
+
+/// Unification errors following miette patterns
+#[derive(Error, Diagnostic, Debug)]
+pub enum UnificationError {
+    #[error("Type mismatch: expected {expected}, found {found}")]
     #[diagnostic(
-        code(outrun::types::mismatch),
-        help("Expected type {expected}, but found {found}")
+        code(outrun::typecheck::unification::type_mismatch),
+        help("The types {expected} and {found} cannot be unified")
     )]
     TypeMismatch {
-        #[label("type mismatch here")]
-        span: SourceSpan,
-        expected: String,
-        found: String,
+        expected: Type,
+        found: Type,
+        expected_context: Option<String>,
+        found_context: Option<String>,
+        #[label("expected type {expected}")]
+        span: Option<SourceSpan>,
     },
 
-    #[error("Protocol {protocol_name} not implemented for type {type_name}")]
+    #[error("Occurs check violation: variable {var_name} occurs in {containing_type}")]
     #[diagnostic(
-        code(outrun::types::protocol_not_implemented),
-        help("Implement the {protocol_name} protocol for {type_name} or use a type that implements it")
+        code(outrun::typecheck::unification::occurs_check),
+        help("This would create an infinite type. Consider using a recursive type definition.")
     )]
-    ProtocolNotImplemented {
-        #[label("protocol {protocol_name} not implemented for {type_name}")]
-        span: SourceSpan,
-        protocol_name: String,
-        type_name: String,
-    },
-
-    #[error("Function parameter mismatch")]
-    #[diagnostic(
-        code(outrun::types::param_mismatch),
-        help("Function {function_name} requires parameter {param_name}")
-    )]
-    ParameterMismatch {
-        #[label("missing parameter {param_name}")]
-        span: SourceSpan,
-        param_name: String,
-        function_name: String,
-    },
-
-    #[error("Variable {name} is already defined")]
-    #[diagnostic(
-        code(outrun::types::variable_redefinition),
-        help("Variable names must be unique within the same scope")
-    )]
-    VariableAlreadyDefined {
-        #[label("redefined here")]
-        span: SourceSpan,
-        #[label("previously defined here")]
-        previous_span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Generic parameter {name} is already defined")]
-    #[diagnostic(
-        code(outrun::typechecker::generic_parameter_redefinition),
-        help("Generic parameter names must be unique within the same scope")
-    )]
-    GenericParameterAlreadyDefined {
-        #[label("redefined here")]
-        span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Function {name} is already defined")]
-    #[diagnostic(
-        code(outrun::typechecker::function_redefinition),
-        help("Function names must be unique within the same scope")
-    )]
-    FunctionAlreadyDefined {
-        #[label("redefined here")]
-        span: SourceSpan,
-        #[label("previously defined here")]
-        previous_span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Conflicting function overload for {name}")]
-    #[diagnostic(
-        code(outrun::typechecker::conflicting_function_overload),
-        help(
-            "Function overloads must have different guard conditions or different parameter types"
-        )
-    )]
-    ConflictingFunctionOverload {
-        #[label("conflicting overload here")]
-        span: SourceSpan,
-        #[label("previous overload here")]
-        previous_span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Undefined type {name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_type),
-        help("Define the type {name} or import it from another module")
-    )]
-    UndefinedType {
-        #[label("undefined type")]
-        span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Undefined variable {name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_variable),
-        help("Define the variable {name} before using it")
-    )]
-    UndefinedVariable {
-        #[label("undefined variable")]
-        span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Undefined function {name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_function),
-        help("Define the function {name} or import it from another module")
-    )]
-    UndefinedFunction {
-        #[label("undefined function")]
-        span: SourceSpan,
-        name: String,
-    },
-
-    #[error("Instance function {function_name} must have at least one Self parameter")]
-    #[diagnostic(
-        code(outrun::typechecker::missing_self_parameter),
-        help("Add a Self parameter like 'self: Self' to make this an instance function, or use 'defs' for static functions")
-    )]
-    MissingSelfParameter {
-        #[label("missing Self parameter")]
-        span: SourceSpan,
-        function_name: String,
-    },
-
-    #[error("Missing parameter {parameter_name} for function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::missing_parameter),
-        help("Function {function_name} requires parameter {parameter_name}")
-    )]
-    MissingParameter {
-        #[label("missing required parameter")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-    },
-
-    #[error("Unexpected parameter {parameter_name} for function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::unexpected_parameter),
-        help("Function {function_name} does not accept parameter {parameter_name}")
-    )]
-    UnexpectedParameter {
-        #[label("unexpected parameter")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-    },
-
-    #[error("Invalid condition type")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_condition),
-        help("Only Boolean values can be used in conditionals. Outrun has no truthiness.")
-    )]
-    InvalidConditionType {
-        #[label("condition must be Boolean")]
-        span: SourceSpan,
-        found_type: String,
-    },
-
-    #[error("Guard expression must return Boolean")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_guard),
-        help("Guard expressions (when clauses) must evaluate to Boolean values")
-    )]
-    InvalidGuardType {
-        #[label("guard must return Boolean")]
-        span: SourceSpan,
-        found_type: String,
-    },
-
-    #[error("Pattern exhaustiveness error")]
-    #[diagnostic(
-        code(outrun::typechecker::non_exhaustive_patterns),
-        help("Add patterns to handle all possible cases, or use a wildcard pattern (_)")
-    )]
-    NonExhaustivePatterns {
-        #[label("missing patterns for these cases")]
-        span: SourceSpan,
-        missing_cases: Vec<String>,
-    },
-
-    #[error("Unreachable pattern")]
-    #[diagnostic(
-        code(outrun::typechecker::unreachable_pattern),
-        help("This pattern will never match because previous patterns are more general")
-    )]
-    UnreachablePattern {
-        #[label("unreachable pattern")]
-        span: SourceSpan,
-        #[label("this pattern covers all cases")]
-        covering_span: SourceSpan,
-    },
-
-    #[error("Invalid arity for function {name}")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_arity),
-        help("Function {name} expects {expected} parameters, but {found} were provided")
-    )]
-    InvalidArity {
-        #[label("incorrect number of arguments")]
-        span: SourceSpan,
-        name: String,
-        expected: usize,
-        found: usize,
-    },
-
-    #[error("Generic arity mismatch for {type_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::generic_arity_mismatch),
-        help("{type_name} expects {expected} generic parameters, but {found} were provided")
-    )]
-    GenericArityMismatch {
-        #[label("incorrect number of generic arguments")]
-        span: SourceSpan,
-        type_name: String,
-        expected: usize,
-        found: usize,
-    },
-
-    #[error("Field {field_name} not found on type {struct_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_field),
-        help("Check the field name and ensure it exists on type {struct_name}")
-    )]
-    UndefinedField {
-        #[label("undefined field")]
-        span: SourceSpan,
-        struct_name: String,
-        field_name: String,
-    },
-
-    #[error("Circular protocol dependency")]
-    #[diagnostic(
-        code(outrun::typechecker::circular_dependency),
-        help("Protocol dependencies must not form cycles")
-    )]
-    CircularProtocolDependency {
-        #[label("circular dependency detected")]
-        span: SourceSpan,
-        cycle: Vec<String>,
-    },
-
-    #[error("Invalid protocol constraint")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_constraint),
-        help("Protocol constraint {constraint} is not satisfied")
-    )]
-    InvalidProtocolConstraint {
-        #[label("constraint not satisfied")]
-        span: SourceSpan,
-        constraint: String,
-    },
-
-    #[error("No current scope available")]
-    #[diagnostic(
-        code(outrun::typechecker::no_scope),
-        help("This is an internal error - please report this bug")
-    )]
-    NoCurrentScope {
-        #[label("no scope context")]
-        span: SourceSpan,
-    },
-
-    #[error("Invalid guard function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_guard_function),
-        help("Guard functions (ending with '?') must return Boolean values")
-    )]
-    InvalidGuardFunction {
-        #[label("guard function must return Boolean")]
-        span: SourceSpan,
-        function_name: String,
-        actual_return_type: String,
-    },
-
-    #[error("Undefined type parameter {parameter_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_type_parameter),
-        help("Type parameter {parameter_name} must be declared in the generic parameters list")
-    )]
-    UndefinedTypeParameter {
-        #[label("undefined type parameter")]
-        span: SourceSpan,
-        parameter_name: String,
-    },
-
-    #[error("Case statement is not exhaustive")]
-    #[diagnostic(
-        code(outrun::types::case_not_exhaustive),
-        help("Add cases for missing types: {missing_types}")
-    )]
-    CaseNotExhaustive {
-        #[label("missing cases for protocol {protocol_name}")]
-        span: SourceSpan,
-        protocol_name: String,
-        missing_types: String,
-    },
-
-    #[error("Feature not yet implemented: {feature}")]
-    #[diagnostic(
-        code(outrun::typechecker::unimplemented),
-        help("This type checking feature is still under development")
-    )]
-    UnimplementedFeature {
-        #[label("unimplemented feature")]
-        span: SourceSpan,
-        feature: String,
-    },
-
-    #[error("Cannot infer type for empty list")]
-    #[diagnostic(
-        code(outrun::types::cannot_infer_list_type),
-        help("Add a type annotation to specify the list element type, e.g., `let empty: List<String> = []`")
-    )]
-    CannotInferListType {
-        #[label("empty list needs type annotation")]
-        span: SourceSpan,
-    },
-
-    #[error("Cannot infer generic type parameter {type_param}")]
-    #[diagnostic(
-        code(outrun::types::cannot_infer_generic_type),
-        help("Add a type annotation to specify the generic type, e.g., `let result: Some<String> = Some {{ value: get_value() }}`")
-    )]
-    CannotInferGenericType {
-        #[label("cannot infer type parameter {type_param}")]
-        span: SourceSpan,
-        type_param: String,
-    },
-
-    #[error("List elements have incompatible types")]
-    #[diagnostic(
-        code(outrun::types::mixed_list_elements),
-        help("Either make all elements the same type, or add a type annotation like `let mixed: List<SomeProtocolType> = [...]` if the elements implement a common protocol")
-    )]
-    MixedListElements {
-        #[label("this element has type {found_type}")]
-        span: SourceSpan,
-        expected_type: String,
-        found_type: String,
-    },
-
-    #[error("Internal type checker error: {message}")]
-    #[diagnostic(
-        code(outrun::typechecker::internal_error),
-        help("This is a bug in the type checker - please report it")
-    )]
-    InternalError {
-        #[label("internal error")]
-        span: SourceSpan,
-        message: String,
-    },
-
-    #[error("Empty block")]
-    #[diagnostic(
-        code(outrun::typechecker::empty_block),
-        help("Every expression must have a value. Add a statement or expression to this block.")
-    )]
-    EmptyBlock {
-        #[label("empty block")]
-        span: SourceSpan,
-        message: String,
-    },
-
-    #[error("Undefined protocol {protocol_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::undefined_protocol),
-        help("Define the protocol {protocol_name} or import it from another module")
-    )]
-    UndefinedProtocol {
-        #[label("undefined protocol")]
-        span: SourceSpan,
-        protocol_name: String,
-    },
-
-    #[error("Duplicate implementation of protocol {protocol_name} for type {type_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::duplicate_implementation),
-        help("Each type can only implement a protocol once")
-    )]
-    DuplicateImplementation {
-        #[label("duplicate implementation")]
-        span: SourceSpan,
-        protocol_name: String,
-        type_name: String,
-    },
-
-    #[error("Missing implementation of function {function_name} in protocol {protocol_name} for type {type_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::missing_implementation),
-        help("All protocol functions must be implemented")
-    )]
-    MissingImplementation {
-        #[label("missing function implementation")]
-        span: SourceSpan,
-        protocol_name: String,
-        type_name: String,
-        function_name: String,
+    OccursCheckViolation {
+        var_id: TypeVarId,
+        var_name: String,
+        containing_type: Type,
+        #[label("variable {var_name} would create infinite type")]
+        span: Option<SourceSpan>,
     },
 
     #[error(
-        "Extra implementation of function {function_name} not declared in protocol {protocol_name}"
+        "Arity mismatch: {type_name} expects {expected_arity} type arguments, found {found_arity}"
     )]
     #[diagnostic(
-        code(outrun::typechecker::extra_implementation),
-        help("Only functions declared in the protocol can be implemented")
+        code(outrun::typecheck::unification::arity_mismatch),
+        help("Ensure all generic type arguments are provided correctly")
     )]
-    ExtraImplementation {
-        #[label("extra function implementation")]
-        span: SourceSpan,
-        protocol_name: String,
-        function_name: String,
+    ArityMismatch {
+        type_name: String,
+        expected_arity: usize,
+        found_arity: usize,
+        #[label("expected {expected_arity} arguments, found {found_arity}")]
+        span: Option<SourceSpan>,
     },
 
-    #[error("Function signature mismatch for {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::signature_mismatch),
-        help("Implementation signature must match protocol signature exactly")
+    #[error(
+        "Function arity mismatch: expected {expected_params} parameters, found {found_params}"
     )]
-    SignatureMismatch {
-        #[label("signature mismatch")]
-        span: SourceSpan,
-        function_name: String,
+    #[diagnostic(
+        code(outrun::typecheck::unification::function_arity),
+        help("Function types must have the same number of parameters to unify")
+    )]
+    FunctionArityMismatch {
+        expected_params: usize,
+        found_params: usize,
+        #[label("function type has {found_params} parameters")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Protocol mismatch: expected {expected}, found {found}")]
+    #[diagnostic(
+        code(outrun::typecheck::unification::protocol_mismatch),
+        help("Different protocols cannot be unified")
+    )]
+    ProtocolMismatch {
         expected: String,
         found: String,
+        #[label("found protocol {found}")]
+        span: Option<SourceSpan>,
     },
 
-    #[error("Parameter signature mismatch in anonymous function")]
+    #[error("Category mismatch: cannot unify {expected} with {found}")]
     #[diagnostic(
-        code(outrun::typechecker::parameter_signature_mismatch),
-        help("All clauses in an anonymous function must have identical parameter signatures")
-    )]
-    ParameterSignatureMismatch {
-        #[label("this clause has different parameter signature")]
-        span: SourceSpan,
-        #[label("first clause signature defined here")]
-        first_clause_span: SourceSpan,
-        clause_index: usize,
-        expected_signature: String,
-        found_signature: String,
-    },
-
-    #[error("Return type mismatch in anonymous function")]
-    #[diagnostic(
-        code(outrun::typechecker::return_type_mismatch),
-        help("All clauses in an anonymous function must return the same type")
-    )]
-    ReturnTypeMismatch {
-        #[label("this clause returns different type")]
-        span: SourceSpan,
-        #[label("first clause return type defined here")]
-        first_clause_span: SourceSpan,
-        clause_index: usize,
-        expected_type: String,
-        found_type: String,
-    },
-
-    #[error("Invalid guard in anonymous function")]
-    #[diagnostic(
-        code(outrun::typechecker::invalid_anonymous_guard),
-        help("Guards in anonymous functions must return Boolean values")
-    )]
-    InvalidAnonymousGuard {
-        #[label("guard must return Boolean")]
-        span: SourceSpan,
-        clause_index: usize,
-        found_type: String,
-    },
-
-    #[error("Pattern mismatch in anonymous function parameters")]
-    #[diagnostic(
-        code(outrun::typechecker::pattern_parameter_mismatch),
-        help("All clauses must use the same pattern structure in parameters")
-    )]
-    PatternParameterMismatch {
-        #[label("this clause uses different pattern structure")]
-        span: SourceSpan,
-        #[label("first clause pattern defined here")]
-        first_clause_span: SourceSpan,
-        clause_index: usize,
-        expected_pattern: String,
-        found_pattern: String,
-    },
-
-    #[error("String interpolation error: type {type_name} does not implement Display protocol")]
-    #[diagnostic(
-        code(outrun::typechecker::string_interpolation_display),
-        help("Only types that implement the Display protocol can be interpolated in strings. Implement Display for {type_name} or convert the value explicitly.")
-    )]
-    StringInterpolationDisplayError {
-        #[label("expression of type {type_name} cannot be displayed")]
-        span: SourceSpan,
-        type_name: String,
-    },
-
-    #[error("Function with guards is not exhaustive")]
-    #[diagnostic(
-        code(outrun::exhaustiveness::function_not_exhaustive),
-        help("Add a default case (function clause without guard) or ensure all possible values are covered by guards")
-    )]
-    FunctionNotExhaustive {
-        #[label("this function is missing coverage")]
-        span: SourceSpan,
-        function_name: String,
-        missing_cases: Vec<String>,
-    },
-
-    #[error("Boolean case statement is not exhaustive")]
-    #[diagnostic(
-        code(outrun::exhaustiveness::boolean_not_exhaustive),
-        help("Boolean case statements must handle both 'true' and 'false' values. Missing: {}", missing_values.join(", "))
-    )]
-    BooleanNotExhaustive {
-        #[label("missing boolean patterns")]
-        span: SourceSpan,
-        missing_values: Vec<String>,
-    },
-
-    #[error("Protocol case statement is not exhaustive")]
-    #[diagnostic(
-        code(outrun::exhaustiveness::protocol_not_exhaustive),
-        help("Protocol case statements must handle all implementing types. Missing: {}", missing_types.join(", "))
-    )]
-    ProtocolNotExhaustive {
-        #[label("missing protocol implementation patterns")]
-        span: SourceSpan,
-        protocol_name: String,
-        missing_types: Vec<String>,
-    },
-
-    #[error("Unknown parameter {parameter_name} for function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::unknown_parameter),
-        help("Function {function_name} does not have a parameter named {parameter_name}")
-    )]
-    UnknownParameter {
-        #[label("unknown parameter")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-    },
-
-    #[error("Duplicate argument for parameter {parameter_name} in function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::duplicate_argument),
-        help("Each parameter can only be provided once in a function call to {function_name}")
-    )]
-    DuplicateArgument {
-        #[label("duplicate argument")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-    },
-
-    #[error("Argument type mismatch for parameter {parameter_name} in function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::argument_type_mismatch),
-        help("Function {function_name} expects parameter {parameter_name} to be of type {expected_type}, but found {found_type}")
-    )]
-    ArgumentTypeMismatch {
-        #[label("argument type mismatch")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-        expected_type: String,
-        found_type: String,
-    },
-
-    #[error("Missing argument for parameter {parameter_name} in function {function_name}")]
-    #[diagnostic(
-        code(outrun::typechecker::missing_argument),
-        help("Function {function_name} requires an argument for parameter {parameter_name}")
-    )]
-    MissingArgument {
-        #[label("missing argument")]
-        span: SourceSpan,
-        function_name: String,
-        parameter_name: String,
-    },
-
-    #[error("Unsupported feature: {feature}")]
-    #[diagnostic(
-        code(outrun::typechecker::unsupported_feature),
-        help("This feature is not yet supported in the type checker")
-    )]
-    UnsupportedFeature {
-        #[label("unsupported feature")]
-        span: SourceSpan,
-        feature: String,
-    },
-}
-
-impl TypeError {
-    /// Create a type mismatch error
-    pub fn type_mismatch(expected: String, found: String, span: SourceSpan) -> Self {
-        Self::TypeMismatch {
-            span,
-            expected,
-            found,
-        }
-    }
-
-    /// Create a protocol not implemented error
-    pub fn protocol_not_implemented(
-        protocol_name: String,
-        type_name: String,
-        span: SourceSpan,
-    ) -> Self {
-        Self::ProtocolNotImplemented {
-            span,
-            protocol_name,
-            type_name,
-        }
-    }
-
-    /// Create a parameter mismatch error
-    pub fn parameter_mismatch(param_name: String, function_name: String, span: SourceSpan) -> Self {
-        Self::ParameterMismatch {
-            span,
-            param_name,
-            function_name,
-        }
-    }
-
-    /// Create an undefined type error
-    pub fn undefined_type(name: String, span: SourceSpan) -> Self {
-        Self::UndefinedType { span, name }
-    }
-
-    /// Create an undefined variable error
-    pub fn undefined_variable(name: String, span: SourceSpan) -> Self {
-        Self::UndefinedVariable { span, name }
-    }
-
-    /// Create an undefined field error
-    pub fn undefined_field(field_name: String, struct_name: String, span: SourceSpan) -> Self {
-        Self::UndefinedField {
-            span,
-            struct_name,
-            field_name,
-        }
-    }
-
-    /// Create an undefined function error
-    pub fn undefined_function(name: String, span: SourceSpan) -> Self {
-        Self::UndefinedFunction { span, name }
-    }
-
-    /// Create a missing parameter error
-    pub fn missing_parameter(
-        function_name: String,
-        parameter_name: String,
-        span: SourceSpan,
-    ) -> Self {
-        Self::MissingParameter {
-            span,
-            function_name,
-            parameter_name,
-        }
-    }
-
-    /// Create an unexpected parameter error
-    pub fn unexpected_parameter(
-        function_name: String,
-        parameter_name: String,
-        span: SourceSpan,
-    ) -> Self {
-        Self::UnexpectedParameter {
-            span,
-            function_name,
-            parameter_name,
-        }
-    }
-
-    /// Create an invalid condition type error
-    pub fn invalid_condition_type(found_type: String, span: SourceSpan) -> Self {
-        Self::InvalidConditionType { span, found_type }
-    }
-
-    /// Create an invalid guard type error
-    pub fn invalid_guard_type(found_type: String, span: SourceSpan) -> Self {
-        Self::InvalidGuardType { span, found_type }
-    }
-
-    /// Create a non-exhaustive patterns error
-    pub fn non_exhaustive_patterns(missing_cases: Vec<String>, span: SourceSpan) -> Self {
-        Self::NonExhaustivePatterns {
-            span,
-            missing_cases,
-        }
-    }
-
-    /// Create an invalid arity error
-    pub fn invalid_arity(name: String, expected: usize, found: usize, span: SourceSpan) -> Self {
-        Self::InvalidArity {
-            span,
-            name,
-            expected,
-            found,
-        }
-    }
-
-    /// Create an internal error (for debugging type checker issues)
-    pub fn internal(message: String) -> Self {
-        Self::InternalError {
-            message,
-            span: SourceSpan::from(0..0), // Use empty span for internal errors
-        }
-    }
-
-    /// Create an internal error with a specific span
-    pub fn internal_with_span(message: String, span: SourceSpan) -> Self {
-        Self::InternalError { message, span }
-    }
-
-    /// Create a string interpolation display error
-    pub fn string_interpolation_display(type_name: String, span: SourceSpan) -> Self {
-        Self::StringInterpolationDisplayError { span, type_name }
-    }
-
-    /// Create a function not exhaustive error
-    pub fn function_not_exhaustive(
-        function_name: String,
-        missing_cases: Vec<String>,
-        span: SourceSpan,
-    ) -> Self {
-        Self::FunctionNotExhaustive {
-            span,
-            function_name,
-            missing_cases,
-        }
-    }
-
-    /// Create a boolean not exhaustive error
-    pub fn boolean_not_exhaustive(missing_values: Vec<String>, span: SourceSpan) -> Self {
-        Self::BooleanNotExhaustive {
-            span,
-            missing_values,
-        }
-    }
-
-    /// Create a protocol not exhaustive error
-    pub fn protocol_not_exhaustive(
-        protocol_name: String,
-        missing_types: Vec<String>,
-        span: SourceSpan,
-    ) -> Self {
-        Self::ProtocolNotExhaustive {
-            span,
-            protocol_name,
-            missing_types,
-        }
-    }
-
-    /// Create a case not exhaustive error (for protocol cases)
-    pub fn case_not_exhaustive_protocol(
-        protocol_name: String,
-        missing_types: String,
-        span: SourceSpan,
-    ) -> Self {
-        Self::CaseNotExhaustive {
-            span,
-            protocol_name,
-            missing_types,
-        }
-    }
-}
-
-/// Convert outrun_parser::Span to miette::SourceSpan
-pub fn span_to_source_span(span: outrun_parser::Span) -> SourceSpan {
-    SourceSpan::new(span.start.into(), span.end - span.start)
-}
-
-/// Extension protocol for easier span conversion
-pub trait SpanExt {
-    /// Convert to miette::SourceSpan
-    fn to_source_span(self) -> SourceSpan;
-}
-
-impl SpanExt for outrun_parser::Span {
-    fn to_source_span(self) -> SourceSpan {
-        span_to_source_span(self)
-    }
-}
-
-/// Standardized error context utilities
-pub mod context {
-    use crate::compilation::compiler_environment::{AtomId, TypeNameId};
-
-    /// Get a type name with fallback for unknown types (using TypeNameId directly)
-    pub fn type_name_or_unknown(_type_id: TypeNameId) -> String {
-        // TypeNameId has its own Display implementation now
-        format!("{_type_id}")
-    }
-
-    /// Get an atom name with fallback for unknown atoms (using AtomId directly)
-    pub fn atom_name_or_fallback(_atom_id: AtomId) -> String {
-        // AtomId has its own Display implementation now
-        format!("{_atom_id}")
-    }
-
-    /// Common error message constants and builders
-    pub mod messages {
-        pub const NOT_YET_SUPPORTED: &str = "not yet supported";
-        pub const NOT_YET_IMPLEMENTED: &str = "not yet implemented";
-        pub const SHOULD_BE_DESUGARED: &str = "should be desugared";
-        pub const FALLBACK_TYPE: &str = "fallback type";
-
-        /// Create a "not yet supported" message for a feature
-        pub fn not_yet_supported(feature: &str) -> String {
-            format!("{feature} {NOT_YET_SUPPORTED}")
-        }
-
-        /// Create a "not yet implemented" message for a feature
-        pub fn not_yet_implemented(feature: &str) -> String {
-            format!("{feature} {NOT_YET_IMPLEMENTED}")
-        }
-
-        /// Create a "should be desugared" message for an operation
-        pub fn should_be_desugared(operation: &str) -> String {
-            format!("{operation} found during type checking - {SHOULD_BE_DESUGARED}")
-        }
-    }
-}
-
-/// Enhanced type error report with source context for beautiful error display
-#[derive(Debug, Clone)]
-pub struct TypeErrorReport {
-    /// The individual type errors
-    pub errors: Vec<TypeErrorWithSource>,
-
-    /// The original source code for context
-    pub source: String,
-
-    /// The filename for error reporting
-    pub filename: String,
-}
-
-impl std::fmt::Display for TypeErrorReport {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Type checking failed with {} error{}",
-            self.errors.len(),
-            if self.errors.len() == 1 { "" } else { "s" }
+        code(outrun::typecheck::unification::category_mismatch),
+        help(
+            "Cannot unify different categories of types (e.g., concrete type with function type)"
         )
+    )]
+    CategoryMismatch {
+        expected: String,
+        found: String,
+        expected_type: Type,
+        found_type: Type,
+        #[label("found {found}")]
+        span: Option<SourceSpan>,
+    },
+}
+
+/// Constraint solving errors
+#[derive(Error, Diagnostic, Debug)]
+pub enum ConstraintError {
+    #[error("Unsatisfiable constraint: {constraint}")]
+    #[diagnostic(
+        code(outrun::typecheck::constraint::unsatisfiable),
+        help("No type can satisfy this constraint")
+    )]
+    Unsatisfiable {
+        constraint: String,
+        #[label("unsatisfiable constraint")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Conflicting constraints: {constraint1} conflicts with {constraint2}")]
+    #[diagnostic(
+        code(outrun::typecheck::constraint::conflict),
+        help("These constraints cannot both be satisfied by the same type")
+    )]
+    ConflictingConstraints {
+        constraint1: String,
+        constraint2: String,
+        #[label("first constraint")]
+        span1: Option<SourceSpan>,
+        #[label("conflicting constraint")]
+        span2: Option<SourceSpan>,
+    },
+
+    #[error(
+        "Missing protocol implementation: type {type_name} does not implement {protocol_name}"
+    )]
+    #[diagnostic(
+        code(outrun::typecheck::constraint::missing_implementation),
+        help("Add an implementation block: impl {protocol_name} for {type_name}")
+    )]
+    MissingImplementation {
+        type_name: String,
+        protocol_name: String,
+        #[label("type {type_name} must implement {protocol_name}")]
+        span: Option<SourceSpan>,
+    },
+}
+
+/// Implementation errors (orphan rules, conflicts, etc.)
+#[derive(Error, Diagnostic, Debug)]
+pub enum ImplementationError {
+    #[error("Orphan rule violation: cannot implement foreign protocol {protocol_name} for foreign type {type_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::implementation::orphan_violation),
+        help("At least one of the protocol or type must be defined in this module")
+    )]
+    OrphanRuleViolation {
+        protocol_name: String,
+        type_name: String,
+        #[label("both protocol and type are foreign")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Conflicting implementation: {protocol_name} is already implemented for {type_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::implementation::conflicting),
+        help("Each protocol can only be implemented once per type")
+    )]
+    ConflictingImplementation {
+        protocol_name: String,
+        type_name: String,
+        #[label("conflicting implementation")]
+        span: Option<SourceSpan>,
+        #[label("previous implementation")]
+        previous_span: Option<SourceSpan>,
+    },
+
+    #[error("Self type mismatch in implementation")]
+    #[diagnostic(
+        code(outrun::typecheck::implementation::self_mismatch),
+        help("Self must refer to the implementing type")
+    )]
+    SelfTypeMismatch {
+        expected_self: Type,
+        found_self: Type,
+        #[label("Self should be {expected_self}")]
+        span: Option<SourceSpan>,
+    },
+}
+
+/// Exhaustiveness checking errors
+#[derive(Error, Diagnostic, Debug)]
+pub enum ExhaustivenessError {
+    #[error("Non-exhaustive pattern: missing pattern for {missing_pattern}")]
+    #[diagnostic(
+        code(outrun::typecheck::exhaustive::missing_pattern),
+        help("Add a pattern to handle {missing_pattern}")
+    )]
+    MissingPattern {
+        missing_pattern: String,
+        #[label("case expression is not exhaustive")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Unreachable pattern: this pattern will never match")]
+    #[diagnostic(
+        code(outrun::typecheck::exhaustive::unreachable),
+        help("Consider removing this pattern or reordering the cases")
+    )]
+    UnreachablePattern {
+        #[label("unreachable pattern")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Non-exhaustive function: guards do not cover all possible inputs")]
+    #[diagnostic(
+        code(outrun::typecheck::exhaustive::incomplete_guards),
+        help("Add additional guard clauses or a catch-all case")
+    )]
+    IncompleteGuards {
+        #[label("function may not handle all inputs")]
+        span: Option<SourceSpan>,
+    },
+}
+
+/// Type inference errors
+#[derive(Error, Diagnostic, Debug)]
+pub enum InferenceError {
+    #[error("Cannot infer type: ambiguous expression")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::ambiguous),
+        help("Add a type annotation to resolve ambiguity")
+    )]
+    AmbiguousType {
+        #[label("type cannot be inferred")]
+        span: Option<SourceSpan>,
+        suggestions: Vec<String>,
+    },
+
+    #[error("Undefined variable: {variable_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::undefined_variable),
+        help("Ensure the variable is defined before use")
+    )]
+    UndefinedVariable {
+        variable_name: String,
+        #[label("undefined variable")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Undefined type: {type_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::undefined_type),
+        help("Import the type or define it in this module")
+    )]
+    UndefinedType {
+        type_name: String,
+        #[label("undefined type")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Undefined protocol: {protocol_name}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::undefined_protocol),
+        help("Import the protocol or define it in this module")
+    )]
+    UndefinedProtocol {
+        protocol_name: String,
+        #[label("undefined protocol")]
+        span: Option<SourceSpan>,
+    },
+}
+
+/// Unified compiler error combining parser and typechecker errors
+#[derive(Error, Diagnostic, Debug)]
+#[allow(clippy::result_large_err)]
+#[allow(clippy::large_enum_variant)]
+pub enum CompilerError {
+    #[error(transparent)]
+    Parse(#[from] ParseError),
+
+    #[error(transparent)]
+    Typecheck(#[from] TypecheckError),
+}
+
+/// Utility functions for creating errors with source context
+impl UnificationError {
+    /// Create a type mismatch error with source context
+    pub fn type_mismatch_with_context(
+        expected: Type,
+        found: Type,
+        expected_context: Option<String>,
+        found_context: Option<String>,
+        span: Option<Span>,
+    ) -> Self {
+        Self::TypeMismatch {
+            expected,
+            found,
+            expected_context,
+            found_context,
+            span: to_source_span(span),
+        }
     }
 }
 
-impl std::error::Error for TypeErrorReport {}
-
-impl Diagnostic for TypeErrorReport {
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new("outrun::typechecker::multiple_errors"))
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        Some(miette::Severity::Error)
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new("Fix the type errors listed above to proceed"))
-    }
-
-    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        Some(Box::new(self.errors.iter().map(|e| e as &dyn Diagnostic)))
-    }
-}
-
-/// A type error with source context for miette integration
-#[derive(Debug, Clone)]
-pub struct TypeErrorWithSource {
-    /// The underlying type error
-    pub inner: TypeError,
-
-    /// Source context for miette (derived from inner.span)
-    pub source: String,
-
-    /// Filename for display
-    pub filename: String,
-}
-
-// Implement miette protocols manually since we need special handling
-impl std::fmt::Display for TypeErrorWithSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
-
-impl std::error::Error for TypeErrorWithSource {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.inner)
-    }
-}
-
-impl Diagnostic for TypeErrorWithSource {
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.inner.code()
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.inner.severity()
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.inner.help()
-    }
-
-    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.inner.url()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.inner.labels()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.source)
-    }
-}
-
-impl TypeErrorWithSource {
-    /// Create a new TypeErrorWithSource with explicit source context
-    pub fn new(error: TypeError, source: String, filename: String) -> Self {
-        Self {
-            inner: error,
-            source,
-            filename,
-        }
-    }
-}
-
-impl TypeErrorReport {
-    /// Create a new type error report with source context
-    pub fn new(errors: Vec<TypeError>, source: String, filename: String) -> Self {
-        let errors_with_source = errors
-            .into_iter()
-            .map(|error| TypeErrorWithSource {
-                inner: error,
-                source: source.clone(),
-                filename: filename.clone(),
-            })
-            .collect();
-
-        Self {
-            errors: errors_with_source,
-            source,
-            filename,
-        }
-    }
-
-    /// Create a new type error report from errors that already have source context
-    pub fn from_errors_with_source(errors: Vec<TypeErrorWithSource>) -> Self {
-        // Use the first error's source and filename as fallback for the report itself
-        let (source, filename) = if let Some(first_error) = errors.first() {
-            (first_error.source.clone(), first_error.filename.clone())
-        } else {
-            (String::new(), "<unknown>".to_string())
-        };
-
-        Self {
-            errors,
-            source,
-            filename,
-        }
-    }
-
-    /// Get the number of errors in this report
-    pub fn error_count(&self) -> usize {
-        self.errors.len()
-    }
-
-    /// Check if this report has any errors
-    pub fn has_errors(&self) -> bool {
-        !self.errors.is_empty()
-    }
-
-    /// Get the underlying TypeError objects
-    pub fn type_errors(&self) -> Vec<&TypeError> {
-        self.errors.iter().map(|e| &e.inner).collect()
-    }
-
-    /// Create individual miette reports for each error with source context
-    ///
-    /// This is useful for CLI applications that want to display errors with
-    /// beautiful formatting using miette's built-in rendering.
-    pub fn create_individual_reports(&self) -> Vec<miette::Report> {
-        self.errors
-            .iter()
-            .map(|error_with_source| {
-                miette::Report::new(error_with_source.inner.clone()).with_source_code(
-                    miette::NamedSource::new(
-                        &error_with_source.filename,
-                        error_with_source.source.clone(),
-                    ),
-                )
-            })
-            .collect()
-    }
-
-    /// Create a summary of error types for reporting
-    pub fn error_summary(&self) -> ErrorSummary {
-        let mut type_mismatches = 0;
-        let mut undefined_functions = 0;
-        let mut undefined_variables = 0;
-        let mut protocol_errors = 0;
-        let mut other_errors = 0;
-
-        for error in &self.errors {
-            match &error.inner {
-                TypeError::TypeMismatch { .. }
-                | TypeError::InvalidConditionType { .. }
-                | TypeError::InvalidGuardType { .. } => {
-                    type_mismatches += 1;
-                }
-                TypeError::UndefinedFunction { .. } => {
-                    undefined_functions += 1;
-                }
-                TypeError::UndefinedVariable { .. } => {
-                    undefined_variables += 1;
-                }
-                TypeError::ProtocolNotImplemented { .. }
-                | TypeError::UndefinedProtocol { .. }
-                | TypeError::DuplicateImplementation { .. }
-                | TypeError::MissingImplementation { .. }
-                | TypeError::ExtraImplementation { .. }
-                | TypeError::SignatureMismatch { .. } => {
-                    protocol_errors += 1;
-                }
-                _ => {
-                    other_errors += 1;
-                }
-            }
-        }
-
-        ErrorSummary {
-            total: self.errors.len(),
-            type_mismatches,
-            undefined_functions,
-            undefined_variables,
-            protocol_errors,
-            other_errors,
-        }
-    }
-
-    /// Group related errors together for better display
-    pub fn group_related_errors(&self) -> Vec<ErrorGroup> {
-        let mut groups = Vec::new();
-        let mut function_errors = Vec::new();
-        let mut type_mismatch_errors = Vec::new();
-        let mut protocol_errors = Vec::new();
-        let mut other_errors = Vec::new();
-
-        for error in &self.errors {
-            match &error.inner {
-                TypeError::UndefinedFunction { .. }
-                | TypeError::MissingParameter { .. }
-                | TypeError::UnexpectedParameter { .. }
-                | TypeError::InvalidArity { .. }
-                | TypeError::ConflictingFunctionOverload { .. } => {
-                    function_errors.push(error.clone());
-                }
-                TypeError::TypeMismatch { .. }
-                | TypeError::InvalidConditionType { .. }
-                | TypeError::InvalidGuardType { .. } => {
-                    type_mismatch_errors.push(error.clone());
-                }
-                TypeError::ProtocolNotImplemented { .. }
-                | TypeError::UndefinedProtocol { .. }
-                | TypeError::DuplicateImplementation { .. }
-                | TypeError::MissingImplementation { .. }
-                | TypeError::ExtraImplementation { .. }
-                | TypeError::SignatureMismatch { .. } => {
-                    protocol_errors.push(error.clone());
-                }
-                _ => {
-                    other_errors.push(error.clone());
-                }
-            }
-        }
-
-        if !function_errors.is_empty() {
-            groups.push(ErrorGroup {
-                category: "Function Errors".to_string(),
-                description: "Issues with function definitions or calls".to_string(),
-                errors: function_errors,
-            });
-        }
-
-        if !type_mismatch_errors.is_empty() {
-            groups.push(ErrorGroup {
-                category: "Type Mismatch Errors".to_string(),
-                description: "Values have incompatible types".to_string(),
-                errors: type_mismatch_errors,
-            });
-        }
-
-        if !protocol_errors.is_empty() {
-            groups.push(ErrorGroup {
-                category: "Protocol System Errors".to_string(),
-                description: "Issues with protocol definitions or implementations".to_string(),
-                errors: protocol_errors,
-            });
-        }
-
-        if !other_errors.is_empty() {
-            groups.push(ErrorGroup {
-                category: "Other Errors".to_string(),
-                description: "Additional issues found".to_string(),
-                errors: other_errors,
-            });
-        }
-
-        groups
-    }
-}
-
-/// A group of related type errors for organized display
-#[derive(Debug, Clone)]
-pub struct ErrorGroup {
-    pub category: String,
-    pub description: String,
-    pub errors: Vec<TypeErrorWithSource>,
-}
-
-impl ErrorGroup {
-    /// Get error count for this group
-    pub fn error_count(&self) -> usize {
-        self.errors.len()
-    }
-}
-
-/// Summary of error types for reporting and statistics
-#[derive(Debug, Clone)]
-pub struct ErrorSummary {
-    pub total: usize,
-    pub type_mismatches: usize,
-    pub undefined_functions: usize,
-    pub undefined_variables: usize,
-    pub protocol_errors: usize,
-    pub other_errors: usize,
-}
-
-impl std::fmt::Display for ErrorSummary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} total errors", self.total)?;
-
-        let mut parts = Vec::new();
-        if self.type_mismatches > 0 {
-            parts.push(format!(
-                "{} type mismatch{}",
-                self.type_mismatches,
-                if self.type_mismatches == 1 { "" } else { "es" }
-            ));
-        }
-        if self.undefined_functions > 0 {
-            parts.push(format!(
-                "{} undefined function{}",
-                self.undefined_functions,
-                if self.undefined_functions == 1 {
-                    ""
-                } else {
-                    "s"
-                }
-            ));
-        }
-        if self.undefined_variables > 0 {
-            parts.push(format!(
-                "{} undefined variable{}",
-                self.undefined_variables,
-                if self.undefined_variables == 1 {
-                    ""
-                } else {
-                    "s"
-                }
-            ));
-        }
-        if self.protocol_errors > 0 {
-            parts.push(format!(
-                "{} protocol error{}",
-                self.protocol_errors,
-                if self.protocol_errors == 1 { "" } else { "s" }
-            ));
-        }
-        if self.other_errors > 0 {
-            parts.push(format!(
-                "{} other error{}",
-                self.other_errors,
-                if self.other_errors == 1 { "" } else { "s" }
-            ));
-        }
-
-        if !parts.is_empty() {
-            write!(f, " ({})", parts.join(", "))?;
-        }
-
-        Ok(())
-    }
-}
-
-// Convert unification errors to type errors
-impl From<crate::unification::UnificationError> for TypeError {
-    fn from(err: crate::unification::UnificationError) -> Self {
-        use crate::unification::UnificationError;
-
-        match err {
-            UnificationError::ArityMismatch {
-                expected,
-                found,
-                base_type,
-            } => {
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::InternalError {
-                    span,
-                    message: format!(
-                        "Arity mismatch for type {base_type:?}: expected {expected}, found {found}"
-                    ),
-                }
-            }
-            UnificationError::ParameterNameMismatch { expected, found } => {
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::InternalError {
-                    span,
-                    message: format!(
-                        "Parameter name mismatch: expected {expected:?}, found {found:?}"
-                    ),
-                }
-            }
-            UnificationError::ProtocolNotImplemented {
-                protocol_id,
-                type_id,
-            } => {
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::ProtocolNotImplemented {
-                    span,
-                    protocol_name: format!("{protocol_id:?}"), // TODO: Use proper name lookup
-                    type_name: format!("{type_id:?}"),         // TODO: Use proper name lookup
-                }
-            }
-            UnificationError::UnboundTypeVariable { name } => {
-                let span = miette::SourceSpan::new(0.into(), 0);
-                TypeError::InternalError {
-                    span,
-                    message: format!("Unbound type variable: {name}"),
-                }
-            }
-        }
-    }
+/// Helper for creating source spans from optional spans  
+pub fn to_source_span(span: Option<Span>) -> Option<SourceSpan> {
+    span.map(|s| SourceSpan::new(s.start.into(), s.end - s.start))
 }

@@ -2,26 +2,21 @@
 name = "outrun-typechecker"
 version = "0.1.0"
 edition = "2021"
-description = "Static type checker for the Outrun programming language"
+description = "Hindley-Milner type checker for the Outrun programming language"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-# Error handling and reporting
-miette = { version = "7.0", features = ["fancy", "syntect-highlighter"] }
-thiserror = "2.0"
-
-# Parser integration
+# Reuse existing infrastructure
 outrun-parser = { path = "../outrun-parser" }
 
-# Utilities
-indexmap = "2.0"
-lazy_static = "1.4"
-petgraph = "0.8"
+# Error handling (reuse existing patterns)
+miette = { version = "7.0", features = ["fancy"] }
+thiserror = "1.0"
 
-# SAT solver for guard exhaustiveness checking
-rustsat = "0.7.2"
-rustsat-cadical = "0.7.2"
+# Data structures and utilities
+indexmap = "2.0"       # Ordered maps for deterministic iteration
+smallvec = "1.11"      # Optimized small vectors for type arguments
+string-interner = "0.15" # Type name interning for performance
 
 [dev-dependencies]
-# Testing utilities
-pretty_assertions = "1.4"
+proptest = "1.4"       # Property-based testing for type soundness
