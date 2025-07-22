@@ -76,7 +76,7 @@ We use Vikunja (todo.harton.nz) to track all implementation tasks for typechecke
 
 1. **Starting Work**: Mark Vikunja task as "in progress" before beginning implementation
 2. **During Work**: Update task comments with progress notes, blockers, or insights
-3. **Completing Work**: Mark Vikunja task as "done" immediately after finishing
+3. **Completing Work**: **NEVER mark Vikunja tasks as "done" until James explicitly approves the work** - wait for user confirmation before marking tasks complete
 4. **Documentation**: Reference Vikunja task IDs in commit messages: `git commit -m "feat: implement unification algorithm (task #1316)"`
 
 ### Current Task Status

@@ -4,56 +4,15 @@
 //! Handles protocol implementation verification, logical operators, and orphan rules.
 
 use crate::error::ConstraintError;
+use crate::registry::ProtocolRegistry;
 use crate::types::{Constraint, ProtocolId, SelfBindingContext, Substitution, Type, TypeVarId};
-use std::collections::{HashMap, HashSet};
-
-/// Context information about available protocol implementations
-#[derive(Debug, Clone)]
-pub struct ImplementationContext {
-    /// Map from (Protocol, Type) pairs to whether implementation exists
-    implementations: HashMap<(ProtocolId, String), bool>,
-    /// Set of orphan implementations that need special validation
-    orphan_implementations: HashSet<(ProtocolId, String)>,
-}
-
-impl ImplementationContext {
-    pub fn new() -> Self {
-        Self {
-            implementations: HashMap::new(),
-            orphan_implementations: HashSet::new(),
-        }
-    }
-
-    /// Register that a type implements a protocol
-    pub fn register_implementation(&mut self, protocol: ProtocolId, type_name: String) {
-        self.implementations.insert((protocol, type_name), true);
-    }
-
-    /// Mark an implementation as orphan (for orphan rule checking)
-    pub fn mark_orphan(&mut self, protocol: ProtocolId, type_name: String) {
-        self.orphan_implementations.insert((protocol, type_name));
-    }
-
-    /// Check if a type implements a protocol
-    pub fn has_implementation(&self, protocol: &ProtocolId, type_name: &str) -> bool {
-        self.implementations
-            .get(&(protocol.clone(), type_name.to_string()))
-            .copied()
-            .unwrap_or(false)
-    }
-}
-
-impl Default for ImplementationContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use std::collections::HashMap;
 
 /// Constraint solver implementing logical constraint satisfaction
 #[derive(Debug)]
 pub struct ConstraintSolver {
-    /// Context of available protocol implementations
-    implementation_context: ImplementationContext,
+    /// Protocol implementation registry
+    protocol_registry: ProtocolRegistry,
     /// Cache of solved constraint results
     solution_cache: HashMap<String, bool>,
 }
@@ -61,22 +20,27 @@ pub struct ConstraintSolver {
 impl ConstraintSolver {
     pub fn new() -> Self {
         Self {
-            implementation_context: ImplementationContext::new(),
+            protocol_registry: ProtocolRegistry::new(),
             solution_cache: HashMap::new(),
         }
     }
 
-    /// Create solver with existing implementation context
-    pub fn with_context(context: ImplementationContext) -> Self {
+    /// Create solver with existing protocol registry
+    pub fn with_registry(registry: ProtocolRegistry) -> Self {
         Self {
-            implementation_context: context,
+            protocol_registry: registry,
             solution_cache: HashMap::new(),
         }
     }
 
-    /// Get mutable access to implementation context
-    pub fn implementation_context_mut(&mut self) -> &mut ImplementationContext {
-        &mut self.implementation_context
+    /// Get mutable access to protocol registry
+    pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
+        &mut self.protocol_registry
+    }
+
+    /// Get immutable access to protocol registry
+    pub fn protocol_registry(&self) -> &ProtocolRegistry {
+        &self.protocol_registry
     }
 
     /// Solve a set of constraints with a given substitution
@@ -161,25 +125,25 @@ impl ConstraintSolver {
 
         match resolved_type {
             Type::Concrete { id, args, .. } => {
-                // Check if this concrete type implements the protocol
-                let type_name = if args.is_empty() {
-                    id.name().to_string()
-                } else {
-                    // For generic types like List<String>, create a canonical representation
-                    format!(
-                        "{}[{}]",
-                        id.name(),
-                        args.iter()
-                            .map(|arg| self.type_to_string(arg))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
-
+                // Check if this concrete type implements the protocol using the protocol registry
                 if !self
-                    .implementation_context
-                    .has_implementation(protocol, &type_name)
+                    .protocol_registry
+                    .has_implementation_with_args(protocol, &id, &args)
                 {
+                    let type_name = if args.is_empty() {
+                        id.name().to_string()
+                    } else {
+                        // For generic types like List<String>, create a canonical representation
+                        format!(
+                            "{}[{}]",
+                            id.name(),
+                            args.iter()
+                                .map(|arg| self.type_to_string(arg))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    };
+
                     return Err(ConstraintError::MissingImplementation {
                         type_name,
                         protocol_name: protocol.0.clone(),
@@ -302,25 +266,25 @@ impl ConstraintSolver {
                 ..
             } => {
                 // In implementation context, Self is bound to the concrete implementing type
-                let type_name = if implementing_args.is_empty() {
-                    implementing_type.name().to_string()
-                } else {
-                    // For generic implementations like impl Display for List<T>
-                    format!(
-                        "{}[{}]",
-                        implementing_type.name(),
-                        implementing_args
-                            .iter()
-                            .map(|arg| self.type_to_string(arg))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
-
                 if !self
-                    .implementation_context
-                    .has_implementation(protocol, &type_name)
+                    .protocol_registry
+                    .has_implementation_with_args(protocol, implementing_type, implementing_args)
                 {
+                    let type_name = if implementing_args.is_empty() {
+                        implementing_type.name().to_string()
+                    } else {
+                        // For generic implementations like impl Display for List<T>
+                        format!(
+                            "{}[{}]",
+                            implementing_type.name(),
+                            implementing_args
+                                .iter()
+                                .map(|arg| self.type_to_string(arg))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    };
+
                     return Err(ConstraintError::MissingImplementation {
                         type_name,
                         protocol_name: protocol.0.clone(),
@@ -438,22 +402,70 @@ mod tests {
     use super::*;
     use crate::types::{Level, TypeId, TypeVarGenerator};
 
-    fn create_test_context() -> ImplementationContext {
-        let mut context = ImplementationContext::new();
+    fn create_test_registry() -> ProtocolRegistry {
+        let mut registry = ProtocolRegistry::new();
+        
+        // Set up local modules for testing
+        registry.add_local_module(crate::types::ModuleId::new("Integer"));
+        registry.add_local_module(crate::types::ModuleId::new("String"));
+        registry.add_local_module(crate::types::ModuleId::new("Display"));
+        registry.add_local_module(crate::types::ModuleId::new("Debug"));
+        registry.add_local_module(crate::types::ModuleId::new("Clone"));
+        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
+        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
 
         // Register some basic implementations for testing
-        context.register_implementation(ProtocolId::new("Display"), "Integer".to_string());
-        context.register_implementation(ProtocolId::new("Display"), "String".to_string());
-        context.register_implementation(ProtocolId::new("Debug"), "Integer".to_string());
-        context.register_implementation(ProtocolId::new("Debug"), "String".to_string());
-        context.register_implementation(ProtocolId::new("Clone"), "String".to_string());
+        registry.register_implementation(
+            TypeId::new("Integer"),
+            vec![],
+            ProtocolId::new("Display"),
+            vec![],
+            crate::types::ModuleId::new("Integer"),
+            None,
+        ).unwrap();
+        
+        registry.register_implementation(
+            TypeId::new("String"),
+            vec![],
+            ProtocolId::new("Display"),
+            vec![],
+            crate::types::ModuleId::new("String"),
+            None,
+        ).unwrap();
+        
+        registry.register_implementation(
+            TypeId::new("Integer"),
+            vec![],
+            ProtocolId::new("Debug"),
+            vec![],
+            crate::types::ModuleId::new("Integer"),
+            None,
+        ).unwrap();
+        
+        registry.register_implementation(
+            TypeId::new("String"),
+            vec![],
+            ProtocolId::new("Debug"),
+            vec![],
+            crate::types::ModuleId::new("String"),
+            None,
+        ).unwrap();
+        
+        registry.register_implementation(
+            TypeId::new("String"),
+            vec![],
+            ProtocolId::new("Clone"),
+            vec![],
+            crate::types::ModuleId::new("String"),
+            None,
+        ).unwrap();
 
-        context
+        registry
     }
 
     #[test]
     fn test_simple_implements_constraint_satisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -476,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_simple_implements_constraint_unsatisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -505,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_logical_or_constraint_satisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -538,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_logical_or_constraint_unsatisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -577,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_logical_and_constraint_satisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -610,7 +622,7 @@ mod tests {
 
     #[test]
     fn test_logical_and_constraint_unsatisfied() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -649,7 +661,7 @@ mod tests {
 
     #[test]
     fn test_unbound_type_variable() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -672,7 +684,7 @@ mod tests {
 
     #[test]
     fn test_generic_type_constraint() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -696,19 +708,37 @@ mod tests {
     }
 
     #[test]
-    fn test_implementation_context_registration() {
-        let mut context = ImplementationContext::new();
+    fn test_protocol_registry_integration() {
+        let mut registry = ProtocolRegistry::new();
+        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
+        registry.add_local_module(crate::types::ModuleId::new("TestType"));
+        registry.add_local_module(crate::types::ModuleId::new("TestProtocol"));
+        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
+        
         let protocol = ProtocolId::new("TestProtocol");
-        let type_name = "TestType".to_string();
+        let type_id = TypeId::new("TestType");
 
         // Initially no implementation
-        assert!(!context.has_implementation(&protocol, &type_name));
+        assert!(!registry.has_implementation(&protocol, &type_id));
 
         // Register implementation
-        context.register_implementation(protocol.clone(), type_name.clone());
+        registry.register_implementation(
+            type_id.clone(),
+            vec![],
+            protocol.clone(),
+            vec![],
+            crate::types::ModuleId::new("TestType"),
+            None,
+        ).unwrap();
 
         // Now has implementation
-        assert!(context.has_implementation(&protocol, &type_name));
+        assert!(registry.has_implementation(&protocol, &type_id));
+        
+        // Create constraint solver with this registry
+        let solver = ConstraintSolver::with_registry(registry);
+        
+        // Verify the solver can access the registry
+        assert!(solver.protocol_registry().has_implementation(&protocol, &type_id));
     }
 
     #[test]
@@ -739,7 +769,7 @@ mod tests {
 
     #[test]
     fn test_protocol_self_implementation() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
         let mut gen = TypeVarGenerator::new();
 
         let type_var = gen.fresh(Level(0));
@@ -768,7 +798,7 @@ mod tests {
 
     #[test]
     fn test_self_implements_in_implementation_context() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
 
         // Create Self: Display constraint in implementation context
         let self_context = SelfBindingContext::Implementation {
@@ -791,7 +821,7 @@ mod tests {
 
     #[test]
     fn test_self_implements_in_implementation_context_missing() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
 
         // Create Self: NonExistentProtocol constraint
         let self_context = SelfBindingContext::Implementation {
@@ -920,9 +950,20 @@ mod tests {
 
     #[test]
     fn test_self_with_generic_types() {
-        let mut context = ImplementationContext::new();
-        context.register_implementation(ProtocolId::new("Display"), "List[String]".to_string());
-        let mut solver = ConstraintSolver::with_context(context);
+        let mut registry = ProtocolRegistry::new();
+        registry.add_local_module(crate::types::ModuleId::new("List"));
+        registry.add_local_module(crate::types::ModuleId::new("Display"));
+        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
+        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
+        registry.register_implementation(
+            TypeId::new("List"),
+            vec![Type::concrete("String")],
+            ProtocolId::new("Display"),
+            vec![],
+            crate::types::ModuleId::new("List"),
+            None,
+        ).unwrap();
+        let mut solver = ConstraintSolver::with_registry(registry);
 
         // Create Self: Display constraint in List<String> implementation context
         let self_context = SelfBindingContext::Implementation {
@@ -945,7 +986,7 @@ mod tests {
 
     #[test]
     fn test_function_context_self_constraint() {
-        let mut solver = ConstraintSolver::with_context(create_test_context());
+        let mut solver = ConstraintSolver::with_registry(create_test_registry());
 
         // Create Self: Display constraint in function context within String implementation
         let parent_context = SelfBindingContext::Implementation {

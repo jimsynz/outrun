@@ -39,6 +39,34 @@ impl ProtocolId {
     }
 }
 
+/// Module identifier for tracking implementation sources (orphan rule enforcement)
+/// In Outrun, modules are defined by type names minus generic arguments
+/// e.g., Http.Client.Connection<T> -> module Http.Client.Connection, List<String> -> module List
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ModuleId(pub String);
+
+impl ModuleId {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+    
+    /// Create ModuleId from a TypeId (module is the type name itself)
+    /// e.g., "Http.Client.Connection" -> module "Http.Client.Connection"
+    pub fn from_type_id(type_id: &TypeId) -> Self {
+        Self(type_id.name().to_string())
+    }
+    
+    /// Create ModuleId from a ProtocolId (module is the protocol name itself)
+    /// e.g., "Display" -> module "Display"
+    pub fn from_protocol_id(protocol_id: &ProtocolId) -> Self {
+        Self(protocol_id.0.clone())
+    }
+    
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Unified type representation extending the existing parser patterns
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {

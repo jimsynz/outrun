@@ -26,10 +26,11 @@ pub mod types;
 pub mod unification;
 
 // Re-export public API
-pub use constraints::{ConstraintSolver, ImplementationContext};
+pub use constraints::ConstraintSolver;
+pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
 pub use error::{CompilerError, ConstraintError, TypecheckError, UnificationError};
 pub use inference::InferenceContext;
-pub use types::{Constraint, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId};
+pub use types::{Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId};
 pub use unification::Unifier;
 
 /// A collection of parsed programs representing a complete Outrun package
