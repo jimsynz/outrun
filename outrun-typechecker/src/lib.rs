@@ -18,6 +18,7 @@
 //! to expressions, eliminating duplication while enabling seamless integration.
 
 pub mod constraints;
+pub mod desugaring;
 pub mod dispatch;
 pub mod error;
 pub mod exhaustiveness;
@@ -28,6 +29,7 @@ pub mod unification;
 
 // Re-export public API
 pub use constraints::ConstraintSolver;
+pub use desugaring::DesugaringEngine;
 pub use dispatch::{
     build_dispatch_table,
     // Legacy aliases
@@ -73,18 +75,24 @@ impl Package {
 #[allow(clippy::result_large_err)]
 pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
     let mut engine = TypeInferenceEngine::new();
+    let mut desugaring_engine = DesugaringEngine::new();
 
-    // Phase 1: Collect all type and protocol definitions across all files
+    // Phase 1: Desugar all operators into protocol function calls
+    for program in &mut package.programs {
+        desugaring_engine.desugar_program(program)?;
+    }
+
+    // Phase 2: Collect all type and protocol definitions across all files
     for program in &package.programs {
         engine.collect_definitions(program)?;
     }
 
-    // Phase 2: Build protocol implementation registry
+    // Phase 3: Build protocol implementation registry
     for program in &package.programs {
         engine.register_implementations(program)?;
     }
 
-    // Phase 3: Type check all expressions with complete context
+    // Phase 4: Type check all expressions with complete context
     for program in &mut package.programs {
         engine.typecheck_program(program)?;
     }
@@ -104,6 +112,11 @@ pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), Com
     *program = package.programs.into_iter().next().unwrap();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod desugaring_tests {
+    pub mod test_operator_desugaring_integration;
 }
 
 #[cfg(test)]

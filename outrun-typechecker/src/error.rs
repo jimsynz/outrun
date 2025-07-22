@@ -35,6 +35,14 @@ pub enum TypecheckError {
     #[error("Protocol dispatch failed")]
     #[diagnostic(code(outrun::typecheck::dispatch_failed))]
     DispatchError(#[from] DispatchError),
+
+    #[error("Generic typechecker error: {message}")]
+    #[diagnostic(code(outrun::typecheck::generic))]
+    Generic {
+        message: String,
+        #[label("error occurred here")]
+        span: Option<SourceSpan>,
+    },
 }
 
 /// Unification errors following miette patterns
