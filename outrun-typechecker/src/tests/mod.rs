@@ -3,6 +3,7 @@
 pub mod test_dispatch_resolution;
 pub mod test_error_reporting;
 pub mod test_function_definitions;
+pub mod test_function_body_typechecking;
 pub mod test_function_inference_simple;
 pub mod test_function_inference_demo;
 pub mod test_function_integration_real;

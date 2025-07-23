@@ -96,7 +96,7 @@ impl OutrunParser {
 
         let mut generic_params = None;
         let mut fields = Vec::new();
-        let mut methods = Vec::new();
+        let mut functions = Vec::new();
 
         for remaining_pair in inner_pairs {
             match remaining_pair.as_rule() {
@@ -116,10 +116,10 @@ impl OutrunParser {
                                 }
                             }
                             Rule::struct_braces => {
-                                // Parse struct methods from braces
+                                // Parse struct functions from braces
                                 for brace_part in body_part.into_inner() {
-                                    if brace_part.as_rule() == Rule::struct_methods {
-                                        methods = Self::parse_struct_methods(brace_part)?;
+                                    if brace_part.as_rule() == Rule::struct_functions {
+                                        functions = Self::parse_struct_methods(brace_part)?;
                                     }
                                 }
                             }
@@ -130,8 +130,8 @@ impl OutrunParser {
                 Rule::struct_fields => {
                     fields = Self::parse_struct_fields(remaining_pair)?;
                 }
-                Rule::struct_methods => {
-                    methods = Self::parse_struct_methods(remaining_pair)?;
+                Rule::struct_functions => {
+                    functions = Self::parse_struct_methods(remaining_pair)?;
                 }
                 _ => {} // Skip other rules like braces
             }
@@ -142,7 +142,7 @@ impl OutrunParser {
             name,
             generic_params,
             fields,
-            methods,
+            functions,
             span,
         })
     }
@@ -187,15 +187,15 @@ impl OutrunParser {
     pub(crate) fn parse_struct_methods(
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<Vec<FunctionDefinition>> {
-        let mut methods = Vec::new();
+        let mut functions = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::struct_method_item {
-                for method_item_pair in inner_pair.into_inner() {
-                    match method_item_pair.as_rule() {
+            if inner_pair.as_rule() == Rule::struct_function_item {
+                for function_item_pair in inner_pair.into_inner() {
+                    match function_item_pair.as_rule() {
                         Rule::function_definition => {
-                            let method = Self::parse_function_definition(method_item_pair)?;
-                            methods.push(method);
+                            let function = Self::parse_function_definition(function_item_pair)?;
+                            functions.push(function);
                         }
                         Rule::comment => {
                             // Comments are pre-collected at program level - skip
@@ -206,7 +206,7 @@ impl OutrunParser {
             }
         }
 
-        Ok(methods)
+        Ok(functions)
     }
 
     /// Parse a protocol definition
@@ -282,7 +282,7 @@ impl OutrunParser {
         let mut protocol_spec = None;
         let mut type_spec = None;
         let mut constraints = None;
-        let mut methods = Vec::new();
+        let mut functions = Vec::new();
 
         for remaining_pair in inner_pairs {
             match remaining_pair.as_rule() {
@@ -298,8 +298,8 @@ impl OutrunParser {
                 Rule::impl_constraints => {
                     constraints = Some(Self::parse_impl_constraints(remaining_pair)?);
                 }
-                Rule::impl_methods => {
-                    methods = Self::parse_impl_methods(remaining_pair)?;
+                Rule::impl_functions => {
+                    functions = Self::parse_impl_methods(remaining_pair)?;
                 }
                 _ => {} // Skip other rules like "for" keyword and braces
             }
@@ -326,7 +326,7 @@ impl OutrunParser {
             protocol_spec,
             type_spec,
             constraints,
-            methods,
+            functions,
             span,
         })
     }
@@ -335,15 +335,15 @@ impl OutrunParser {
     pub(crate) fn parse_impl_methods(
         pair: pest::iterators::Pair<Rule>,
     ) -> ParseResult<Vec<FunctionDefinition>> {
-        let mut methods = Vec::new();
+        let mut functions = Vec::new();
 
         for inner_pair in pair.into_inner() {
-            if inner_pair.as_rule() == Rule::impl_method_item {
-                for method_item_pair in inner_pair.into_inner() {
-                    match method_item_pair.as_rule() {
+            if inner_pair.as_rule() == Rule::impl_function_item {
+                for function_item_pair in inner_pair.into_inner() {
+                    match function_item_pair.as_rule() {
                         Rule::function_definition => {
-                            let method = Self::parse_function_definition(method_item_pair)?;
-                            methods.push(method);
+                            let function = Self::parse_function_definition(function_item_pair)?;
+                            functions.push(function);
                         }
                         Rule::comment => {
                             // Comments are pre-collected at program level - skip
@@ -354,7 +354,7 @@ impl OutrunParser {
             }
         }
 
-        Ok(methods)
+        Ok(functions)
     }
 
     /// Parse generic parameters

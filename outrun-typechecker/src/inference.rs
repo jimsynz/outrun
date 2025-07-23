@@ -5,7 +5,7 @@
 
 use crate::{
     dispatch::{FunctionDispatcher, FunctionRegistry, FunctionInfo, FunctionVisibility as DispatchVisibility},
-    error::{TypecheckError, ErrorContext, InferenceError},
+    error::{TypecheckError, ErrorContext, InferenceError, UnificationError as OriginalUnificationError, to_source_span},
     registry::ProtocolRegistry,
     types::{Type, TypeVarId, Substitution, Constraint, SelfBindingContext, ModuleId, Level, ProtocolId},
 };
@@ -108,6 +108,15 @@ impl TypeInferenceEngine {
             new_registry.set_current_module(module);
             self.protocol_registry = Rc::new(new_registry);
         }
+    }
+    
+    /// Get a mutable reference to the protocol registry for testing
+    #[cfg(test)]
+    pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
+        // Always clone and replace to avoid borrow checker issues
+        let new_registry = (*self.protocol_registry).clone();
+        self.protocol_registry = Rc::new(new_registry);
+        Rc::get_mut(&mut self.protocol_registry).expect("Should be uniquely owned after replacement")
     }
     
     /// Update error context when we discover new symbols
@@ -683,15 +692,351 @@ impl TypeInferenceEngine {
     
     /// Type check a single item
     #[allow(clippy::result_large_err)]
-    pub fn typecheck_item(&mut self, _item: &mut Item) -> Result<(), TypecheckError> {
-        // TODO: Type check different kinds of items:
-        // - Function definitions
-        // - Let bindings
-        // - Protocol definitions
-        // - Implementation blocks
+    pub fn typecheck_item(&mut self, item: &mut Item) -> Result<(), TypecheckError> {
+        use outrun_parser::ItemKind;
         
-        // This will be implemented in Phase 4+
+        match &item.kind {
+            ItemKind::StructDefinition(struct_def) => {
+                self.typecheck_struct_functions(struct_def)
+            }
+            ItemKind::ProtocolDefinition(protocol_def) => {
+                self.typecheck_protocol_functions(protocol_def)
+            }
+            ItemKind::ImplBlock(impl_block) => {
+                self.typecheck_impl_block_functions(impl_block)
+            }
+            ItemKind::FunctionDefinition(func_def) => {
+                self.typecheck_standalone_function(func_def)
+            }
+            ItemKind::LetBinding(let_binding) => {
+                self.typecheck_let_binding(let_binding)
+            }
+            // Other items don't need body type checking
+            ItemKind::ConstDefinition(_) |
+            ItemKind::Expression(_) |
+            ItemKind::Comment(_) |
+            ItemKind::ImportDefinition(_) |
+            ItemKind::AliasDefinition(_) |
+            ItemKind::MacroDefinition(_) => {
+                Ok(())
+            }
+            // All other item types (literals, keywords, etc.) don't need type checking
+            _ => Ok(())
+        }
+    }
+    
+    /// Type check struct functions
+    #[allow(clippy::result_large_err)]
+    fn typecheck_struct_functions(&mut self, struct_def: &StructDefinition) -> Result<(), TypecheckError> {
+        let struct_name = struct_def.name
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+            
+        for function in &struct_def.functions {
+            self.typecheck_function_body(&struct_name, function)?;
+        }
+        
         Ok(())
+    }
+    
+    /// Type check protocol functions
+    #[allow(clippy::result_large_err)]
+    fn typecheck_protocol_functions(&mut self, protocol_def: &ProtocolDefinition) -> Result<(), TypecheckError> {
+        let protocol_name = protocol_def.name
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+            
+        for protocol_function in &protocol_def.functions {
+            match protocol_function {
+                ProtocolFunction::Definition(definition) => {
+                    self.typecheck_function_body(&protocol_name, definition)?;
+                }
+                ProtocolFunction::StaticDefinition(static_def) => {
+                    self.typecheck_static_function_body(&protocol_name, static_def)?;
+                }
+                ProtocolFunction::Signature(_) => {
+                    // Signatures don't have bodies to check
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Type check impl block functions
+    #[allow(clippy::result_large_err)]
+    fn typecheck_impl_block_functions(&mut self, impl_block: &ImplBlock) -> Result<(), TypecheckError> {
+        let protocol_name = self.extract_type_spec_name(&impl_block.protocol_spec);
+        let type_name = self.extract_type_spec_name(&impl_block.type_spec);
+        let impl_scope = format!("{} for {}", protocol_name, type_name);
+        
+        for function in &impl_block.functions {
+            self.typecheck_function_body(&impl_scope, function)?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Type check standalone function
+    #[allow(clippy::result_large_err)]
+    fn typecheck_standalone_function(&mut self, func_def: &FunctionDefinition) -> Result<(), TypecheckError> {
+        let module_scope = self.current_module.0.clone();
+        self.typecheck_function_body(&module_scope, func_def)
+    }
+    
+    /// Type check let binding
+    #[allow(clippy::result_large_err)]
+    fn typecheck_let_binding(&mut self, _let_binding: &outrun_parser::LetBinding) -> Result<(), TypecheckError> {
+        // TODO: Implement let binding type checking
+        Ok(())
+    }
+    
+    /// Core function body type checking logic using RefCell for interior mutability
+    #[allow(clippy::result_large_err)]
+    fn typecheck_function_body(&mut self, scope: &str, function: &FunctionDefinition) -> Result<(), TypecheckError> {
+        
+        
+        
+        // Create a new inference context for this function
+        let mut function_context = InferenceContext {
+            substitution: Substitution::new(),
+            constraints: Vec::new(),
+            expected_type: None,
+            self_binding: SelfBindingContext::ProtocolDefinition {
+                protocol_id: ProtocolId::new("Unknown"),
+                protocol_args: vec![],
+            },
+            bindings: HashMap::new(),
+        };
+        
+        // Set up parameter bindings in symbol table
+        let old_symbol_table = self.symbol_table.clone();
+        
+        // Add function parameters to symbol table
+        for param in &function.parameters {
+            let param_name = param.name.name.clone();
+            let param_type = self.convert_type_annotation(&param.type_annotation)?;
+            self.symbol_table.insert(param_name, param_type);
+        }
+        
+        // Type check the function body using RefCell for mutability
+        let body_type = self.typecheck_block_readonly(&function.body, &mut function_context)?;
+        
+        // Convert the declared return type
+        let declared_return_type = self.convert_type_annotation(&function.return_type)?;
+        
+        // Verify that the body type matches the declared return type
+        if !self.types_are_compatible(&body_type, &declared_return_type) {
+            self.symbol_table = old_symbol_table; // Restore before error
+            return Err(TypecheckError::UnificationError(OriginalUnificationError::TypeMismatch {
+                expected: declared_return_type,
+                found: body_type,
+                expected_context: Some("declared return type".to_string()),
+                found_context: Some(format!("Function {}.{} body", scope, function.name.name)),
+                span: to_source_span(Some(function.body.span)),
+            }));
+        }
+        
+        // Type check guard clause if present
+        if let Some(guard) = &function.guard {
+            self.typecheck_guard_clause_readonly(guard, &mut function_context)?;
+        }
+        
+        // Restore the previous symbol table
+        self.symbol_table = old_symbol_table;
+        
+        Ok(())
+    }
+    
+    /// Type check static function body
+    #[allow(clippy::result_large_err)]
+    fn typecheck_static_function_body(&mut self, scope: &str, static_def: &StaticFunctionDefinition) -> Result<(), TypecheckError> {
+        // Create a new inference context for this function
+        let mut function_context = InferenceContext {
+            substitution: Substitution::new(),
+            constraints: Vec::new(),
+            expected_type: None,
+            self_binding: SelfBindingContext::ProtocolDefinition {
+                protocol_id: ProtocolId::new("Unknown"),
+                protocol_args: vec![],
+            },
+            bindings: HashMap::new(),
+        };
+        
+        // Set up parameter bindings in symbol table
+        let old_symbol_table = self.symbol_table.clone();
+        
+        // Add function parameters to symbol table
+        for param in &static_def.parameters {
+            let param_name = param.name.name.clone();
+            let param_type = self.convert_type_annotation(&param.type_annotation)?;
+            self.symbol_table.insert(param_name, param_type);
+        }
+        
+        // Type check the function body
+        let body_type = self.typecheck_block_readonly(&static_def.body, &mut function_context)?;
+        
+        // Convert the declared return type
+        let declared_return_type = self.convert_type_annotation(&static_def.return_type)?;
+        
+        // Verify that the body type matches the declared return type
+        if !self.types_are_compatible(&body_type, &declared_return_type) {
+            self.symbol_table = old_symbol_table; // Restore before error
+            return Err(TypecheckError::UnificationError(OriginalUnificationError::TypeMismatch {
+                expected: declared_return_type,
+                found: body_type,
+                expected_context: Some("declared return type".to_string()),
+                found_context: Some(format!("Static function {}.{} body", scope, static_def.name.name)),
+                span: to_source_span(Some(static_def.body.span)),
+            }));
+        }
+        
+        // Restore the previous symbol table
+        self.symbol_table = old_symbol_table;
+        
+        Ok(())
+    }
+    
+    /// Type check a block without requiring mutable access to expressions
+    #[allow(clippy::result_large_err)]
+    fn typecheck_block_readonly(&mut self, block: &outrun_parser::Block, context: &mut InferenceContext) -> Result<Type, TypecheckError> {
+        use std::rc::Rc;
+        use std::cell::RefCell;
+        
+        if block.statements.is_empty() {
+            return Ok(Type::concrete("Unit"));
+        }
+        
+        let mut last_type = Type::concrete("Unit");
+        
+        // Type check each statement
+        for statement in &block.statements {
+            match &statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => {
+                    // Create RefCell wrapper for the expression to enable mutability
+                    let expr_cell = Rc::new(RefCell::new((**expr).clone()));
+                    let result = {
+                        let mut expr_mut = expr_cell.borrow_mut();
+                        self.infer_expression(&mut expr_mut, context)?
+                    };
+                    last_type = result.inferred_type;
+                }
+                outrun_parser::StatementKind::LetBinding(let_binding) => {
+                    // Type check the let binding expression and add to symbol table
+                    self.typecheck_let_binding_statement_readonly(let_binding, context)?;
+                    last_type = Type::concrete("Unit"); // Let bindings return unit
+                }
+            }
+        }
+        
+        // The type of a block is the type of its last statement
+        Ok(last_type)
+    }
+    
+    /// Type check a let binding statement without requiring mutability
+    #[allow(clippy::result_large_err)]
+    fn typecheck_let_binding_statement_readonly(&mut self, let_binding: &outrun_parser::LetBinding, context: &mut InferenceContext) -> Result<(), TypecheckError> {
+        use std::rc::Rc;
+        use std::cell::RefCell;
+        
+        // Create RefCell wrapper for the expression to enable mutability
+        let expr_cell = Rc::new(RefCell::new(let_binding.expression.clone()));
+        let value_result = {
+            let mut expr_mut = expr_cell.borrow_mut();
+            self.infer_expression(&mut expr_mut, context)?
+        };
+        
+        // Extract variable name from pattern
+        match &let_binding.pattern {
+            outrun_parser::Pattern::Identifier(identifier) => {
+                let var_name = identifier.name.clone();
+                
+                // Add the variable to the symbol table
+                self.symbol_table.insert(var_name, value_result.inferred_type);
+            }
+            _ => {
+                // TODO: Handle more complex patterns (tuples, structs, etc.)
+                // For now, just skip complex patterns
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Type check guard clause without requiring mutability
+    #[allow(clippy::result_large_err)]
+    fn typecheck_guard_clause_readonly(&mut self, guard: &outrun_parser::GuardClause, context: &mut InferenceContext) -> Result<(), TypecheckError> {
+        use std::rc::Rc;
+        use std::cell::RefCell;
+        
+        // Create RefCell wrapper for the expression to enable mutability
+        let expr_cell = Rc::new(RefCell::new(guard.condition.clone()));
+        let guard_result = {
+            let mut expr_mut = expr_cell.borrow_mut();
+            self.infer_expression(&mut expr_mut, context)?
+        };
+        
+        let boolean_type = Type::concrete("Outrun.Core.Boolean");
+        
+        if !self.types_are_compatible(&guard_result.inferred_type, &boolean_type) {
+            return Err(TypecheckError::UnificationError(OriginalUnificationError::TypeMismatch {
+                expected: boolean_type,
+                found: guard_result.inferred_type,
+                expected_context: Some("Guard clause must return Boolean".to_string()),
+                found_context: Some("guard expression".to_string()),
+                span: to_source_span(Some(guard.condition.span)),
+            }));
+        }
+        
+        Ok(())
+    }
+    
+    /// Check if two types are compatible for assignment/unification
+    /// This includes protocol compatibility and type variable resolution
+    fn types_are_compatible(&self, found_type: &Type, expected_type: &Type) -> bool {
+        use crate::types::Type;
+        
+        match (found_type, expected_type) {
+            // Same concrete types are compatible
+            (Type::Concrete { id: id1, args: args1, .. }, Type::Concrete { id: id2, args: args2, .. }) => {
+                id1 == id2 && args1 == args2
+            }
+            
+            // Protocol types: check if found type can implement expected protocol
+            (Type::Concrete { id: concrete_type, .. }, Type::Protocol { id: protocol, .. }) => {
+                // Check if the concrete type implements the protocol (with all requirements)
+                self.protocol_registry.type_satisfies_protocol(concrete_type, protocol)
+            }
+            
+            // Two protocol types: check if they're the same protocol
+            (Type::Protocol { id: id1, args: args1, .. }, Type::Protocol { id: id2, args: args2, .. }) => {
+                id1 == id2 && args1 == args2
+            }
+            
+            // Type variables are compatible with anything (will be resolved during unification)
+            (Type::Variable { .. }, _) | (_, Type::Variable { .. }) => true,
+            
+            // Self types need special handling based on context
+            (Type::SelfType { .. }, _) | (_, Type::SelfType { .. }) => {
+                // For now, allow Self type compatibility
+                // TODO: Implement proper Self type resolution
+                true
+            }
+            
+            // Function types must match exactly
+            (Type::Function { params: p1, return_type: r1, .. }, Type::Function { params: p2, return_type: r2, .. }) => {
+                p1.len() == p2.len() && 
+                p1.iter().zip(p2.iter()).all(|((n1, t1), (n2, t2))| n1 == n2 && self.types_are_compatible(t1, t2)) &&
+                self.types_are_compatible(r1, r2)
+            }
+            
+            // Different categories are incompatible
+            _ => false,
+        }
     }
     
     /// Infer the type of an expression
@@ -1614,15 +1959,57 @@ impl TypeInferenceEngine {
         })
     }
     
+    /// Check if a type name refers to a protocol rather than a concrete type
+    fn is_protocol_type(&self, type_name: &str) -> bool {
+        // Protocol names are typically simple identifiers without dots
+        // Concrete types usually have namespace separators
+        // Examples:
+        // - "Integer" -> protocol
+        // - "String" -> protocol  
+        // - "Outrun.Core.Integer64" -> concrete type
+        // - "Display" -> protocol
+        
+        // For now, use a simple heuristic: if it doesn't contain "." and is a known protocol, treat as protocol
+        if type_name.contains('.') {
+            false // Namespaced types are concrete
+        } else {
+            // Check if this is a known protocol name
+            self.is_known_protocol(type_name)
+        }
+    }
+    
+    /// Check if a type name is a known protocol
+    fn is_known_protocol(&self, type_name: &str) -> bool {
+        // Common Outrun protocols - we can expand this list or make it configurable
+        matches!(type_name, 
+            "Integer" | "Float" | "String" | "Boolean" | 
+            "Display" | "Debug" | "Clone" | "Equality" |
+            "BinaryAddition" | "BinarySubtraction" | "BinaryMultiplication" | "BinaryDivision" |
+            "UnaryMinus" | "UnaryPlus" | "LogicalNot" | "LogicalAnd" | "LogicalOr" |
+            "Comparison" | "Iterator" | "Collection" | "Indexable" |
+            "Maybe" | "Result" | "Option"
+        )
+    }
+    
     /// Convert a parser type annotation to a typechecker type
     #[allow(clippy::result_large_err, clippy::only_used_in_recursion)]
     fn convert_type_annotation(&mut self, type_annotation: &TypeAnnotation) -> Result<Type, TypecheckError> {
         match type_annotation {
             TypeAnnotation::Simple { path, .. } => {
-                // For now, treat all type annotations as concrete types
-                // TODO: Handle generics, protocols, function types, etc.
                 let type_name = path.iter().map(|id| id.name.clone()).collect::<Vec<_>>().join("::");
-                Ok(Type::concrete(&type_name))
+                
+                // Determine if this is a protocol or concrete type
+                // Protocol names are typically simple identifiers like "Integer", "Display"
+                // Concrete types are typically namespaced like "Outrun.Core.Integer64"
+                if self.is_protocol_type(&type_name) {
+                    Ok(Type::Protocol {
+                        id: ProtocolId::new(type_name),
+                        args: vec![],
+                        span: None,
+                    })
+                } else {
+                    Ok(Type::concrete(&type_name))
+                }
             }
             TypeAnnotation::Tuple { .. } => {
                 // TODO: Implement tuple types in the typechecker

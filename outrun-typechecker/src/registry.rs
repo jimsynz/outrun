@@ -6,7 +6,7 @@
 use crate::error::ImplementationError;
 use crate::types::{ModuleId, ProtocolId, Type, TypeId};
 use outrun_parser::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Information about a protocol implementation
 #[derive(Debug, Clone, PartialEq)]
@@ -61,15 +61,30 @@ impl ImplementationKey {
     }
 }
 
+/// Information about a protocol definition and its requirements
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProtocolDefinition {
+    /// The protocol itself
+    pub protocol_id: ProtocolId,
+    /// Protocols required by this protocol (e.g., Integer requires BinaryAddition)
+    pub required_protocols: HashSet<ProtocolId>,
+    /// Module where this protocol is defined
+    pub defining_module: ModuleId,
+    /// Source location for error reporting
+    pub span: Option<Span>,
+}
+
 /// Comprehensive protocol implementation registry
 #[derive(Debug, Clone)]
 pub struct ProtocolRegistry {
     /// Map from implementation key to implementation info
     implementations: HashMap<ImplementationKey, ImplementationInfo>,
+    /// Map from protocol ID to protocol definition and requirements
+    protocol_definitions: HashMap<ProtocolId, ProtocolDefinition>,
     /// Current module being processed (for orphan rule checking)
     current_module: Option<ModuleId>,
     /// Set of modules that are considered "local" (part of current package)
-    local_modules: std::collections::HashSet<ModuleId>,
+    local_modules: HashSet<ModuleId>,
 }
 
 impl ProtocolRegistry {
@@ -77,8 +92,9 @@ impl ProtocolRegistry {
     pub fn new() -> Self {
         Self {
             implementations: HashMap::new(),
+            protocol_definitions: HashMap::new(),
             current_module: None,
-            local_modules: std::collections::HashSet::new(),
+            local_modules: HashSet::new(),
         }
     }
 
@@ -90,6 +106,63 @@ impl ProtocolRegistry {
     /// Add a module to the set of local modules (part of current package)
     pub fn add_local_module(&mut self, module: ModuleId) {
         self.local_modules.insert(module);
+    }
+
+    /// Register a protocol definition with its requirements
+    pub fn register_protocol_definition(
+        &mut self,
+        protocol_id: ProtocolId,
+        required_protocols: HashSet<ProtocolId>,
+        defining_module: ModuleId,
+        span: Option<Span>,
+    ) {
+        let protocol_def = ProtocolDefinition {
+            protocol_id: protocol_id.clone(),
+            required_protocols,
+            defining_module,
+            span,
+        };
+        
+        self.protocol_definitions.insert(protocol_id, protocol_def);
+    }
+
+    /// Check if a protocol requires another protocol
+    /// E.g., does Integer require BinaryAddition?
+    pub fn protocol_requires(&self, protocol: &ProtocolId, required: &ProtocolId) -> bool {
+        if let Some(definition) = self.protocol_definitions.get(protocol) {
+            definition.required_protocols.contains(required)
+        } else {
+            // If protocol not registered, assume no requirements
+            false
+        }
+    }
+
+    /// Get all protocols required by a given protocol
+    pub fn get_protocol_requirements(&self, protocol: &ProtocolId) -> HashSet<ProtocolId> {
+        if let Some(definition) = self.protocol_definitions.get(protocol) {
+            definition.required_protocols.clone()
+        } else {
+            HashSet::new()
+        }
+    }
+
+    /// Check if a type satisfies all requirements for a protocol
+    /// This checks both direct implementation and transitive requirements
+    pub fn type_satisfies_protocol(&self, type_id: &TypeId, protocol: &ProtocolId) -> bool {
+        // Check direct implementation
+        if !self.has_implementation(protocol, type_id) {
+            return false;
+        }
+
+        // Check all required protocols recursively
+        let requirements = self.get_protocol_requirements(protocol);
+        for required_protocol in requirements {
+            if !self.type_satisfies_protocol(type_id, &required_protocol) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Register a new protocol implementation with full validation
@@ -233,9 +306,10 @@ impl ProtocolRegistry {
         self.implementations.is_empty()
     }
 
-    /// Clear all implementations (useful for testing)
+    /// Clear all implementations and protocol definitions (useful for testing)
     pub fn clear(&mut self) {
         self.implementations.clear();
+        self.protocol_definitions.clear();
     }
 
     /// Get an iterator over all implementation info (for dispatch table building)
@@ -268,6 +342,9 @@ mod tests {
         registry.add_local_module(ModuleId::new("Display"));
         registry.add_local_module(ModuleId::new("Debug"));
         registry.add_local_module(ModuleId::new("Clone"));
+        registry.add_local_module(ModuleId::new("BinaryAddition"));
+        registry.add_local_module(ModuleId::new("Equality"));
+        registry.add_local_module(ModuleId::new("Outrun.Core.Integer64"));
 
         registry.set_current_module(ModuleId::new("TestModule"));
 
@@ -637,6 +714,153 @@ mod tests {
             .collect();
         assert!(protocol_names.contains("Display"));
         assert!(protocol_names.contains("Debug"));
+    }
+
+    #[test]
+    fn test_protocol_requirement_registration() {
+        let mut registry = create_test_registry();
+        
+        // Register Integer protocol with BinaryAddition requirement
+        let integer_protocol = ProtocolId::new("Integer");
+        let binary_addition_protocol = ProtocolId::new("BinaryAddition");
+        let mut requirements = HashSet::new();
+        requirements.insert(binary_addition_protocol.clone());
+        
+        registry.register_protocol_definition(
+            integer_protocol.clone(),
+            requirements,
+            ModuleId::new("Integer"),
+            None,
+        );
+        
+        // Test requirement lookup
+        assert!(registry.protocol_requires(&integer_protocol, &binary_addition_protocol));
+        assert!(!registry.protocol_requires(&integer_protocol, &ProtocolId::new("Display")));
+    }
+
+    #[test]
+    fn test_protocol_requirement_lookup() {
+        let mut registry = create_test_registry();
+        
+        // Register protocols with requirements
+        let integer_protocol = ProtocolId::new("Integer");
+        let binary_addition = ProtocolId::new("BinaryAddition");
+        let equality = ProtocolId::new("Equality");
+        
+        let mut integer_requirements = HashSet::new();
+        integer_requirements.insert(binary_addition.clone());
+        integer_requirements.insert(equality.clone());
+        
+        registry.register_protocol_definition(
+            integer_protocol.clone(),
+            integer_requirements.clone(),
+            ModuleId::new("Integer"),
+            None,
+        );
+        
+        // Test getting all requirements
+        let requirements = registry.get_protocol_requirements(&integer_protocol);
+        assert_eq!(requirements, integer_requirements);
+        
+        // Test non-existent protocol
+        let empty_requirements = registry.get_protocol_requirements(&ProtocolId::new("NonExistent"));
+        assert!(empty_requirements.is_empty());
+    }
+
+    #[test]
+    fn test_type_satisfies_protocol_simple() {
+        let mut registry = create_test_registry();
+        
+        // Register Integer64 type implementing Integer protocol
+        let integer64_type = TypeId::new("Outrun.Core.Integer64");
+        let integer_protocol = ProtocolId::new("Integer");
+        
+        registry.register_implementation(
+            integer64_type.clone(),
+            vec![],
+            integer_protocol.clone(),
+            vec![],
+            ModuleId::new("Integer"),
+            None,
+        ).expect("Implementation should succeed");
+        
+        // Test simple satisfaction (no requirements)
+        assert!(registry.type_satisfies_protocol(&integer64_type, &integer_protocol));
+        
+        // Test non-existent implementation
+        let string_type = TypeId::new("String");
+        assert!(!registry.type_satisfies_protocol(&string_type, &integer_protocol));
+    }
+
+    #[test]
+    fn test_type_satisfies_protocol_with_requirements() {
+        let mut registry = create_test_registry();
+        
+        // Register protocols with requirements
+        let integer_protocol = ProtocolId::new("Integer");
+        let binary_addition = ProtocolId::new("BinaryAddition");
+        let equality = ProtocolId::new("Equality");
+        
+        let mut integer_requirements = HashSet::new();
+        integer_requirements.insert(binary_addition.clone());
+        integer_requirements.insert(equality.clone());
+        
+        registry.register_protocol_definition(
+            integer_protocol.clone(),
+            integer_requirements,
+            ModuleId::new("Integer"),
+            None,
+        );
+        
+        // Register type implementations
+        let integer64_type = TypeId::new("Outrun.Core.Integer64");
+        
+        // Register Integer implementation
+        registry.register_implementation(
+            integer64_type.clone(),
+            vec![],
+            integer_protocol.clone(),
+            vec![],
+            ModuleId::new("Integer"),
+            None,
+        ).expect("Integer implementation should succeed");
+        
+        // Register BinaryAddition implementation
+        registry.register_implementation(
+            integer64_type.clone(),
+            vec![],
+            binary_addition.clone(),
+            vec![],
+            ModuleId::new("BinaryAddition"),
+            None,
+        ).expect("BinaryAddition implementation should succeed");
+        
+        // Register Equality implementation
+        registry.register_implementation(
+            integer64_type.clone(),
+            vec![],
+            equality.clone(),
+            vec![],
+            ModuleId::new("Equality"),
+            None,
+        ).expect("Equality implementation should succeed");
+        
+        // Test that type satisfies protocol with all requirements
+        assert!(registry.type_satisfies_protocol(&integer64_type, &integer_protocol));
+        
+        // Test with missing requirement
+        let another_type = TypeId::new("AnotherType");
+        registry.register_implementation(
+            another_type.clone(),
+            vec![],
+            integer_protocol.clone(),
+            vec![],
+            ModuleId::new("Integer"),
+            None,
+        ).expect("Integer implementation should succeed");
+        
+        // Missing BinaryAddition and Equality implementations
+        assert!(!registry.type_satisfies_protocol(&another_type, &integer_protocol));
     }
 
     #[test]

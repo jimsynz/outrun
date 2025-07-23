@@ -351,7 +351,7 @@ fn format_function_path(path: &FunctionPath) -> String {
 
 fn format_struct_definition_with_indent(struct_def: &StructDefinition, indent: usize) -> String {
     let name = struct_def.name_as_string();
-    let methods_count = struct_def.methods.len();
+    let methods_count = struct_def.functions.len();
 
     if methods_count == 0 {
         format!("(struct {name})")

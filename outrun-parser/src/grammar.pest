@@ -295,15 +295,15 @@ let_binding = { keyword_let ~ pattern ~ (":" ~ type_annotation)? ~ "=" ~ express
 
 // === TYPE SYSTEM ===
 
-// Struct definition: struct Name<T>(field1: Type1, field2: Type2) { methods }
+// Struct definition: struct Name<T>(field1: Type1, field2: Type2) { functions }
 struct_definition = { attribute* ~ keyword_struct ~ module_path ~ generic_params? ~ struct_body? }
 struct_body = { struct_parentheses ~ struct_braces | struct_parentheses | struct_braces }
 struct_parentheses = { "(" ~ struct_fields? ~ ")" }
-struct_braces = { "{" ~ struct_methods? ~ "}" }
+struct_braces = { "{" ~ struct_functions? ~ "}" }
 struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
 struct_field = { identifier ~ ":" ~ type_annotation }
-struct_methods = { struct_method_item+ }
-struct_method_item = !{ function_definition }
+struct_functions = { struct_function_item+ }
+struct_function_item = !{ function_definition }
 
 // Protocol definition: protocol Name<T> [when constraints] { function signatures }
 protocol_definition = { attribute* ~ keyword_protocol ~ module_path ~ generic_params? ~ protocol_constraints? ~ "{" ~ protocol_functions? ~ "}" }
@@ -314,12 +314,12 @@ protocol_function = { static_function_definition | function_definition | functio
 static_function_definition = { attribute* ~ keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { attribute* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
-// Implementation block: impl<T> ProtocolName<T> for TypeName<T> when T: Constraint { methods }
-impl_block = { keyword_impl ~ generic_params? ~ protocol_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_methods? ~ "}" }
+// Implementation block: impl<T> ProtocolName<T> for TypeName<T> when T: Constraint { functions }
+impl_block = { keyword_impl ~ generic_params? ~ protocol_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_functions? ~ "}" }
 protocol_spec = { module_path ~ generic_args? }
 type_spec = { module_path ~ generic_args? }
-impl_methods = { impl_method_item+ }
-impl_method_item = { function_definition }
+impl_functions = { impl_function_item+ }
+impl_function_item = { function_definition }
 
 // Generic parameters: <T, U, V>
 generic_params = { "<" ~ generic_param_list ~ ">" }

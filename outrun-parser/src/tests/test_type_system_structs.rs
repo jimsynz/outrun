@@ -18,12 +18,12 @@ fn test_basic_struct_definition() {
             assert_eq!(struct_def.name[0].name, "User");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 2);
-            assert_eq!(struct_def.methods.len(), 1);
+            assert_eq!(struct_def.functions.len(), 1);
 
             assert_eq!(struct_def.fields[0].name.name, "name");
             assert_eq!(struct_def.fields[1].name.name, "email");
 
-            assert_eq!(struct_def.methods[0].name.name, "greet");
+            assert_eq!(struct_def.functions[0].name.name, "greet");
         }
         _ => panic!("Expected struct definition"),
     }
@@ -92,7 +92,7 @@ fn test_empty_struct() {
             assert_eq!(struct_def.name[0].name, "Empty");
             assert!(struct_def.generic_params.is_none());
             assert_eq!(struct_def.fields.len(), 0);
-            assert_eq!(struct_def.methods.len(), 0);
+            assert_eq!(struct_def.functions.len(), 0);
         }
         _ => panic!("Expected struct definition"),
     }
@@ -113,7 +113,7 @@ fn test_struct_with_complex_types() {
         ItemKind::StructDefinition(struct_def) => {
             assert_eq!(struct_def.name[0].name, "Repository");
             assert_eq!(struct_def.fields.len(), 2);
-            assert_eq!(struct_def.methods.len(), 1);
+            assert_eq!(struct_def.functions.len(), 1);
 
             assert_eq!(struct_def.fields[0].name.name, "users");
             assert_eq!(struct_def.fields[1].name.name, "config");
