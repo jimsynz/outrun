@@ -10,8 +10,9 @@ use crate::{
     types::{Type, TypeVarId, Substitution, Constraint, SelfBindingContext, ModuleId, Level, ProtocolId},
 };
 use outrun_parser::{
-    Item, Program, Expression, StructDefinition, ProtocolDefinition,
-    FunctionDefinition, ConstDefinition, ImplBlock, TypeAnnotation
+    Item, Program, Expression, StructDefinition, ProtocolDefinition, ProtocolFunction,
+    FunctionDefinition, FunctionSignature, StaticFunctionDefinition, ConstDefinition, 
+    ImplBlock, TypeAnnotation, TypeSpec
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -198,8 +199,9 @@ impl TypeInferenceEngine {
                 self.collect_const_definition(const_def)?;
             }
             ItemKind::ImplBlock(impl_block) => {
-                // Implementation blocks will be handled in register_implementations
-                // For now, just record that we saw it
+                // Collect impl block functions during definition collection
+                self.collect_impl_block_functions(impl_block)?;
+                // Also note for later implementation registration
                 self.note_implementation_block(impl_block)?;
             }
             // Other items don't define types or affect the symbol table at this stage
@@ -233,24 +235,335 @@ impl TypeInferenceEngine {
     
     /// Collect a struct definition
     #[allow(clippy::result_large_err)]
-    fn collect_struct_definition(&mut self, _struct_def: &StructDefinition) -> Result<(), TypecheckError> {
-        // TODO: Extract struct name and fields
-        // TODO: Add to type registry 
-        // TODO: Handle generic parameters
+    fn collect_struct_definition(&mut self, struct_def: &StructDefinition) -> Result<(), TypecheckError> {
+        // Extract struct name (handle nested names like Module.SubModule.StructName)
+        let struct_name = struct_def.name
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
         
-        // For now, just record that we processed it
+        // Collect struct associated functions (functions defined in the struct block)
+        for function in &struct_def.functions {
+            self.collect_struct_function(&struct_name, function)?;
+        }
+        
+        // TODO: Extract struct fields and add to type registry
+        // TODO: Handle generic parameters
+        Ok(())
+    }
+    
+    /// Collect a struct function (function defined within a struct block)
+    #[allow(clippy::result_large_err)]
+    fn collect_struct_function(&mut self, struct_name: &str, function: &FunctionDefinition) -> Result<(), TypecheckError> {
+        // Extract function name
+        let function_name = function.name.name.clone();
+        
+        // Struct functions are registered as static functions with qualified names
+        // e.g., User.new() becomes function "new" in scope "User"
+        let _qualified_function_name = format!("{}.{}", struct_name, function_name);
+        
+        // Convert visibility
+        let visibility = match function.visibility {
+            outrun_parser::FunctionVisibility::Public => DispatchVisibility::Public,
+            outrun_parser::FunctionVisibility::Private => DispatchVisibility::Private,
+        };
+        
+        // Extract parameters
+        let parameters: Result<Vec<(String, Type)>, TypecheckError> = function.parameters
+            .iter()
+            .map(|param| {
+                let param_name = param.name.name.clone();
+                let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                Ok((param_name, param_type))
+            })
+            .collect();
+        let parameters = parameters?;
+        
+        // Convert return type
+        let return_type = self.convert_type_annotation(&function.return_type)?;
+        
+        // Create function info with qualified name
+        let function_info = FunctionInfo {
+            defining_scope: struct_name.to_string(), // Function belongs to struct scope
+            function_name: function_name.clone(),
+            visibility,
+            parameters,
+            return_type,
+            span: Some(function.span),
+        };
+        
+        // Register the function in the function registry
+        if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
+            registry.register_function(
+                struct_name.to_string(),
+                function_name,
+                function_info,
+            );
+        } else {
+            // If there are multiple references, we need to clone and replace
+            let mut new_registry = (*self.function_registry).clone();
+            new_registry.register_function(
+                struct_name.to_string(),
+                function_name,
+                function_info,
+            );
+            self.function_registry = Rc::new(new_registry);
+        }
+        
         Ok(())
     }
     
     /// Collect a protocol definition
     #[allow(clippy::result_large_err)]
-    fn collect_protocol_definition(&mut self, _protocol_def: &ProtocolDefinition) -> Result<(), TypecheckError> {
-        // TODO: Extract protocol name and methods
+    fn collect_protocol_definition(&mut self, protocol_def: &ProtocolDefinition) -> Result<(), TypecheckError> {
+        // Extract protocol name (handle nested names like Module.SubModule.ProtocolName)
+        let protocol_name = protocol_def.name
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        
+        // Collect protocol functions (signatures and implementations)
+        for protocol_function in &protocol_def.functions {
+            self.collect_protocol_function(&protocol_name, protocol_function)?;
+        }
+        
         // TODO: Register protocol in protocol registry
         // TODO: Handle generic parameters and constraints
         
-        // For now, just record that we processed it
         Ok(())
+    }
+    
+    /// Collect a protocol function (signature, definition, or static definition)
+    #[allow(clippy::result_large_err)]
+    fn collect_protocol_function(&mut self, protocol_name: &str, protocol_function: &ProtocolFunction) -> Result<(), TypecheckError> {
+        use outrun_parser::ProtocolFunction;
+        
+        match protocol_function {
+            ProtocolFunction::Signature(signature) => {
+                self.collect_protocol_function_signature(protocol_name, signature)?;
+            }
+            ProtocolFunction::Definition(definition) => {
+                self.collect_protocol_function_definition(protocol_name, definition)?;
+            }
+            ProtocolFunction::StaticDefinition(static_def) => {
+                // Static definitions are like regular functions but belong to protocol namespace
+                self.collect_protocol_static_function(protocol_name, static_def)?;
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Collect a protocol function signature
+    #[allow(clippy::result_large_err)]
+    fn collect_protocol_function_signature(&mut self, protocol_name: &str, signature: &FunctionSignature) -> Result<(), TypecheckError> {
+        // Extract function name
+        let function_name = signature.name.name.clone();
+        
+        // Convert visibility
+        let visibility = match signature.visibility {
+            outrun_parser::FunctionVisibility::Public => DispatchVisibility::Public,
+            outrun_parser::FunctionVisibility::Private => DispatchVisibility::Private,
+        };
+        
+        // Extract parameters
+        let parameters: Result<Vec<(String, Type)>, TypecheckError> = signature.parameters
+            .iter()
+            .map(|param| {
+                let param_name = param.name.name.clone();
+                let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                Ok((param_name, param_type))
+            })
+            .collect();
+        let parameters = parameters?;
+        
+        // Convert return type
+        let return_type = self.convert_type_annotation(&signature.return_type)?;
+        
+        // Create function info for protocol signature
+        let function_info = FunctionInfo {
+            defining_scope: protocol_name.to_string(), // Function belongs to protocol scope
+            function_name: function_name.clone(),
+            visibility,
+            parameters,
+            return_type,
+            span: Some(signature.span),
+        };
+        
+        // Register the protocol function signature in the function registry
+        if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
+            registry.register_function(
+                protocol_name.to_string(),
+                function_name,
+                function_info,
+            );
+        } else {
+            // If there are multiple references, we need to clone and replace
+            let mut new_registry = (*self.function_registry).clone();
+            new_registry.register_function(
+                protocol_name.to_string(),
+                function_name,
+                function_info,
+            );
+            self.function_registry = Rc::new(new_registry);
+        }
+        
+        Ok(())
+    }
+    
+    /// Collect a protocol function definition (full implementation in protocol)
+    #[allow(clippy::result_large_err)]
+    fn collect_protocol_function_definition(&mut self, protocol_name: &str, definition: &FunctionDefinition) -> Result<(), TypecheckError> {
+        // Protocol function definitions are handled like struct functions
+        self.collect_struct_function(protocol_name, definition)
+    }
+    
+    /// Collect a protocol static function definition
+    #[allow(clippy::result_large_err)]
+    fn collect_protocol_static_function(&mut self, protocol_name: &str, static_def: &StaticFunctionDefinition) -> Result<(), TypecheckError> {
+        // Extract function name
+        let function_name = static_def.name.name.clone();
+        
+        // Static functions are always public in protocols
+        let visibility = DispatchVisibility::Public;
+        
+        // Extract parameters
+        let parameters: Result<Vec<(String, Type)>, TypecheckError> = static_def.parameters
+            .iter()
+            .map(|param| {
+                let param_name = param.name.name.clone();
+                let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                Ok((param_name, param_type))
+            })
+            .collect();
+        let parameters = parameters?;
+        
+        // Convert return type
+        let return_type = self.convert_type_annotation(&static_def.return_type)?;
+        
+        // Create function info for static function
+        let function_info = FunctionInfo {
+            defining_scope: protocol_name.to_string(), // Function belongs to protocol scope
+            function_name: function_name.clone(),
+            visibility,
+            parameters,
+            return_type,
+            span: Some(static_def.span),
+        };
+        
+        // Register the static function in the function registry
+        if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
+            registry.register_function(
+                protocol_name.to_string(),
+                function_name,
+                function_info,
+            );
+        } else {
+            // If there are multiple references, we need to clone and replace
+            let mut new_registry = (*self.function_registry).clone();
+            new_registry.register_function(
+                protocol_name.to_string(),
+                function_name,
+                function_info,
+            );
+            self.function_registry = Rc::new(new_registry);
+        }
+        
+        Ok(())
+    }
+    
+    /// Collect impl block functions
+    #[allow(clippy::result_large_err)]
+    fn collect_impl_block_functions(&mut self, impl_block: &ImplBlock) -> Result<(), TypecheckError> {
+        // Extract impl block scope information
+        // For impl blocks, the scope is typically "ProtocolName for TypeName"
+        // but for function registration, we need a unique scope identifier
+        
+        // Extract protocol name
+        let protocol_name = self.extract_type_spec_name(&impl_block.protocol_spec);
+        
+        // Extract type name
+        let type_name = self.extract_type_spec_name(&impl_block.type_spec);
+        
+        // Create a qualified scope name for impl block functions
+        // Format: "ProtocolName for TypeName"
+        let impl_scope = format!("{} for {}", protocol_name, type_name);
+        
+        // Collect impl block functions
+        for function in &impl_block.functions {
+            self.collect_impl_block_function(&impl_scope, function)?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Collect a single impl block function
+    #[allow(clippy::result_large_err)]
+    fn collect_impl_block_function(&mut self, impl_scope: &str, function: &FunctionDefinition) -> Result<(), TypecheckError> {
+        // Extract function name
+        let function_name = function.name.name.clone();
+        
+        // Convert visibility - impl functions can be public or private
+        let visibility = match function.visibility {
+            outrun_parser::FunctionVisibility::Public => DispatchVisibility::Public,
+            outrun_parser::FunctionVisibility::Private => DispatchVisibility::Private,
+        };
+        
+        // Extract parameters
+        let parameters: Result<Vec<(String, Type)>, TypecheckError> = function.parameters
+            .iter()
+            .map(|param| {
+                let param_name = param.name.name.clone();
+                let param_type = self.convert_type_annotation(&param.type_annotation)?;
+                Ok((param_name, param_type))
+            })
+            .collect();
+        let parameters = parameters?;
+        
+        // Convert return type
+        let return_type = self.convert_type_annotation(&function.return_type)?;
+        
+        // Create function info for impl block function
+        let function_info = FunctionInfo {
+            defining_scope: impl_scope.to_string(), // Function belongs to impl scope
+            function_name: function_name.clone(),
+            visibility,
+            parameters,
+            return_type,
+            span: Some(function.span),
+        };
+        
+        // Register the impl function in the function registry
+        if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
+            registry.register_function(
+                impl_scope.to_string(),
+                function_name,
+                function_info,
+            );
+        } else {
+            // If there are multiple references, we need to clone and replace
+            let mut new_registry = (*self.function_registry).clone();
+            new_registry.register_function(
+                impl_scope.to_string(),
+                function_name,
+                function_info,
+            );
+            self.function_registry = Rc::new(new_registry);
+        }
+        
+        Ok(())
+    }
+    
+    /// Extract a simple name from a TypeSpec for scope identification
+    fn extract_type_spec_name(&self, type_spec: &TypeSpec) -> String {
+        // Extract the path from the TypeSpec
+        type_spec.path
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
     }
     
     /// Collect a function definition

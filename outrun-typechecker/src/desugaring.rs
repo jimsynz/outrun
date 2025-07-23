@@ -9,7 +9,7 @@
 //! - `a + b` → `BinaryAddition.add(left: a, right: b)`
 //! - `a - b` → `BinarySubtraction.subtract(left: a, right: b)`
 //! - `a == b` → `Equality.equal?(left: a, right: b)`
-//! - `a != b` → `!Equality.equal?(left: a, right: b)` (two-step transformation)
+//! - `a != b` → `Equality.not_equal?(left: a, right: b)`
 //!
 //! **Unary Operators → Protocol Calls:**
 //! - `+a` → `UnaryPlus.plus(value: a)`
@@ -215,10 +215,7 @@ impl DesugaringEngine {
             BinaryOperator::Pipe => ("Pipe", "pipe_into", ("value", "function")),
             BinaryOperator::PipeMaybe => ("Maybe", "maybe_pipe", ("value", "function")),
 
-            // Special case: != desugars to negated ==
-            BinaryOperator::NotEqual => {
-                return self.desugar_not_equal_operation(binary_op);
-            }
+            BinaryOperator::NotEqual => ("Equality", "not_equal?", ("left", "right")),
 
             // Type annotation operator (not a protocol call)
             BinaryOperator::As => {
@@ -273,77 +270,6 @@ impl DesugaringEngine {
         })
     }
 
-    /// Special case: Transform `a != b` into `!Equality.equal?(left: a, right: b)`
-    #[allow(clippy::result_large_err)]
-    fn desugar_not_equal_operation(&mut self, binary_op: &BinaryOperation) -> Result<FunctionCall, TypecheckError> {
-        // Record the transformation
-        self.transformations.push("Binary not_equal → !Equality.equal?".to_string());
-
-        // First create the equality call
-        let equality_function_call = FunctionCall {
-            path: FunctionPath::Qualified {
-                module: TypeIdentifier {
-                    name: "Equality".to_string(),
-                    span: binary_op.span,
-                },
-                name: Identifier {
-                    name: "equal?".to_string(),
-                    span: binary_op.span,
-                },
-            },
-            arguments: vec![
-                Argument::Named {
-                    name: Identifier {
-                        name: "left".to_string(),
-                        span: binary_op.left.span,
-                    },
-                    expression: *binary_op.left.clone(),
-                    format: ArgumentFormat::Explicit,
-                    span: binary_op.left.span,
-                },
-                Argument::Named {
-                    name: Identifier {
-                        name: "right".to_string(),
-                        span: binary_op.right.span,
-                    },
-                    expression: *binary_op.right.clone(),
-                    format: ArgumentFormat::Explicit,
-                    span: binary_op.right.span,
-                },
-            ],
-            span: binary_op.span,
-        };
-
-        // Then wrap it in a LogicalNot call
-        Ok(FunctionCall {
-            path: FunctionPath::Qualified {
-                module: TypeIdentifier {
-                    name: "LogicalNot".to_string(),
-                    span: binary_op.span,
-                },
-                name: Identifier {
-                    name: "not?".to_string(),
-                    span: binary_op.span,
-                },
-            },
-            arguments: vec![
-                Argument::Named {
-                    name: Identifier {
-                        name: "value".to_string(),
-                        span: binary_op.span,
-                    },
-                    expression: Expression {
-                        kind: ExpressionKind::FunctionCall(equality_function_call),
-                        span: binary_op.span,
-                        type_info: None,
-                    },
-                    format: ArgumentFormat::Explicit,
-                    span: binary_op.span,
-                },
-            ],
-            span: binary_op.span,
-        })
-    }
 
     /// Transform a unary operation into a protocol function call
     #[allow(clippy::result_large_err)]
@@ -500,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn test_not_equal_special_case_desugaring() {
+    fn test_not_equal_desugaring() {
         let mut engine = DesugaringEngine::new();
         
         // Parse "a != b"  
@@ -509,41 +435,40 @@ mod tests {
         // Desugar the expression
         engine.desugar_expression(&mut expr).unwrap();
         
-        // Should become LogicalNot.not?(value: Equality.equal?(left: a, right: b))
+        // Should become Equality.not_equal?(left: a, right: b)
         match expr.kind {
-            ExpressionKind::FunctionCall(outer_call) => {
-                // Check outer function is LogicalNot.not?
-                match &outer_call.path {
+            ExpressionKind::FunctionCall(func_call) => {
+                // Check function is Equality.not_equal?
+                match &func_call.path {
                     FunctionPath::Qualified { module, name } => {
-                        assert_eq!(module.name, "LogicalNot");
-                        assert_eq!(name.name, "not?");
+                        assert_eq!(module.name, "Equality");
+                        assert_eq!(name.name, "not_equal?");
                     }
-                    _ => panic!("Expected LogicalNot for outer function"),
+                    _ => panic!("Expected Equality.not_equal? function"),
                 }
                 
-                // Check inner function is Equality.equal?
-                assert_eq!(outer_call.arguments.len(), 1);
-                match &outer_call.arguments[0] {
-                    Argument::Named { name, expression, .. } => {
-                        assert_eq!(name.name, "value");
-                        match &expression.kind {
-                            ExpressionKind::FunctionCall(inner_call) => {
-                                match &inner_call.path {
-                                    FunctionPath::Qualified { module, name } => {
-                                        assert_eq!(module.name, "Equality");
-                                        assert_eq!(name.name, "equal?");
-                                    }
-                                    _ => panic!("Expected Equality.equal? for inner function"),
-                                }
-                            }
-                            _ => panic!("Expected function call as inner expression"),
-                        }
+                // Check arguments
+                assert_eq!(func_call.arguments.len(), 2);
+                match &func_call.arguments[0] {
+                    Argument::Named { name, .. } => {
+                        assert_eq!(name.name, "left");
                     }
-                    _ => panic!("Expected named argument for LogicalNot"),
+                    _ => panic!("Expected named argument 'left'"),
+                }
+                
+                match &func_call.arguments[1] {
+                    Argument::Named { name, .. } => {
+                        assert_eq!(name.name, "right");
+                    }
+                    _ => panic!("Expected named argument 'right'"),
                 }
             }
             _ => panic!("Expected function call after desugaring"),
         }
+        
+        // Check transformation was recorded
+        assert_eq!(engine.transformations.len(), 1);
+        assert!(engine.transformations[0].contains("Binary notequal → Equality.not_equal?"));
     }
 
     #[test]

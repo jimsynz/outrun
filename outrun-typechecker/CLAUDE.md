@@ -151,6 +151,16 @@ Follow existing parser testing patterns:
 - **Unified pipeline**: All operations flow through existing protocol dispatch system
 - **🎯 CRITICAL IMPACT**: **Transforms typechecker capability from ~15% to ~80% of real Outrun programs**
 
+**Task #1332 - Function Definition Type Checking (COMPLETE)**
+- **Struct Function Collection**: Complete support for `struct User { def new(...) { ... } }` syntax
+- **Protocol Function Collection**: Full support for signatures, definitions, and static functions in protocols
+- **Impl Block Function Collection**: Complete support for `impl Protocol for Type { def method(...) { ... } }`
+- **Private Function Support**: Full `def`/`defp` visibility handling across all contexts
+- **Terminology Consistency**: Fixed AST field names from "methods" to "functions" throughout codebase
+- **Comprehensive Tests**: 6 new tests covering all function definition scenarios (171 total tests passing)
+- **Function Registry Integration**: All functions properly registered with scoped namespaces and visibility
+- **🎯 CRITICAL IMPACT**: **Enables function signature collection and validation for complete Outrun programs**
+
 **Task #1326 - Typechecker v3 Documentation and Examples (COMPLETE)**
 - **User Guide**: Comprehensive guide for developers using the typechecker (`docs/USER_GUIDE.md`)
 - **Examples Collection**: Complete working examples with type checking results (`docs/EXAMPLES.md`)
@@ -204,7 +214,7 @@ Follow existing parser testing patterns:
 - **Task #1324**: Exhaustiveness checking for case statements (Priority 2)
 
 ### 📈 **Test Coverage**
-- **158 tests passing** (all green ✅) - comprehensive coverage achieved
+- **171 tests passing** (all green ✅) - comprehensive coverage achieved
 - **Function inference tests**: 16 comprehensive tests covering anonymous functions, type annotations, and inference pipeline
 - **Error reporting**: 11 comprehensive tests covering all error types and suggestion systems
 - **Performance tests**: 8 tests including stack overflow edge cases with realistic limits

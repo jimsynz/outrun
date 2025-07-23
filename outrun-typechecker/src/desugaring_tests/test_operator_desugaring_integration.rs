@@ -84,7 +84,7 @@ fn test_nested_operator_desugaring_integration() {
 
 #[test]
 fn test_not_equal_desugaring_integration() {
-    // Parse a program with != operator (special desugaring case)
+    // Parse a program with != operator
     let source = "a != b";
     let program = parse_program(source).expect("Failed to parse program");
     
@@ -98,7 +98,7 @@ fn test_not_equal_desugaring_integration() {
     // The desugaring should succeed (even if type inference fails due to missing implementations)
     match result {
         Ok(_) => {
-            // Success - != was desugared to !Equality.equal? and type inference worked
+            // Success - != was desugared to Equality.not_equal? and type inference worked
         }
         Err(_) => {
             // Expected - we don't have the core protocols registered yet
