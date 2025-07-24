@@ -153,6 +153,42 @@ impl Type {
         }
     }
 
+    /// Create a protocol type without arguments
+    pub fn protocol(name: impl Into<String>) -> Self {
+        Self::Protocol {
+            id: ProtocolId::new(name),
+            args: vec![],
+            span: None,
+        }
+    }
+
+    /// Create a protocol type with generic arguments
+    pub fn protocol_with_args(name: impl Into<String>, args: Vec<Type>) -> Self {
+        Self::Protocol {
+            id: ProtocolId::new(name),
+            args,
+            span: None,
+        }
+    }
+
+    /// Create a protocol type with span information
+    pub fn protocol_with_span(name: impl Into<String>, span: Span) -> Self {
+        Self::Protocol {
+            id: ProtocolId::new(name),
+            args: vec![],
+            span: Some(span),
+        }
+    }
+
+    /// Create a protocol type with arguments and span information
+    pub fn protocol_with_args_and_span(name: impl Into<String>, args: Vec<Type>, span: Span) -> Self {
+        Self::Protocol {
+            id: ProtocolId::new(name),
+            args,
+            span: Some(span),
+        }
+    }
+
     /// Create a generic concrete type (e.g., List<T>)
     pub fn generic_concrete(name: impl Into<String>, args: Vec<Type>) -> Self {
         Self::Concrete {

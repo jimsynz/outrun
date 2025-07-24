@@ -7,6 +7,9 @@
 #![allow(clippy::single_match)]
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::useless_vec)]
+#![allow(clippy::result_large_err)]
+#![allow(clippy::needless_return)]
+#![allow(clippy::double_ended_iterator_last)]
 //!
 //! ## Architecture
 //!
@@ -24,17 +27,21 @@
 //! to expressions, eliminating duplication while enabling seamless integration.
 
 pub mod constraints;
+pub mod core_library;
 pub mod desugaring;
 pub mod dispatch;
 pub mod error;
 pub mod exhaustiveness;
 pub mod inference;
+pub mod intrinsics;
+pub mod package;
 pub mod registry;
 pub mod types;
 pub mod unification;
 
 // Re-export public API
 pub use constraints::ConstraintSolver;
+pub use core_library::{default_core_library_path, collect_outrun_files};
 pub use desugaring::DesugaringEngine;
 pub use dispatch::{
     build_dispatch_table,
@@ -78,6 +85,19 @@ impl Package {
     pub fn add_program(&mut self, program: outrun_parser::Program) {
         self.programs.push(program);
     }
+    
+    /// Create a package from a loaded package (from outrun.toml)
+    pub fn from_loaded_package(loaded_package: package::LoadedPackage) -> Self {
+        Self {
+            programs: loaded_package.programs,
+            package_name: loaded_package.manifest.package.name,
+        }
+    }
+    
+    /// Merge another package into this one (for core library integration)
+    pub fn merge(&mut self, other: Package) {
+        self.programs.extend(other.programs);
+    }
 }
 
 /// Main entry point for type checking a complete Outrun package
@@ -86,24 +106,51 @@ pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
     let mut engine = TypeInferenceEngine::new();
     let mut desugaring_engine = DesugaringEngine::new();
 
+    // Phase 0: Integrate core library into the package (unified processing)
+    if let Some(core_package) = package::load_core_library_package()? {
+        let core_package_std = Package::from_loaded_package(core_package);
+        
+        // Prepend core library programs to ensure they're processed first
+        let mut integrated_programs = core_package_std.programs;
+        integrated_programs.extend(package.programs.drain(..));
+        package.programs = integrated_programs;
+        
+        println!("📦 Integrated core library: {} total programs", package.programs.len());
+    } else {
+        eprintln!("Warning: Could not find core library, proceeding without it");
+    }
+
     // Phase 1: Desugar all operators into protocol function calls
     for program in &mut package.programs {
         desugaring_engine.desugar_program(program)?;
     }
 
-    // Phase 2: Collect all type and protocol definitions across all files
+    // Phase 2: Register all protocols and structs (definitions only)
     for program in &package.programs {
-        engine.collect_definitions(program)?;
+        engine.register_protocols_and_structs(program)?;
     }
 
-    // Phase 3: Build protocol implementation registry
+    // Phase 2.5: Register automatic implementations (Any, Inspect) for all struct types
+    for program in &package.programs {
+        engine.register_automatic_implementations(program)?;
+    }
+
+    // Phase 3: Register all explicit protocol implementations 
     for program in &package.programs {
         engine.register_implementations(program)?;
     }
 
-    // Phase 4: Type check all expressions with complete context
+    // Phase 4: Register all functions (standalone + impl block functions)
+    for program in &package.programs {
+        engine.register_functions(program)?;
+    }
+
+    // Phase 5: Validate implementation completeness
+    engine.validate_implementation_completeness()?;
+
+    // Phase 6: Type check all function bodies with complete context
     for program in &mut package.programs {
-        engine.typecheck_program(program)?;
+        engine.typecheck_function_bodies(program)?;
     }
 
     Ok(())
@@ -127,6 +174,7 @@ pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), Com
 mod desugaring_tests {
     pub mod test_operator_desugaring_integration;
 }
+
 
 #[cfg(test)]
 mod integration_tests {

@@ -112,7 +112,7 @@ fn test_inference_context_operations() {
     let mut context = create_test_context();
     
     // Test variable binding
-    let int_type = Type::concrete("Integer");
+    let int_type = Type::concrete("Outrun.Core.Integer64");
     context.bind_variable("x".to_string(), int_type.clone());
     
     // Test variable lookup
@@ -128,8 +128,8 @@ fn test_inference_context_operations() {
 #[test] 
 fn test_function_type_display() {
     // Test that Function types can be displayed properly
-    let param_type = Type::concrete("Integer");
-    let return_type = Type::concrete("String");
+    let param_type = Type::protocol("Integer");
+    let return_type = Type::protocol("String");
     
     let function_type = Type::Function {
         params: vec![("x".to_string(), param_type)],

@@ -36,6 +36,10 @@ pub enum TypecheckError {
     #[diagnostic(code(outrun::typecheck::dispatch_failed))]
     DispatchError(#[from] DispatchError),
 
+    #[error("Core library error: {0}")]
+    #[diagnostic(code(outrun::typecheck::core_library_error))]
+    CoreLibraryError(String),
+
     #[error("Generic typechecker error: {message}")]
     #[diagnostic(code(outrun::typecheck::generic))]
     Generic {
@@ -215,6 +219,18 @@ pub enum ImplementationError {
         expected_self: Box<Type>,
         found_self: Box<Type>,
         #[label("Self should be {expected_self}")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Cannot implement marker protocol {protocol_name}: marker protocols cannot be implemented by any type")]
+    #[diagnostic(
+        code(outrun::typecheck::implementation::marker_protocol),
+        help("Marker protocols like 'Panic' are special and cannot be implemented by user types")
+    )]
+    MarkerProtocolImplementation {
+        protocol_name: String,
+        type_name: String,
+        #[label("cannot implement marker protocol {protocol_name}")]
         span: Option<SourceSpan>,
     },
 }

@@ -256,6 +256,48 @@ impl Unifier {
                 Ok(Substitution::new())
             }
 
+            // Self type with concrete type - resolve Self and unify
+            (Type::SelfType { .. }, concrete_type) => {
+                if let Some(resolved_self) = left.resolve_self() {
+                    work_queue.push_back(UnifyTask {
+                        left: resolved_self,
+                        right: concrete_type.clone(),
+                        left_context: Some("resolved Self type".to_string()),
+                        right_context: right_context.map(|s| s.to_string()),
+                    });
+                    Ok(Substitution::new())
+                } else {
+                    Err(UnificationError::CategoryMismatch {
+                        expected: self.type_category(left),
+                        found: self.type_category(right),
+                        expected_type: left.clone(),
+                        found_type: right.clone(),
+                        span: to_source_span(self.get_span_for_error(left, right)),
+                    })
+                }
+            }
+
+            // Concrete type with Self type - resolve Self and unify  
+            (concrete_type, Type::SelfType { .. }) => {
+                if let Some(resolved_self) = right.resolve_self() {
+                    work_queue.push_back(UnifyTask {
+                        left: concrete_type.clone(),
+                        right: resolved_self,
+                        left_context: left_context.map(|s| s.to_string()),
+                        right_context: Some("resolved Self type".to_string()),
+                    });
+                    Ok(Substitution::new())
+                } else {
+                    Err(UnificationError::CategoryMismatch {
+                        expected: self.type_category(left),
+                        found: self.type_category(right),
+                        expected_type: left.clone(),
+                        found_type: right.clone(),
+                        span: to_source_span(self.get_span_for_error(left, right)),
+                    })
+                }
+            }
+
             // Cross-category mismatches
             _ => Err(UnificationError::CategoryMismatch {
                 expected: self.type_category(left),

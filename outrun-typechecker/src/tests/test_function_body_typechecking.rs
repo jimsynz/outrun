@@ -31,6 +31,8 @@ mod function_body_typechecking_tests {
             ProtocolId::new("Integer"),
             integer_requirements,
             ModuleId::new("Integer"),
+            HashSet::new(), // default_implementations
+            HashSet::new(), // required_functions
             None,
         );
         
@@ -79,8 +81,10 @@ mod function_body_typechecking_tests {
         let mut engine = create_test_engine();
         
         // First collect definitions
-        let result = engine.collect_definitions(&program);
-        assert!(result.is_ok(), "Definition collection should succeed: {:?}", result);
+        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine.register_functions(&program).expect("Phase 4 should succeed");
+        // All phases completed successfully
         
         // Then try to typecheck the function body
         if let Some(item) = program.items.first_mut() {
@@ -104,8 +108,10 @@ mod function_body_typechecking_tests {
         let mut engine = create_test_engine();
         
         // First collect definitions
-        let result = engine.collect_definitions(&program);
-        assert!(result.is_ok(), "Definition collection should succeed: {:?}", result);
+        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine.register_functions(&program).expect("Phase 4 should succeed");
+        // All phases completed successfully
         
         // Then try to typecheck the struct function bodies
         if let Some(item) = program.items.first_mut() {
@@ -138,8 +144,10 @@ mod function_body_typechecking_tests {
         let mut engine = create_test_engine();
         
         // Test the complete workflow
-        let result = engine.collect_definitions(&program);
-        assert!(result.is_ok(), "Definition collection should succeed: {:?}", result);
+        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine.register_functions(&program).expect("Phase 4 should succeed");
+        // All phases completed successfully
         
         // Type check all items
         for item in &mut program.items {

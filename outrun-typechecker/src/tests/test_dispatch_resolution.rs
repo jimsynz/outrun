@@ -11,6 +11,7 @@ fn create_test_protocol_registry() -> ProtocolRegistry {
     let mut registry = ProtocolRegistry::new();
 
     // Set up local modules (simulating current package)
+    // Include Outrun.Core modules as local for testing
     registry.add_local_module(ModuleId::new("String"));
     registry.add_local_module(ModuleId::new("Integer"));
     registry.add_local_module(ModuleId::new("List"));
@@ -18,6 +19,10 @@ fn create_test_protocol_registry() -> ProtocolRegistry {
     registry.add_local_module(ModuleId::new("Equality"));
     registry.add_local_module(ModuleId::new("Display"));
     registry.add_local_module(ModuleId::new("Debug"));
+    
+    // Add Outrun.Core modules as local to avoid orphan rule violations
+    registry.add_local_module(ModuleId::new("Outrun.Core.String"));
+    registry.add_local_module(ModuleId::new("Outrun.Core.Integer64"));
 
     registry.set_current_module(ModuleId::new("TestModule"));
 
@@ -39,7 +44,7 @@ fn create_test_function_registry() -> FunctionRegistry {
                 ("self".to_string(), Type::concrete("Self")),
                 ("other".to_string(), Type::concrete("Self")),
             ],
-            return_type: Type::concrete("Boolean"),
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );
@@ -55,24 +60,24 @@ fn create_test_function_registry() -> FunctionRegistry {
                 ("self".to_string(), Type::concrete("Self")),
                 ("other".to_string(), Type::concrete("Self")),
             ],
-            return_type: Type::concrete("Boolean"),
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );
 
     // Register String implementation functions
     registry.register_function(
-        "impl Equality for String".to_string(),
+        "impl Equality for Outrun.Core.String".to_string(),
         "equal?".to_string(),
         FunctionInfo {
-            defining_scope: "impl Equality for String".to_string(),
+            defining_scope: "impl Equality for Outrun.Core.String".to_string(),
             function_name: "equal?".to_string(),
             visibility: FunctionVisibility::Public,
             parameters: vec![
-                ("self".to_string(), Type::concrete("String")),
-                ("other".to_string(), Type::concrete("String")),
+                ("self".to_string(), Type::concrete("Outrun.Core.String")),
+                ("other".to_string(), Type::concrete("Outrun.Core.String")),
             ],
-            return_type: Type::concrete("Boolean"),
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );
@@ -86,12 +91,12 @@ fn create_test_function_registry() -> FunctionRegistry {
             function_name: "create".to_string(),
             visibility: FunctionVisibility::Public,
             parameters: vec![
-                ("name".to_string(), Type::concrete("String")),
-                ("email".to_string(), Type::concrete("String")),
+                ("name".to_string(), Type::concrete("Outrun.Core.String")),
+                ("email".to_string(), Type::concrete("Outrun.Core.String")),
             ],
             return_type: Type::generic_concrete(
                 "Result",
-                vec![Type::concrete("User"), Type::concrete("String")],
+                vec![Type::concrete("User"), Type::concrete("Outrun.Core.String")],
             ),
             span: None,
         },
@@ -105,8 +110,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             defining_scope: "User".to_string(),
             function_name: "validate_email?".to_string(),
             visibility: FunctionVisibility::Private,
-            parameters: vec![("email".to_string(), Type::concrete("String"))],
-            return_type: Type::concrete("Boolean"),
+            parameters: vec![("email".to_string(), Type::concrete("Outrun.Core.String"))],
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );
@@ -120,7 +125,7 @@ fn create_test_function_registry() -> FunctionRegistry {
             function_name: "helper?".to_string(),
             visibility: FunctionVisibility::Private,
             parameters: vec![("value".to_string(), Type::concrete("Self"))],
-            return_type: Type::concrete("Boolean"),
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );
@@ -132,11 +137,11 @@ fn register_basic_implementations(protocol_registry: &mut ProtocolRegistry) {
     // String implements Equality
     protocol_registry
         .register_implementation(
-            TypeId::new("String"),
+            TypeId::new("Outrun.Core.String"),
             vec![],
             ProtocolId::new("Equality"),
             vec![],
-            ModuleId::new("String"),
+            ModuleId::new("Outrun.Core.String"),
             None,
         )
         .unwrap();
@@ -144,11 +149,11 @@ fn register_basic_implementations(protocol_registry: &mut ProtocolRegistry) {
     // Integer implements Equality
     protocol_registry
         .register_implementation(
-            TypeId::new("Integer"),
+            TypeId::new("Outrun.Core.Integer64"),
             vec![],
             ProtocolId::new("Equality"),
             vec![],
-            ModuleId::new("Integer"),
+            ModuleId::new("Outrun.Core.Integer64"),
             None,
         )
         .unwrap();
@@ -163,7 +168,7 @@ fn test_static_protocol_call_resolution() {
     let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
 
     // Test Equality.equal?(value: "hello", other: "world")
-    let string_type = Type::concrete("String");
+    let string_type = Type::concrete("Outrun.Core.String");
     let result = dispatcher
         .resolve_qualified_call("Equality.equal?", Some(&string_type), None)
         .unwrap();
@@ -173,7 +178,7 @@ fn test_static_protocol_call_resolution() {
             assert_eq!(resolved_func.qualified_name, "Equality.equal?");
             assert_eq!(
                 resolved_func.implementing_type.as_ref().unwrap().name(),
-                "String"
+                "Outrun.Core.String"
             );
             assert_eq!(resolved_func.function_info.function_name, "equal?");
         }
@@ -273,7 +278,7 @@ fn test_no_implementation_error() {
     let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
 
     // Try to call a non-existent protocol function
-    let string_type = Type::concrete("String");
+    let string_type = Type::concrete("Outrun.Core.String");
     let result =
         dispatcher.resolve_qualified_call("NonExistent.function", Some(&string_type), None);
 
@@ -289,7 +294,7 @@ fn test_dispatch_table_creation() {
     let table = build_dispatch_table(&protocol_registry, &function_registry);
 
     // Table should contain implementation entries
-    let entry = table.lookup("Equality", "String");
+    let entry = table.lookup("Equality", "Outrun.Core.String");
     assert!(entry.is_some());
 
     let entry = entry.unwrap();
@@ -371,7 +376,7 @@ fn test_protocol_default_implementation_with_private_helper() {
                 ("self".to_string(), Type::concrete("Self")),
                 ("other".to_string(), Type::concrete("Self")),
             ],
-            return_type: Type::concrete("Boolean"),
+            return_type: Type::concrete("Outrun.Core.Boolean"),
             span: None,
         },
     );

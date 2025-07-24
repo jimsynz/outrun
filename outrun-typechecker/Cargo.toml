@@ -18,6 +18,10 @@ indexmap = "2.0"       # Ordered maps for deterministic iteration
 smallvec = "1.11"      # Optimized small vectors for type arguments
 string-interner = "0.15" # Type name interning for performance
 
+# Package manifest parsing
+toml = "0.8"           # Parse outrun.toml files
+serde = { version = "1.0", features = ["derive"] } # Deserialize package manifests
+
 [dev-dependencies]
 proptest = "1.4"       # Property-based testing for type soundness
 

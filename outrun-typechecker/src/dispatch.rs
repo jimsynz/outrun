@@ -189,24 +189,34 @@ impl<'a> FunctionDispatcher<'a> {
         target_type: Option<&Type>,
         span: Option<Span>,
     ) -> Result<DispatchResult, DispatchError> {
-        let parts: Vec<&str> = qualified_name.split('.').collect();
-        if parts.len() != 2 {
+        // Split qualified name: everything before last dot is module, everything after is function
+        let last_dot_pos = qualified_name.rfind('.');
+        if let Some(pos) = last_dot_pos {
+            let module_name = &qualified_name[..pos];
+            let function_name = &qualified_name[pos + 1..];
+            
+            // Ensure we have both parts
+            if module_name.is_empty() || function_name.is_empty() {
+                return Err(DispatchError::InvalidTarget {
+                    protocol_name: qualified_name.to_string(),
+                    target_description: "malformed qualified name".to_string(),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                });
+            }
+
+            // Check if this is a protocol call (has target type)
+            if let Some(target) = target_type {
+                self.resolve_protocol_call(module_name, function_name, target, span)
+            } else {
+                self.resolve_static_call(module_name, function_name, span)
+            }
+        } else {
+            // No dot found - invalid qualified name
             return Err(DispatchError::InvalidTarget {
                 protocol_name: qualified_name.to_string(),
                 target_description: "malformed qualified name".to_string(),
                 span: span.and_then(|s| crate::error::to_source_span(Some(s))),
             });
-        }
-
-        let module_name = parts[0];
-        let function_name = parts[1];
-
-        // Check if this is a protocol call (has target type)
-        if let Some(target) = target_type {
-            self.resolve_protocol_call(module_name, function_name, target, span)
-        } else {
-            // Static module function call
-            self.resolve_static_call(module_name, function_name, span)
         }
     }
 

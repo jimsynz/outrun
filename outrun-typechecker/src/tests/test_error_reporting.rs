@@ -103,7 +103,7 @@ fn test_undefined_variable_with_similar_names() {
 #[test]
 fn test_type_mismatch_error_with_context() {
     let expected = Type::concrete("Integer64");
-    let found = Type::concrete("String");
+    let found = Type::concrete("Outrun.Core.String");
     let span = Some(Span::new(0, 10));
     
     let error = UnificationError::type_mismatch_with_context(
@@ -176,7 +176,7 @@ fn test_function_call_error_with_suggestions() {
 #[test]
 fn test_collection_type_mismatch_error() {
     let expected_type = Type::concrete("Integer64");
-    let found_type = Type::concrete("String");
+    let found_type = Type::concrete("Outrun.Core.String");
     
     let error = InferenceError::collection_type_mismatch(
         "List elements must have the same type".to_string(),
@@ -251,8 +251,8 @@ fn test_error_context_integration_with_symbol_table() {
     
     // Simulate adding some variables to symbol table
     engine.bind_variable("count", Type::concrete("Integer64"));
-    engine.bind_variable("name", Type::concrete("String"));
-    engine.bind_variable("is_active", Type::concrete("Boolean"));
+    engine.bind_variable("name", Type::concrete("Outrun.Core.String"));
+    engine.bind_variable("is_active", Type::concrete("Outrun.Core.Boolean"));
     
     // Test that the error context gets updated correctly
     // For now, just verify the engine can bind variables and update context

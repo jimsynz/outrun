@@ -1,0 +1,6 @@
+@Doc(content: "This protocol can be used as a marker for functions which explicitly panic.")
+protocol Panic {
+	defs panic(message: String): Panic {
+		Outrun.Intrinsic.panic(message)
+	}
+}

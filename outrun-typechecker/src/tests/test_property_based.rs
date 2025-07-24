@@ -8,8 +8,25 @@ use crate::{typecheck_program, TypeInferenceEngine, types::Type};
 use outrun_parser::parse_program;
 use proptest::prelude::*;
 
+/// Configuration for property-based tests
+/// Runs fewer cases during development, full cases in CI
+fn proptest_config() -> ProptestConfig {
+    if std::env::var("CI").is_ok() {
+        // Full test suite in CI
+        ProptestConfig::default()
+    } else {
+        // Faster tests for development
+        ProptestConfig {
+            cases: 10, // Reduced from default 256
+            max_shrink_iters: 100, // Reduced from default 1024
+            ..ProptestConfig::default()
+        }
+    }
+}
+
 // Property: Type variable generation should always produce unique IDs
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_type_variable_uniqueness(count in 1usize..1000) {
         let mut engine = TypeInferenceEngine::new();
@@ -28,6 +45,7 @@ proptest! {
 
 // Property: Type variable generation should be deterministic within a session
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_type_variable_deterministic_sequence(count in 1usize..100) {
         let mut engine1 = TypeInferenceEngine::new();
@@ -43,6 +61,7 @@ proptest! {
 
 // Property: Typechecker should never panic on any parseable input
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_typechecker_never_panics_on_literals(
         int_val in any::<i64>(),
@@ -93,6 +112,7 @@ proptest! {
 
 // Property: Homogeneous lists should always infer consistently
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_homogeneous_list_inference(elements in prop::collection::vec(0i32..100, 1..20)) {
         let elements_str: Vec<String> = elements.iter().map(|x| x.to_string()).collect();
@@ -113,6 +133,7 @@ proptest! {
 
 // Property: Type concrete creation should handle various names
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_concrete_type_creation(type_name in "[A-Za-z][A-Za-z0-9_]*") {
         let concrete_type = Type::concrete(&type_name);
@@ -130,6 +151,7 @@ proptest! {
 
 // Property: Arithmetic expressions should be deterministic
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_arithmetic_determinism(
         a in 0i32..1000, 
@@ -158,6 +180,7 @@ proptest! {
 
 // Property: Variable names should not affect type inference (beyond resolution)
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_variable_name_independence(
         var_name in "[a-z][a-z0-9_]*",
@@ -177,6 +200,7 @@ proptest! {
 
 // Property: Nested collections maintain type consistency  
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_nested_collection_consistency(
         depth in 1usize..5,
@@ -202,6 +226,7 @@ proptest! {
 
 // Property: Error handling should be consistent
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_error_consistency(
         undefined_var in "[a-z][a-z0-9_]*",
@@ -234,6 +259,7 @@ proptest! {
 
 // Property: Large programs should not cause stack overflow
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_large_program_stack_safety(var_count in 10usize..100) {
         let mut source = String::new();
@@ -253,6 +279,7 @@ proptest! {
 
 // Property: Type inference should be idempotent (running twice gives same result)
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_type_inference_idempotent(value in 0i32..1000) {
         let source = format!("let x = {}", value);
@@ -275,6 +302,7 @@ proptest! {
 
 // Property: String escaping should not break type inference
 proptest! {
+    #![proptest_config(proptest_config())]
     #[test]
     fn test_string_escaping_robustness(content in ".*") {
         // Basic escaping for common problematic characters

@@ -70,6 +70,10 @@ pub struct ProtocolDefinition {
     pub required_protocols: HashSet<ProtocolId>,
     /// Module where this protocol is defined
     pub defining_module: ModuleId,
+    /// Functions that have default implementations (function_name -> true)
+    pub default_implementations: HashSet<String>,
+    /// All function signatures required by this protocol (function_name -> signature info)
+    pub required_functions: HashSet<String>,
     /// Source location for error reporting
     pub span: Option<Span>,
 }
@@ -114,12 +118,16 @@ impl ProtocolRegistry {
         protocol_id: ProtocolId,
         required_protocols: HashSet<ProtocolId>,
         defining_module: ModuleId,
+        default_implementations: HashSet<String>,
+        required_functions: HashSet<String>,
         span: Option<Span>,
     ) {
         let protocol_def = ProtocolDefinition {
             protocol_id: protocol_id.clone(),
             required_protocols,
             defining_module,
+            default_implementations,
+            required_functions,
             span,
         };
         
@@ -148,21 +156,46 @@ impl ProtocolRegistry {
 
     /// Check if a type satisfies all requirements for a protocol
     /// This checks both direct implementation and transitive requirements
-    pub fn type_satisfies_protocol(&self, type_id: &TypeId, protocol: &ProtocolId) -> bool {
-        // Check direct implementation
-        if !self.has_implementation(protocol, type_id) {
-            return false;
-        }
+    /// Check if a protocol is defined in the registry
+    pub fn has_protocol(&self, protocol_id: &ProtocolId) -> bool {
+        self.protocol_definitions.contains_key(protocol_id)
+    }
 
-        // Check all required protocols recursively
-        let requirements = self.get_protocol_requirements(protocol);
-        for required_protocol in requirements {
-            if !self.type_satisfies_protocol(type_id, &required_protocol) {
-                return false;
+    pub fn type_satisfies_protocol(&self, type_id: &TypeId, protocol: &ProtocolId) -> bool {
+        // If type explicitly implements the protocol, it satisfies it
+        if self.has_implementation(protocol, type_id) {
+            // Still need to check required protocols recursively
+            let requirements = self.get_protocol_requirements(protocol);
+            for required_protocol in requirements {
+                if !self.type_satisfies_protocol(type_id, &required_protocol) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        // If type doesn't explicitly implement, check if all required functions have defaults
+        if let Some(protocol_def) = self.protocol_definitions.get(protocol) {
+            // Check if every required function has a default implementation
+            let functions_without_defaults: HashSet<_> = protocol_def.required_functions
+                .difference(&protocol_def.default_implementations)
+                .collect();
+            
+            if functions_without_defaults.is_empty() {
+                // All required functions have defaults, type satisfies protocol
+                // Still need to check required protocols recursively
+                let requirements = self.get_protocol_requirements(protocol);
+                for required_protocol in requirements {
+                    if !self.type_satisfies_protocol(type_id, &required_protocol) {
+                        return false;
+                    }
+                }
+                return true;
             }
         }
-
-        true
+        
+        // Type doesn't implement protocol and not all functions have defaults
+        false
     }
 
     /// Register a new protocol implementation with full validation
@@ -196,6 +229,15 @@ impl ProtocolRegistry {
 
         // Perform orphan rule validation
         self.validate_orphan_rule(&protocol_id, &implementing_type, &defining_module, span)?;
+
+        // Special rule: Panic protocol cannot be implemented by any type
+        if protocol_id.0 == "Panic" {
+            return Err(ImplementationError::MarkerProtocolImplementation {
+                protocol_name: protocol_id.0.clone(),
+                type_name: implementing_type.0.clone(),
+                span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+            });
+        }
 
         // Create and store implementation info
         let impl_info = ImplementationInfo {
@@ -730,6 +772,8 @@ mod tests {
             integer_protocol.clone(),
             requirements,
             ModuleId::new("Integer"),
+            HashSet::new(), // default_implementations
+            HashSet::new(), // required_functions
             None,
         );
         
@@ -755,6 +799,8 @@ mod tests {
             integer_protocol.clone(),
             integer_requirements.clone(),
             ModuleId::new("Integer"),
+            HashSet::new(), // default_implementations
+            HashSet::new(), // required_functions
             None,
         );
         
@@ -809,6 +855,8 @@ mod tests {
             integer_protocol.clone(),
             integer_requirements,
             ModuleId::new("Integer"),
+            HashSet::new(), // default_implementations
+            HashSet::new(), // required_functions
             None,
         );
         

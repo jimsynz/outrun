@@ -99,8 +99,8 @@ fn test_function_type_display_and_structure() {
     use crate::types::Type;
     
     // Test Function type creation and display
-    let int_type = Type::concrete("Integer");
-    let string_type = Type::concrete("String");
+    let int_type = Type::protocol("Integer");
+    let string_type = Type::protocol("String");
     
     let function_type = Type::Function {
         params: vec![
