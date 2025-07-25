@@ -6,7 +6,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_boolean_type_bug_reproduction() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Simulate the exact scenario from string.outrun
     let test_code = r#"
 protocol Option<T> {
@@ -37,17 +37,17 @@ def test_function(): Boolean {
     Option.some?(value: some_option_value)
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Parse should succeed");
     let result = engine.typecheck_program(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Boolean type bug test passed - this means the bug is fixed!");
         }
         Err(e) => {
             println!("❌ Boolean type bug reproduced: {:?}", e);
-            
+
             // Check if we get the specific error about Boolean concrete type
             let error_str = format!("{:?}", e);
             if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
@@ -60,20 +60,20 @@ def test_function(): Boolean {
     }
 }
 
-#[test] 
+#[test]
 fn test_boolean_literal_inference() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Test that boolean literals correctly infer as Outrun.Core.Boolean
     let test_code = r#"
 def test_literal(): Boolean {
     true
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Parse should succeed");
     let result = engine.typecheck_program(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Boolean literal test passed - literals infer correctly");

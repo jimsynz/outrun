@@ -4,7 +4,7 @@
 //! that the typechecker maintains certain invariants and properties across
 //! all possible inputs.
 
-use crate::{typecheck_program, TypeInferenceEngine, types::Type};
+use crate::{typecheck_program, types::Type, TypeInferenceEngine};
 use outrun_parser::parse_program;
 use proptest::prelude::*;
 
@@ -17,7 +17,7 @@ fn proptest_config() -> ProptestConfig {
     } else {
         // Faster tests for development
         ProptestConfig {
-            cases: 10, // Reduced from default 256
+            cases: 10,             // Reduced from default 256
             max_shrink_iters: 100, // Reduced from default 1024
             ..ProptestConfig::default()
         }
@@ -31,7 +31,7 @@ proptest! {
     fn test_type_variable_uniqueness(count in 1usize..1000) {
         let mut engine = TypeInferenceEngine::new();
         let mut generated_vars = std::collections::HashSet::new();
-        
+
         for _ in 0..count {
             let var = engine.fresh_type_var();
             prop_assert!(
@@ -50,7 +50,7 @@ proptest! {
     fn test_type_variable_deterministic_sequence(count in 1usize..100) {
         let mut engine1 = TypeInferenceEngine::new();
         let mut engine2 = TypeInferenceEngine::new();
-        
+
         for _ in 0..count {
             let var1 = engine1.fresh_type_var();
             let var2 = engine2.fresh_type_var();
@@ -77,7 +77,7 @@ proptest! {
             }));
             prop_assert!(result.is_ok(), "Typechecker panicked on integer literal: {}", int_val);
         }
-        
+
         // Test float literals (only if finite)
         if float_val.is_finite() {
             let float_source = format!("let x = {}", float_val);
@@ -88,7 +88,7 @@ proptest! {
                 prop_assert!(result.is_ok(), "Typechecker panicked on float literal: {}", float_val);
             }
         }
-        
+
         // Test boolean literals
         let bool_source = format!("let x = {}", bool_val);
         if let Ok(mut program) = parse_program(&bool_source) {
@@ -97,7 +97,7 @@ proptest! {
             }));
             prop_assert!(result.is_ok(), "Typechecker panicked on boolean literal: {}", bool_val);
         }
-        
+
         // Test string literals (with basic escaping)
         let escaped_string = string_val.replace('\"', "\\\"").replace('\n', "\\n");
         let string_source = format!("let x = \"{}\"", escaped_string);
@@ -117,14 +117,14 @@ proptest! {
     fn test_homogeneous_list_inference(elements in prop::collection::vec(0i32..100, 1..20)) {
         let elements_str: Vec<String> = elements.iter().map(|x| x.to_string()).collect();
         let source = format!("let list = [{}]", elements_str.join(", "));
-        
+
         if let Ok(mut program) = parse_program(&source) {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program)
             }));
-            
+
             prop_assert!(result.is_ok(), "Typechecker panicked on homogeneous list");
-            
+
             // If typechecking succeeds, the list should be well-typed
             // (We can't easily check the exact type without more introspection)
         }
@@ -137,7 +137,7 @@ proptest! {
     #[test]
     fn test_concrete_type_creation(type_name in "[A-Za-z][A-Za-z0-9_]*") {
         let concrete_type = Type::concrete(&type_name);
-        
+
         // Should successfully create a concrete type
         match concrete_type {
             Type::Concrete { id, args, .. } => {
@@ -154,24 +154,24 @@ proptest! {
     #![proptest_config(proptest_config())]
     #[test]
     fn test_arithmetic_determinism(
-        a in 0i32..1000, 
+        a in 0i32..1000,
         b in 0i32..1000,
         op in prop::sample::select(vec!["+", "-", "*"])
     ) {
         let source = format!("let result = {} {} {}", a, op, b);
-        
+
         if let Ok(mut program1) = parse_program(&source) {
             if let Ok(mut program2) = parse_program(&source) {
                 let result1 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     typecheck_program(&mut program1)
                 }));
-                
+
                 let result2 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     typecheck_program(&mut program2)
                 }));
-                
+
                 // Both should succeed or fail in the same way
-                prop_assert_eq!(result1.is_ok(), result2.is_ok(), 
+                prop_assert_eq!(result1.is_ok(), result2.is_ok(),
                     "Typechecking should be deterministic for: {}", source);
             }
         }
@@ -187,18 +187,18 @@ proptest! {
         value in 0i32..100
     ) {
         let source = format!("let {} = {}", var_name, value);
-        
+
         if let Ok(mut program) = parse_program(&source) {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program)
             }));
-            
+
             prop_assert!(result.is_ok(), "Variable name '{}' caused panic", var_name);
         }
     }
 }
 
-// Property: Nested collections maintain type consistency  
+// Property: Nested collections maintain type consistency
 proptest! {
     #![proptest_config(proptest_config())]
     #[test]
@@ -211,14 +211,14 @@ proptest! {
         for _ in 0..depth {
             nested = format!("[{}]", nested);
         }
-        
+
         let source = format!("let nested = {}", nested);
-        
+
         if let Ok(mut program) = parse_program(&source) {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program)
             }));
-            
+
             prop_assert!(result.is_ok(), "Nested collection with depth {} caused panic", depth);
         }
     }
@@ -234,19 +234,19 @@ proptest! {
     ) {
         // Create program that references undefined variable
         let source = format!("let result = {} + {}", undefined_var, valid_value);
-        
+
         if let Ok(program) = parse_program(&source) {
             let result1 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program.clone())
             }));
-            
+
             let result2 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program.clone())
             }));
-            
+
             prop_assert!(result1.is_ok(), "Error handling caused panic");
             prop_assert!(result2.is_ok(), "Error handling caused panic on second run");
-            
+
             // Both runs should produce the same result (both should typically fail)
             match (result1.unwrap(), result2.unwrap()) {
                 (Ok(_), Ok(_)) => {}, // Both succeeded
@@ -266,12 +266,12 @@ proptest! {
         for i in 0..var_count {
             source.push_str(&format!("let var_{} = {}\n", i, i));
         }
-        
+
         if let Ok(mut program) = parse_program(&source) {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program)
             }));
-            
+
             prop_assert!(result.is_ok(), "Large program with {} variables caused panic", var_count);
         }
     }
@@ -283,15 +283,15 @@ proptest! {
     #[test]
     fn test_type_inference_idempotent(value in 0i32..1000) {
         let source = format!("let x = {}", value);
-        
+
         if let Ok(mut program1) = parse_program(&source) {
             if let Ok(mut program2) = parse_program(&source) {
                 let result1 = typecheck_program(&mut program1);
                 let result2 = typecheck_program(&mut program2);
-                
+
                 // Both should succeed or fail consistently
                 prop_assert_eq!(
-                    result1.is_ok(), 
+                    result1.is_ok(),
                     result2.is_ok(),
                     "Type inference should be idempotent"
                 );
@@ -312,14 +312,14 @@ proptest! {
             .replace('\n', "\\n")
             .replace('\r', "\\r")
             .replace('\t', "\\t");
-        
+
         let source = format!("let s = \"{}\"", escaped);
-        
+
         if let Ok(mut program) = parse_program(&source) {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 typecheck_program(&mut program)
             }));
-            
+
             prop_assert!(result.is_ok(), "String escaping caused panic with content: {}", escaped);
         }
     }

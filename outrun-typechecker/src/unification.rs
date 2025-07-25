@@ -61,7 +61,7 @@ impl Unifier {
         // Use iterative work queue approach to prevent stack overflow
         self.unify_iterative(left, right, left_context, right_context)
     }
-    
+
     /// Iterative unification implementation using work queue
     #[allow(clippy::result_large_err)]
     fn unify_iterative(
@@ -71,10 +71,9 @@ impl Unifier {
         initial_left_context: Option<&str>,
         initial_right_context: Option<&str>,
     ) -> Result<Substitution, UnificationError> {
-        
         let mut work_queue = std::collections::VecDeque::new();
         let mut result_substitution = Substitution::new();
-        
+
         // Add initial task
         work_queue.push_back(UnifyTask {
             left: initial_left.clone(),
@@ -82,20 +81,21 @@ impl Unifier {
             left_context: initial_left_context.map(String::from),
             right_context: initial_right_context.map(String::from),
         });
-        
+
         while let Some(task) = work_queue.pop_front() {
             let left = &task.left;
             let right = &task.right;
             let left_context = task.left_context.as_deref();
             let right_context = task.right_context.as_deref();
-            
-            let task_substitution = self.unify_single_step(left, right, left_context, right_context, &mut work_queue)?;
+
+            let task_substitution =
+                self.unify_single_step(left, right, left_context, right_context, &mut work_queue)?;
             result_substitution = result_substitution.compose(&task_substitution);
         }
-        
+
         Ok(result_substitution)
     }
-    
+
     /// Handle a single unification step, potentially adding sub-tasks to the work queue
     #[allow(clippy::result_large_err)]
     fn unify_single_step(
@@ -106,7 +106,6 @@ impl Unifier {
         right_context: Option<&str>,
         work_queue: &mut std::collections::VecDeque<UnifyTask>,
     ) -> Result<Substitution, UnificationError> {
-        
         match (left, right) {
             // Variable unification
             (Type::Variable { var_id: var1, .. }, Type::Variable { var_id: var2, .. })
@@ -277,7 +276,7 @@ impl Unifier {
                 }
             }
 
-            // Concrete type with Self type - resolve Self and unify  
+            // Concrete type with Self type - resolve Self and unify
             (concrete_type, Type::SelfType { .. }) => {
                 if let Some(resolved_self) = right.resolve_self() {
                     work_queue.push_back(UnifyTask {
@@ -343,7 +342,6 @@ impl Unifier {
         substitution.insert(var_id, other_type.clone());
         Ok(substitution)
     }
-
 
     /// Get type category for error messages
     fn type_category(&self, ty: &Type) -> String {

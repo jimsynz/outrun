@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Core dependencies for new interpreter integrating with typechecker v3
 outrun-parser = { path = "../outrun-parser" }
 outrun-typechecker = { path = "../outrun-typechecker" }
+
+# Error handling and diagnostics
 miette = "7.0"
 thiserror = "1.0"

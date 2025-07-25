@@ -7,16 +7,16 @@ use outrun_parser::parse_program;
 #[test]
 fn test_sigil_protocol_implementation_error() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("=== Debugging sigil.outrun Protocol implementation error ===");
-    
+
     // Get the core library path and collect all files
     let core_path = default_core_library_path().expect("Should find core library");
     let lib_path = core_path.join("lib");
-    
+
     let mut programs = Vec::new();
     collect_outrun_files(&lib_path, &mut programs).expect("Should collect files");
-    
+
     // Parse all programs
     let mut parsed_programs = Vec::new();
     for (file_path, content) in programs {
@@ -29,9 +29,9 @@ fn test_sigil_protocol_implementation_error() {
             }
         }
     }
-    
+
     println!("Parsed {} files", parsed_programs.len());
-    
+
     // Process through all phases like the real core library loading
     println!("=== Phase 2: Register protocols and structs ===");
     for (file_path, program) in &parsed_programs {
@@ -41,7 +41,7 @@ fn test_sigil_protocol_implementation_error() {
         }
     }
     println!("✅ Phase 2 completed successfully");
-    
+
     println!("=== Phase 2.5: Register automatic implementations ===");
     for (file_path, program) in &parsed_programs {
         if let Err(e) = engine.register_automatic_implementations(program) {
@@ -50,7 +50,7 @@ fn test_sigil_protocol_implementation_error() {
         }
     }
     println!("✅ Phase 2.5 completed successfully");
-    
+
     println!("=== Phase 3: Register implementations ===");
     for (file_path, program) in &parsed_programs {
         if let Err(e) = engine.register_implementations(program) {
@@ -59,7 +59,7 @@ fn test_sigil_protocol_implementation_error() {
         }
     }
     println!("✅ Phase 3 completed successfully");
-    
+
     println!("=== Phase 4: Register functions ===");
     for (file_path, program) in &parsed_programs {
         if let Err(e) = engine.register_functions(program) {
@@ -68,7 +68,7 @@ fn test_sigil_protocol_implementation_error() {
         }
     }
     println!("✅ Phase 4 completed successfully");
-    
+
     println!("=== Phase 6: Type check function bodies (focus on sigil.outrun) ===");
     for (file_path, mut program) in parsed_programs {
         if file_path.ends_with("sigil.outrun") {
@@ -80,7 +80,7 @@ fn test_sigil_protocol_implementation_error() {
                 Err(e) => {
                     println!("❌ sigil.outrun type checking failed: {:?}", e);
                     println!("Full error: {}", e);
-                    
+
                     // Let's also try to get more context about the specific error
                     let error_str = format!("{:?}", e);
                     if error_str.contains("Protocol implementation error") {

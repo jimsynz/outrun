@@ -23,14 +23,11 @@ pub fn collect_outrun_files(
 
     for entry in entries {
         let entry = entry.map_err(|e| {
-            TypecheckError::CoreLibraryError(format!(
-                "Failed to read directory entry: {}",
-                e
-            ))
+            TypecheckError::CoreLibraryError(format!("Failed to read directory entry: {}", e))
         })?;
-        
+
         let path = entry.path();
-        
+
         if path.is_dir() {
             // Recursively collect from subdirectories
             collect_outrun_files(&path, programs)?;
@@ -40,11 +37,10 @@ pub fn collect_outrun_files(
             let content = fs::read_to_string(&path).map_err(|e| {
                 TypecheckError::CoreLibraryError(format!(
                     "Failed to read file {}: {}",
-                    file_path,
-                    e
+                    file_path, e
                 ))
             })?;
-            
+
             programs.push((file_path, content));
         }
     }
@@ -57,12 +53,9 @@ pub fn collect_outrun_files(
 pub fn default_core_library_path() -> Result<std::path::PathBuf, TypecheckError> {
     // Try to find outrun-core relative to the current working directory
     let current_dir = std::env::current_dir().map_err(|e| {
-        TypecheckError::CoreLibraryError(format!(
-            "Failed to get current directory: {}",
-            e
-        ))
+        TypecheckError::CoreLibraryError(format!("Failed to get current directory: {}", e))
     })?;
-    
+
     // Look for outrun-core in the project root
     let mut search_path = current_dir;
     loop {
@@ -70,7 +63,7 @@ pub fn default_core_library_path() -> Result<std::path::PathBuf, TypecheckError>
         if core_path.exists() {
             return Ok(core_path);
         }
-        
+
         // Move up one directory
         if let Some(parent) = search_path.parent() {
             search_path = parent.to_path_buf();
@@ -78,8 +71,8 @@ pub fn default_core_library_path() -> Result<std::path::PathBuf, TypecheckError>
             break;
         }
     }
-    
+
     Err(TypecheckError::CoreLibraryError(
-        "Could not find outrun-core directory in project hierarchy".to_string()
+        "Could not find outrun-core directory in project hierarchy".to_string(),
     ))
 }

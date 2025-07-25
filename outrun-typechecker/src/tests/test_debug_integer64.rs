@@ -26,24 +26,30 @@ def test_function(): Boolean {
 
     let mut program = parse_program(input).expect("Parse should succeed");
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("🔍 Testing boolean protocol-to-concrete compatibility...");
-    
+
     // Test the type checking and see what type 'true' gets inferred as
-    engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-    engine.register_implementations(&program).expect("Phase 3 should succeed");
-    engine.register_functions(&program).expect("Phase 4 should succeed");
+    engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&program)
+        .expect("Phase 4 should succeed");
     // All phases completed successfully
-    
+
     // All phases completed, check for errors in type checking
     {
         let registry_result = engine.register_implementations(&program);
         println!("Implementation registration result: {:?}", registry_result);
-        
+
         if registry_result.is_ok() {
             let typecheck_result = engine.typecheck_program_items_only(&mut program);
             println!("Type checking result: {:?}", typecheck_result);
-            
+
             // If type checking failed, show detailed error
             if let Err(error) = &typecheck_result {
                 println!("Detailed error: {:#?}", error);
@@ -66,13 +72,24 @@ impl Integer for Outrun.Core.Integer64 {
 
     let mut program = parse_program(input).expect("Parse should succeed");
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("🔍 Testing Self type resolution...");
-    
-    let _ = engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed"); engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed"); engine.register_implementations(&program).expect("Phase 3 should succeed"); engine.register_functions(&program).expect("Phase 4 should succeed");
+
+    let _ = engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&program)
+        .expect("Phase 4 should succeed");
     let _ = engine.register_implementations(&program);
     let result = engine.typecheck_program_items_only(&mut program);
-    
+
     println!("Self resolution result: {:?}", result);
 }
 
@@ -90,17 +107,28 @@ impl Integer for Outrun.Core.Integer64 {
 
     let mut program = parse_program(input).expect("Parse should succeed");
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("🔍 Testing Boolean type consistency...");
-    
-    let _ = engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed"); engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed"); engine.register_implementations(&program).expect("Phase 3 should succeed"); engine.register_functions(&program).expect("Phase 4 should succeed");
+
+    let _ = engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&program)
+        .expect("Phase 4 should succeed");
     let _ = engine.register_implementations(&program);
     let result = engine.typecheck_program_items_only(&mut program);
-    
+
     println!("Boolean type result: {:?}", result);
 }
 
-#[test] 
+#[test]
 fn test_protocol_parameter_types() {
     let input = r#"
 struct Outrun.Core.Integer64() {}
@@ -114,12 +142,23 @@ impl Integer for Outrun.Core.Integer64 {
 
     let mut program = parse_program(input).expect("Parse should succeed");
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("🔍 Testing protocol parameter types...");
-    
-    let _ = engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed"); engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed"); engine.register_implementations(&program).expect("Phase 3 should succeed"); engine.register_functions(&program).expect("Phase 4 should succeed");
+
+    let _ = engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&program)
+        .expect("Phase 4 should succeed");
     let _ = engine.register_implementations(&program);
     let result = engine.typecheck_program_items_only(&mut program);
-    
+
     println!("Protocol parameter result: {:?}", result);
 }

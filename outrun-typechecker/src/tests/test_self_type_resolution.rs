@@ -6,7 +6,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_self_type_resolution_in_impl_block() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Test code that demonstrates the Self type resolution issue
     let test_code = r#"
 protocol Display {
@@ -23,12 +23,12 @@ impl Display for MyType {
     }
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Failed to parse test code");
-    
+
     // Process the program
     let result = engine.typecheck_program(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Self type resolution succeeded!");
@@ -36,7 +36,7 @@ impl Display for MyType {
         Err(e) => {
             println!("❌ Self type resolution failed: {:?}", e);
             println!("This demonstrates the Self type resolution issue");
-            
+
             // This should fail with a type mismatch between Self and String
             // The error should show that Self is not being resolved to MyType
         }
@@ -46,7 +46,7 @@ impl Display for MyType {
 #[test]
 fn test_self_type_resolution_concrete_return() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Simpler test - Self should resolve to concrete type
     let test_code = r#"
 struct MyType() {}
@@ -62,11 +62,11 @@ protocol Display {
     def identity(value: Self): Self
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Failed to parse test code");
-    
+
     let result = engine.typecheck_program(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Self to concrete type resolution succeeded!");
@@ -81,7 +81,7 @@ protocol Display {
 #[test]
 fn test_self_type_resolution_core_string_pattern() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Test the exact pattern from core library that was failing
     let test_code = r#"
 protocol String {
@@ -97,11 +97,11 @@ impl String for Outrun.Core.String {
     }
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Failed to parse test code");
-    
+
     let result = engine.typecheck_program(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Core String Self type resolution succeeded!");

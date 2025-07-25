@@ -1,16 +1,16 @@
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, MietteHandlerOpts, Result};
 use outrun_parser::parse_program_with_diagnostics_and_source;
-use outrun_typechecker::typecheck_program_with_source;
+// use outrun_typechecker::typecheck_program_with_source;  // TODO: Fix with new typechecker API
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process;
 
-mod repl;
 mod sexpr;
+mod simple_repl; // New simplified REPL with new interpreter
 
-use repl::{ReplConfig, ReplSession};
+use simple_repl::{SimpleReplConfig, SimpleReplSession};
 
 #[derive(Parser)]
 #[command(
@@ -45,7 +45,7 @@ enum Commands {
     },
     /// Start an interactive REPL session for evaluating Outrun expressions
     Repl {
-        /// Show type information with results
+        /// Show type information with results (note: no type checking yet)
         #[arg(long, short = 't')]
         show_types: bool,
 
@@ -53,7 +53,7 @@ enum Commands {
         #[arg(long, short = 'v')]
         verbose: bool,
 
-        /// Load program context from file (for variables and functions)
+        /// Load program context from file (for variables and functions) - not yet implemented
         #[arg(long, value_name = "FILE")]
         context: Option<PathBuf>,
     },
@@ -247,67 +247,70 @@ fn format_ast_clean(ast: &outrun_parser::Program) -> String {
     sexpr::format_program_as_sexpr(ast)
 }
 
-fn typecheck_core_library() -> Result<()> {
-    println!("🔬 TYPE CHECKING CORE LIBRARY:");
-    println!("{}", "=".repeat(60));
+// TODO: Re-implement with new typechecker API
+// fn typecheck_core_library() -> Result<()> {
+//     println!("🔬 TYPE CHECKING CORE LIBRARY:");
+//     println!("{}", "=".repeat(60));
 
-    // Load and compile just the core library
-    let collection = outrun_typechecker::core_library::load_core_library_collection();
-    let mut compiler_env = outrun_typechecker::CompilerEnvironment::new();
+//     // Load and compile just the core library
+//     let collection = outrun_typechecker::core_library::load_core_library_collection();
+//     let mut compiler_env = outrun_typechecker::CompilerEnvironment::new();
 
-    match compiler_env.compile_collection(collection) {
-        Ok(result) => {
-            println!("✅ Core library type checking successful!");
+//     match compiler_env.compile_collection(collection) {
+//         Ok(result) => {
+//             println!("✅ Core library type checking successful!");
 
-            // Debug print the typed AST
-            if !result.typed_programs.is_empty() {
-                println!("\n📋 CORE LIBRARY TYPED AST DEBUG:");
-                println!("{}", "-".repeat(40));
-                for (filename, typed_program) in &result.typed_programs {
-                    println!("\n🗂️ File: {filename}");
-                    println!("{typed_program:#?}");
-                }
-            }
+//             // Debug print the typed AST
+//             if !result.typed_programs.is_empty() {
+//                 println!("\n📋 CORE LIBRARY TYPED AST DEBUG:");
+//                 println!("{}", "-".repeat(40));
+//                 for (filename, typed_program) in &result.typed_programs {
+//                     println!("\n🗂️ File: {filename}");
+//                     println!("{typed_program:#?}");
+//                 }
+//             }
 
-            println!("\n📊 COMPILATION SUMMARY:");
-            println!("{}", "-".repeat(40));
-            println!("• Protocols: {}", result.protocols.len());
-            println!("• Structs: {}", result.structs.len());
-            println!("• Implementations: {}", result.implementations.len());
-            println!("• Functions: {}", compiler_env.function_count());
-            println!("• Typed Programs: {}", result.typed_programs.len());
+//             println!("\n📊 COMPILATION SUMMARY:");
+//             println!("{}", "-".repeat(40));
+//             println!("• Protocols: {}", result.protocols.len());
+//             println!("• Structs: {}", result.structs.len());
+//             println!("• Implementations: {}", result.implementations.len());
+//             println!("• Functions: {}", compiler_env.function_count());
+//             println!("• Typed Programs: {}", result.typed_programs.len());
 
-            Ok(())
-        }
-        Err(errors) => {
-            println!("❌ Core library type checking failed!");
-            println!("{}", "-".repeat(40));
+//             Ok(())
+//         }
+//         Err(errors) => {
+//             println!("❌ Core library type checking failed!");
+//             println!("{}", "-".repeat(40));
 
-            for error in &errors {
-                eprintln!("{error:?}");
-                eprintln!();
-            }
+//             for error in &errors {
+//                 eprintln!("{error:?}");
+//                 eprintln!();
+//             }
 
-            Err(miette::miette!(
-                "Core library type checking failed with {} errors",
-                errors.len()
-            ))
-        }
-    }
-}
+//             Err(miette::miette!(
+//                 "Core library type checking failed with {} errors",
+//                 errors.len()
+//             ))
+//         }
+//     }
+// }
 
 fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
     if core_lib {
+        // TODO: Re-implement with new typechecker API
         // Type check only the core library
-        match typecheck_core_library() {
-            Ok(()) => {
-                println!("✅ Core library type checking completed successfully");
-            }
-            Err(e) => {
-                eprintln!("{e:?}");
-                process::exit(1);
-            }
-        }
+        // match typecheck_core_library() {
+        //     Ok(()) => {
+        //         println!("✅ Core library type checking completed successfully");
+        //     }
+        //     Err(e) => {
+        //         eprintln!("{e:?}");
+        //         process::exit(1);
+        //     }
+        // }
+        eprintln!("TODO: Core library type checking not yet implemented with new typechecker API");
         return;
     }
 
@@ -407,32 +410,28 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
         println!("{}", "-".repeat(40));
         print_ast(&ast);
 
+        // TODO: Re-implement with new typechecker API
         // Now try to type check it
         println!("\n🔬 TYPE CHECKING RESULTS:");
         println!("{}", "=".repeat(60));
 
-        match typecheck_program_with_source(ast, &source, &source_name) {
-            Ok(typed_program) => {
+        // Use new typechecker API
+        use outrun_typechecker::typecheck_program;
+        let mut ast = ast; // Make mutable for new API
+        match typecheck_program(&mut ast) {
+            Ok(()) => {
                 println!("✅ Type checking successful!");
                 println!("\n📋 TYPED AST DEBUG:");
                 println!("{}", "-".repeat(40));
-                println!("{typed_program:#?}");
+                println!("{ast:#?}");
             }
-            Err(error_report) => {
-                let summary = error_report.error_summary();
-                println!("❌ Type checking failed: {summary}");
+            Err(error) => {
+                println!("❌ Type checking failed: {error}");
                 println!("{}", "-".repeat(40));
 
-                // Display each error individually with beautiful miette formatting
-                for report in error_report.create_individual_reports() {
-                    eprintln!("{report:?}");
-                    eprintln!(); // Add spacing between errors
-                }
+                eprintln!("{error:?}");
 
-                return Err(miette::miette!(
-                    "Type checking failed with {} errors",
-                    error_report.error_count()
-                ));
+                return Err(miette::miette!("Type checking failed: {error}"));
             }
         }
 
@@ -445,7 +444,7 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
 
 fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>) {
     // Create REPL configuration based on command line options
-    let config = ReplConfig {
+    let config = SimpleReplConfig {
         show_types,
         verbose_errors: verbose,
         ..Default::default()
@@ -460,7 +459,7 @@ fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>
     }
 
     // Create and start the REPL session
-    match ReplSession::with_config(config) {
+    match SimpleReplSession::with_config(config) {
         Ok(mut session) => {
             if let Err(e) = session.run() {
                 eprintln!("REPL error: {e:?}");

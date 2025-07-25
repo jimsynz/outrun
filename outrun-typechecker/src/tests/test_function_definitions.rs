@@ -26,14 +26,24 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should not panic and should register the struct functions using new phase approach
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Function registration should succeed: {:?}", result);
-        
+        assert!(
+            result.is_ok(),
+            "Function registration should succeed: {:?}",
+            result
+        );
+
         // Verify that the functions were registered in the function registry
         // Note: Since the function registry is behind Rc, we can't easily inspect it here
         // but the fact that register_functions succeeded means the functions were processed
@@ -53,13 +63,23 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should not panic and should register the protocol functions using new phase approach
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Protocol function registration should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Protocol function registration should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -76,13 +96,23 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should not panic and should collect the standalone functions
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Standalone function collection should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Standalone function collection should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -100,13 +130,23 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should handle complex type annotations
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Complex type function collection should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Complex type function collection should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -125,13 +165,23 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should handle function collection
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Function collection should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Function collection should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -150,12 +200,22 @@ mod function_definition_tests {
 
         let program = parse_program(source).expect("Parse should succeed");
         let mut engine = create_test_engine();
-        
+
         // This should handle impl block functions with both public and private visibility
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
         let result = engine.register_functions(&program);
-        assert!(result.is_ok(), "Impl block function collection should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Impl block function collection should succeed: {:?}",
+            result
+        );
     }
 }

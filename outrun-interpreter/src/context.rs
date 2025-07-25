@@ -1,558 +1,448 @@
-//! Runtime context for the Outrun interpreter
+//! Runtime context for the new Outrun interpreter
 //!
-//! This module provides the core runtime context that manages interpreter state,
-//! integrates with the typechecker, and handles variable bindings and function calls.
+//! This module provides the InterpreterContext that integrates with typechecker v3
+//! and manages runtime state, variable bindings, and function dispatch.
 
-use crate::types::TypeIntegration;
 use crate::value::Value;
-use outrun_parser::Span;
-use outrun_typechecker::unification::{StructuredType, UnificationContext};
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Errors that can occur during runtime context operations
+/// Errors that can occur during interpreter context operations
 #[derive(Debug, Error)]
-pub enum ContextError {
+pub enum InterpreterError {
     #[error("Variable '{name}' not found in current scope")]
     VariableNotFound { name: String },
-
-    #[error("Cannot access variable '{name}' from outer scope")]
-    VariableNotAccessible { name: String },
 
     #[error("Variable '{name}' already defined in current scope")]
     VariableAlreadyDefined { name: String },
 
+    #[error("Type error: {message}")]
+    TypeError { message: String },
+
     #[error("Function call stack overflow (max depth: {max_depth})")]
     StackOverflow { max_depth: usize },
 
-    #[error("Cannot pop from empty call stack")]
-    EmptyCallStack,
+    #[error("Cannot access variable from outer scope: {name}")]
+    ScopeError { name: String },
 
-    #[error("Type integration error: {source}")]
-    TypeIntegration {
-        #[from]
-        source: crate::types::TypeIntegrationError,
-    },
+    #[error("Integration error with typechecker: {message}")]
+    TypecheckerIntegration { message: String },
 }
 
-/// The main runtime context for the Outrun interpreter
+/// Runtime context for the new Outrun interpreter
 ///
-/// This context integrates with the typechecker's `UnificationContext` and `CompilerEnvironment`
-/// while adding runtime-specific state management for variable bindings and function calls.
+/// This context integrates with typechecker v3's package-based compilation
+/// system while providing runtime variable bindings and function dispatch.
 pub struct InterpreterContext {
-    /// Integration with the typechecker's unification context for type information
-    type_context: UnificationContext,
-
     /// Variable environment for runtime bindings (lexical scoping)
     variable_environment: VariableEnvironment,
 
-    /// Call stack for function calls and error reporting
+    /// Function call stack for error reporting and recursion detection
     call_stack: Vec<CallFrame>,
 
-    /// Global constants and module-level bindings
-    global_environment: HashMap<String, Value>,
-
-    /// Type integration utilities for Value ↔ StructuredType conversion
-    type_integration: TypeIntegration,
-
-    /// Maximum call stack depth to prevent infinite recursion
+    /// Maximum recursion depth to prevent stack overflow
     max_stack_depth: usize,
+
+    /// Integration with typechecker v3 - stores package compilation results
+    /// This will contain the type information and dispatch tables from typechecker
+    typechecker_integration: Option<TypecheckerIntegration>,
+}
+
+/// Variable environment managing lexical scoping
+#[derive(Debug)]
+struct VariableEnvironment {
+    /// Stack of scopes, with each scope containing variable bindings
+    scopes: Vec<HashMap<String, Value>>,
+}
+
+/// Call frame for function calls and error reporting
+#[derive(Debug)]
+pub struct CallFrame {
+    /// Function or expression being evaluated
+    pub name: String,
+    /// Source location for error reporting
+    pub span: Option<outrun_parser::Span>,
+    /// Local variable bindings for this call
+    pub locals: HashMap<String, Value>,
+}
+
+/// Integration point with typechecker v3
+///
+/// This will store the results of package compilation and provide
+/// access to type information and dispatch tables.
+#[derive(Debug)]
+struct TypecheckerIntegration {
+    /// Package that has been type-checked
+    /// For now, we'll store a simplified representation
+    package_name: String,
+    /// Type information extracted from the typechecker
+    type_registry: HashMap<String, TypeInfo>,
+    /// Function dispatch table from typechecker
+    function_registry: HashMap<String, FunctionInfo>,
+}
+
+/// Simplified type information for integration
+#[derive(Debug, Clone)]
+struct TypeInfo {
+    /// Type name
+    name: String,
+    /// Whether this is a protocol or concrete type
+    kind: TypeKind,
+}
+
+/// Kind of type for dispatch purposes
+#[derive(Debug, Clone)]
+enum TypeKind {
+    Protocol,
+    Struct,
+    Primitive,
+}
+
+/// Function information for dispatch
+#[derive(Debug, Clone)]
+struct FunctionInfo {
+    /// Function name
+    name: String,
+    /// Parameter names and types
+    parameters: Vec<(String, TypeInfo)>,
+    /// Return type
+    return_type: TypeInfo,
+    /// Whether this is an intrinsic function
+    is_intrinsic: bool,
 }
 
 impl InterpreterContext {
-    /// Create a new interpreter context from a typed program
-    ///
-    /// This takes ownership of the typechecker's context,
-    /// creating a runtime environment ready for expression evaluation.
-    pub fn new(
-        type_context: UnificationContext,
-        compiler_environment: outrun_typechecker::compilation::compiler_environment::CompilerEnvironment,
-        max_stack_depth: Option<usize>,
-    ) -> Self {
-        // NOTE: TypeIntegration now takes CompilerEnvironment as a separate parameter
-        // This ensures type IDs are consistent across all components
-        let type_integration = TypeIntegration::new(compiler_environment);
-
+    /// Create a new interpreter context
+    pub fn new() -> Self {
         Self {
-            type_context,
             variable_environment: VariableEnvironment::new(),
             call_stack: Vec::new(),
-            global_environment: HashMap::new(),
-            type_integration,
-            max_stack_depth: max_stack_depth.unwrap_or(1000),
+            max_stack_depth: 1000, // Reasonable default
+            typechecker_integration: None,
         }
     }
 
-    /// Create a new context for REPL usage with a fresh environment
-    pub fn new_repl() -> Self {
-        let compiler_env =
-            outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
-        Self::new(
-            UnificationContext::new(),
-            compiler_env,
-            Some(100), // Smaller stack for REPL
-        )
+    /// Create a new context with integration to a type-checked package
+    pub fn with_package(package: &outrun_typechecker::Package) -> Result<Self, InterpreterError> {
+        let mut context = Self::new();
+        context.integrate_package(package)?;
+        Ok(context)
     }
 
-    // Variable Environment Management
+    /// Integrate with a type-checked package from typechecker v3
+    pub fn integrate_package(
+        &mut self,
+        package: &outrun_typechecker::Package,
+    ) -> Result<(), InterpreterError> {
+        // TODO: Extract type and function information from the package
+        // For now, create a minimal integration
+        let integration = TypecheckerIntegration {
+            package_name: package.package_name.clone(),
+            type_registry: HashMap::new(),
+            function_registry: HashMap::new(),
+        };
+
+        self.typechecker_integration = Some(integration);
+        Ok(())
+    }
+
+    /// Check if the context is empty (no variables or call stack)
+    pub fn is_empty(&self) -> bool {
+        self.variable_environment.is_empty() && self.call_stack.is_empty()
+    }
 
     /// Define a variable in the current scope
-    pub fn define_variable(&mut self, name: String, value: Value) -> Result<(), ContextError> {
-        self.variable_environment.define(name, value)
+    pub fn define_variable(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
+        if self.variable_environment.current_scope_contains(&name) {
+            return Err(InterpreterError::VariableAlreadyDefined { name });
+        }
+
+        self.variable_environment.define(name, value);
+        Ok(())
     }
 
-    /// Look up a variable value by name (searches up the scope chain)
-    pub fn lookup_variable(&self, name: &str) -> Result<&Value, ContextError> {
-        self.variable_environment.lookup(name)
+    /// Get a variable from the environment (searches all scopes)
+    pub fn get_variable(&self, name: &str) -> Result<&Value, InterpreterError> {
+        self.variable_environment
+            .get(name)
+            .ok_or_else(|| InterpreterError::VariableNotFound {
+                name: name.to_string(),
+            })
     }
 
-    /// Update an existing variable (searches up the scope chain)
-    pub fn update_variable(&mut self, name: &str, value: Value) -> Result<(), ContextError> {
-        self.variable_environment.update(name, value)
+    /// Update an existing variable (searches all scopes)
+    pub fn update_variable(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
+        if !self.variable_environment.contains(&name) {
+            return Err(InterpreterError::VariableNotFound { name });
+        }
+
+        self.variable_environment.update(name, value);
+        Ok(())
     }
 
-    /// Push a new lexical scope (for blocks, functions, etc.)
-    pub fn push_scope(&mut self, scope_type: ScopeType) {
-        self.variable_environment.push_scope(scope_type);
+    /// Get all variables in the current context (for REPL display)
+    pub fn list_variables(&self) -> Vec<(String, &Value)> {
+        self.variable_environment.list_all()
     }
 
-    /// Pop the current lexical scope
-    pub fn pop_scope(&mut self) -> Result<(), ContextError> {
-        self.variable_environment.pop_scope()
+    /// Push a new variable scope (for function calls, let bindings, etc.)
+    pub fn push_scope(&mut self) {
+        self.variable_environment.push_scope();
     }
 
-    // Call Stack Management
+    /// Pop the current variable scope
+    pub fn pop_scope(&mut self) {
+        self.variable_environment.pop_scope();
+    }
 
-    /// Push a new call frame onto the stack
-    pub fn push_call_frame(&mut self, frame: CallFrame) -> Result<(), ContextError> {
+    /// Push a new call frame
+    pub fn push_call_frame(
+        &mut self,
+        name: String,
+        span: Option<outrun_parser::Span>,
+    ) -> Result<(), InterpreterError> {
         if self.call_stack.len() >= self.max_stack_depth {
-            return Err(ContextError::StackOverflow {
+            return Err(InterpreterError::StackOverflow {
                 max_depth: self.max_stack_depth,
             });
         }
+
+        let frame = CallFrame {
+            name,
+            span,
+            locals: HashMap::new(),
+        };
+
         self.call_stack.push(frame);
         Ok(())
     }
 
-    /// Pop the current call frame from the stack
-    pub fn pop_call_frame(&mut self) -> Result<CallFrame, ContextError> {
-        self.call_stack.pop().ok_or(ContextError::EmptyCallStack)
+    /// Pop the current call frame
+    pub fn pop_call_frame(&mut self) -> Option<CallFrame> {
+        self.call_stack.pop()
     }
 
-    /// Get the current call stack depth
-    pub fn call_stack_depth(&self) -> usize {
-        self.call_stack.len()
+    /// Get the current call stack for error reporting
+    pub fn call_stack(&self) -> &[CallFrame] {
+        &self.call_stack
     }
 
-    /// Get a reference to the current call frame (top of stack)
-    pub fn current_call_frame(&self) -> Option<&CallFrame> {
-        self.call_stack.last()
+    /// Look up function information for dispatch
+    pub fn get_function_info(&self, name: &str) -> Option<&FunctionInfo> {
+        self.typechecker_integration
+            .as_ref()?
+            .function_registry
+            .get(name)
     }
 
-    // Type System Integration
-
-    /// Get the StructuredType for a runtime Value
-    pub fn value_to_type(&mut self, value: &Value) -> StructuredType {
-        self.type_integration.value_to_structured_type(value)
+    /// Look up type information
+    pub fn get_type_info(&self, name: &str) -> Option<&TypeInfo> {
+        self.typechecker_integration
+            .as_ref()?
+            .type_registry
+            .get(name)
     }
-
-    /// Validate that a Value matches an expected StructuredType
-    pub fn validate_value_type(&mut self, value: &Value, expected_type: &StructuredType) -> bool {
-        self.type_integration
-            .validate_value_type(value, expected_type)
-    }
-
-    /// Get the resolved type for an expression by its span
-    pub fn get_expression_type(&self, span: &Span) -> Option<&StructuredType> {
-        self.type_context.expression_types.get(span)
-    }
-
-    // Function operations are now handled through CompilerEnvironment in UnificationContext
-
-    /// Get a reference to the type context for advanced type operations
-    pub fn type_context(&self) -> &UnificationContext {
-        &self.type_context
-    }
-
-    // Global Environment Management
-
-    /// Define a global constant or module-level binding
-    pub fn define_global(&mut self, name: String, value: Value) {
-        self.global_environment.insert(name, value);
-    }
-
-    /// Look up a global constant or module-level binding
-    pub fn lookup_global(&self, name: &str) -> Option<&Value> {
-        self.global_environment.get(name)
-    }
-
-    /// Get a debug representation of the current state
-    pub fn debug_state(&self) -> String {
-        format!(
-            "InterpreterContext {{\n  call_stack_depth: {},\n  variable_scopes: {},\n  global_bindings: {},\n}}",
-            self.call_stack.len(),
-            self.variable_environment.scope_count(),
-            self.global_environment.len()
-        )
-    }
-
-    /// Get current scope information for debugging
-    pub fn current_scope_info(&self) -> String {
-        self.variable_environment.current_scope_info()
-    }
-}
-
-/// Variable environment with lexical scoping support
-#[derive(Debug)]
-struct VariableEnvironment {
-    /// Stack of scopes for lexical scoping (innermost scope at the end)
-    scopes: Vec<Scope>,
 }
 
 impl VariableEnvironment {
+    /// Create a new variable environment with a global scope
     fn new() -> Self {
         Self {
-            scopes: vec![Scope::new(ScopeType::Global)],
+            scopes: vec![HashMap::new()], // Start with global scope
         }
     }
 
-    fn define(&mut self, name: String, value: Value) -> Result<(), ContextError> {
+    /// Check if the environment is empty (only global scope with no variables)
+    fn is_empty(&self) -> bool {
+        self.scopes.len() == 1 && self.scopes[0].is_empty()
+    }
+
+    /// Define a variable in the current (top) scope
+    fn define(&mut self, name: String, value: Value) {
         if let Some(current_scope) = self.scopes.last_mut() {
-            if current_scope.bindings.contains_key(&name) {
-                return Err(ContextError::VariableAlreadyDefined { name });
-            }
-            current_scope.bindings.insert(name, value);
-            Ok(())
-        } else {
-            // This should never happen as we always have at least the global scope
-            unreachable!("No scopes available - this is a bug");
+            current_scope.insert(name, value);
         }
     }
 
-    fn lookup(&self, name: &str) -> Result<&Value, ContextError> {
-        // Search from innermost to outermost scope
+    /// Get a variable by searching all scopes from current to global
+    fn get(&self, name: &str) -> Option<&Value> {
         for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.bindings.get(name) {
-                return Ok(value);
+            if let Some(value) = scope.get(name) {
+                return Some(value);
             }
         }
-        Err(ContextError::VariableNotFound {
-            name: name.to_string(),
-        })
+        None
     }
 
-    fn update(&mut self, name: &str, value: Value) -> Result<(), ContextError> {
-        // Search from innermost to outermost scope
+    /// Update an existing variable (searches all scopes)
+    fn update(&mut self, name: String, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
-            if scope.bindings.contains_key(name) {
-                scope.bindings.insert(name.to_string(), value);
-                return Ok(());
+            if scope.contains_key(&name) {
+                scope.insert(name, value);
+                return;
             }
         }
-        Err(ContextError::VariableNotFound {
-            name: name.to_string(),
-        })
     }
 
-    fn push_scope(&mut self, scope_type: ScopeType) {
-        self.scopes.push(Scope::new(scope_type));
+    /// Check if any scope contains a variable
+    fn contains(&self, name: &str) -> bool {
+        self.get(name).is_some()
     }
 
-    fn pop_scope(&mut self) -> Result<(), ContextError> {
-        if self.scopes.len() <= 1 {
-            // Never pop the global scope
-            return Err(ContextError::VariableNotAccessible {
-                name: "global".to_string(),
-            });
-        }
-        self.scopes.pop();
-        Ok(())
+    /// Check if the current scope contains a variable
+    fn current_scope_contains(&self, name: &str) -> bool {
+        self.scopes
+            .last()
+            .map(|scope| scope.contains_key(name))
+            .unwrap_or(false)
     }
 
-    fn scope_count(&self) -> usize {
-        self.scopes.len()
+    /// Push a new scope
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
     }
 
-    fn current_scope_info(&self) -> String {
-        if let Some(scope) = self.scopes.last() {
-            format!(
-                "{:?} scope with {} bindings",
-                scope.scope_type,
-                scope.bindings.len()
-            )
-        } else {
-            "No active scope".to_string()
-        }
-    }
-}
-
-/// A single lexical scope containing variable bindings
-#[derive(Debug)]
-struct Scope {
-    /// Variable name -> runtime value mapping
-    bindings: HashMap<String, Value>,
-    /// Scope type for debugging and error reporting
-    scope_type: ScopeType,
-}
-
-impl Scope {
-    fn new(scope_type: ScopeType) -> Self {
-        Self {
-            bindings: HashMap::new(),
-            scope_type,
-        }
-    }
-}
-
-/// Types of lexical scopes for debugging and error reporting
-#[derive(Debug, Clone)]
-pub enum ScopeType {
-    /// Global/module-level scope
-    Global,
-    /// Function call scope
-    Function { name: String },
-    /// Block scope (from let bindings, if expressions, etc.)
-    Block,
-    /// Pattern matching scope (from case expressions, destructuring)
-    Pattern { pattern_span: Span },
-    /// REPL expression scope
-    Repl,
-}
-
-/// A call frame representing a function call on the stack
-#[derive(Debug, Clone)]
-pub struct CallFrame {
-    /// Name of the function being called
-    pub function_name: String,
-    /// Call site location for error reporting
-    pub call_span: Span,
-    /// Arguments passed to the function
-    pub arguments: HashMap<String, Value>,
-    /// Return type expected from this function call
-    pub return_type: Option<StructuredType>,
-}
-
-impl CallFrame {
-    /// Create a new call frame
-    pub fn new(
-        function_name: String,
-        call_span: Span,
-        arguments: HashMap<String, Value>,
-        return_type: Option<StructuredType>,
-    ) -> Self {
-        Self {
-            function_name,
-            call_span,
-            arguments,
-            return_type,
+    /// Pop the current scope (but keep at least the global scope)
+    fn pop_scope(&mut self) {
+        if self.scopes.len() > 1 {
+            self.scopes.pop();
         }
     }
 
-    /// Get an argument value by name
-    pub fn get_argument(&self, name: &str) -> Option<&Value> {
-        self.arguments.get(name)
-    }
+    /// List all variables across all scopes (for REPL display)
+    fn list_all(&self) -> Vec<(String, &Value)> {
+        let mut variables = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
 
-    /// Get debug information for this call frame
-    pub fn debug_info(&self) -> String {
-        format!(
-            "{}({} args) at {:?}",
-            self.function_name,
-            self.arguments.len(),
-            self.call_span
-        )
+        // Iterate through scopes from current to global to show shadowing correctly
+        // This way, we get the most recent binding for each variable name
+        for scope in self.scopes.iter().rev() {
+            for (name, value) in scope {
+                // Only add if not already seen (to handle shadowing)
+                if !seen_names.contains(name) {
+                    variables.push((name.clone(), value));
+                    seen_names.insert(name.clone());
+                }
+            }
+        }
+
+        variables.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by name
+        variables
+    }
+}
+
+impl Default for InterpreterContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Value;
 
     #[test]
-    fn test_variable_environment_basic_operations() {
-        let mut ctx = InterpreterContext::new_repl();
+    fn test_context_creation() {
+        let context = InterpreterContext::new();
+        assert!(context.is_empty());
+        assert_eq!(context.call_stack().len(), 0);
+    }
+
+    #[test]
+    fn test_variable_operations() {
+        let mut context = InterpreterContext::new();
 
         // Define a variable
         let value = Value::integer(42);
-        ctx.define_variable("x".to_string(), value.clone()).unwrap();
+        context
+            .define_variable("x".to_string(), value.clone())
+            .unwrap();
 
-        // Look it up
-        let looked_up = ctx.lookup_variable("x").unwrap();
-        assert_eq!(looked_up, &value);
+        // Get the variable
+        let retrieved = context.get_variable("x").unwrap();
+        assert_eq!(retrieved, &value);
 
-        // Update it
-        let new_value = Value::integer(100);
-        ctx.update_variable("x", new_value.clone()).unwrap();
-        let updated = ctx.lookup_variable("x").unwrap();
+        // Update the variable
+        let new_value = Value::integer(84);
+        context
+            .update_variable("x".to_string(), new_value.clone())
+            .unwrap();
+
+        let updated = context.get_variable("x").unwrap();
         assert_eq!(updated, &new_value);
     }
 
     #[test]
-    fn test_lexical_scoping() {
-        let mut ctx = InterpreterContext::new_repl();
-
-        // Define in global scope
-        ctx.define_variable("global_var".to_string(), Value::integer(1))
-            .unwrap();
-
-        // Push a new scope
-        ctx.push_scope(ScopeType::Block);
-
-        // Define in local scope (shadows global if same name)
-        ctx.define_variable("local_var".to_string(), Value::integer(2))
-            .unwrap();
-        ctx.define_variable("global_var".to_string(), Value::integer(3))
-            .unwrap(); // shadows
-
-        // Look up variables
-        assert_eq!(
-            ctx.lookup_variable("local_var").unwrap(),
-            &Value::integer(2)
-        );
-        assert_eq!(
-            ctx.lookup_variable("global_var").unwrap(),
-            &Value::integer(3)
-        ); // shadowed
-
-        // Pop scope
-        ctx.pop_scope().unwrap();
-
-        // Local variable should be gone, global should be restored
-        assert!(ctx.lookup_variable("local_var").is_err());
-        assert_eq!(
-            ctx.lookup_variable("global_var").unwrap(),
-            &Value::integer(1)
-        ); // original
-    }
-
-    #[test]
-    fn test_call_stack_management() {
-        let mut ctx = InterpreterContext::new_repl();
-
-        assert_eq!(ctx.call_stack_depth(), 0);
-        assert!(ctx.current_call_frame().is_none());
-
-        // Push a call frame
-        let frame = CallFrame::new(
-            "test_function".to_string(),
-            Span::new(0, 0),
-            HashMap::new(),
-            None,
-        );
-        ctx.push_call_frame(frame.clone()).unwrap();
-
-        assert_eq!(ctx.call_stack_depth(), 1);
-        assert!(ctx.current_call_frame().is_some());
-        assert_eq!(
-            ctx.current_call_frame().unwrap().function_name,
-            "test_function"
-        );
-
-        // Pop the frame
-        let popped = ctx.pop_call_frame().unwrap();
-        assert_eq!(popped.function_name, "test_function");
-        assert_eq!(ctx.call_stack_depth(), 0);
-    }
-
-    #[test]
-    fn test_global_environment() {
-        let mut ctx = InterpreterContext::new_repl();
-
-        // Define global
-        let value = Value::string("global_constant".to_string());
-        ctx.define_global("CONSTANT".to_string(), value.clone());
-
-        // Look it up
-        let looked_up = ctx.lookup_global("CONSTANT").unwrap();
-        assert_eq!(looked_up, &value);
-
-        // Non-existent global
-        assert!(ctx.lookup_global("MISSING").is_none());
-    }
-
-    #[test]
-    fn test_variable_shadowing() {
-        let mut ctx = InterpreterContext::new_repl();
+    fn test_scope_management() {
+        let mut context = InterpreterContext::new();
 
         // Define variable in global scope
-        ctx.define_variable("x".to_string(), Value::integer(1))
+        context
+            .define_variable("global".to_string(), Value::integer(1))
             .unwrap();
 
-        // Push function scope
-        ctx.push_scope(ScopeType::Function {
-            name: "test".to_string(),
-        });
-        ctx.define_variable("x".to_string(), Value::integer(2))
+        // Push new scope
+        context.push_scope();
+
+        // Define variable in local scope
+        context
+            .define_variable("local".to_string(), Value::integer(2))
             .unwrap();
 
-        // Push block scope
-        ctx.push_scope(ScopeType::Block);
-        ctx.define_variable("x".to_string(), Value::integer(3))
+        // Both variables should be accessible
+        assert_eq!(context.get_variable("global").unwrap(), &Value::integer(1));
+        assert_eq!(context.get_variable("local").unwrap(), &Value::integer(2));
+
+        // Pop scope
+        context.pop_scope();
+
+        // Global should still be accessible, local should not
+        assert_eq!(context.get_variable("global").unwrap(), &Value::integer(1));
+        assert!(context.get_variable("local").is_err());
+    }
+
+    #[test]
+    fn test_call_frame_management() {
+        let mut context = InterpreterContext::new();
+
+        // Push call frame
+        context
+            .push_call_frame("test_function".to_string(), None)
             .unwrap();
+        assert_eq!(context.call_stack().len(), 1);
 
-        // Should see innermost value
-        assert_eq!(ctx.lookup_variable("x").unwrap(), &Value::integer(3));
-
-        // Pop block scope
-        ctx.pop_scope().unwrap();
-        assert_eq!(ctx.lookup_variable("x").unwrap(), &Value::integer(2));
-
-        // Pop function scope
-        ctx.pop_scope().unwrap();
-        assert_eq!(ctx.lookup_variable("x").unwrap(), &Value::integer(1));
+        // Pop call frame
+        let frame = context.pop_call_frame().unwrap();
+        assert_eq!(frame.name, "test_function");
+        assert_eq!(context.call_stack().len(), 0);
     }
 
     #[test]
     fn test_error_conditions() {
-        let mut ctx = InterpreterContext::new_repl();
+        let mut context = InterpreterContext::new();
 
-        // Variable not found
+        // Try to get non-existent variable
+        let result = context.get_variable("nonexistent");
         assert!(matches!(
-            ctx.lookup_variable("missing"),
-            Err(ContextError::VariableNotFound { .. })
+            result,
+            Err(InterpreterError::VariableNotFound { .. })
         ));
 
-        // Variable already defined
-        ctx.define_variable("x".to_string(), Value::integer(1))
+        // Try to define duplicate variable in same scope
+        context
+            .define_variable("x".to_string(), Value::integer(1))
             .unwrap();
+        let result = context.define_variable("x".to_string(), Value::integer(2));
         assert!(matches!(
-            ctx.define_variable("x".to_string(), Value::integer(2)),
-            Err(ContextError::VariableAlreadyDefined { .. })
+            result,
+            Err(InterpreterError::VariableAlreadyDefined { .. })
         ));
 
-        // Cannot pop global scope
-        assert!(ctx.pop_scope().is_err());
-
-        // Cannot pop empty call stack
+        // Try to update non-existent variable
+        let result = context.update_variable("nonexistent".to_string(), Value::integer(1));
         assert!(matches!(
-            ctx.pop_call_frame(),
-            Err(ContextError::EmptyCallStack)
-        ));
-    }
-
-    #[test]
-    fn test_stack_overflow_protection() {
-        let compiler_env =
-            outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
-        let mut ctx = InterpreterContext::new(
-            UnificationContext::new(),
-            compiler_env,
-            Some(2), // Very small stack for testing
-        );
-
-        // Push frames up to the limit
-        let frame1 = CallFrame::new("func1".to_string(), Span::new(0, 0), HashMap::new(), None);
-        let frame2 = CallFrame::new("func2".to_string(), Span::new(0, 0), HashMap::new(), None);
-
-        ctx.push_call_frame(frame1).unwrap();
-        ctx.push_call_frame(frame2).unwrap();
-
-        // Next push should fail
-        let frame3 = CallFrame::new("func3".to_string(), Span::new(0, 0), HashMap::new(), None);
-        assert!(matches!(
-            ctx.push_call_frame(frame3),
-            Err(ContextError::StackOverflow { .. })
+            result,
+            Err(InterpreterError::VariableNotFound { .. })
         ));
     }
 }

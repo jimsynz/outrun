@@ -6,7 +6,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_core_boolean_type_checking() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // First, register the dependencies (protocols only)
     let boolean_protocol = r#"
 protocol Boolean when Self: LogicalAnd && Self: LogicalOr && Self: LogicalNot {
@@ -97,28 +97,45 @@ impl Default for Outrun.Core.Boolean {
     }
 }
 "#;
-    
+
     println!("=== Setting up dependencies ===");
-    let mut deps_program = parse_program(boolean_protocol).expect("Parse dependencies should succeed");
-    
+    let mut deps_program =
+        parse_program(boolean_protocol).expect("Parse dependencies should succeed");
+
     // Process through all phases for dependencies
-    engine.register_protocols_and_structs(&deps_program).expect("Phase 2 should succeed");
-    engine.register_automatic_implementations(&deps_program).expect("Phase 2.5 should succeed");  
-    engine.register_implementations(&deps_program).expect("Phase 3 should succeed");
-    engine.register_functions(&deps_program).expect("Phase 4 should succeed");
-    
+    engine
+        .register_protocols_and_structs(&deps_program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&deps_program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&deps_program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&deps_program)
+        .expect("Phase 4 should succeed");
+
     println!("=== Processing core boolean file ===");
     let mut boolean_program = parse_program(core_boolean_file).expect("Parse should succeed");
-    
+
     // Process through all phases
-    engine.register_protocols_and_structs(&boolean_program).expect("Phase 2 should succeed");
-    engine.register_automatic_implementations(&boolean_program).expect("Phase 2.5 should succeed");  
-    engine.register_implementations(&boolean_program).expect("Phase 3 should succeed");
-    engine.register_functions(&boolean_program).expect("Phase 4 should succeed");
-    
+    engine
+        .register_protocols_and_structs(&boolean_program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&boolean_program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&boolean_program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&boolean_program)
+        .expect("Phase 4 should succeed");
+
     // This should reproduce the exact error from core boolean.outrun
     let result = engine.typecheck_function_bodies(&mut boolean_program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Type checking succeeded");

@@ -45,29 +45,31 @@ impl LoadedPackage {
     /// Load a package from a directory containing outrun.toml
     pub fn load_from_directory(package_dir: &Path) -> Result<Self, TypecheckError> {
         let manifest_path = package_dir.join("outrun.toml");
-        
+
         if !manifest_path.exists() {
             return Err(TypecheckError::CoreLibraryError(format!(
                 "No outrun.toml found in {}",
                 package_dir.display()
             )));
         }
-        
+
         // Parse the manifest
-        let manifest_content = fs::read_to_string(&manifest_path)
-            .map_err(|e| TypecheckError::CoreLibraryError(format!(
+        let manifest_content = fs::read_to_string(&manifest_path).map_err(|e| {
+            TypecheckError::CoreLibraryError(format!(
                 "Failed to read {}: {}",
                 manifest_path.display(),
                 e
-            )))?;
-            
-        let manifest: PackageManifest = toml::from_str(&manifest_content)
-            .map_err(|e| TypecheckError::CoreLibraryError(format!(
+            ))
+        })?;
+
+        let manifest: PackageManifest = toml::from_str(&manifest_content).map_err(|e| {
+            TypecheckError::CoreLibraryError(format!(
                 "Failed to parse {}: {}",
                 manifest_path.display(),
                 e
-            )))?;
-        
+            ))
+        })?;
+
         // Determine source directory
         let source_path = if let Some(lib_config) = &manifest.lib {
             package_dir.join(&lib_config.path)
@@ -75,18 +77,18 @@ impl LoadedPackage {
             // Default to lib/ if no [lib] section
             package_dir.join("lib")
         };
-        
+
         if !source_path.exists() {
             return Err(TypecheckError::CoreLibraryError(format!(
                 "Source directory {} does not exist",
                 source_path.display()
             )));
         }
-        
+
         // Collect and parse all .outrun files
         let mut programs = Vec::new();
         collect_and_parse_outrun_files(&source_path, &mut programs)?;
-        
+
         // Sort for deterministic processing order
         programs.sort_by(|a, b| {
             // Compare by the file path that would be stored in debug info
@@ -94,22 +96,25 @@ impl LoadedPackage {
             // to prioritize protocol definitions, etc.
             format!("{:?}", a).cmp(&format!("{:?}", b))
         });
-        
-        println!("📦 Loaded package '{}' with {} source files", 
-                 manifest.package.name, programs.len());
-        
+
+        println!(
+            "📦 Loaded package '{}' with {} source files",
+            manifest.package.name,
+            programs.len()
+        );
+
         Ok(LoadedPackage {
             manifest,
             programs,
             package_root: package_dir.to_path_buf(),
         })
     }
-    
+
     /// Get the package name
     pub fn name(&self) -> &str {
         &self.manifest.package.name
     }
-    
+
     /// Check if this is the core library package
     pub fn is_core_library(&self) -> bool {
         self.manifest.package.name == "outrun-core"
@@ -131,14 +136,11 @@ fn collect_and_parse_outrun_files(
 
     for entry in entries {
         let entry = entry.map_err(|e| {
-            TypecheckError::CoreLibraryError(format!(
-                "Failed to read directory entry: {}",
-                e
-            ))
+            TypecheckError::CoreLibraryError(format!("Failed to read directory entry: {}", e))
         })?;
-        
+
         let path = entry.path();
-        
+
         if path.is_dir() {
             // Recursively collect from subdirectories
             collect_and_parse_outrun_files(&path, programs)?;
@@ -148,11 +150,10 @@ fn collect_and_parse_outrun_files(
             let content = fs::read_to_string(&path).map_err(|e| {
                 TypecheckError::CoreLibraryError(format!(
                     "Failed to read file {}: {}",
-                    file_path,
-                    e
+                    file_path, e
                 ))
             })?;
-            
+
             match parse_program(&content) {
                 Ok(program) => {
                     programs.push(program);

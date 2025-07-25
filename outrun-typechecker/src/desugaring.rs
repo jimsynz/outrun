@@ -18,10 +18,9 @@
 //! - `~a` → `BitwiseNot.bitwise_not(value: a)`
 
 use outrun_parser::{
-    BinaryOperator, BinaryOperation, UnaryOperator, UnaryOperation,
-    Expression, ExpressionKind, FunctionCall, FunctionPath, Argument, ArgumentFormat,
-    Identifier, TypeIdentifier,
-    Program, Item, ItemKind
+    Argument, ArgumentFormat, BinaryOperation, BinaryOperator, Expression, ExpressionKind,
+    FunctionCall, FunctionPath, Identifier, Item, ItemKind, Program, TypeIdentifier,
+    UnaryOperation, UnaryOperator,
 };
 
 use crate::error::TypecheckError;
@@ -81,12 +80,12 @@ impl DesugaringEngine {
         // Use iterative approach to handle deep expression trees
         let mut work_stack: Vec<&mut Expression> = vec![expr];
         let mut transform_stack: Vec<*mut Expression> = Vec::new();
-        
+
         // Phase 1: Collect all expressions that need desugaring (post-order traversal)
         while let Some(current_expr) = work_stack.pop() {
             let expr_ptr = current_expr as *mut Expression;
             transform_stack.push(expr_ptr);
-            
+
             // Add child expressions to work stack
             match &mut current_expr.kind {
                 ExpressionKind::BinaryOp(binary_op) => {
@@ -156,7 +155,7 @@ impl DesugaringEngine {
                 _ => {}
             }
         }
-        
+
         // Phase 2: Transform expressions in post-order (children first)
         for expr_ptr in transform_stack.into_iter().rev() {
             unsafe {
@@ -177,13 +176,16 @@ impl DesugaringEngine {
                 }
             }
         }
-        
+
         Ok(())
     }
 
     /// Transform a binary operation into a protocol function call
     #[allow(clippy::result_large_err)]
-    fn desugar_binary_operation(&mut self, binary_op: &BinaryOperation) -> Result<FunctionCall, TypecheckError> {
+    fn desugar_binary_operation(
+        &mut self,
+        binary_op: &BinaryOperation,
+    ) -> Result<FunctionCall, TypecheckError> {
         let (protocol_name, function_name, param_names) = match binary_op.operator {
             // Arithmetic operators
             BinaryOperator::Add => ("BinaryAddition", "add", ("left", "right")),
@@ -198,7 +200,9 @@ impl DesugaringEngine {
             BinaryOperator::Less => ("Comparison", "less_than?", ("left", "right")),
             BinaryOperator::LessEqual => ("Comparison", "less_than_or_equal?", ("left", "right")),
             BinaryOperator::Greater => ("Comparison", "greater_than?", ("left", "right")),
-            BinaryOperator::GreaterEqual => ("Comparison", "greater_than_or_equal?", ("left", "right")),
+            BinaryOperator::GreaterEqual => {
+                ("Comparison", "greater_than_or_equal?", ("left", "right"))
+            }
 
             // Logical operators
             BinaryOperator::LogicalAnd => ("LogicalAnd", "and?", ("left", "right")),
@@ -228,9 +232,10 @@ impl DesugaringEngine {
         };
 
         // Record the transformation for debugging
-        self.transformations.push(format!("Binary {} → {}.{}", 
+        self.transformations.push(format!(
+            "Binary {} → {}.{}",
             format!("{:?}", binary_op.operator).to_lowercase(),
-            protocol_name, 
+            protocol_name,
             function_name
         ));
 
@@ -270,10 +275,12 @@ impl DesugaringEngine {
         })
     }
 
-
     /// Transform a unary operation into a protocol function call
     #[allow(clippy::result_large_err)]
-    fn desugar_unary_operation(&mut self, unary_op: &UnaryOperation) -> Result<FunctionCall, TypecheckError> {
+    fn desugar_unary_operation(
+        &mut self,
+        unary_op: &UnaryOperation,
+    ) -> Result<FunctionCall, TypecheckError> {
         let (protocol_name, function_name) = match unary_op.operator {
             UnaryOperator::Plus => ("UnaryPlus", "plus"),
             UnaryOperator::Minus => ("UnaryMinus", "minus"),
@@ -282,9 +289,10 @@ impl DesugaringEngine {
         };
 
         // Record the transformation for debugging
-        self.transformations.push(format!("Unary {} → {}.{}", 
+        self.transformations.push(format!(
+            "Unary {} → {}.{}",
             format!("{:?}", unary_op.operator).to_lowercase(),
-            protocol_name, 
+            protocol_name,
             function_name
         ));
 
@@ -300,17 +308,15 @@ impl DesugaringEngine {
                     span: unary_op.span,
                 },
             },
-            arguments: vec![
-                Argument::Named {
-                    name: Identifier {
-                        name: "value".to_string(),
-                        span: unary_op.operand.span,
-                    },
-                    expression: *unary_op.operand.clone(),
-                    format: ArgumentFormat::Explicit,
+            arguments: vec![Argument::Named {
+                name: Identifier {
+                    name: "value".to_string(),
                     span: unary_op.operand.span,
                 },
-            ],
+                expression: *unary_op.operand.clone(),
+                format: ArgumentFormat::Explicit,
+                span: unary_op.operand.span,
+            }],
             span: unary_op.span,
         })
     }
@@ -330,13 +336,13 @@ mod tests {
     #[test]
     fn test_binary_addition_desugaring() {
         let mut engine = DesugaringEngine::new();
-        
+
         // Parse "1 + 2"
         let mut expr = parse_expression("1 + 2").unwrap();
-        
+
         // Desugar the expression
         engine.desugar_expression(&mut expr).unwrap();
-        
+
         // Should become BinaryAddition.add(left: 1, right: 2)
         match expr.kind {
             ExpressionKind::FunctionCall(func_call) => {
@@ -348,12 +354,14 @@ mod tests {
                     }
                     _ => panic!("Expected qualified function path for desugared function"),
                 }
-                
+
                 // Check arguments
                 assert_eq!(func_call.arguments.len(), 2);
-                
+
                 match &func_call.arguments[0] {
-                    Argument::Named { name, expression, .. } => {
+                    Argument::Named {
+                        name, expression, ..
+                    } => {
                         assert_eq!(name.name, "left");
                         match &expression.kind {
                             ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
@@ -362,9 +370,11 @@ mod tests {
                     }
                     _ => panic!("Expected named argument for left operand"),
                 }
-                
+
                 match &func_call.arguments[1] {
-                    Argument::Named { name, expression, .. } => {
+                    Argument::Named {
+                        name, expression, ..
+                    } => {
                         assert_eq!(name.name, "right");
                         match &expression.kind {
                             ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 2),
@@ -376,7 +386,7 @@ mod tests {
             }
             _ => panic!("Expected function call after desugaring"),
         }
-        
+
         // Check transformation was recorded
         assert_eq!(engine.transformations.len(), 1);
         assert!(engine.transformations[0].contains("Binary add → BinaryAddition.add"));
@@ -385,13 +395,13 @@ mod tests {
     #[test]
     fn test_unary_minus_desugaring() {
         let mut engine = DesugaringEngine::new();
-        
+
         // Parse "-42"
         let mut expr = parse_expression("-42").unwrap();
-        
+
         // Desugar the expression
         engine.desugar_expression(&mut expr).unwrap();
-        
+
         // Should become UnaryMinus.minus(value: 42)
         match expr.kind {
             ExpressionKind::FunctionCall(func_call) => {
@@ -403,11 +413,13 @@ mod tests {
                     }
                     _ => panic!("Expected qualified function path for desugared function"),
                 }
-                
+
                 // Check argument
                 assert_eq!(func_call.arguments.len(), 1);
                 match &func_call.arguments[0] {
-                    Argument::Named { name, expression, .. } => {
+                    Argument::Named {
+                        name, expression, ..
+                    } => {
                         assert_eq!(name.name, "value");
                         match &expression.kind {
                             ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 42),
@@ -419,7 +431,7 @@ mod tests {
             }
             _ => panic!("Expected function call after desugaring"),
         }
-        
+
         // Check transformation was recorded
         assert_eq!(engine.transformations.len(), 1);
         assert!(engine.transformations[0].contains("Unary minus → UnaryMinus.minus"));
@@ -428,13 +440,13 @@ mod tests {
     #[test]
     fn test_not_equal_desugaring() {
         let mut engine = DesugaringEngine::new();
-        
-        // Parse "a != b"  
+
+        // Parse "a != b"
         let mut expr = parse_expression("a != b").unwrap();
-        
+
         // Desugar the expression
         engine.desugar_expression(&mut expr).unwrap();
-        
+
         // Should become Equality.not_equal?(left: a, right: b)
         match expr.kind {
             ExpressionKind::FunctionCall(func_call) => {
@@ -446,7 +458,7 @@ mod tests {
                     }
                     _ => panic!("Expected Equality.not_equal? function"),
                 }
-                
+
                 // Check arguments
                 assert_eq!(func_call.arguments.len(), 2);
                 match &func_call.arguments[0] {
@@ -455,7 +467,7 @@ mod tests {
                     }
                     _ => panic!("Expected named argument 'left'"),
                 }
-                
+
                 match &func_call.arguments[1] {
                     Argument::Named { name, .. } => {
                         assert_eq!(name.name, "right");
@@ -465,7 +477,7 @@ mod tests {
             }
             _ => panic!("Expected function call after desugaring"),
         }
-        
+
         // Check transformation was recorded
         assert_eq!(engine.transformations.len(), 1);
         assert!(engine.transformations[0].contains("Binary notequal → Equality.not_equal?"));
@@ -474,13 +486,13 @@ mod tests {
     #[test]
     fn test_nested_operations_desugaring() {
         let mut engine = DesugaringEngine::new();
-        
+
         // Parse "1 + 2 * 3" (should parse as 1 + (2 * 3) due to precedence)
         let mut expr = parse_expression("1 + 2 * 3").unwrap();
-        
-        // Desugar the expression  
+
+        // Desugar the expression
         engine.desugar_expression(&mut expr).unwrap();
-        
+
         // Should become BinaryAddition.add(left: 1, right: BinaryMultiplication.multiply(left: 2, right: 3))
         match expr.kind {
             ExpressionKind::FunctionCall(outer_call) => {
@@ -492,29 +504,25 @@ mod tests {
                     }
                     _ => panic!("Expected BinaryAddition for outer operation"),
                 }
-                
+
                 // Check right operand is a multiplication function call
                 match &outer_call.arguments[1] {
-                    Argument::Named { expression, .. } => {
-                        match &expression.kind {
-                            ExpressionKind::FunctionCall(inner_call) => {
-                                match &inner_call.path {
-                                    FunctionPath::Qualified { module, name } => {
-                                        assert_eq!(module.name, "BinaryMultiplication");
-                                        assert_eq!(name.name, "multiply");
-                                    }
-                                    _ => panic!("Expected BinaryMultiplication for inner operation"),
-                                }
+                    Argument::Named { expression, .. } => match &expression.kind {
+                        ExpressionKind::FunctionCall(inner_call) => match &inner_call.path {
+                            FunctionPath::Qualified { module, name } => {
+                                assert_eq!(module.name, "BinaryMultiplication");
+                                assert_eq!(name.name, "multiply");
                             }
-                            _ => panic!("Expected function call for right operand"),
-                        }
-                    }
+                            _ => panic!("Expected BinaryMultiplication for inner operation"),
+                        },
+                        _ => panic!("Expected function call for right operand"),
+                    },
                     _ => panic!("Expected named argument"),
                 }
             }
             _ => panic!("Expected function call after desugaring"),
         }
-        
+
         // Should have recorded multiple transformations
         assert_eq!(engine.transformations.len(), 2);
     }

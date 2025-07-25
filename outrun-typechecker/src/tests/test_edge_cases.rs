@@ -1,16 +1,16 @@
 //! Edge case tests for typechecker v3
 //!
-//! These tests verify that the typechecker handles unusual, boundary, 
-//! and edge case scenarios correctly without panicking or producing 
+//! These tests verify that the typechecker handles unusual, boundary,
+//! and edge case scenarios correctly without panicking or producing
 //! incorrect results.
 
-use crate::{Package, typecheck_package, typecheck_program};
+use crate::{typecheck_package, typecheck_program, Package};
 use outrun_parser::parse_program;
 
 #[test]
 fn test_empty_program() {
     let source = "";
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -28,7 +28,7 @@ fn test_empty_program() {
 #[test]
 fn test_whitespace_only_program() {
     let source = "   \n\t  \r\n  ";
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -38,7 +38,10 @@ fn test_whitespace_only_program() {
             }
         }
         Err(e) => {
-            println!("✓ Whitespace-only program parse failed as expected: {:?}", e);
+            println!(
+                "✓ Whitespace-only program parse failed as expected: {:?}",
+                e
+            );
         }
     }
 }
@@ -52,10 +55,10 @@ fn test_single_literal_expressions() {
         ("false", "boolean literal"),
         ("\"hello\"", "string literal"),
     ];
-    
+
     for (source, description) in test_cases {
         println!("Testing {}: {}", description, source);
-        
+
         if let Ok(mut program) = parse_program(source) {
             let result = typecheck_program(&mut program);
             match result {
@@ -71,12 +74,12 @@ fn test_empty_collections() {
     let test_cases = vec![
         ("[]", "empty list"),
         ("{}", "empty map"),
-        ("()", "empty tuple"),  // May not be valid Outrun syntax
+        ("()", "empty tuple"), // May not be valid Outrun syntax
     ];
-    
+
     for (source, description) in test_cases {
         println!("Testing {}: {}", description, source);
-        
+
         match parse_program(source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -100,7 +103,7 @@ fn test_extremely_long_identifiers() {
     // Test with very long identifier names
     let long_name = "very_long_identifier_name_that_goes_on_and_on_and_on_".repeat(10);
     let source = format!("let {} = 42", long_name);
-    
+
     if let Ok(mut program) = parse_program(&source) {
         let result = typecheck_program(&mut program);
         match result {
@@ -114,14 +117,14 @@ fn test_extremely_long_identifiers() {
 fn test_deeply_nested_collections() {
     // Test with very deep nesting
     let mut nested = "42".to_string();
-    
+
     // Create deeply nested list: [[[[42]]]]
     for _ in 0..20 {
         nested = format!("[{}]", nested);
     }
-    
+
     let source = format!("let deeply_nested = {}", nested);
-    
+
     if let Ok(mut program) = parse_program(&source) {
         let result = typecheck_program(&mut program);
         match result {
@@ -141,10 +144,10 @@ fn test_maximum_integer_values() {
         ("-9223372036854775808", "min i64"),
         ("18446744073709551615", "max u64 (might overflow)"),
     ];
-    
+
     for (value, description) in test_cases {
         let source = format!("let value = {}", value);
-        
+
         match parse_program(&source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -170,10 +173,10 @@ fn test_special_float_values() {
         ("1e-100", "scientific notation small"),
         ("1.7976931348623157e308", "near max f64"),
     ];
-    
+
     for (value, description) in test_cases {
         let source = format!("let value = {}", value);
-        
+
         match parse_program(&source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -199,10 +202,10 @@ fn test_unicode_and_special_characters() {
         ("\"\\n\\t\\r\\\"\"", "escape sequences"),
         ("\"\"", "empty string"),
     ];
-    
+
     for (value, description) in test_cases {
         let source = format!("let value = {}", value);
-        
+
         match parse_program(&source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -226,10 +229,10 @@ fn test_malformed_but_parseable_expressions() {
         ("let a = b\nlet b = a", "circular dependency"),
         ("let undefined", "incomplete let binding"),
     ];
-    
+
     for (source, description) in test_cases {
         println!("Testing {}: {}", description, source);
-        
+
         match parse_program(source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -249,35 +252,41 @@ fn test_malformed_but_parseable_expressions() {
 #[test]
 fn test_package_with_no_programs() {
     let mut empty_package = Package::new("empty_package".to_string());
-    
+
     // Initially empty
     assert_eq!(empty_package.programs.len(), 0);
-    
+
     let result = typecheck_package(&mut empty_package);
     match &result {
         Ok(_) => println!("✓ Empty package typechecked successfully"),
         Err(e) => println!("! Empty package failed: {:?}", e),
     }
-    
+
     // After type checking, core library should be integrated
     // This is the expected behavior for all Outrun packages
     if empty_package.programs.len() > 0 {
-        println!("✓ Core library integrated: {} programs", empty_package.programs.len());
+        println!(
+            "✓ Core library integrated: {} programs",
+            empty_package.programs.len()
+        );
     } else {
         println!("! No core library integration occurred");
     }
-    
+
     // The key test is that type checking succeeds, not that the package stays empty
-    assert!(result.is_ok(), "Empty package should type check successfully with core library");
+    assert!(
+        result.is_ok(),
+        "Empty package should type check successfully with core library"
+    );
 }
 
 #[test]
 fn test_package_with_empty_programs() {
     let mut package = Package::new("package_with_empty_programs".to_string());
-    
+
     // Add some programs that might be empty or minimal
     let sources = vec!["", "   ", "\n\t\n"];
-    
+
     for (i, source) in sources.iter().enumerate() {
         match parse_program(source) {
             Ok(program) => {
@@ -289,7 +298,7 @@ fn test_package_with_empty_programs() {
             }
         }
     }
-    
+
     let result = typecheck_package(&mut package);
     match result {
         Ok(_) => println!("✓ Package with empty programs typechecked successfully"),
@@ -301,15 +310,16 @@ fn test_package_with_empty_programs() {
 fn test_extremely_large_single_expression() {
     // Create a reasonably large single expression
     let mut parts = Vec::new();
-    for i in 0..100 {  // Increased back to test iterative fixes
+    for i in 0..100 {
+        // Increased back to test iterative fixes
         parts.push(i.to_string());
     }
-    
+
     // Create expression like: 1 + 2 + 3 + 4 + ... + 20 (without excessive nesting)
     let expression = parts.join(" + ");
-    
+
     let source = format!("let large_sum = {}", expression);
-    
+
     match parse_program(&source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -327,7 +337,7 @@ fn test_extremely_large_single_expression() {
 #[test]
 fn test_mixed_valid_and_invalid_programs_in_package() {
     let mut package = Package::new("mixed_package".to_string());
-    
+
     let program_sources = vec![
         ("let valid1 = 42", true),
         ("let valid2 = \"hello\"", true),
@@ -335,19 +345,22 @@ fn test_mixed_valid_and_invalid_programs_in_package() {
         ("let valid3 = [1, 2, 3]", true),
         ("let also_invalid = [1, \"mixed\"]", false),
     ];
-    
+
     for (source, should_be_valid) in program_sources {
         match parse_program(source) {
             Ok(program) => {
                 package.add_program(program);
-                println!("Added program: {} (expected valid: {})", source, should_be_valid);
+                println!(
+                    "Added program: {} (expected valid: {})",
+                    source, should_be_valid
+                );
             }
             Err(e) => {
                 println!("Failed to parse program '{}': {:?}", source, e);
             }
         }
     }
-    
+
     let result = typecheck_package(&mut package);
     match result {
         Ok(_) => println!("✓ Mixed package typechecked successfully"),
@@ -365,12 +378,12 @@ fn test_stress_error_reporting() {
         "1 + \"hello\" + true",
         "nested.deeply.undefined.access",
     ];
-    
+
     println!("🔍 Stress testing error reporting...");
-    
+
     for (i, source) in problematic_programs.iter().enumerate() {
         println!("  Testing error case {}: {}", i + 1, source);
-        
+
         match parse_program(source) {
             Ok(mut program) => {
                 let result = typecheck_program(&mut program);
@@ -380,7 +393,10 @@ fn test_stress_error_reporting() {
                         println!("    ✓ Failed as expected");
                         // Verify error is properly formatted (doesn't panic when displaying)
                         let error_string = format!("{:?}", e);
-                        assert!(!error_string.is_empty(), "Error should format to non-empty string");
+                        assert!(
+                            !error_string.is_empty(),
+                            "Error should format to non-empty string"
+                        );
                     }
                 }
             }
@@ -389,6 +405,6 @@ fn test_stress_error_reporting() {
             }
         }
     }
-    
+
     println!("✓ Error reporting stress test completed");
 }

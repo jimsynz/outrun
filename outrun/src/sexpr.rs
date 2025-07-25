@@ -412,7 +412,7 @@ fn format_protocol_definition_with_indent(
 fn format_impl_block_with_indent(impl_block: &ImplBlock, indent: usize) -> String {
     let protocol_name = format_type_path(&impl_block.protocol_spec);
     let type_name = format_type_path(&impl_block.type_spec);
-    let methods_count = impl_block.methods.len();
+    let methods_count = impl_block.functions.len();
 
     format!(
         "(impl {} for {}\n{}(methods {}))",

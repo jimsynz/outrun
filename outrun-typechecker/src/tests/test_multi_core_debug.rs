@@ -7,24 +7,24 @@ use outrun_parser::parse_program;
 #[test]
 fn test_multi_core_file_processing() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("=== Testing multi-file core library processing ===");
-    
+
     // Get the core library path
     let core_path = default_core_library_path().expect("Should find core library");
     let lib_path = core_path.join("lib");
-    
+
     // Collect just a few specific files to test
     let mut programs = Vec::new();
     collect_outrun_files(&lib_path, &mut programs).expect("Should collect files");
-    
+
     // Filter to just the failing files we saw in the error
     let failing_files = vec![
         "boolean.outrun",
         "outrun/core/boolean.outrun",
         "outrun/core/string.outrun",
     ];
-    
+
     let mut test_programs = Vec::new();
     for (file_path, content) in programs {
         for failing_file in &failing_files {
@@ -35,9 +35,9 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("Testing with {} files", test_programs.len());
-    
+
     // Parse all programs
     let mut parsed_programs = Vec::new();
     for (file_path, content) in test_programs {
@@ -50,7 +50,7 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("=== Phase 2: Register protocols and structs ===");
     for (file_path, program) in &parsed_programs {
         match engine.register_protocols_and_structs(program) {
@@ -61,7 +61,7 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("=== Phase 2.5: Register automatic implementations ===");
     for (file_path, program) in &parsed_programs {
         match engine.register_automatic_implementations(program) {
@@ -73,7 +73,7 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("=== Phase 3: Register implementations ===");
     for (file_path, program) in &parsed_programs {
         match engine.register_implementations(program) {
@@ -83,7 +83,7 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("=== Phase 4: Register functions ===");
     for (file_path, program) in &parsed_programs {
         match engine.register_functions(program) {
@@ -93,7 +93,7 @@ fn test_multi_core_file_processing() {
             }
         }
     }
-    
+
     println!("=== Phase 6: Type check function bodies ===");
     for (file_path, mut program) in parsed_programs {
         match engine.typecheck_function_bodies(&mut program) {

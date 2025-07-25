@@ -57,6 +57,8 @@ pub struct FunctionInfo {
     pub parameters: Vec<(String, Type)>,
     /// Return type
     pub return_type: Type,
+    /// Function body block (for user-defined functions)
+    pub body: Option<outrun_parser::Block>,
     /// Source location
     pub span: Option<Span>,
 }
@@ -194,7 +196,7 @@ impl<'a> FunctionDispatcher<'a> {
         if let Some(pos) = last_dot_pos {
             let module_name = &qualified_name[..pos];
             let function_name = &qualified_name[pos + 1..];
-            
+
             // Ensure we have both parts
             if module_name.is_empty() || function_name.is_empty() {
                 return Err(DispatchError::InvalidTarget {
@@ -462,6 +464,9 @@ pub fn build_dispatch_table(
 ) -> DispatchTable {
     let mut table = DispatchTable::new();
 
+    // Debug: Check what implementations we have (can be removed in production)
+    // println!("🔧 Protocol registry has {} implementations", protocol_registry.all_implementations().count());
+
     // Process all registered implementations
     for impl_info in protocol_registry.all_implementations() {
         let impl_scope = format!(
@@ -470,13 +475,26 @@ pub fn build_dispatch_table(
             impl_info.implementing_type.name()
         );
 
-        // Get all functions in this implementation
+        // Debug output (can be removed in production)
+        // println!("🔧 Processing implementation: {}", impl_scope);
+
+        // Get all functions in this implementation (used in the loop below)
+        // let functions = function_registry.get_module_functions(&impl_scope);
+        // println!("🔧 Found {} functions in implementation", functions.len());
+
         for (func_name, func_info) in function_registry.get_module_functions(&impl_scope) {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", impl_info.protocol_id.0, func_name),
+                qualified_name: format!("{}.{}", impl_scope, func_name),
                 implementing_type: Some(impl_info.implementing_type.clone()),
                 function_info: func_info.clone(),
             };
+
+            // Debug output (can be removed in production)
+            // println!("🔧 Adding dispatch entry: {} for {} -> {}",
+            //     impl_info.protocol_id.0,
+            //     impl_info.implementing_type.name(),
+            //     resolved_func.qualified_name
+            // );
 
             table.add_entry(
                 impl_info.protocol_id.0.clone(),
@@ -486,6 +504,8 @@ pub fn build_dispatch_table(
         }
     }
 
+    // Debug output (can be removed in production)
+    // println!("🔧 Final dispatch table has {} entries", table.entries().len());
     table
 }
 

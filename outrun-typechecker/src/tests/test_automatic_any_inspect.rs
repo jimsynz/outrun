@@ -16,20 +16,28 @@ mod automatic_any_inspect_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Phase 2: Register protocols and structs
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
 
         // Phase 2.5: Register automatic implementations (this should automatically add Any and Inspect)
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
 
         // Phase 3: Register explicit implementations
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
 
         // Check if Any implementation was automatically registered
         let user_type = TypeId::new("User");
         let any_protocol = ProtocolId::new("Any");
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&any_protocol, &user_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&any_protocol, &user_type),
             "User should automatically implement Any protocol"
         );
     }
@@ -44,20 +52,28 @@ mod automatic_any_inspect_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Phase 2: Register protocols and structs
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
 
         // Phase 2.5: Register automatic implementations (this should automatically add Any and Inspect)
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
 
         // Phase 3: Register explicit implementations
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
 
         // Check if Inspect implementation was automatically registered
         let product_type = TypeId::new("Product");
         let inspect_protocol = ProtocolId::new("Inspect");
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&inspect_protocol, &product_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&inspect_protocol, &product_type),
             "Product should automatically implement Inspect protocol"
         );
     }
@@ -74,13 +90,19 @@ mod automatic_any_inspect_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Phase 2: Register protocols and structs
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
 
         // Phase 2.5: Register automatic implementations (this should automatically add Any and Inspect)
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
 
         // Phase 3: Register explicit implementations
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
 
         let any_protocol = ProtocolId::new("Any");
         let inspect_protocol = ProtocolId::new("Inspect");
@@ -88,15 +110,21 @@ mod automatic_any_inspect_tests {
         // Check all three types have automatic implementations
         for type_name in ["User", "Product", "Order"] {
             let type_id = TypeId::new(type_name);
-            
+
             assert!(
-                engine.get_protocol_registry().has_implementation(&any_protocol, &type_id),
-                "{} should automatically implement Any protocol", type_name
+                engine
+                    .get_protocol_registry()
+                    .has_implementation(&any_protocol, &type_id),
+                "{} should automatically implement Any protocol",
+                type_name
             );
-            
+
             assert!(
-                engine.get_protocol_registry().has_implementation(&inspect_protocol, &type_id),
-                "{} should automatically implement Inspect protocol", type_name
+                engine
+                    .get_protocol_registry()
+                    .has_implementation(&inspect_protocol, &type_id),
+                "{} should automatically implement Inspect protocol",
+                type_name
             );
         }
     }
@@ -111,26 +139,36 @@ mod automatic_any_inspect_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Phase 2: Register protocols and structs
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
 
         // Phase 2.5: Register automatic implementations (this should automatically add Any and Inspect)
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
 
         // Phase 3: Register explicit implementations
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
 
         // Check nested type has automatic implementations
         let connection_type = TypeId::new("Http.Client.Connection");
         let any_protocol = ProtocolId::new("Any");
         let inspect_protocol = ProtocolId::new("Inspect");
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&any_protocol, &connection_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&any_protocol, &connection_type),
             "Http.Client.Connection should automatically implement Any protocol"
         );
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&inspect_protocol, &connection_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&inspect_protocol, &connection_type),
             "Http.Client.Connection should automatically implement Inspect protocol"
         );
     }
@@ -153,16 +191,24 @@ mod automatic_any_inspect_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Phase 2: Register protocols and structs
-        engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
+        engine
+            .register_protocols_and_structs(&program)
+            .expect("Phase 2 should succeed");
 
         // Phase 2.5: Register automatic implementations (including automatic Any and Inspect)
-        engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
+        engine
+            .register_automatic_implementations(&program)
+            .expect("Phase 2.5 should succeed");
 
         // Phase 3: Register explicit implementations
-        engine.register_implementations(&program).expect("Phase 3 should succeed");
+        engine
+            .register_implementations(&program)
+            .expect("Phase 3 should succeed");
 
         // Phase 4: Register functions
-        engine.register_functions(&program).expect("Phase 4 should succeed");
+        engine
+            .register_functions(&program)
+            .expect("Phase 4 should succeed");
 
         // Phase 6: Type check - functions should work because User automatically implements Any and Inspect
         let result = engine.typecheck_program_items_only(&mut program);
@@ -179,14 +225,18 @@ mod automatic_any_inspect_tests {
         let user_type = TypeId::new("User");
         let any_protocol = ProtocolId::new("Any");
         let inspect_protocol = ProtocolId::new("Inspect");
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&any_protocol, &user_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&any_protocol, &user_type),
             "User should implement Any (for process_any function compatibility)"
         );
-        
+
         assert!(
-            engine.get_protocol_registry().has_implementation(&inspect_protocol, &user_type),
+            engine
+                .get_protocol_registry()
+                .has_implementation(&inspect_protocol, &user_type),
             "User should implement Inspect (for inspect_user function compatibility)"
         );
     }

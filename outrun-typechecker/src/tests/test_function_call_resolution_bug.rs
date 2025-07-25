@@ -6,7 +6,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_function_call_boolean_return_type_bug() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Exact scenario from string.outrun failure
     let test_code = r#"
 protocol Boolean {
@@ -31,18 +31,26 @@ impl Boolean for Outrun.Core.Boolean {
     }
 }
 "#;
-    
+
     let mut program = parse_program(test_code).expect("Parse should succeed");
-    
+
     // Process through all phases like core library
-    engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-    engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-    engine.register_implementations(&program).expect("Phase 3 should succeed");
-    engine.register_functions(&program).expect("Phase 4 should succeed");
-    
+    engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+    engine
+        .register_functions(&program)
+        .expect("Phase 4 should succeed");
+
     // This is where the original error occurs - Phase 6 type checking
     let result = engine.typecheck_function_bodies(&mut program);
-    
+
     match result {
         Ok(()) => {
             println!("✅ Type checking succeeded - Boolean bug is fixed!");
@@ -50,8 +58,9 @@ impl Boolean for Outrun.Core.Boolean {
         Err(e) => {
             println!("❌ Type checking failed: {:?}", e);
             let error_str = format!("{:?}", e);
-            if error_str.contains("expected: Protocol { id: ProtocolId(\"Boolean\")") && 
-               error_str.contains("found: Concrete { id: TypeId(\"Boolean\")") {
+            if error_str.contains("expected: Protocol { id: ProtocolId(\"Boolean\")")
+                && error_str.contains("found: Concrete { id: TypeId(\"Boolean\")")
+            {
                 println!("🐛 EXACT BUG REPRODUCED: Function call resolution treats Boolean as concrete type");
                 println!("The issue is in how Option.some?() return type is resolved during function call inference");
             } else if error_str.contains("found: Concrete { id: TypeId(\"Outrun.Core.Boolean\")") {
@@ -62,10 +71,10 @@ impl Boolean for Outrun.Core.Boolean {
     }
 }
 
-#[test]  
+#[test]
 fn test_simplified_function_call_scenario() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Even simpler test to isolate the exact issue
     let simple_code = r#"
 protocol Boolean {
@@ -80,20 +89,26 @@ def test_function(): Boolean {
     Option.some?(value: some_value)
 }
 "#;
-    
+
     let mut program = parse_program(simple_code).expect("Parse should succeed");
-    
+
     // Process through phases
-    engine.register_protocols_and_structs(&program).expect("Phase 2 should succeed");
-    engine.register_automatic_implementations(&program).expect("Phase 2.5 should succeed");
-    engine.register_implementations(&program).expect("Phase 3 should succeed");
-    
+    engine
+        .register_protocols_and_structs(&program)
+        .expect("Phase 2 should succeed");
+    engine
+        .register_automatic_implementations(&program)
+        .expect("Phase 2.5 should succeed");
+    engine
+        .register_implementations(&program)
+        .expect("Phase 3 should succeed");
+
     // Check what happens during function registration (Phase 4)
     let phase4_result = engine.register_functions(&program);
     match phase4_result {
         Ok(()) => {
             println!("✅ Phase 4 succeeded - function signatures registered correctly");
-            
+
             // Now check Phase 6 type checking
             let phase6_result = engine.typecheck_function_bodies(&mut program);
             match phase6_result {
@@ -102,7 +117,9 @@ def test_function(): Boolean {
                     println!("❌ Phase 6 failed: {:?}", e);
                     let error_str = format!("{:?}", e);
                     if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
-                        println!("🐛 Function call inference created incorrect concrete Boolean type");
+                        println!(
+                            "🐛 Function call inference created incorrect concrete Boolean type"
+                        );
                     }
                 }
             }

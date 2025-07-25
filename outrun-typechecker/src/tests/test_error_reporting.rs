@@ -5,7 +5,7 @@
 
 use crate::{
     error::{ErrorContext, InferenceError, UnificationError},
-    types::{Type},
+    types::Type,
 };
 use outrun_parser::{parse_program, Span};
 
@@ -36,16 +36,16 @@ fn test_error_context_similar_name_suggestions() {
 #[test]
 fn test_levenshtein_distance_calculation() {
     use crate::error::ErrorContext;
-    
+
     let context = ErrorContext::new();
-    
+
     // Test exact matches and close matches
     let candidates = vec!["hello".to_string(), "world".to_string(), "help".to_string()];
-    
+
     let similar = context.find_similar_names("helo", &candidates);
     assert!(similar.contains(&"hello".to_string()));
     assert!(similar.contains(&"help".to_string()));
-    
+
     let similar = context.find_similar_names("word", &candidates);
     assert!(similar.contains(&"world".to_string()));
 }
@@ -56,16 +56,21 @@ fn test_undefined_variable_with_suggestions() {
     // The actual variable lookup might not trigger in simple cases yet
     let source = "undefined_var";
     let _program_result = parse_program(source);
-    
+
     // For now, just verify we can create enhanced error structures
     let error = InferenceError::undefined_variable_with_suggestions(
         "undefined_var".to_string(),
         Some(outrun_parser::Span::new(0, 12)),
         &ErrorContext::new(),
     );
-    
+
     match error {
-        InferenceError::UndefinedVariable { variable_name, similar_names, context, .. } => {
+        InferenceError::UndefinedVariable {
+            variable_name,
+            similar_names,
+            context,
+            ..
+        } => {
             assert_eq!(variable_name, "undefined_var");
             assert!(similar_names.is_empty() || context.is_some());
         }
@@ -82,15 +87,20 @@ fn test_undefined_variable_with_similar_names() {
         "my_var".to_string(),
         "other_var".to_string(),
     ];
-    
+
     let error = InferenceError::undefined_variable_with_suggestions(
         "my_variabel".to_string(),
         Some(outrun_parser::Span::new(0, 11)),
         &context,
     );
-    
+
     match error {
-        InferenceError::UndefinedVariable { variable_name, similar_names, context, .. } => {
+        InferenceError::UndefinedVariable {
+            variable_name,
+            similar_names,
+            context,
+            ..
+        } => {
             assert_eq!(variable_name, "my_variabel");
             assert!(similar_names.contains(&"my_variable".to_string()));
             assert!(context.is_some());
@@ -105,7 +115,7 @@ fn test_type_mismatch_error_with_context() {
     let expected = Type::concrete("Integer64");
     let found = Type::concrete("Outrun.Core.String");
     let span = Some(Span::new(0, 10));
-    
+
     let error = UnificationError::type_mismatch_with_context(
         expected.clone(),
         found.clone(),
@@ -113,9 +123,15 @@ fn test_type_mismatch_error_with_context() {
         Some("string literal".to_string()),
         span,
     );
-    
+
     match error {
-        UnificationError::TypeMismatch { expected: exp, found: fnd, expected_context, found_context, .. } => {
+        UnificationError::TypeMismatch {
+            expected: exp,
+            found: fnd,
+            expected_context,
+            found_context,
+            ..
+        } => {
             assert_eq!(exp, expected);
             assert_eq!(fnd, found);
             assert_eq!(expected_context, Some("function parameter".to_string()));
@@ -131,9 +147,13 @@ fn test_empty_collection_needs_annotation_error() {
         "List".to_string(),
         Some(Span::new(5, 7)),
     );
-    
+
     match error {
-        InferenceError::EmptyCollectionNeedsAnnotation { collection_type, examples, .. } => {
+        InferenceError::EmptyCollectionNeedsAnnotation {
+            collection_type,
+            examples,
+            ..
+        } => {
             assert_eq!(collection_type, "List");
             assert!(!examples.is_empty());
             assert!(examples.iter().any(|ex| ex.contains("List<Integer64>")));
@@ -149,7 +169,7 @@ fn test_function_call_error_with_suggestions() {
         "Check parameter types".to_string(),
         "Consider using type conversion".to_string(),
     ];
-    
+
     let error = InferenceError::function_call_error_with_suggestions(
         "Parameter type mismatch".to_string(),
         Some("calculate".to_string()),
@@ -158,10 +178,15 @@ fn test_function_call_error_with_suggestions() {
         Some(Span::new(10, 25)),
         suggestions.clone(),
     );
-    
+
     match error {
-        InferenceError::FunctionCallError { 
-            message, function_name, expected_signature, actual_arguments, suggestions: sug, .. 
+        InferenceError::FunctionCallError {
+            message,
+            function_name,
+            expected_signature,
+            actual_arguments,
+            suggestions: sug,
+            ..
         } => {
             assert_eq!(message, "Parameter type mismatch");
             assert_eq!(function_name, Some("calculate".to_string()));
@@ -177,7 +202,7 @@ fn test_function_call_error_with_suggestions() {
 fn test_collection_type_mismatch_error() {
     let expected_type = Type::concrete("Integer64");
     let found_type = Type::concrete("Outrun.Core.String");
-    
+
     let error = InferenceError::collection_type_mismatch(
         "List elements must have the same type".to_string(),
         "List".to_string(),
@@ -187,10 +212,14 @@ fn test_collection_type_mismatch_error() {
         Some(Span::new(5, 7)),
         Some(Span::new(10, 17)),
     );
-    
+
     match error {
-        InferenceError::CollectionMismatch { 
-            message, collection_type, expected_element_type, found_element_type, .. 
+        InferenceError::CollectionMismatch {
+            message,
+            collection_type,
+            expected_element_type,
+            found_element_type,
+            ..
         } => {
             assert_eq!(message, "List elements must have the same type");
             assert_eq!(collection_type, "List");
@@ -222,7 +251,7 @@ fn test_error_context_type_suggestions() {
     assert!(ctx.unwrap().contains("Did you mean"));
 }
 
-#[test] 
+#[test]
 fn test_error_context_protocol_suggestions() {
     let mut context = ErrorContext::new();
     context.available_protocols = vec![
@@ -246,14 +275,14 @@ fn test_error_context_protocol_suggestions() {
 #[test]
 fn test_error_context_integration_with_symbol_table() {
     use crate::TypeInferenceEngine;
-    
+
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Simulate adding some variables to symbol table
     engine.bind_variable("count", Type::concrete("Integer64"));
     engine.bind_variable("name", Type::concrete("Outrun.Core.String"));
     engine.bind_variable("is_active", Type::concrete("Outrun.Core.Boolean"));
-    
+
     // Test that the error context gets updated correctly
     // For now, just verify the engine can bind variables and update context
     assert!(engine.symbol_table.contains_key("count"));

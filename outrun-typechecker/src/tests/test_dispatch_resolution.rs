@@ -19,7 +19,7 @@ fn create_test_protocol_registry() -> ProtocolRegistry {
     registry.add_local_module(ModuleId::new("Equality"));
     registry.add_local_module(ModuleId::new("Display"));
     registry.add_local_module(ModuleId::new("Debug"));
-    
+
     // Add Outrun.Core modules as local to avoid orphan rule violations
     registry.add_local_module(ModuleId::new("Outrun.Core.String"));
     registry.add_local_module(ModuleId::new("Outrun.Core.Integer64"));
@@ -45,6 +45,7 @@ fn create_test_function_registry() -> FunctionRegistry {
                 ("other".to_string(), Type::concrete("Self")),
             ],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -61,6 +62,7 @@ fn create_test_function_registry() -> FunctionRegistry {
                 ("other".to_string(), Type::concrete("Self")),
             ],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -78,6 +80,7 @@ fn create_test_function_registry() -> FunctionRegistry {
                 ("other".to_string(), Type::concrete("Outrun.Core.String")),
             ],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -98,6 +101,7 @@ fn create_test_function_registry() -> FunctionRegistry {
                 "Result",
                 vec![Type::concrete("User"), Type::concrete("Outrun.Core.String")],
             ),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -112,6 +116,7 @@ fn create_test_function_registry() -> FunctionRegistry {
             visibility: FunctionVisibility::Private,
             parameters: vec![("email".to_string(), Type::concrete("Outrun.Core.String"))],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -126,6 +131,7 @@ fn create_test_function_registry() -> FunctionRegistry {
             visibility: FunctionVisibility::Private,
             parameters: vec![("value".to_string(), Type::concrete("Self"))],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );
@@ -377,6 +383,7 @@ fn test_protocol_default_implementation_with_private_helper() {
                 ("other".to_string(), Type::concrete("Self")),
             ],
             return_type: Type::concrete("Outrun.Core.Boolean"),
+            body: None, // Test function without body
             span: None,
         },
     );

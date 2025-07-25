@@ -181,10 +181,10 @@ impl Default for Outrun.Core.Integer64 {
             panic!("Parse error: {:?}", parse_error);
         }
     };
-    
+
     // Try to typecheck it
     let result = typecheck_program(&mut program);
-    
+
     match result {
         Ok(_) => {
             panic!("Expected type checking to fail, but it succeeded");
@@ -192,11 +192,11 @@ impl Default for Outrun.Core.Integer64 {
         Err(error) => {
             println!("Type checking error details:");
             println!("{}", error);
-            
+
             // Also print the error in debug format to see full structure
             println!("\nDebug format:");
             println!("{:?}", error);
-            
+
             // Print the error source chain
             println!("\nError source chain:");
             let mut source = error.source();

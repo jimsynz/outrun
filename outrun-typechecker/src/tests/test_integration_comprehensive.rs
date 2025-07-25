@@ -2,11 +2,11 @@
 //!
 //! These tests verify complete end-to-end type checking scenarios including:
 //! - Multi-file packages with cross-module dependencies
-//! - Complex type inference scenarios 
+//! - Complex type inference scenarios
 //! - Protocol implementation and dispatch
 //! - Error handling across different program structures
 
-use crate::{Package, typecheck_package, typecheck_program};
+use crate::{typecheck_package, typecheck_program, Package};
 use outrun_parser::parse_program;
 
 #[test]
@@ -17,10 +17,10 @@ fn test_simple_arithmetic_program() {
         let sum = x + 1
         let product = y * 2.0
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // Should succeed - basic arithmetic with literals
     match result {
         Ok(_) => println!("✓ Basic arithmetic typechecked successfully"),
@@ -39,10 +39,10 @@ fn test_list_operations_comprehensive() {
         let mixed_valid = [(1, "first"), (2, "second")]
         let nested_lists = [[1, 2], [3, 4], [5, 6]]
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // Should succeed - homogeneous collections
     match result {
         Ok(_) => println!("✓ List operations typechecked successfully"),
@@ -59,7 +59,7 @@ fn test_map_operations_comprehensive() {
         let simple_map = {"key1": "value1", "key2": "value2"}
         let number_map = {"count": 42, "total": 100}
     "#;
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -83,10 +83,10 @@ fn test_tuple_operations_comprehensive() {
         let nested = ((1, 2), ("a", "b"))
         let single_element = (42,)
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // Should succeed - tuples can be heterogeneous
     match result {
         Ok(_) => println!("✓ Tuple operations typechecked successfully"),
@@ -107,10 +107,10 @@ fn test_operator_desugaring_comprehensive() {
         let unary = -42
         let not_equal = 1 != 2
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // Should run desugaring phase - may fail at dispatch due to missing implementations
     // but desugaring should complete successfully
     match result {
@@ -119,7 +119,10 @@ fn test_operator_desugaring_comprehensive() {
         }
         Err(e) => {
             // Expected - missing protocol implementations for desugared operators
-            println!("Got expected error (missing protocol implementations): {:?}", e);
+            println!(
+                "Got expected error (missing protocol implementations): {:?}",
+                e
+            );
         }
     }
 }
@@ -131,7 +134,7 @@ fn test_complex_nested_expressions() {
         let list_ops = [1, 2, 3]
         let tuple_example = (1, (2, 3))
     "#;
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -157,10 +160,10 @@ fn test_type_inference_with_variables() {
         let y = x
         let z = y + 1
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // Should succeed - variable type inference
     match result {
         Ok(_) => {
@@ -178,11 +181,11 @@ fn test_mixed_type_errors() {
     let source = r#"
         let mixed_list = [1, "hello", true]
     "#;
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
-            
+
             match result {
                 Ok(_) => {
                     println!("! Mixed type list unexpectedly succeeded - may indicate incomplete type checking");
@@ -204,10 +207,10 @@ fn test_empty_collections_error() {
         let empty_list = []
         let empty_map = {}
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     // May fail due to inability to infer empty collection types
     match result {
         Ok(_) => {
@@ -226,30 +229,36 @@ fn test_package_level_processing() {
     let program1_source = r#"
         let shared_value = 42
     "#;
-    
+
     let program2_source = r#"
         let other_value = 3.14
     "#;
-    
+
     let program1 = parse_program(program1_source).expect("Failed to parse program1");
     let program2 = parse_program(program2_source).expect("Failed to parse program2");
-    
+
     let mut package = Package::new("test_package".to_string());
     package.add_program(program1);
     package.add_program(program2);
-    
+
     // Initially should have 2 user programs
     assert_eq!(package.programs.len(), 2);
-    
+
     let result = typecheck_package(&mut package);
-    
+
     // Package-level processing should work
     match result {
         Ok(_) => {
             println!("Package-level typechecking succeeded");
             // After type checking, core library should be integrated
-            println!("Total programs after core library integration: {}", package.programs.len());
-            assert!(package.programs.len() >= 2, "Should have at least the 2 user programs");
+            println!(
+                "Total programs after core library integration: {}",
+                package.programs.len()
+            );
+            assert!(
+                package.programs.len() >= 2,
+                "Should have at least the 2 user programs"
+            );
         }
         Err(e) => {
             println!("Package-level typechecking failed: {:?}", e);
@@ -265,10 +274,10 @@ fn test_function_definition_basic() {
             a + b
         }
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse program");
     let result = typecheck_program(&mut program);
-    
+
     match result {
         Ok(_) => {
             println!("Basic function definition typechecked successfully");
@@ -287,25 +296,31 @@ fn test_large_program_performance() {
     for i in 0..100 {
         source.push_str(&format!("let var_{} = {}\n", i, i));
     }
-    
+
     let mut program = parse_program(&source).expect("Failed to parse large program");
-    
+
     let start = std::time::Instant::now();
     let result = typecheck_program(&mut program);
     let duration = start.elapsed();
-    
+
     println!("Typechecked 100 variable program in {:?}", duration);
-    
+
     match result {
         Ok(_) => {
             println!("Large program typechecked successfully");
             // Should complete in reasonable time (< 1 second for 100 variables)
-            assert!(duration.as_secs() < 5, "Typechecking should be reasonably fast");
+            assert!(
+                duration.as_secs() < 5,
+                "Typechecking should be reasonably fast"
+            );
         }
         Err(e) => {
             println!("Large program failed: {:?}", e);
             // Performance test still valid even if typechecking fails
-            assert!(duration.as_secs() < 5, "Even failed typechecking should be fast");
+            assert!(
+                duration.as_secs() < 5,
+                "Even failed typechecking should be fast"
+            );
         }
     }
 }
@@ -316,10 +331,10 @@ fn test_deeply_nested_expressions() {
     let source = r#"
         let deeply_nested = ((((1 + 2) * 3) + 4) * ((5 - 2) + (6 * 7))) - 8
     "#;
-    
+
     let mut program = parse_program(source).expect("Failed to parse nested program");
     let result = typecheck_program(&mut program);
-    
+
     match result {
         Ok(_) => {
             println!("Deeply nested expressions typechecked successfully");
@@ -338,7 +353,7 @@ fn test_comprehensive_collection_nesting() {
             [("charlie", 35), ("diana", 28)]
         ]
     "#;
-    
+
     match parse_program(source) {
         Ok(mut program) => {
             let result = typecheck_program(&mut program);
@@ -361,19 +376,19 @@ fn test_comprehensive_collection_nesting() {
 fn test_error_propagation_consistency() {
     // Test that errors are reported consistently and don't cause panics
     let problematic_sources = vec![
-        "let x = y",  // Undefined variable
-        "let list = [1, \"hello\"]",  // Mixed types
-        "let x = 1 + \"hello\"",  // Type mismatch in operator
-        "let empty = []",  // Empty collection
-        "[1, 2, 3, \"four\"]",  // Mixed list as expression
+        "let x = y",                 // Undefined variable
+        "let list = [1, \"hello\"]", // Mixed types
+        "let x = 1 + \"hello\"",     // Type mismatch in operator
+        "let empty = []",            // Empty collection
+        "[1, 2, 3, \"four\"]",       // Mixed list as expression
     ];
-    
+
     for (i, source) in problematic_sources.iter().enumerate() {
         println!("Testing problematic source {}: {}", i + 1, source);
-        
+
         if let Ok(mut program) = parse_program(source) {
             let result = typecheck_program(&mut program);
-            
+
             // We expect these to fail, but they should fail gracefully
             match result {
                 Ok(_) => {

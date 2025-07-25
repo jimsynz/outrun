@@ -7,4 +7,9 @@ members = [
   "outrun-typechecker",
 ]
 
+# Exclude the old interpreter from workspace (kept as reference material)
+exclude = [
+  "outrun-interpreter.old",
+]
+
 resolver = "3"

@@ -130,7 +130,7 @@ impl ProtocolRegistry {
             required_functions,
             span,
         };
-        
+
         self.protocol_definitions.insert(protocol_id, protocol_def);
     }
 
@@ -173,14 +173,15 @@ impl ProtocolRegistry {
             }
             return true;
         }
-        
+
         // If type doesn't explicitly implement, check if all required functions have defaults
         if let Some(protocol_def) = self.protocol_definitions.get(protocol) {
             // Check if every required function has a default implementation
-            let functions_without_defaults: HashSet<_> = protocol_def.required_functions
+            let functions_without_defaults: HashSet<_> = protocol_def
+                .required_functions
                 .difference(&protocol_def.default_implementations)
                 .collect();
-            
+
             if functions_without_defaults.is_empty() {
                 // All required functions have defaults, type satisfies protocol
                 // Still need to check required protocols recursively
@@ -193,7 +194,7 @@ impl ProtocolRegistry {
                 return true;
             }
         }
-        
+
         // Type doesn't implement protocol and not all functions have defaults
         false
     }
@@ -761,13 +762,13 @@ mod tests {
     #[test]
     fn test_protocol_requirement_registration() {
         let mut registry = create_test_registry();
-        
+
         // Register Integer protocol with BinaryAddition requirement
         let integer_protocol = ProtocolId::new("Integer");
         let binary_addition_protocol = ProtocolId::new("BinaryAddition");
         let mut requirements = HashSet::new();
         requirements.insert(binary_addition_protocol.clone());
-        
+
         registry.register_protocol_definition(
             integer_protocol.clone(),
             requirements,
@@ -776,7 +777,7 @@ mod tests {
             HashSet::new(), // required_functions
             None,
         );
-        
+
         // Test requirement lookup
         assert!(registry.protocol_requires(&integer_protocol, &binary_addition_protocol));
         assert!(!registry.protocol_requires(&integer_protocol, &ProtocolId::new("Display")));
@@ -785,16 +786,16 @@ mod tests {
     #[test]
     fn test_protocol_requirement_lookup() {
         let mut registry = create_test_registry();
-        
+
         // Register protocols with requirements
         let integer_protocol = ProtocolId::new("Integer");
         let binary_addition = ProtocolId::new("BinaryAddition");
         let equality = ProtocolId::new("Equality");
-        
+
         let mut integer_requirements = HashSet::new();
         integer_requirements.insert(binary_addition.clone());
         integer_requirements.insert(equality.clone());
-        
+
         registry.register_protocol_definition(
             integer_protocol.clone(),
             integer_requirements.clone(),
@@ -803,36 +804,39 @@ mod tests {
             HashSet::new(), // required_functions
             None,
         );
-        
+
         // Test getting all requirements
         let requirements = registry.get_protocol_requirements(&integer_protocol);
         assert_eq!(requirements, integer_requirements);
-        
+
         // Test non-existent protocol
-        let empty_requirements = registry.get_protocol_requirements(&ProtocolId::new("NonExistent"));
+        let empty_requirements =
+            registry.get_protocol_requirements(&ProtocolId::new("NonExistent"));
         assert!(empty_requirements.is_empty());
     }
 
     #[test]
     fn test_type_satisfies_protocol_simple() {
         let mut registry = create_test_registry();
-        
+
         // Register Integer64 type implementing Integer protocol
         let integer64_type = TypeId::new("Outrun.Core.Integer64");
         let integer_protocol = ProtocolId::new("Integer");
-        
-        registry.register_implementation(
-            integer64_type.clone(),
-            vec![],
-            integer_protocol.clone(),
-            vec![],
-            ModuleId::new("Integer"),
-            None,
-        ).expect("Implementation should succeed");
-        
+
+        registry
+            .register_implementation(
+                integer64_type.clone(),
+                vec![],
+                integer_protocol.clone(),
+                vec![],
+                ModuleId::new("Integer"),
+                None,
+            )
+            .expect("Implementation should succeed");
+
         // Test simple satisfaction (no requirements)
         assert!(registry.type_satisfies_protocol(&integer64_type, &integer_protocol));
-        
+
         // Test non-existent implementation
         let string_type = TypeId::new("String");
         assert!(!registry.type_satisfies_protocol(&string_type, &integer_protocol));
@@ -841,16 +845,16 @@ mod tests {
     #[test]
     fn test_type_satisfies_protocol_with_requirements() {
         let mut registry = create_test_registry();
-        
+
         // Register protocols with requirements
         let integer_protocol = ProtocolId::new("Integer");
         let binary_addition = ProtocolId::new("BinaryAddition");
         let equality = ProtocolId::new("Equality");
-        
+
         let mut integer_requirements = HashSet::new();
         integer_requirements.insert(binary_addition.clone());
         integer_requirements.insert(equality.clone());
-        
+
         registry.register_protocol_definition(
             integer_protocol.clone(),
             integer_requirements,
@@ -859,54 +863,62 @@ mod tests {
             HashSet::new(), // required_functions
             None,
         );
-        
+
         // Register type implementations
         let integer64_type = TypeId::new("Outrun.Core.Integer64");
-        
+
         // Register Integer implementation
-        registry.register_implementation(
-            integer64_type.clone(),
-            vec![],
-            integer_protocol.clone(),
-            vec![],
-            ModuleId::new("Integer"),
-            None,
-        ).expect("Integer implementation should succeed");
-        
+        registry
+            .register_implementation(
+                integer64_type.clone(),
+                vec![],
+                integer_protocol.clone(),
+                vec![],
+                ModuleId::new("Integer"),
+                None,
+            )
+            .expect("Integer implementation should succeed");
+
         // Register BinaryAddition implementation
-        registry.register_implementation(
-            integer64_type.clone(),
-            vec![],
-            binary_addition.clone(),
-            vec![],
-            ModuleId::new("BinaryAddition"),
-            None,
-        ).expect("BinaryAddition implementation should succeed");
-        
+        registry
+            .register_implementation(
+                integer64_type.clone(),
+                vec![],
+                binary_addition.clone(),
+                vec![],
+                ModuleId::new("BinaryAddition"),
+                None,
+            )
+            .expect("BinaryAddition implementation should succeed");
+
         // Register Equality implementation
-        registry.register_implementation(
-            integer64_type.clone(),
-            vec![],
-            equality.clone(),
-            vec![],
-            ModuleId::new("Equality"),
-            None,
-        ).expect("Equality implementation should succeed");
-        
+        registry
+            .register_implementation(
+                integer64_type.clone(),
+                vec![],
+                equality.clone(),
+                vec![],
+                ModuleId::new("Equality"),
+                None,
+            )
+            .expect("Equality implementation should succeed");
+
         // Test that type satisfies protocol with all requirements
         assert!(registry.type_satisfies_protocol(&integer64_type, &integer_protocol));
-        
+
         // Test with missing requirement
         let another_type = TypeId::new("AnotherType");
-        registry.register_implementation(
-            another_type.clone(),
-            vec![],
-            integer_protocol.clone(),
-            vec![],
-            ModuleId::new("Integer"),
-            None,
-        ).expect("Integer implementation should succeed");
-        
+        registry
+            .register_implementation(
+                another_type.clone(),
+                vec![],
+                integer_protocol.clone(),
+                vec![],
+                ModuleId::new("Integer"),
+                None,
+            )
+            .expect("Integer implementation should succeed");
+
         // Missing BinaryAddition and Equality implementations
         assert!(!registry.type_satisfies_protocol(&another_type, &integer_protocol));
     }

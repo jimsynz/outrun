@@ -284,7 +284,7 @@ struct_field_patterns = { struct_field_pattern ~ ("," ~ struct_field_pattern)* ~
 struct_field_pattern = { identifier ~ (":" ~ pattern)? } // field or field: pattern
 
 // List destructuring pattern: [pattern1, pattern2, ..rest_pattern]
-list_pattern = { "[" ~ list_pattern_elements ~ "]" }
+list_pattern = { "[" ~ list_pattern_elements? ~ "]" }
 list_pattern_elements = { pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pattern)? ~ ","? | rest_pattern ~ ","? }
 rest_pattern = @{ ".." ~ identifier }
 

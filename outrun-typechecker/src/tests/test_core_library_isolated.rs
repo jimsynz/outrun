@@ -6,9 +6,9 @@ use outrun_parser::parse_program;
 #[test]
 fn test_single_core_file_isolated() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     println!("=== Testing single core file in isolation ===");
-    
+
     // Create a minimal engine with just the protocols needed
     let protocol_deps = r#"
 protocol Boolean when Self: LogicalAnd && Self: LogicalOr && Self: LogicalNot {
@@ -42,22 +42,35 @@ protocol Default {
 struct Outrun.Core.String() {}
 "#;
 
-    let boolean_file_content = std::fs::read_to_string("/Users/jmshrtn/Dev/harton.dev/outrun/outrun/outrun-core/lib/outrun/core/boolean.outrun")
-        .expect("Should be able to read boolean.outrun");
-    
-    println!("Boolean file content length: {}", boolean_file_content.len());
-    
+    let boolean_file_content =
+        std::fs::read_to_string("../outrun-core/lib/outrun/core/boolean.outrun")
+            .expect("Should be able to read boolean.outrun");
+
+    println!(
+        "Boolean file content length: {}",
+        boolean_file_content.len()
+    );
+
     // Process protocol dependencies
     let mut deps_program = parse_program(protocol_deps).expect("Parse deps should succeed");
-    
-    engine.register_protocols_and_structs(&deps_program).expect("Phase 2 deps should succeed");
-    engine.register_automatic_implementations(&deps_program).expect("Phase 2.5 deps should succeed");  
-    engine.register_implementations(&deps_program).expect("Phase 3 deps should succeed");
-    engine.register_functions(&deps_program).expect("Phase 4 deps should succeed");
-    
+
+    engine
+        .register_protocols_and_structs(&deps_program)
+        .expect("Phase 2 deps should succeed");
+    engine
+        .register_automatic_implementations(&deps_program)
+        .expect("Phase 2.5 deps should succeed");
+    engine
+        .register_implementations(&deps_program)
+        .expect("Phase 3 deps should succeed");
+    engine
+        .register_functions(&deps_program)
+        .expect("Phase 4 deps should succeed");
+
     // Process boolean file
-    let mut boolean_program = parse_program(&boolean_file_content).expect("Parse boolean should succeed");
-    
+    let mut boolean_program =
+        parse_program(&boolean_file_content).expect("Parse boolean should succeed");
+
     println!("=== Phase 2: Register protocols and structs ===");
     match engine.register_protocols_and_structs(&boolean_program) {
         Ok(()) => println!("✅ Phase 2 succeeded"),
@@ -66,7 +79,7 @@ struct Outrun.Core.String() {}
             return;
         }
     }
-    
+
     println!("=== Phase 2.5: Register automatic implementations ===");
     match engine.register_automatic_implementations(&boolean_program) {
         Ok(()) => println!("✅ Phase 2.5 succeeded"),
@@ -76,7 +89,7 @@ struct Outrun.Core.String() {}
             return;
         }
     }
-    
+
     println!("=== Phase 3: Register implementations ===");
     match engine.register_implementations(&boolean_program) {
         Ok(()) => println!("✅ Phase 3 succeeded"),
@@ -85,7 +98,7 @@ struct Outrun.Core.String() {}
             return;
         }
     }
-    
+
     println!("=== Phase 4: Register functions ===");
     match engine.register_functions(&boolean_program) {
         Ok(()) => println!("✅ Phase 4 succeeded"),
@@ -94,7 +107,7 @@ struct Outrun.Core.String() {}
             return;
         }
     }
-    
+
     println!("=== Phase 6: Type check function bodies ===");
     match engine.typecheck_function_bodies(&mut boolean_program) {
         Ok(()) => println!("✅ Phase 6 succeeded - file type checks correctly!"),

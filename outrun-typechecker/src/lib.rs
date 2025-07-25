@@ -41,7 +41,7 @@ pub mod unification;
 
 // Re-export public API
 pub use constraints::ConstraintSolver;
-pub use core_library::{default_core_library_path, collect_outrun_files};
+pub use core_library::{collect_outrun_files, default_core_library_path};
 pub use desugaring::DesugaringEngine;
 pub use dispatch::{
     build_dispatch_table,
@@ -58,10 +58,10 @@ pub use dispatch::{
     ResolvedFunction,
 };
 pub use error::{
-    CompilerError, ConstraintError, DispatchError, ErrorContext, InferenceError, 
-    TypecheckError, UnificationError,
+    CompilerError, ConstraintError, DispatchError, ErrorContext, InferenceError, TypecheckError,
+    UnificationError,
 };
-pub use inference::{TypeInferenceEngine, InferenceContext, InferenceResult};
+pub use inference::{InferenceContext, InferenceResult, TypeInferenceEngine};
 pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
 pub use types::{
     Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
@@ -85,7 +85,7 @@ impl Package {
     pub fn add_program(&mut self, program: outrun_parser::Program) {
         self.programs.push(program);
     }
-    
+
     /// Create a package from a loaded package (from outrun.toml)
     pub fn from_loaded_package(loaded_package: package::LoadedPackage) -> Self {
         Self {
@@ -93,29 +93,55 @@ impl Package {
             package_name: loaded_package.manifest.package.name,
         }
     }
-    
+
     /// Merge another package into this one (for core library integration)
     pub fn merge(&mut self, other: Package) {
         self.programs.extend(other.programs);
     }
 }
 
+/// Result of type checking a package with dispatch information
+pub struct TypecheckResult {
+    /// The dispatch table for runtime function resolution
+    pub dispatch_table: DispatchTable,
+    /// The function registry for looking up user-defined function bodies
+    pub function_registry: std::rc::Rc<FunctionRegistry>,
+}
+
+/// Type check a package and return dispatch information for the interpreter
+#[allow(clippy::result_large_err)]
+pub fn typecheck_package_with_dispatch(
+    package: &mut Package,
+) -> Result<TypecheckResult, CompilerError> {
+    let result = typecheck_package_internal(package)?;
+    Ok(result)
+}
+
 /// Main entry point for type checking a complete Outrun package
 #[allow(clippy::result_large_err)]
 pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
+    typecheck_package_internal(package).map(|_| ())
+}
+
+/// Internal implementation that returns dispatch information
+#[allow(clippy::result_large_err)]
+fn typecheck_package_internal(package: &mut Package) -> Result<TypecheckResult, CompilerError> {
     let mut engine = TypeInferenceEngine::new();
     let mut desugaring_engine = DesugaringEngine::new();
 
     // Phase 0: Integrate core library into the package (unified processing)
     if let Some(core_package) = package::load_core_library_package()? {
         let core_package_std = Package::from_loaded_package(core_package);
-        
+
         // Prepend core library programs to ensure they're processed first
         let mut integrated_programs = core_package_std.programs;
-        integrated_programs.extend(package.programs.drain(..));
+        integrated_programs.append(&mut package.programs);
         package.programs = integrated_programs;
-        
-        println!("📦 Integrated core library: {} total programs", package.programs.len());
+
+        println!(
+            "📦 Integrated core library: {} total programs",
+            package.programs.len()
+        );
     } else {
         eprintln!("Warning: Could not find core library, proceeding without it");
     }
@@ -135,7 +161,7 @@ pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
         engine.register_automatic_implementations(program)?;
     }
 
-    // Phase 3: Register all explicit protocol implementations 
+    // Phase 3: Register all explicit protocol implementations
     for program in &package.programs {
         engine.register_implementations(program)?;
     }
@@ -153,7 +179,14 @@ pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
         engine.typecheck_function_bodies(program)?;
     }
 
-    Ok(())
+    // Phase 7: Build dispatch table for runtime function resolution
+    let dispatch_table =
+        build_dispatch_table(engine.protocol_registry(), engine.function_registry());
+
+    Ok(TypecheckResult {
+        dispatch_table,
+        function_registry: engine.function_registry_rc(),
+    })
 }
 
 /// Convenience function for single-file type checking (mainly for testing)
@@ -174,7 +207,6 @@ pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), Com
 mod desugaring_tests {
     pub mod test_operator_desugaring_integration;
 }
-
 
 #[cfg(test)]
 mod integration_tests {

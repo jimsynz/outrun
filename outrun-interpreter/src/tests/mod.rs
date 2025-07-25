@@ -1,14 +1,7 @@
-//! Integration tests for the Outrun interpreter
+//! Acceptance tests for the new Outrun interpreter
+//!
+//! This module contains comprehensive acceptance tests that verify the new interpreter
+//! works correctly with the parser → interpreter pipeline.
 
-mod test_acceptance_atom_protocol_functions;
-mod test_acceptance_float_binary_ops;
-mod test_acceptance_float_protocol_functions;
-mod test_acceptance_float_unary_ops;
-mod test_acceptance_integer_binary_ops;
-mod test_acceptance_integer_protocol_functions;
-mod test_acceptance_integer_unary_ops;
-mod test_core_library_function_body_investigation;
-mod test_harness_examples;
-mod test_integer_equality_runtime_bug;
-mod test_intrinsic_registry_completeness;
-mod test_protocol_implementation_investigation;
+pub mod test_acceptance_basic_literals;
+pub mod test_acceptance_pattern_matching;

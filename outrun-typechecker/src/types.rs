@@ -181,7 +181,11 @@ impl Type {
     }
 
     /// Create a protocol type with arguments and span information
-    pub fn protocol_with_args_and_span(name: impl Into<String>, args: Vec<Type>, span: Span) -> Self {
+    pub fn protocol_with_args_and_span(
+        name: impl Into<String>,
+        args: Vec<Type>,
+        span: Span,
+    ) -> Self {
         Self::Protocol {
             id: ProtocolId::new(name),
             args,
@@ -271,14 +275,14 @@ impl Type {
     pub fn contains_var(&self, target_var: TypeVarId) -> bool {
         let mut work_stack = vec![self];
         let mut visited = std::collections::HashSet::new();
-        
+
         while let Some(current_type) = work_stack.pop() {
             // Prevent infinite loops on recursive type structures
             let type_ptr = current_type as *const Type;
             if !visited.insert(type_ptr) {
                 continue;
             }
-            
+
             match current_type {
                 Self::Variable { var_id, .. } => {
                     if *var_id == target_var {
@@ -306,13 +310,17 @@ impl Type {
                 }
             }
         }
-        
+
         false
     }
-    
+
     /// Helper to collect types from SelfBindingContext for iterative traversal
     #[allow(clippy::only_used_in_recursion)]
-    fn collect_binding_context_types<'a>(&self, context: &'a SelfBindingContext, work_stack: &mut Vec<&'a Type>) {
+    fn collect_binding_context_types<'a>(
+        &self,
+        context: &'a SelfBindingContext,
+        work_stack: &mut Vec<&'a Type>,
+    ) {
         match context {
             SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
                 work_stack.extend(protocol_args.iter());
@@ -451,37 +459,40 @@ impl Substitution {
     pub fn apply(&self, ty: &Type) -> Type {
         self.apply_iterative(ty)
     }
-    
+
     /// Iterative implementation to prevent stack overflow on deep type chains
     fn apply_iterative(&self, ty: &Type) -> Type {
         // Handle variable chains iteratively to prevent stack overflow
         if let Type::Variable { var_id, .. } = ty {
             let mut current_var = *var_id;
             let mut visited = std::collections::HashSet::new();
-            
+
             // Follow the substitution chain iteratively
             while let Some(substituted_type) = self.get(current_var) {
                 if !visited.insert(current_var) {
                     // Circular substitution detected - return original type
                     return ty.clone();
                 }
-                
-                if let Type::Variable { var_id: next_var, .. } = substituted_type {
+
+                if let Type::Variable {
+                    var_id: next_var, ..
+                } = substituted_type
+                {
                     current_var = *next_var;
                 } else {
                     // Found non-variable type, apply substitution to it and return
                     return self.apply_to_structure(substituted_type);
                 }
             }
-            
+
             // No substitution found for this variable
             return ty.clone();
         }
-        
+
         // For non-variable types, apply to structure
         self.apply_to_structure(ty)
     }
-    
+
     /// Apply substitution to the structure of compound types
     fn apply_to_structure(&self, ty: &Type) -> Type {
         match ty {
