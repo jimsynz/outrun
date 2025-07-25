@@ -87,13 +87,13 @@ impl OutrunTestHarness {
         package.add_program(program);
 
         // Run full typechecking (includes desugaring and core library loading)
-        let typecheck_result = typecheck_package_with_dispatch(&mut package)?;
+        let compilation_result = typecheck_package_with_dispatch(&mut package)?;
 
         // Cache evaluator after first use for better test performance
         if self.evaluator.is_none() {
             self.evaluator = Some(ExpressionEvaluator::with_dispatch_table(
-                typecheck_result.dispatch_table,
-                typecheck_result.function_registry,
+                compilation_result.dispatch_table,
+                compilation_result.function_registry,
             ));
         }
 

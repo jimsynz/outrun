@@ -233,6 +233,19 @@ pub enum ImplementationError {
         #[label("cannot implement marker protocol {protocol_name}")]
         span: Option<SourceSpan>,
     },
+
+    #[error("Conflicting protocol definition: protocol {protocol_name} is already defined with different requirements")]
+    #[diagnostic(
+        code(outrun::typecheck::implementation::conflicting_protocol_definition),
+        help("Protocol definitions must be identical across all packages. Check that the protocol requirements and function signatures match.")
+    )]
+    ConflictingProtocolDefinition {
+        protocol_name: String,
+        #[label("conflicting protocol definition")]
+        span: Option<SourceSpan>,
+        #[label("previous protocol definition")]
+        previous_span: Option<SourceSpan>,
+    },
 }
 
 /// Exhaustiveness checking errors
@@ -374,6 +387,17 @@ pub enum CompilerError {
 
     #[error(transparent)]
     Typecheck(#[from] TypecheckError),
+
+    #[error("Module redefinition: module '{module_name}' is already defined by a dependency package")]
+    #[diagnostic(
+        code(outrun::compiler::module_redefinition),
+        help("Module names must be unique across all packages. Consider renaming this module or using a different package structure.")
+    )]
+    ModuleRedefinition {
+        module_name: String,
+        #[label("module redefined here")]
+        span: Option<SourceSpan>,
+    },
 }
 
 /// Utility functions for creating errors with source context

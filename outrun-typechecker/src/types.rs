@@ -67,6 +67,28 @@ impl ModuleId {
     }
 }
 
+impl From<Vec<outrun_parser::TypeIdentifier>> for ModuleId {
+    fn from(type_identifiers: Vec<outrun_parser::TypeIdentifier>) -> Self {
+        let qualified_name = type_identifiers
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        ModuleId::new(qualified_name)
+    }
+}
+
+impl From<&Vec<outrun_parser::TypeIdentifier>> for ModuleId {
+    fn from(type_identifiers: &Vec<outrun_parser::TypeIdentifier>) -> Self {
+        let qualified_name = type_identifiers
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        ModuleId::new(qualified_name)
+    }
+}
+
 /// Unified type representation extending the existing parser patterns
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {

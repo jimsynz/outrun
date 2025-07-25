@@ -164,6 +164,35 @@ impl TypeInferenceEngine {
         self.function_registry.clone()
     }
 
+    /// Get a cloned Rc to the protocol registry for compilation results
+    pub fn protocol_registry_rc(&self) -> std::rc::Rc<ProtocolRegistry> {
+        self.protocol_registry.clone()
+    }
+
+    /// Import dependency registries into this engine for package composition
+    pub fn import_dependency_registries(
+        &mut self,
+        dependency_protocol_registry: std::rc::Rc<ProtocolRegistry>,
+        dependency_function_registry: std::rc::Rc<FunctionRegistry>,
+    ) -> Result<(), crate::error::TypecheckError> {
+        // Merge the dependency registries into our existing ones while preserving orphan rules
+        
+        // Merge dependency protocol registry (preserves orphan rule information)
+        {
+            let protocol_registry = self.protocol_registry_mut();
+            protocol_registry.merge_from_dependency(&dependency_protocol_registry)
+                .map_err(crate::error::TypecheckError::ImplementationError)?;
+        }
+        
+        // Merge dependency function registry
+        {
+            let function_registry = self.function_registry_mut();
+            function_registry.merge_from_dependency(&dependency_function_registry);
+        }
+        
+        Ok(())
+    }
+
     /// Set generic parameter context for type resolution
     pub fn set_generic_parameter_context(&mut self, context: HashMap<String, Type>) {
         self.generic_parameter_context = context;

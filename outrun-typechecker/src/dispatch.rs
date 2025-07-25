@@ -129,6 +129,33 @@ impl FunctionRegistry {
             })
             .collect()
     }
+
+    /// Merge another function registry into this one
+    /// Used for composing packages with pre-compiled dependencies
+    pub fn merge_from_dependency(&mut self, dependency_registry: &FunctionRegistry) {
+        // Merge all functions from the dependency registry
+        // Functions from dependencies take precedence since they are pre-compiled
+        for ((module_name, function_name), function_info) in &dependency_registry.functions {
+            // Add the function, potentially overriding local definitions
+            // This allows dependencies to provide implementations that user code depends on
+            self.functions.insert((module_name.clone(), function_name.clone()), function_info.clone());
+        }
+    }
+
+    /// Get total number of registered functions
+    pub fn function_count(&self) -> usize {
+        self.functions.len()
+    }
+
+    /// Check if registry is empty
+    pub fn is_empty(&self) -> bool {
+        self.functions.is_empty()
+    }
+
+    /// Get an iterator over all functions (for debug and inspection)
+    pub fn all_functions(&self) -> impl Iterator<Item = (&(String, String), &FunctionInfo)> {
+        self.functions.iter()
+    }
 }
 
 impl Default for FunctionRegistry {

@@ -359,6 +359,70 @@ impl ProtocolRegistry {
     pub fn all_implementations(&self) -> impl Iterator<Item = &ImplementationInfo> {
         self.implementations.values()
     }
+
+    /// Merge another protocol registry into this one while preserving orphan rule information
+    /// This is used when composing packages with pre-compiled dependencies
+    pub fn merge_from_dependency(
+        &mut self,
+        dependency_registry: &ProtocolRegistry,
+    ) -> Result<(), crate::error::ImplementationError> {
+        // First, merge all protocol definitions from the dependency
+        for (protocol_id, protocol_def) in &dependency_registry.protocol_definitions {
+            // Check for conflicting protocol definitions
+            if let Some(existing_def) = self.protocol_definitions.get(protocol_id) {
+                // Protocol definitions must be identical to avoid conflicts
+                if existing_def != protocol_def {
+                    return Err(crate::error::ImplementationError::ConflictingProtocolDefinition {
+                        protocol_name: protocol_id.0.clone(),
+                        span: protocol_def.span.and_then(|s| crate::error::to_source_span(Some(s))),
+                        previous_span: existing_def.span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    });
+                }
+            } else {
+                // Add the protocol definition
+                self.protocol_definitions.insert(protocol_id.clone(), protocol_def.clone());
+            }
+        }
+
+        // Second, merge all implementations from the dependency
+        for (impl_key, impl_info) in &dependency_registry.implementations {
+            // Check for conflicting implementations
+            if let Some(existing_impl) = self.implementations.get(impl_key) {
+                // Implementation must be identical to avoid conflicts
+                if existing_impl != impl_info {
+                    return Err(crate::error::ImplementationError::ConflictingImplementation {
+                        protocol_name: impl_key.protocol_id.0.clone(),
+                        type_name: impl_key.implementing_type.name().to_string(),
+                        span: impl_info.span.and_then(|s| crate::error::to_source_span(Some(s))),
+                        previous_span: existing_impl.span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    });
+                }
+            } else {
+                // Add the implementation - orphan rule information is preserved in the ImplementationInfo
+                self.implementations.insert(impl_key.clone(), impl_info.clone());
+            }
+        }
+
+        // Third, merge local module information (dependencies' modules become non-local in the merged registry)
+        // We do NOT merge local_modules since dependency modules should not be considered local
+        // This preserves orphan rule checking: dependency modules are foreign to the current package
+
+        Ok(())
+    }
+
+    /// Create a new registry by merging multiple dependency registries
+    /// Used for composing multiple pre-compiled packages
+    pub fn merge_dependencies(
+        dependencies: &[&ProtocolRegistry],
+    ) -> Result<ProtocolRegistry, crate::error::ImplementationError> {
+        let mut merged = ProtocolRegistry::new();
+        
+        for dependency in dependencies {
+            merged.merge_from_dependency(dependency)?;
+        }
+        
+        Ok(merged)
+    }
 }
 
 impl Default for ProtocolRegistry {
