@@ -5,7 +5,7 @@ use outrun_parser::parse_program;
 
 #[test]
 fn test_unary_minus_parameter_name_based_constraint() {
-    let mut engine = TypeInferenceEngine::new();
+    let engine = TypeInferenceEngine::new();
     
     // Test code that uses UnaryMinus protocol
     let code = r#"

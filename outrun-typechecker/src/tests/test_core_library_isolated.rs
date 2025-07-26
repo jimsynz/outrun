@@ -52,7 +52,7 @@ struct Outrun.Core.String() {}
     );
 
     // Process protocol dependencies
-    let mut deps_program = parse_program(protocol_deps).expect("Parse deps should succeed");
+    let deps_program = parse_program(protocol_deps).expect("Parse deps should succeed");
 
     engine
         .register_protocols_and_structs(&deps_program)

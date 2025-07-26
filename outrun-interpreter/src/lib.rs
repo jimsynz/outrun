@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_basic_interpreter_creation() {
-        let mut context = InterpreterContext::new();
+        let context = InterpreterContext::new();
         // Basic smoke test - ensure we can create the interpreter components
         assert!(context.is_empty()); // Should start with empty context
     }

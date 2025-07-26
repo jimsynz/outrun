@@ -9,7 +9,7 @@ use crate::value::Value;
 use miette::Diagnostic;
 use outrun_parser::{Expression, ExpressionKind};
 use outrun_typechecker::{DispatchTable, FunctionRegistry};
-use outrun_typechecker::universal_dispatch::{UniversalDispatchRegistry, ClauseId, ClauseInfo, Guard, FunctionBody};
+use outrun_typechecker::universal_dispatch::{UniversalDispatchRegistry, ClauseId, Guard};
 use thiserror::Error;
 
 /// Errors that can occur during expression evaluation

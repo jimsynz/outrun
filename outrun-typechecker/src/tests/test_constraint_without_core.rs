@@ -5,7 +5,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_constraint_system_without_core_library() {
     // Test the constraint system redesign without loading the problematic core library
-    let mut engine = TypeInferenceEngine::new();
+    let engine = TypeInferenceEngine::new();
     
     // Simple test code that doesn't require core library protocols
     let code = r#"

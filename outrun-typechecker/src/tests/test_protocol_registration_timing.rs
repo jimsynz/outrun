@@ -22,7 +22,7 @@ struct Outrun.Core.String() {}
 "#;
 
     println!("=== Testing without Integer protocol registered ===");
-    let mut string_program = parse_program(string_function).expect("Parse should succeed");
+    let string_program = parse_program(string_function).expect("Parse should succeed");
 
     // Process Phase 2 without registering Integer protocol first
     match engine.register_protocols_and_structs(&string_program) {
@@ -51,7 +51,7 @@ protocol Integer {
 }
 "#;
 
-    let mut protocol_program =
+    let protocol_program =
         parse_program(integer_protocol).expect("Parse protocol should succeed");
     engine2
         .register_protocols_and_structs(&protocol_program)

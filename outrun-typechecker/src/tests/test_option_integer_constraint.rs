@@ -63,7 +63,7 @@ fn test_option_integer_constraint_compatibility() {
 
 #[test] 
 fn test_option_integer_constraint_negative_case() {
-    let mut engine = TypeInferenceEngine::new();
+    let engine = TypeInferenceEngine::new();
     
     // Create Option<Integer> - a protocol constraint
     let option_integer_constraint = Type::protocol_with_args(

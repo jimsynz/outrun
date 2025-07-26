@@ -296,7 +296,7 @@ fn test_nested_generic_types() {
 
 #[test]
 fn test_constraint_generation_with_non_generic_function() {
-    let mut engine = create_test_engine();
+    let engine = create_test_engine();
     
     // Non-generic function: def add(a: Integer64, b: Integer64): Integer64
     let function_info = FunctionInfo {

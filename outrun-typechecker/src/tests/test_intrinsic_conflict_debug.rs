@@ -139,7 +139,7 @@ fn test_intrinsic_explicit_implementation_conflict() {
 fn test_intrinsic_registry_investigation() {
     println!("🔍 Investigating intrinsic registry for pre-registered implementations");
 
-    let mut engine = TypeInferenceEngine::new();
+    let engine = TypeInferenceEngine::new();
 
     // Check what intrinsics might be pre-registered
     let registry = engine.get_protocol_registry();

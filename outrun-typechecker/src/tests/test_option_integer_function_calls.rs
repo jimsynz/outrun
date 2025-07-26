@@ -4,8 +4,8 @@
 //! is in function call inference rather than basic type compatibility
 
 use crate::inference::TypeInferenceEngine;
-use crate::types::{ProtocolId, Type, TypeId};
-use outrun_parser::{parse_program, Program};
+use crate::types::{ProtocolId, TypeId};
+use outrun_parser::parse_program;
 
 #[test]
 fn test_function_with_option_integer_parameter() {

@@ -23,7 +23,6 @@ use thiserror::Error;
 
 /// Errors that can occur in the REPL
 #[derive(Debug, Error, Diagnostic)]
-#[allow(clippy::result_large_err)] // Error types are infrequent, clarity preferred
 pub enum ReplError {
     #[error("Parse error: {source}")]
     Parse {
@@ -139,7 +138,6 @@ pub struct ReplStats {
 
 /// Result of evaluating a line in the REPL
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)] // Value variant is large but infrequent
 pub enum ReplResult {
     /// Successfully evaluated expression
     Value {
@@ -161,7 +159,6 @@ pub enum ReplResult {
     Exit,
 }
 
-#[allow(clippy::result_large_err)] // Error types are infrequent, clarity preferred
 impl ReplSession {
     /// Create a new REPL session with default configuration
     pub fn new() -> Result<Self, ReplError> {
