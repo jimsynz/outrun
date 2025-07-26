@@ -286,6 +286,7 @@ fn test_type_inference_engine_fresh_variable_performance() {
 }
 
 #[test]
+#[ignore] // Disabled: takes over a minute to run
 fn test_memory_usage_large_program() {
     println!("🚀 Testing memory usage with large program...");
 

@@ -419,10 +419,16 @@ pub struct FunctionCall {
     pub path: FunctionPath,
     pub arguments: Vec<Argument>,
     pub span: Span,
-    /// Resolved function registry key populated during typechecking
+    /// Resolved function registry key populated during typechecking (LEGACY)
     /// Format: "Protocol.function:TargetType" for protocol calls
     /// Format: "Module.function" for static calls
+    /// NOTE: This field is maintained for backward compatibility but will be deprecated
+    /// in favor of universal_clause_ids once universal dispatch is fully integrated
     pub resolved_function_key: Option<String>,
+    /// Universal dispatch clause IDs populated during typechecking
+    /// This represents the ordered list of clauses to try for universal dispatch
+    /// Each clause has guards that must be evaluated at runtime
+    pub universal_clause_ids: Option<Vec<u64>>,
 }
 
 /// Function path (simple or qualified)

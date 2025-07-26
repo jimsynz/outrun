@@ -136,7 +136,11 @@ pub enum TypePosition {
     /// Self position with path from root type  
     SelfPosition { path: Vec<String> },
     /// Argument position in function signature
-    ArgumentPosition { index: usize, path: Vec<String> },
+    ArgumentPosition { 
+        index: usize, 
+        path: Vec<String>,
+        param_name: Option<String>, // Parameter name for keyword argument matching
+    },
     /// Return type position in function signature
     ReturnPosition { path: Vec<String> },
     /// Generic argument position within container type

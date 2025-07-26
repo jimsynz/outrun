@@ -37,7 +37,9 @@ pub mod intrinsics;
 pub mod package;
 pub mod registry;
 pub mod types;
+pub mod typed_ast;
 pub mod unification;
+pub mod universal_dispatch;
 
 // Re-export public API
 pub use constraints::ConstraintSolver;
@@ -65,10 +67,14 @@ pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
 pub use types::{
     Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
 };
+pub use typed_ast::{TypedExpression, TypedExpressionKind, UniversalCallResolution};
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 pub use unification::Unifier;
+pub use universal_dispatch::{
+    ClauseId, ClauseInfo, ConstraintContext, FunctionBody, FunctionSignature, Guard, UniversalDispatchRegistry,
+};
 
 /// A collection of parsed programs representing a complete Outrun package
 pub struct Package {
@@ -109,7 +115,7 @@ pub struct CompilationResult {
     pub protocol_registry: std::rc::Rc<ProtocolRegistry>,
     /// Complete function registry with all function definitions  
     pub function_registry: std::rc::Rc<FunctionRegistry>,
-    /// Runtime dispatch table for function resolution
+    /// Runtime dispatch table for function resolution (LEGACY)
     pub dispatch_table: DispatchTable,
     /// Monomorphisation table for tracking generic function instantiations
     pub monomorphisation_table: MonomorphisationTable,
@@ -121,6 +127,8 @@ pub struct CompilationResult {
     pub local_modules: HashSet<ModuleId>,
     /// All modules defined by this compilation result (for redefinition prevention)
     pub defined_modules: HashSet<ModuleId>,
+    /// Universal dispatch registry for clause-based function calls
+    pub universal_dispatch: UniversalDispatchRegistry,
 }
 
 impl CompilationResult {
@@ -492,6 +500,7 @@ impl CompilationResult {
             programs: package.programs.clone(),
             local_modules,
             defined_modules,
+            universal_dispatch: engine.universal_dispatch_registry().clone(),
         })
     }
 

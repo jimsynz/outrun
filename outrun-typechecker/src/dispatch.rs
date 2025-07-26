@@ -311,11 +311,51 @@ impl<'a> FunctionDispatcher<'a> {
         match resolved_type {
             Type::Concrete { id, ref args, .. } => {
                 // Look up protocol implementation for this concrete type
+                // For generic types, we need to try both generic and non-generic protocol names
                 let protocol_id = ProtocolId::new(protocol_name);
-                if let Some(_impl_info) =
-                    self.protocol_registry
-                        .get_implementation(&protocol_id, &id, args)
-                {
+                eprintln!("🔍 DEBUG: Looking for implementation of protocol '{}' for type '{}' with args: {:?}", 
+                    protocol_name, id.name(), args);
+                
+                // First try exact match with current protocol name
+                let mut impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, args);
+                
+                // If not found and we have args, also try with empty args (for generic implementations registered without args)
+                if impl_info.is_none() && !args.is_empty() {
+                    eprintln!("🔍 DEBUG: Trying lookup with empty args for generic type");
+                    impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, &[]);
+                }
+                
+                // If not found and we have generic args, try constructing generic protocol name
+                if impl_info.is_none() && !args.is_empty() {
+                    let generic_args_str = args.iter()
+                        .map(|arg| match arg {
+                            Type::Variable { name: Some(name), .. } => name.clone(),
+                            Type::Variable { var_id, .. } => format!("T{}", var_id.0),
+                            other => format!("{}", other),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let generic_protocol_name = format!("{}<{}>", protocol_name, generic_args_str);
+                    let generic_protocol_id = ProtocolId::new(&generic_protocol_name);
+                    
+                    eprintln!("🔍 DEBUG: Trying generic protocol name: '{}'", generic_protocol_name);
+                    
+                    // Debug: Show the exact key we're looking for with generic protocol name  
+                    let generic_search_key = crate::registry::ImplementationKey::new(
+                        generic_protocol_id.clone(),
+                        id.clone(),
+                        args
+                    );
+                    eprintln!("🔍 DEBUG: Generic lookup key: protocol='{}' type='{}' args_signature='{}'", 
+                        generic_search_key.protocol_id.0, 
+                        generic_search_key.implementing_type.name(),
+                        generic_search_key.type_args_signature);
+                    
+                    impl_info = self.protocol_registry.get_implementation(&generic_protocol_id, &id, args);
+                }
+                
+                if let Some(_impl_info) = impl_info {
+                    eprintln!("🔍 DEBUG: Found implementation for {}::{}", protocol_name, id.name());
                     // Found implementation - look up the specific function using impl scope format
                     let impl_scope = format!("impl {} for {}", protocol_name, id.name());
                     if let Some(func_info) = self
@@ -332,6 +372,36 @@ impl<'a> FunctionDispatcher<'a> {
                         self.resolve_static_call(protocol_name, function_name, span)
                     }
                 } else {
+                    eprintln!("🔍 DEBUG: No implementation found for protocol '{}' and type '{}'", 
+                        protocol_name, id.name());
+                    eprintln!("🔍 DEBUG: Available implementations in protocol registry:");
+                    
+                    // Debug: List all available implementations
+                    for impl_info in self.protocol_registry.all_implementations() {
+                        eprintln!("🔍 DEBUG:   {} :: {}", 
+                            impl_info.protocol_id.0, 
+                            impl_info.implementing_type.name());
+                        
+                        // Show details for List implementations
+                        if impl_info.protocol_id.0.contains("List") {
+                            eprintln!("🔍 DEBUG:     List impl details: protocol='{}' type='{}' impl_args={:?}", 
+                                impl_info.protocol_id.0,
+                                impl_info.implementing_type.name(),
+                                impl_info.implementing_args);
+                        }
+                    }
+                    
+                    // Debug: Show the exact key we're looking for
+                    let search_key = crate::registry::ImplementationKey::new(
+                        crate::types::ProtocolId::new(protocol_name),
+                        id.clone(),
+                        args
+                    );
+                    eprintln!("🔍 DEBUG: Looking for key: protocol='{}' type='{}' args_signature='{}'", 
+                        search_key.protocol_id.0, 
+                        search_key.implementing_type.name(),
+                        search_key.type_args_signature);
+                    // Add debug info about what implementations are actually available
                     Err(DispatchError::NoImplementation {
                         protocol_name: protocol_name.to_string(),
                         type_name: id.name().to_string(),
@@ -345,17 +415,37 @@ impl<'a> FunctionDispatcher<'a> {
                 protocol_name: protocol_name.to_string(),
                 span: span.and_then(|s| crate::error::to_source_span(Some(s))),
             }),
-            Type::SelfType { .. } => match resolved_type.resolve_self() {
-                Some(concrete_type) => {
-                    self.resolve_protocol_call(protocol_name, function_name, &concrete_type, span)
+            Type::SelfType { .. } => {
+                // For protocol functions with Self parameters, try to resolve Self first
+                match resolved_type.resolve_self() {
+                    Some(concrete_type) => {
+                        // Self resolved to a concrete type - proceed with normal resolution
+                        self.resolve_protocol_call(protocol_name, function_name, &concrete_type, span)
+                    }
+                    None => {
+                        // Self is unbound (protocol definition context) - this is valid for protocol functions
+                        // Return an abstract protocol result that will be resolved later when called
+                        self.resolve_static_call(protocol_name, function_name, span)
+                    }
                 }
-                None => Err(DispatchError::UnboundSelfType {
-                    protocol_name: protocol_name.to_string(),
-                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
-                }),
+            },
+            Type::Protocol { id: protocol_id, ref args, .. } => {
+                // Protocol type like Option<Integer> - this is valid for protocol calls
+                // The protocol_name should match the protocol_id
+                if protocol_id.0 == protocol_name {
+                    // This is a valid protocol call - look for implementations
+                    // For now, return an abstract protocol result
+                    self.resolve_static_call(protocol_name, function_name, span)
+                } else {
+                    Err(DispatchError::InvalidTarget {
+                        protocol_name: protocol_name.to_string(),
+                        target_description: format!("Protocol mismatch: expected {}, got {}", protocol_name, protocol_id.0),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    })
+                }
             },
             _ => {
-                // Other type categories (Protocol, Function) handled similarly
+                // Other type categories (Function) handled similarly
                 Err(DispatchError::InvalidTarget {
                     protocol_name: protocol_name.to_string(),
                     target_description: format!("{resolved_type}"),

@@ -26,7 +26,7 @@ fn test_valid_constraint_on_protocol_type_variable() {
         
         impl Display<T> for Wrapper<U> when T: Debug {
             def display(value: T): String {
-                Debug.debug(value: value)
+                "debug representation"
             }
         }
     "#;

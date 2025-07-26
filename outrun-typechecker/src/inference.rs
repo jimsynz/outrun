@@ -25,6 +25,15 @@ use outrun_parser::{
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+/// Literal values for static evaluation in clause elimination
+#[derive(Debug, Clone, PartialEq)]
+enum LiteralValue {
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Boolean(bool),
+}
+
 /// Result type for function clause inference to reduce complexity
 type FunctionClauseInferenceResult = (Vec<(String, Type)>, Type, Vec<crate::types::Constraint>);
 
@@ -44,6 +53,9 @@ pub struct TypeInferenceEngine {
 
     /// Symbol table mapping variable names to types in current scope
     pub symbol_table: HashMap<String, Type>,
+
+    /// Universal dispatch registry for clause-based function calls
+    universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry,
 
     /// Error context for enhanced error reporting
     error_context: ErrorContext,
@@ -140,13 +152,14 @@ impl FunctionSignatureAnalyzer {
     ) -> SignatureAnalysis {
         let mut analyzer = Self::new();
         
-        // Analyze all parameter types
-        for (i, (_param_name, param_type)) in params.iter().enumerate() {
+        // Analyze all parameter types  
+        for (i, (param_name, param_type)) in params.iter().enumerate() {
             analyzer.analyze_type_in_position(
                 param_type,
                 &crate::types::TypePosition::ArgumentPosition { 
-                    index: i, 
-                    path: vec![] 
+                    index: i,        // Keep index for backward compatibility
+                    path: vec![],
+                    param_name: Some(param_name.clone()), // Add parameter name!
                 }
             );
         }
@@ -170,8 +183,14 @@ impl FunctionSignatureAnalyzer {
             let mut full_self_pos = self_pos.clone();
             // Combine position path with type's internal path
             match position {
-                crate::types::TypePosition::ArgumentPosition { index, path } => {
-                    let mut full_path = vec![format!("arg_{}", index)];
+                crate::types::TypePosition::ArgumentPosition { index, path, param_name } => {
+                    // Use parameter name if available, otherwise fall back to index for compatibility
+                    let position_identifier = if let Some(name) = param_name {
+                        format!("param_{}", name)
+                    } else {
+                        format!("arg_{}", index)
+                    };
+                    let mut full_path = vec![position_identifier];
                     full_path.extend(path.clone());
                     full_path.extend(full_self_pos.path);
                     full_self_pos.path = full_path;
@@ -197,7 +216,7 @@ impl FunctionSignatureAnalyzer {
                 let mut full_pos = var_pos.clone();
                 // Add position context to variable position
                 match position {
-                    crate::types::TypePosition::ArgumentPosition { index, path } => {
+                    crate::types::TypePosition::ArgumentPosition { index, path, .. } => {
                         if let crate::types::TypePosition::VariablePosition { path: ref mut var_path } = &mut full_pos {
                             let mut full_path = vec![format!("arg_{}", index)];
                             full_path.extend(path.clone());
@@ -364,6 +383,7 @@ impl TypeInferenceEngine {
             current_module: ModuleId::new("main"),
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
+            universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(),
             error_context: ErrorContext::new(),
             current_self_context: SelfBindingContext::ProtocolDefinition {
                 protocol_id: ProtocolId::new("Unknown"),
@@ -434,6 +454,11 @@ impl TypeInferenceEngine {
     /// Get a cloned Rc to the type registry for compilation results
     pub fn type_registry_rc(&self) -> std::rc::Rc<TypeRegistry> {
         self.type_registry.clone()
+    }
+
+    /// Get the universal dispatch registry containing all registered clauses
+    pub fn universal_dispatch_registry(&self) -> &crate::universal_dispatch::UniversalDispatchRegistry {
+        &self.universal_dispatch_registry
     }
 
     /// Import dependency registries into this engine for package composition
@@ -2393,128 +2418,600 @@ impl TypeInferenceEngine {
         ))
     }
 
-    /// Infer the type of a function call with dispatch integration
+    /// Universal function call resolution - converts any function call into clause lists
+    /// Phase 3: Includes static clause elimination for impossible clauses
+    fn resolve_universal_function_call(
+        &mut self,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        // DEBUG: Log the function path to understand what we're resolving
+        eprintln!("🔍 DEBUG: resolve_universal_function_call for path: {:?}", function_call.path);
+        
+        // Special debug for UnaryMinus
+        if let outrun_parser::FunctionPath::Qualified { module, name } = &function_call.path {
+            if module.name == "UnaryMinus" && name.name == "minus" {
+                eprintln!("🎯 FOUND UNARY MINUS CALL! Processing UnaryMinus.minus");
+            }
+        }
+        
+        // Get initial clause resolution
+        let initial_resolution = match &function_call.path {
+            outrun_parser::FunctionPath::Simple { name } => {
+                eprintln!("🔍 DEBUG: Taking SIMPLE path for function: {}", name.name);
+                // Simple function call - resolve to local context clauses
+                self.resolve_simple_function_clauses(&name.name, function_call, context)
+            }
+            outrun_parser::FunctionPath::Qualified { module, name } => {
+                eprintln!("🔍 DEBUG: Taking QUALIFIED path for function: {}.{}", module.name, name.name);
+                // Qualified function call - resolve to module/protocol clauses
+                self.resolve_qualified_function_clauses(&module.name, &name.name, function_call, context)
+            }
+            outrun_parser::FunctionPath::Expression { .. } => {
+                // Higher-order function call - create placeholder clause
+                let clause_id = crate::universal_dispatch::ClauseId::new();
+                let return_type = Type::variable(self.fresh_type_var(), Level(0));
+                return Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type));
+            }
+        }?;
+
+        // Phase 3: Static Clause Elimination
+        // Eliminate clauses that can never match based on static analysis
+        let viable_clauses = self.eliminate_impossible_clauses(
+            &initial_resolution.possible_clauses,
+            &function_call.arguments,
+            context,
+        )?;
+
+        // Return optimized resolution with only viable clauses
+        if viable_clauses.is_empty() {
+            // All clauses were eliminated - this is a type error
+            return Err(TypecheckError::UnificationError(
+                OriginalUnificationError::TypeMismatch {
+                    expected: Type::concrete("AnyMatchingClause"),
+                    found: Type::concrete("NoViableClauses"),
+                    expected_context: Some("function call with matching clauses".to_string()),
+                    found_context: Some("no clauses can possibly match the provided arguments".to_string()),
+                    span: crate::error::to_source_span(Some(function_call.span)),
+                },
+            ));
+        }
+
+        let clause_count = viable_clauses.len();
+        Ok(crate::typed_ast::UniversalCallResolution {
+            possible_clauses: viable_clauses,
+            return_type: initial_resolution.return_type,
+            is_single_clause: clause_count == 1,
+            is_ambiguous: clause_count > 1,
+        })
+    }
+
+    /// Phase 3: Static Clause Elimination
+    /// Eliminate clauses that can never match based on static type and value analysis
+    fn eliminate_impossible_clauses(
+        &mut self,
+        clauses: &[crate::universal_dispatch::ClauseId],
+        arguments: &[outrun_parser::Argument],
+        context: &mut InferenceContext,
+    ) -> Result<Vec<crate::universal_dispatch::ClauseId>, TypecheckError> {
+        if clauses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Step 1: Infer argument types once for all clauses
+        let arg_types = self.infer_argument_types(arguments, context)?;
+
+        // Step 2: Filter clauses that could possibly match
+        let mut viable_clauses = Vec::new();
+        
+        for &clause_id in clauses {
+            if let Some(clause) = self.universal_dispatch_registry.get_clause(clause_id) {
+                // Conservative elimination: only eliminate clauses we're 100% sure can't match
+                match self.clause_could_possibly_match(clause, &arg_types, context) {
+                    Ok(true) => {
+                        viable_clauses.push(clause_id);
+                    }
+                    Ok(false) => {
+                        // Clause can never match - eliminated!
+                        println!("🚀 Static elimination: Clause {:?} eliminated", clause_id);
+                    }
+                    Err(_) => {
+                        // If we can't determine, conservatively keep the clause
+                        viable_clauses.push(clause_id);
+                    }
+                }
+            } else {
+                // Clause not found - keep it to avoid breaking things
+                viable_clauses.push(clause_id);
+            }
+        }
+
+        // Preserve source order of viable clauses
+        Ok(viable_clauses)
+    }
+
+    /// Check if a clause could possibly match the given argument types
+    fn clause_could_possibly_match(
+        &self,
+        clause: &crate::universal_dispatch::ClauseInfo,
+        arg_types: &[Type],
+        context: &InferenceContext,
+    ) -> Result<bool, TypecheckError> {
+        // Analyze each guard in the clause
+        for guard in &clause.guards {
+            match guard {
+                crate::universal_dispatch::Guard::TypeCompatible { 
+                    target_type, 
+                    implementing_type, 
+                    .. 
+                } => {
+                    // Static type compatibility check
+                    if !self.types_could_be_compatible(target_type, implementing_type)? {
+                        return Ok(false); // Clause can never match due to type incompatibility
+                    }
+                }
+                crate::universal_dispatch::Guard::ValueGuard { expression, .. } => {
+                    // Try to evaluate guard expression statically
+                    match self.evaluate_guard_statically(expression, arg_types, context) {
+                        Ok(Some(false)) => {
+                            return Ok(false); // Guard always fails
+                        }
+                        Ok(Some(true)) => {
+                            // Guard always passes - continue checking other guards
+                        }
+                        Ok(None) | Err(_) => {
+                            // Can't determine statically - assume it could match
+                        }
+                    }
+                }
+                crate::universal_dispatch::Guard::AlwaysTrue => {
+                    // Always matches - continue
+                }
+            }
+        }
+        
+        Ok(true) // Clause could potentially match
+    }
+
+    /// Check if two types could potentially be compatible
+    fn types_could_be_compatible(
+        &self,
+        type1: &Type,
+        type2: &Type,
+    ) -> Result<bool, TypecheckError> {
+        // Use existing type compatibility logic but in a more permissive way
+        // This is a conservative check - we only eliminate obvious impossibilities
+        
+        match (type1, type2) {
+            // Same concrete types are always compatible
+            (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => {
+                Ok(self.type_ids_are_equivalent(id1, id2))
+            }
+            // Variables could unify with anything
+            (Type::Variable { .. }, _) | (_, Type::Variable { .. }) => Ok(true),
+            // Self types could resolve to anything
+            (Type::SelfType { .. }, _) | (_, Type::SelfType { .. }) => Ok(true),
+            // Protocol types could be implemented by concrete types
+            (Type::Protocol { .. }, Type::Concrete { .. }) => Ok(true),
+            (Type::Concrete { .. }, Type::Protocol { .. }) => Ok(true),
+            // Same protocol types could be compatible
+            (Type::Protocol { id: id1, .. }, Type::Protocol { id: id2, .. }) => {
+                Ok(id1 == id2)
+            }
+            // Function types - basic compatibility check
+            (Type::Function { .. }, Type::Function { .. }) => Ok(true),
+            // Different concrete types are incompatible
+            _ => Ok(false),
+        }
+    }
+
+    /// Try to evaluate a guard expression statically
+    fn evaluate_guard_statically(
+        &self,
+        expression: &outrun_parser::Expression,
+        _arg_types: &[Type],
+        _context: &InferenceContext,
+    ) -> Result<Option<bool>, TypecheckError> {
+        // Static evaluation of common guard patterns
+        match &expression.kind {
+            // Literal boolean values
+            outrun_parser::ExpressionKind::Boolean(bool_lit) => {
+                Ok(Some(bool_lit.value))
+            }
+            // Function calls (desugared operators)
+            outrun_parser::ExpressionKind::FunctionCall(func_call) => {
+                match &func_call.path {
+                    outrun_parser::FunctionPath::Qualified { module, name } => {
+                        // Handle common comparison operators with literal values
+                        if module.name == "Equality" && name.name == "not_equal?" {
+                            // Check for patterns like "x != 0" where one argument is literal
+                            self.evaluate_static_not_equal(&func_call.arguments)
+                        } else if module.name == "Equality" && name.name == "equal?" {
+                            // Check for patterns like "x == 0" where one argument is literal
+                            self.evaluate_static_equal(&func_call.arguments)
+                        } else {
+                            // Can't evaluate other function calls statically
+                            Ok(None)
+                        }
+                    }
+                    _ => Ok(None),
+                }
+            }
+            _ => Ok(None), // Can't evaluate other expression types statically
+        }
+    }
+
+    /// Evaluate static "not equal" comparisons
+    fn evaluate_static_not_equal(
+        &self,
+        arguments: &[outrun_parser::Argument],
+    ) -> Result<Option<bool>, TypecheckError> {
+        if arguments.len() != 2 {
+            return Ok(None);
+        }
+
+        let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
+        
+        match (left_lit, right_lit) {
+            (Some(left), Some(right)) => {
+                // Both sides are literals - can evaluate statically
+                Ok(Some(left != right))
+            }
+            _ => Ok(None), // Can't evaluate if not both literals
+        }
+    }
+
+    /// Evaluate static "equal" comparisons
+    fn evaluate_static_equal(
+        &self,
+        arguments: &[outrun_parser::Argument],
+    ) -> Result<Option<bool>, TypecheckError> {
+        if arguments.len() != 2 {
+            return Ok(None);
+        }
+
+        let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
+        
+        match (left_lit, right_lit) {
+            (Some(left), Some(right)) => {
+                // Both sides are literals - can evaluate statically
+                Ok(Some(left == right))
+            }
+            _ => Ok(None), // Can't evaluate if not both literals
+        }
+    }
+
+    /// Extract literal values from function arguments for static evaluation
+    fn extract_literal_arguments(
+        &self,
+        arguments: &[outrun_parser::Argument],
+    ) -> Result<(Option<LiteralValue>, Option<LiteralValue>), TypecheckError> {
+        let mut literals = Vec::new();
+        
+        for arg in arguments {
+            let expr = match arg {
+                outrun_parser::Argument::Named { expression, .. } => expression,
+                outrun_parser::Argument::Spread { expression, .. } => expression,
+            };
+            
+            literals.push(self.extract_literal_value(expr));
+        }
+        
+        Ok((
+            literals.get(0).cloned().flatten(),
+            literals.get(1).cloned().flatten(),
+        ))
+    }
+
+    /// Extract a literal value from an expression for static evaluation
+    fn extract_literal_value(&self, expr: &outrun_parser::Expression) -> Option<LiteralValue> {
+        match &expr.kind {
+            outrun_parser::ExpressionKind::Integer(int_lit) => {
+                Some(LiteralValue::Integer(int_lit.value))
+            }
+            outrun_parser::ExpressionKind::Float(float_lit) => {
+                Some(LiteralValue::Float(float_lit.value))
+            }
+            outrun_parser::ExpressionKind::String(str_lit) => {
+                // For now, only handle simple string literals (not interpolated)
+                if str_lit.parts.len() == 1 {
+                    if let outrun_parser::StringPart::Text { content, .. } = &str_lit.parts[0] {
+                        Some(LiteralValue::String(content.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            outrun_parser::ExpressionKind::Boolean(bool_lit) => {
+                Some(LiteralValue::Boolean(bool_lit.value))
+            }
+            _ => None,
+        }
+    }
+
+    /// Infer types of function call arguments
+    fn infer_argument_types(
+        &mut self,
+        arguments: &[outrun_parser::Argument],
+        context: &mut InferenceContext,
+    ) -> Result<Vec<Type>, TypecheckError> {
+        let mut arg_types = Vec::new();
+        
+        for argument in arguments {
+            let expr = match argument {
+                outrun_parser::Argument::Named { expression, .. } => expression,
+                outrun_parser::Argument::Spread { expression, .. } => expression,
+            };
+            
+            // Create a mutable clone for type inference
+            let mut expr_clone = expr.clone();
+            let result = self.infer_expression(&mut expr_clone, context)?;
+            arg_types.push(result.inferred_type);
+        }
+        
+        Ok(arg_types)
+    }
+
+    /// Resolve simple function calls to clause lists
+    fn resolve_simple_function_clauses(
+        &mut self,
+        function_name: &str,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        // Use existing dispatcher logic but convert to universal result
+        let function_context = self.create_function_context_from_inference_context(context);
+        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None)
+            .with_context(function_context);
+
+        match dispatcher.resolve_local_call(function_name, Some(function_call.span)) {
+            Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
+                // Single resolved function - create single clause
+                let clause_id = crate::universal_dispatch::ClauseId::new();
+                let return_type = resolved_func.function_info.return_type.clone();
+                
+                // Register this clause in the universal dispatch registry
+                self.register_function_clause(clause_id, &resolved_func);
+                
+                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
+                // Multiple candidates - create multiple clauses
+                let mut clause_ids = Vec::new();
+                let return_type = if !candidates.is_empty() {
+                    candidates[0].function_info.return_type.clone()
+                } else {
+                    Type::variable(self.fresh_type_var(), Level(0))
+                };
+                
+                for candidate in candidates {
+                    let clause_id = crate::universal_dispatch::ClauseId::new();
+                    self.register_function_clause(clause_id, &candidate);
+                    clause_ids.push(clause_id);
+                }
+                
+                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::NotFound) => {
+                // Function not found - create error clause
+                return Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
+                    protocol_name: "unknown".to_string(),
+                    type_name: function_name.to_string(),
+                    span: crate::error::to_source_span(Some(function_call.span)),
+                    similar_implementations: Vec::new(),
+                    suggestions: Vec::new(),
+                }));
+            }
+            Err(dispatch_error) => {
+                Err(TypecheckError::DispatchError(dispatch_error))
+            }
+        }
+    }
+
+    /// Resolve qualified function calls to clause lists
+    fn resolve_qualified_function_clauses(
+        &mut self,
+        module_name: &str,
+        function_name: &str,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        let qualified_name = format!("{}.{}", module_name, function_name);
+        let protocol_id = crate::types::ProtocolId::new(module_name);
+        
+        // Check if this is a protocol call
+        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
+            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context)?;
+            // If we resolved a SelfType to a concrete type through constraint analysis,
+            // we need to substitute it before passing to the dispatcher
+            resolved_target.map(|t| {
+                if t.is_self_type() {
+                    // This is still a SelfType - the constraint system couldn't resolve it
+                    t
+                } else {
+                    // This is the concrete type that Self resolved to
+                    t
+                }
+            })
+        } else {
+            None
+        };
+
+        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
+        
+        match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
+            Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
+                let clause_id = crate::universal_dispatch::ClauseId::new();
+                let return_type = resolved_func.function_info.return_type.clone();
+                
+                self.register_function_clause(clause_id, &resolved_func);
+                
+                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
+                let mut clause_ids = Vec::new();
+                let return_type = if !candidates.is_empty() {
+                    candidates[0].function_info.return_type.clone()
+                } else {
+                    Type::variable(self.fresh_type_var(), Level(0))
+                };
+                
+                for candidate in candidates {
+                    let clause_id = crate::universal_dispatch::ClauseId::new();
+                    self.register_function_clause(clause_id, &candidate);
+                    clause_ids.push(clause_id);
+                }
+                
+                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::NotFound) => {
+                // Check for lazy intrinsic registration
+                if module_name == "Outrun.Intrinsic" {
+                    match self.try_lazy_intrinsic_registration(function_name, &function_call.arguments, function_call.span, context) {
+                        Ok(result) => {
+                            // Create single clause for lazily registered intrinsic
+                            let clause_id = crate::universal_dispatch::ClauseId::new();
+                            // Register intrinsic clause (simplified for now)
+                            Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, result.inferred_type))
+                        }
+                        Err(error) => Err(error),
+                    }
+                } else {
+                    Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
+                        protocol_name: module_name.to_string(),
+                        type_name: function_name.to_string(),
+                        span: crate::error::to_source_span(Some(function_call.span)),
+                        similar_implementations: Vec::new(),
+                        suggestions: Vec::new(),
+                    }))
+                }
+            }
+            Err(dispatch_error) => {
+                Err(TypecheckError::DispatchError(dispatch_error))
+            }
+        }
+    }
+
+    /// Register a function clause in the universal dispatch registry
+    fn register_function_clause(
+        &mut self,
+        clause_id: crate::universal_dispatch::ClauseId,
+        resolved_func: &crate::dispatch::ResolvedFunction,
+    ) {
+        use crate::universal_dispatch::*;
+        
+        // DEBUG: Add extensive logging for function clause registration
+        eprintln!("🔍 DEBUG: register_function_clause called:");
+        eprintln!("  - clause_id: {:?}", clause_id);
+        eprintln!("  - qualified_name: {}", resolved_func.qualified_name);
+        eprintln!("  - function_name: {}", resolved_func.function_info.function_name);
+        eprintln!("  - defining_scope: {}", resolved_func.function_info.defining_scope);
+        eprintln!("  - has_body: {}", resolved_func.function_info.body.is_some());
+        eprintln!("  - implementing_type: {:?}", resolved_func.implementing_type.as_ref().map(|t| t.name()));
+        
+        // Create function signature from resolved function
+        let signature = FunctionSignature::new(
+            vec![resolved_func.function_info.defining_scope.clone()],
+            resolved_func.function_info.function_name.clone(),
+        );
+        
+        // Create guards based on function type
+        let mut guards = Vec::new();
+        
+        // Add type compatibility guard if there's an implementing type
+        if let Some(implementing_type) = &resolved_func.implementing_type {
+            guards.push(Guard::TypeCompatible {
+                target_type: Type::concrete(implementing_type.name()),
+                implementing_type: Type::concrete(implementing_type.name()),
+                constraint_context: ConstraintContext::new(),
+            });
+        }
+        
+        // Add always-true guard as fallback
+        guards.push(Guard::AlwaysTrue);
+        
+        // Create function body based on resolved function
+        let body = if let Some(block) = &resolved_func.function_info.body {
+            eprintln!("🔍 DEBUG: Function has body, registering as UserFunction");
+            FunctionBody::UserFunction(block.clone())
+        } else if resolved_func.qualified_name.starts_with("Outrun.Intrinsic.") {
+            // Only treat as intrinsic if it's actually in the Outrun.Intrinsic namespace
+            eprintln!("🔍 DEBUG: Function is intrinsic, registering as IntrinsicFunction");
+            FunctionBody::IntrinsicFunction(resolved_func.qualified_name.clone())
+        } else {
+            // For protocol functions without bodies, don't register universal clauses
+            // These should be resolved through the legacy dispatch system to concrete implementations
+            eprintln!("🔍 DEBUG: Protocol function without body - NOT registering universal clause for: {}", resolved_func.qualified_name);
+            return; // Don't register a universal clause for abstract protocol functions
+        };
+        
+        // Create clause info
+        let clause_info = ClauseInfo {
+            clause_id,
+            function_signature: signature,
+            guards,
+            body,
+            estimated_cost: 1,
+            priority: 0,
+            span: resolved_func.function_info.span,
+        };
+        
+        // Register the clause
+        self.universal_dispatch_registry.register_clause(clause_info);
+    }
+
+    /// Infer the type of a function call using universal dispatch
     #[allow(clippy::result_large_err)]
     fn infer_function_call(
         &mut self,
         function_call: &mut outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::FunctionPath;
-
-        match function_call.path.clone() {
-            FunctionPath::Simple { name } => {
-                // Local function call - resolve in current context
-                self.infer_local_function_call(function_call, &name, context)
-            }
-            FunctionPath::Qualified { module, name } => {
-                // Qualified function call - static protocol or module call
-                self.infer_qualified_function_call(function_call, &module, &name, context)
-            }
-            FunctionPath::Expression { expression: _ } => {
-                // Higher-order function call - not implemented yet
-                // For now, return a fresh type variable
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
+        // Phase 2: Universal Interpreter Simplification
+        // ALL function calls now go through the universal dispatch system
+        
+        let universal_resolution = self.resolve_universal_function_call(function_call, context)?;
+        
+        // Set the resolved function key for interpreter dispatch (LEGACY)
+        // For now, use the first clause ID as the key (will be enhanced in Phase 3)
+        if let Some(first_clause) = universal_resolution.possible_clauses.first() {
+            function_call.resolved_function_key = Some(format!("clause_{}", first_clause.0));
+        }
+        
+        // Set the universal clause IDs for universal dispatch system
+        function_call.universal_clause_ids = Some(
+            universal_resolution.possible_clauses.iter()
+                .map(|clause_id| clause_id.0)
+                .collect()
+        );
+        
+        // Type check arguments
+        let mut inferred_arguments = Vec::new();
+        for argument in &mut function_call.arguments {
+            match argument {
+                outrun_parser::Argument::Named { expression, .. } => {
+                    let arg_result = self.infer_expression(expression, context)?;
+                    inferred_arguments.push(arg_result);
+                }
+                outrun_parser::Argument::Spread { expression, .. } => {
+                    let arg_result = self.infer_expression(expression, context)?;
+                    inferred_arguments.push(arg_result);
+                }
             }
         }
+        
+        // For now, return the resolved return type
+        // In Phase 3, this will be enhanced with full constraint solving
+        Ok(InferenceResult {
+            inferred_type: universal_resolution.return_type,
+            constraints: context.constraints.clone(),
+            substitution: context.substitution.clone(),
+        })
     }
 
-    /// Infer a local function call (unqualified name)
-    #[allow(clippy::result_large_err)]
-    fn infer_local_function_call(
-        &mut self,
-        function_call: &mut outrun_parser::FunctionCall,
-        name: &outrun_parser::Identifier,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        let function_name = &name.name;
 
-        // Create a function dispatcher with the appropriate context
-        let function_context = self.create_function_context_from_inference_context(context);
-        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None)
-            .with_context(function_context);
-
-        // Try to resolve local function call using dispatcher
-        match dispatcher.resolve_local_call(function_name, Some(name.span)) {
-            Ok(dispatch_result) => {
-                // Set the resolved function key for direct interpreter dispatch
-                if let crate::dispatch::DispatchResult::Resolved(resolved_func) = &dispatch_result {
-                    function_call.resolved_function_key = Some(resolved_func.qualified_name.clone());
-                    eprintln!("DEBUG: Local function call resolved to key: '{}'", resolved_func.qualified_name);
-                }
-                self.handle_dispatch_result(dispatch_result, &mut function_call.arguments, context)
-            }
-            Err(dispatch_error) => {
-                // Convert dispatch error to type error
-                Err(TypecheckError::DispatchError(dispatch_error))
-            }
-        }
-    }
-
-    /// Infer a qualified function call (Module.function) using comprehensive signature analysis
-    #[allow(clippy::result_large_err)]
-    fn infer_qualified_function_call(
-        &mut self,
-        function_call: &mut outrun_parser::FunctionCall,
-        module: &outrun_parser::TypeIdentifier,
-        name: &outrun_parser::Identifier,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        let qualified_name = format!("{}.{}", module.name, name.name);
-        let protocol_id = crate::types::ProtocolId::new(&module.name);
-
-        // Check if this is a protocol call requiring Self/generic type resolution
-        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
-            // Use comprehensive signature analysis for protocol calls
-            self.resolve_protocol_call_target_type(&qualified_name, function_call, context)?
-        } else {
-            None
-        };
-
-        // Create a function dispatcher
-        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
-
-        // Try to resolve qualified function call using dispatcher
-        match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(name.span)) {
-            Ok(dispatch_result) => {
-                // Generate proper monomorphised key for dispatch table
-                if let crate::dispatch::DispatchResult::Resolved(resolved_func) = &dispatch_result {
-                    let monomorphised_key = if let Some(ref target) = target_type {
-                        // Protocol call: use Protocol.function:TargetType format
-                        format!("{}:{}", resolved_func.qualified_name, target)
-                    } else {
-                        // Static call: use qualified name as-is
-                        resolved_func.qualified_name.clone()
-                    };
-                    function_call.resolved_function_key = Some(monomorphised_key);
-                }
-                self.handle_dispatch_result(dispatch_result, &mut function_call.arguments, context)
-            }
-            Err(dispatch_error) => {
-                // Check if this is an Outrun.Intrinsic call that can be lazily registered
-                if module.name == "Outrun.Intrinsic" {
-                    match self
-                        .try_lazy_intrinsic_registration(&name.name, &function_call.arguments, name.span, context)
-                    {
-                        Ok(result) => {
-                            function_call.resolved_function_key = Some(qualified_name.clone());
-                            return Ok(result);
-                        }
-                        Err(_) => {
-                            // Fall through to original error if lazy registration fails
-                        }
-                    }
-                }
-
-                Err(TypecheckError::DispatchError(dispatch_error))
-            }
-        }
-    }
 
     /// Resolve target type for protocol calls using comprehensive Self/generic analysis
     #[allow(clippy::result_large_err)]
@@ -2524,17 +3021,24 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<Option<Type>, TypecheckError> {
+        eprintln!("🔍 DEBUG: resolve_protocol_call_target_type for: {}", qualified_name);
+        
         // Look up the function signature for analysis
         let (module_name, function_name) = if let Some(dot_pos) = qualified_name.rfind('.') {
             (&qualified_name[..dot_pos], &qualified_name[dot_pos + 1..])
         } else {
+            eprintln!("🔍 DEBUG: No dot found in qualified_name: {}", qualified_name);
             return Ok(None);
         };
 
+        eprintln!("🔍 DEBUG: Parsed as module: {}, function: {}", module_name, function_name);
+
         // Get function info from registry and clone the data we need
         let (function_parameters, function_return_type) = if let Some(info) = self.function_registry.get_function(module_name, function_name) {
+            eprintln!("🔍 DEBUG: Found function info: parameters={:?}, return_type={:?}", info.parameters, info.return_type);
             (info.parameters.clone(), info.return_type.clone())
         } else {
+            eprintln!("🔍 DEBUG: Function not found in registry: {} {}", module_name, function_name);
             return Ok(None); // Function not found, let dispatcher handle the error
         };
 
@@ -2544,8 +3048,11 @@ impl TypeInferenceEngine {
             &function_return_type,
         );
 
+        eprintln!("🔍 DEBUG: Signature analysis: self_positions={:?}", signature_analysis.self_positions);
+
         // If there are no Self positions, this is not a protocol call requiring Self inference
         if signature_analysis.self_positions.is_empty() {
+            eprintln!("🔍 DEBUG: No Self positions found, returning None");
             return Ok(None);
         }
 
@@ -2564,11 +3071,12 @@ impl TypeInferenceEngine {
             }
         }
 
-        // Extract Self type from argument positions
-        let self_type = self.extract_self_from_argument_positions(
+        // Extract Self type from argument names (not positions!)
+        let self_type = self.extract_self_from_argument_names(
             &signature_analysis.self_positions,
             &function_parameters,
-            &inferred_argument_types,
+            function_call,
+            context,
         )?;
 
         // Validate type variable unification constraints
@@ -2584,40 +3092,66 @@ impl TypeInferenceEngine {
         Ok(self_type)
     }
 
-    /// Extract Self type from argument positions using comprehensive position analysis
+    /// Extract Self type from argument names (keyword arguments)
     #[allow(clippy::result_large_err)]
-    fn extract_self_from_argument_positions(
-        &self,
+    fn extract_self_from_argument_names(
+        &mut self,
         self_positions: &[crate::types::SelfPosition],
         function_parameters: &[(String, Type)],
-        inferred_argument_types: &[Option<Type>],
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
     ) -> Result<Option<Type>, TypecheckError> {
+        eprintln!("🔍 DEBUG: extract_self_from_argument_names called");
+        eprintln!("  - self_positions: {:?}", self_positions);
+        eprintln!("  - function_parameters: {:?}", function_parameters);
+        
         let mut candidate_self_types = Vec::new();
 
+        // For each Self position in the function signature
         for self_position in self_positions {
-            // Parse position path to find argument index and nested path
-            if let Some(arg_index) = self.parse_argument_position(&self_position.path) {
-                if let (Some(Some(arg_type)), Some((_, param_type))) = 
-                    (inferred_argument_types.get(arg_index), function_parameters.get(arg_index)) {
+            eprintln!("🔍 DEBUG: Processing self_position: {:?}", self_position);
+            
+            // Find which parameter contains Self
+            if let Some(param_name) = self.extract_parameter_name_from_position(&self_position.path) {
+                eprintln!("🔍 DEBUG: Self found in parameter: {}", param_name);
+                
+                // Find the corresponding argument by name in the function call
+                if let Some(argument_expr) = self.find_argument_by_name(function_call, &param_name) {
+                    eprintln!("🔍 DEBUG: Found argument for parameter {}", param_name);
                     
-                    // Extract Self type from this position
-                    if let Some(extracted_self) = self.extract_self_from_position_path(
-                        arg_type,
-                        param_type,
-                        &self_position.path,
-                    ) {
-                        candidate_self_types.push(extracted_self);
+                    // Infer the type of this argument
+                    let mut expr_clone = argument_expr.clone();
+                    match self.infer_expression(&mut expr_clone, context) {
+                        Ok(result) => {
+                            eprintln!("🔍 DEBUG: Inferred argument type: {:?}", result.inferred_type);
+                            
+                            // This is a candidate for the Self type
+                            candidate_self_types.push(result.inferred_type);
+                        }
+                        Err(e) => {
+                            eprintln!("🔍 DEBUG: Failed to infer argument type: {:?}", e);
+                        }
                     }
+                } else {
+                    eprintln!("🔍 DEBUG: No argument found for parameter {}", param_name);
                 }
+            } else {
+                eprintln!("🔍 DEBUG: Could not extract parameter name from position: {:?}", self_position.path);
             }
         }
 
         // Unify all candidate Self types to ensure consistency
+        eprintln!("🔍 DEBUG: Candidate Self types collected: {:?}", candidate_self_types);
+        
         if candidate_self_types.is_empty() {
+            eprintln!("🔍 DEBUG: No candidate Self types found, returning None");
             Ok(None)
         } else if candidate_self_types.len() == 1 {
-            Ok(Some(candidate_self_types.into_iter().next().unwrap()))
+            let result = candidate_self_types.into_iter().next().unwrap();
+            eprintln!("🔍 DEBUG: Single candidate Self type found: {:?}", result);
+            Ok(Some(result))
         } else {
+            eprintln!("🔍 DEBUG: Multiple candidate Self types found, checking unification");
             // Multiple Self positions must unify to the same type
             let first_type = &candidate_self_types[0];
             for candidate in &candidate_self_types[1..] {
@@ -2629,14 +3163,130 @@ impl TypeInferenceEngine {
                     }));
                 }
             }
+            eprintln!("🔍 DEBUG: Multiple candidate Self types unified to: {:?}", first_type);
             Ok(Some(first_type.clone()))
         }
     }
 
-    /// Parse argument position from type position path (e.g., ["param_0"] -> Some(0))
+    /// Extract parameter name from Self position path for keyword argument matching
+    fn extract_parameter_name_from_position(&self, path: &[String]) -> Option<String> {
+        // Look for parameter name in the path using new parameter-name-based format
+        if let Some(first_segment) = path.first() {
+            if first_segment.starts_with("param_") && first_segment.len() > 6 {
+                // Extract the parameter name from "param_<name>" format
+                return Some(first_segment[6..].to_string());
+            }
+            // Fall back to old "arg_<index>" format (should be rare now)
+            if first_segment.starts_with("arg_") {
+                // This is positional format - we can't extract a meaningful name
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Find argument expression by parameter name in function call
+    fn find_argument_by_name(
+        &self,
+        function_call: &outrun_parser::FunctionCall,
+        param_name: &str,
+    ) -> Option<outrun_parser::Expression> {
+        for argument in &function_call.arguments {
+            match argument {
+                outrun_parser::Argument::Named { name, expression, .. } => {
+                    if name.name == param_name {
+                        return Some(expression.clone());
+                    }
+                }
+                _ => continue, // Skip spread arguments for now
+            }
+        }
+        None
+    }
+
+    /// DEPRECATED: Extract Self type from argument positions using comprehensive position analysis
+    #[allow(clippy::result_large_err)]
+    #[allow(dead_code)]
+    fn extract_self_from_argument_positions_deprecated(
+        &self,
+        self_positions: &[crate::types::SelfPosition],
+        function_parameters: &[(String, Type)],
+        inferred_argument_types: &[Option<Type>],
+    ) -> Result<Option<Type>, TypecheckError> {
+        eprintln!("🔍 DEBUG: extract_self_from_argument_positions called");
+        eprintln!("  - self_positions: {:?}", self_positions);
+        eprintln!("  - function_parameters: {:?}", function_parameters);
+        eprintln!("  - inferred_argument_types: {:?}", inferred_argument_types);
+        
+        let mut candidate_self_types = Vec::new();
+
+        for self_position in self_positions {
+            eprintln!("🔍 DEBUG: Processing self_position: {:?}", self_position);
+            
+            // Parse position path to find argument index and nested path
+            if let Some(arg_index) = self.parse_argument_position(&self_position.path) {
+                eprintln!("🔍 DEBUG: Parsed arg_index: {}", arg_index);
+                
+                if let (Some(Some(arg_type)), Some((_, param_type))) = 
+                    (inferred_argument_types.get(arg_index), function_parameters.get(arg_index)) {
+                    
+                    eprintln!("🔍 DEBUG: Found matching argument at index {}: arg_type={:?}, param_type={:?}", 
+                        arg_index, arg_type, param_type);
+                    
+                    // Extract Self type from this position
+                    if let Some(extracted_self) = self.extract_self_from_position_path(
+                        arg_type,
+                        param_type,
+                        &self_position.path,
+                    ) {
+                        eprintln!("🔍 DEBUG: Extracted Self type: {:?}", extracted_self);
+                        candidate_self_types.push(extracted_self);
+                    } else {
+                        eprintln!("🔍 DEBUG: Failed to extract Self from position path");
+                    }
+                } else {
+                    eprintln!("🔍 DEBUG: No matching argument found at index {}", arg_index);
+                }
+            } else {
+                eprintln!("🔍 DEBUG: Failed to parse argument position from path: {:?}", self_position.path);
+            }
+        }
+
+        // Unify all candidate Self types to ensure consistency
+        eprintln!("🔍 DEBUG: Candidate Self types collected: {:?}", candidate_self_types);
+        
+        if candidate_self_types.is_empty() {
+            eprintln!("🔍 DEBUG: No candidate Self types found, returning None");
+            Ok(None)
+        } else if candidate_self_types.len() == 1 {
+            let result = candidate_self_types.into_iter().next().unwrap();
+            eprintln!("🔍 DEBUG: Single candidate Self type found: {:?}", result);
+            Ok(Some(result))
+        } else {
+            eprintln!("🔍 DEBUG: Multiple candidate Self types found, checking unification");
+            // Multiple Self positions must unify to the same type
+            let first_type = &candidate_self_types[0];
+            for candidate in &candidate_self_types[1..] {
+                if !self.types_are_compatible(first_type, candidate) {
+                    return Err(TypecheckError::InferenceError(InferenceError::SelfTypeUnificationFailure {
+                        first_self_type: first_type.clone(),
+                        conflicting_self_type: candidate.clone(),
+                        span: None, // TODO: Add span information
+                    }));
+                }
+            }
+            eprintln!("🔍 DEBUG: Multiple candidate Self types unified to: {:?}", first_type);
+            Ok(Some(first_type.clone()))
+        }
+    }
+
+    /// Parse argument position from type position path (e.g., ["arg_0"] -> Some(0))
     fn parse_argument_position(&self, path: &[String]) -> Option<usize> {
         if let Some(first_segment) = path.first() {
-            if first_segment.starts_with("param_") {
+            if first_segment.starts_with("arg_") {
+                first_segment[4..].parse().ok()
+            } else if first_segment.starts_with("param_") {
+                // Legacy format for backward compatibility
                 first_segment[6..].parse().ok()
             } else {
                 None
@@ -2653,8 +3303,14 @@ impl TypeInferenceEngine {
         expected_type: &Type,
         position_path: &[String],
     ) -> Option<Type> {
+        eprintln!("🔍 DEBUG: extract_self_from_position_path called:");
+        eprintln!("  - inferred_type: {:?}", inferred_type);
+        eprintln!("  - expected_type: {:?}", expected_type);
+        eprintln!("  - position_path: {:?}", position_path);
+        
         // If path is empty, the whole type should be Self
-        if position_path.is_empty() || (position_path.len() == 1 && position_path[0].starts_with("param_")) {
+        if position_path.is_empty() || (position_path.len() == 1 && (position_path[0].starts_with("arg_") || position_path[0].starts_with("param_"))) {
+            eprintln!("🔍 DEBUG: Simple Self extraction - returning inferred_type: {:?}", inferred_type);
             return Some(inferred_type.clone());
         }
 
@@ -2725,55 +3381,6 @@ impl TypeInferenceEngine {
         Ok(())
     }
 
-    /// Extract type from constraint position for unification validation
-    fn extract_type_from_constraint_position(
-        &self,
-        position: &crate::types::TypePosition,
-        self_type: &Type,
-        function_parameters: &[(String, Type)],
-        inferred_argument_types: &[Option<Type>],
-    ) -> Option<Type> {
-        match position {
-            crate::types::TypePosition::ArgumentPosition { index, path } => {
-                if let Some(Some(arg_type)) = inferred_argument_types.get(*index) {
-                    if path.is_empty() {
-                        Some(arg_type.clone())
-                    } else {
-                        // Navigate through nested type structure
-                        self.navigate_type_path(arg_type, path)
-                    }
-                } else {
-                    None
-                }
-            }
-            crate::types::TypePosition::SelfPosition { .. } => Some(self_type.clone()),
-            _ => None, // Other position types not yet implemented
-        }
-    }
-
-    /// Navigate through nested type structure using path components
-    fn navigate_type_path(&self, base_type: &Type, path: &[String]) -> Option<Type> {
-        let mut current_type = base_type;
-        
-        for path_component in path {
-            match current_type {
-                Type::Concrete { args, .. } | Type::Protocol { args, .. } => {
-                    if let Ok(index) = path_component.parse::<usize>() {
-                        if let Some(arg) = args.get(index) {
-                            current_type = arg;
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-                _ => return None,
-            }
-        }
-        
-        Some(current_type.clone())
-    }
 
     /// Try to lazily register an intrinsic function based on common patterns
     #[allow(clippy::result_large_err)]
@@ -3565,124 +4172,7 @@ impl TypeInferenceEngine {
         })
     }
 
-    /// Handle a dispatch result and infer the function call type
-    #[allow(clippy::result_large_err)]
-    fn handle_dispatch_result(
-        &mut self,
-        dispatch_result: crate::dispatch::DispatchResult,
-        arguments: &mut [outrun_parser::Argument],
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        use crate::dispatch::DispatchResult;
 
-        match dispatch_result {
-            DispatchResult::Resolved(resolved_function) => {
-                self.infer_resolved_function_call(&resolved_function, arguments, context)
-            }
-            DispatchResult::Ambiguous(candidates) => {
-                // Multiple candidates found - this is an error for now
-                // In a full implementation, we might try to disambiguate based on argument types
-                Err(TypecheckError::InferenceError(
-                    crate::error::InferenceError::AmbiguousType {
-                        span: None,
-                        suggestions: vec![format!(
-                            "Multiple candidates found: {}",
-                            candidates
-                                .iter()
-                                .map(|c| c.qualified_name.clone())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )],
-                    },
-                ))
-            }
-            DispatchResult::NotFound => {
-                // Function not found
-                Err(TypecheckError::InferenceError(
-                    crate::error::InferenceError::AmbiguousType {
-                        span: None,
-                        suggestions: vec!["Function not found".to_string()],
-                    },
-                ))
-            }
-        }
-    }
-
-    /// Infer the result of a resolved function call
-    #[allow(clippy::result_large_err)]
-    fn infer_resolved_function_call(
-        &mut self,
-        resolved_function: &crate::dispatch::ResolvedFunction,
-        arguments: &mut [outrun_parser::Argument],
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // First, infer types of all arguments
-        let mut inferred_arguments = Vec::new();
-        let mut all_constraints = context.constraints.clone();
-        let current_substitution = context.substitution.clone();
-
-        for argument in arguments.iter_mut() {
-            let arg_result = self.infer_argument(argument, context)?;
-            inferred_arguments.push(arg_result.inferred_type.clone());
-            all_constraints.extend(arg_result.constraints);
-            // TODO: In a full implementation, we would compose substitutions properly
-        }
-
-        // Check argument count matches expected parameters
-        if inferred_arguments.len() != resolved_function.function_info.parameters.len() {
-            return Err(TypecheckError::InferenceError(
-                crate::error::InferenceError::AmbiguousType {
-                    span: None,
-                    suggestions: vec![format!(
-                        "Expected {} arguments, found {}",
-                        resolved_function.function_info.parameters.len(),
-                        inferred_arguments.len()
-                    )],
-                },
-            ));
-        }
-
-        // Phase 3.5: Generate constraints for generic function calls
-        if resolved_function.function_info.is_generic {
-            let generic_constraints = self.generate_generic_function_constraints(
-                &resolved_function.function_info,
-                &inferred_arguments,
-                context,
-            )?;
-            all_constraints.extend(generic_constraints);
-        } else {
-            // Create constraints for parameter type matching (non-generic case)
-            for (arg_type, (_param_name, param_type)) in inferred_arguments
-                .iter()
-                .zip(resolved_function.function_info.parameters.iter())
-            {
-                // Create constraint that argument type must match parameter type
-                let constraint = Constraint::Equality {
-                    left: Box::new(param_type.clone()),
-                    right: Box::new(arg_type.clone()),
-                    span: None,
-                };
-                all_constraints.push(constraint);
-            }
-        }
-
-        // For generic functions, we need to handle type parameter instantiation
-        let return_type = if resolved_function.function_info.is_generic {
-            self.instantiate_generic_return_type(
-                &resolved_function.function_info.return_type,
-                &resolved_function.function_info,
-                &inferred_arguments,
-            )?
-        } else {
-            resolved_function.function_info.return_type.clone()
-        };
-
-        Ok(InferenceResult {
-            inferred_type: return_type,
-            constraints: all_constraints,
-            substitution: current_substitution,
-        })
-    }
 
     /// Generate constraints for generic function calls (Phase 3.5)
     #[allow(clippy::result_large_err)]
@@ -3949,24 +4439,6 @@ impl TypeInferenceEngine {
         }
     }
 
-    /// Infer the type of a function argument
-    #[allow(clippy::result_large_err)]
-    fn infer_argument(
-        &mut self,
-        argument: &mut outrun_parser::Argument,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        match argument {
-            outrun_parser::Argument::Named { expression, .. } => {
-                // Infer the type of the argument expression (mutating the original)
-                self.infer_expression(expression, context)
-            }
-            outrun_parser::Argument::Spread { expression, .. } => {
-                // Spread arguments are complex - for now, just infer the expression type
-                self.infer_expression(expression, context)
-            }
-        }
-    }
 
     /// Convert inference context to dispatch function context
     fn create_function_context_from_inference_context(
@@ -4596,16 +5068,6 @@ impl TypeInferenceEngine {
         })
     }
 
-    /// Check if a type name refers to a protocol rather than a concrete type
-    fn is_protocol_type(&self, type_name: &str) -> bool {
-        self.is_known_protocol(type_name)
-    }
-
-    /// Check if a type name is a known protocol (by looking in the registry)
-    fn is_known_protocol(&self, type_name: &str) -> bool {
-        let protocol_id = ProtocolId::new(type_name);
-        self.protocol_registry().has_protocol(&protocol_id)
-    }
 
     /// Convert a parser type annotation to a typechecker type
     #[allow(clippy::result_large_err, clippy::only_used_in_recursion)]
@@ -5046,6 +5508,7 @@ mod tests {
             arguments: vec![], // No arguments for simplicity
             span: Span::new(0, 15),
             resolved_function_key: None,
+            universal_clause_ids: None,
         };
 
         // Test function call inference (should handle dispatch errors gracefully)
@@ -5352,10 +5815,40 @@ pub fn is_type_parameter_name(name: &str) -> bool {
     !matches!(name, "Type" | "String" | "Integer" | "Boolean" | "List" | "Map" | "Option" | "Either")
 }
 
-/// Helper function to check if a type name is a generic parameter in a function
-/// This is a simple implementation - in a full system, we'd check against the function's generic_parameters
-fn function_info_contains_generic_param(name: &str, _generic_params: &[String]) -> bool {
-    // For now, use the same heuristic as is_type_parameter_name
-    // In a complete implementation, we would check if name is in the generic_parameters list
-    is_type_parameter_name(name)
+#[cfg(test)]
+mod debug_tests {
+    #[test]
+    fn test_debug_unary_minus_constraint_resolution() {
+        use outrun_parser::parse_program;
+        use crate::{CompilationResult, Package};
+        use crate::desugaring::DesugaringEngine;
+
+        let source_code = "-1"; // This should trigger UnaryMinus.minus(value: 1)
+        
+        eprintln!("🚀 DEBUG TEST: Testing unary minus constraint resolution");
+        
+        // Parse the source code
+        let mut program = parse_program(source_code).expect("Parse should succeed");
+        eprintln!("🔍 DEBUG: Original program: {:?}", program);
+        
+        // Manually desugar to see what happens
+        let mut desugaring_engine = DesugaringEngine::new();
+        let desugar_result = desugaring_engine.desugar_program(&mut program);
+        eprintln!("🔍 DEBUG: Desugaring result: {:?}", desugar_result);
+        eprintln!("🔍 DEBUG: Program after desugaring: {:?}", program);
+        
+        // Create a package and add the program
+        let mut package = Package::new("debug_test".to_string());
+        package.add_program(program);
+        
+        // Try to compile the package to trigger the debug output
+        let result = CompilationResult::compile_package(&mut package);
+        
+        // We expect this to succeed or fail with a specific error  
+        match result {
+            Ok(_) => eprintln!("✅ Compilation successful - constraint system working"),
+            Err(e) => eprintln!("❌ Compilation failed: {:?}", e),
+        }
+    }
 }
+

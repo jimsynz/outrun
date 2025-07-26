@@ -9,6 +9,7 @@ use crate::value::Value;
 use miette::Diagnostic;
 use outrun_parser::{Expression, ExpressionKind};
 use outrun_typechecker::{DispatchTable, FunctionRegistry};
+use outrun_typechecker::universal_dispatch::{UniversalDispatchRegistry, ClauseId, ClauseInfo, Guard, FunctionBody};
 use thiserror::Error;
 
 /// Errors that can occur during expression evaluation
@@ -77,10 +78,12 @@ pub enum EvaluationError {
 pub struct ExpressionEvaluator {
     /// Intrinsics handler for executing built-in operations
     intrinsics: crate::intrinsics::IntrinsicsHandler,
-    /// Dispatch table for runtime protocol function resolution
+    /// Dispatch table for runtime protocol function resolution (LEGACY)
     dispatch_table: DispatchTable,
-    /// Function registry for looking up user-defined function bodies
+    /// Function registry for looking up user-defined function bodies (LEGACY)
     function_registry: std::rc::Rc<FunctionRegistry>,
+    /// Universal dispatch registry for clause-based function dispatch
+    universal_registry: UniversalDispatchRegistry,
 }
 
 impl ExpressionEvaluator {
@@ -93,6 +96,21 @@ impl ExpressionEvaluator {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
             dispatch_table,
             function_registry,
+            universal_registry: UniversalDispatchRegistry::new(),
+        }
+    }
+
+    /// Create a new expression evaluator with universal dispatch registry
+    pub fn with_universal_dispatch(
+        dispatch_table: DispatchTable,
+        function_registry: std::rc::Rc<FunctionRegistry>,
+        universal_registry: UniversalDispatchRegistry,
+    ) -> Self {
+        Self {
+            intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
+            dispatch_table,
+            function_registry,
+            universal_registry,
         }
     }
 
@@ -102,6 +120,7 @@ impl ExpressionEvaluator {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
             dispatch_table: DispatchTable::new(),
             function_registry: std::rc::Rc::new(FunctionRegistry::new()),
+            universal_registry: UniversalDispatchRegistry::new(),
         }
     }
 
@@ -401,8 +420,90 @@ impl ExpressionEvaluator {
         Ok(Value::tuple(elements))
     }
 
-    /// Evaluate a function call through the intrinsics system
+    /// Universal dispatch method - handles ALL function types through clause-based dispatch
     fn evaluate_function_call(
+        &self,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InterpreterContext,
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        // Check if we have universal clause IDs from the typechecker
+        if let Some(clause_ids) = &function_call.universal_clause_ids {
+            // New universal dispatch approach
+            self.dispatch_clauses(clause_ids, &function_call.arguments, context, span)
+        } else {
+            // Fall back to legacy approach for backward compatibility
+            self.evaluate_function_call_legacy(function_call, context, span)
+        }
+    }
+
+    /// Universal clause-based dispatch - the future of function dispatch
+    fn dispatch_clauses(
+        &self,
+        clause_ids: &[u64],
+        arguments: &[outrun_parser::Argument],
+        context: &mut InterpreterContext,
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        // DEBUG: Add logging to understand clause dispatch issues
+        eprintln!("🔍 DEBUG: dispatch_clauses called with {} clause IDs: {:?}", clause_ids.len(), clause_ids);
+        
+        // Evaluate arguments first
+        let mut args = Vec::new();
+        for arg in arguments {
+            let arg_value = match arg {
+                outrun_parser::Argument::Named { expression, .. } => {
+                    self.evaluate(expression, context)?
+                }
+                outrun_parser::Argument::Spread { .. } => {
+                    // TODO: Handle spread arguments properly
+                    return Err(EvaluationError::UnsupportedExpression {
+                        expr_type: "spread_argument".to_string(),
+                        span,
+                    });
+                }
+            };
+            args.push(arg_value);
+        }
+
+        eprintln!("🔍 DEBUG: Evaluated {} arguments: {:?}", args.len(), args.iter().map(|v| v.display()).collect::<Vec<_>>());
+
+        // Try each clause in order until one succeeds
+        for &clause_id_raw in clause_ids {
+            let clause_id = ClauseId(clause_id_raw);
+            eprintln!("🔍 DEBUG: Trying clause ID {}", clause_id_raw);
+            
+            // Get clause info from universal registry
+            if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
+                eprintln!("🔍 DEBUG: Found clause info: function_signature={:?}, guards={:?}, body={:?}", 
+                         clause_info.function_signature, clause_info.guards, clause_info.body);
+                
+                // Evaluate all guards for this clause
+                if self.evaluate_all_guards(&clause_info.guards, &args, context)? {
+                    eprintln!("🔍 DEBUG: All guards passed for clause {}, executing body", clause_id_raw);
+                    // All guards passed - execute this clause
+                    return self.execute_clause_body(&clause_info.body, &args, span);
+                } else {
+                    eprintln!("🔍 DEBUG: Guards failed for clause {}", clause_id_raw);
+                }
+            } else {
+                eprintln!("🔍 DEBUG: Clause {} not found in universal registry", clause_id_raw);
+            }
+        }
+
+        // No clause matched
+        eprintln!("🔍 DEBUG: No clause matched, tried {} clauses", clause_ids.len());
+        Err(EvaluationError::Runtime {
+            message: format!(
+                "No matching clause found for function call. Tried {} clauses.",
+                clause_ids.len()
+            ),
+            span,
+        })
+    }
+
+    /// Legacy function call evaluation (for backward compatibility)
+    fn evaluate_function_call_legacy(
         &self,
         function_call: &outrun_parser::FunctionCall,
         context: &mut InterpreterContext,
@@ -423,7 +524,7 @@ impl ExpressionEvaluator {
                 outrun_parser::Argument::Named { expression, .. } => {
                     self.evaluate(expression, context)?
                 }
-                outrun_parser::Argument::Spread { expression, .. } => {
+                outrun_parser::Argument::Spread { .. } => {
                     // TODO: Handle spread arguments properly
                     return Err(EvaluationError::UnsupportedExpression {
                         expr_type: "spread_argument".to_string(),
@@ -443,6 +544,87 @@ impl ExpressionEvaluator {
         } else {
             // All other calls - the typechecker has resolved everything for us
             self.evaluate_resolved_function(&function_name, &args, span)
+        }
+    }
+
+    /// Universal guard evaluation system
+    fn evaluate_all_guards(
+        &self,
+        guards: &[Guard],
+        args: &[Value],
+        context: &mut InterpreterContext,
+    ) -> Result<bool, EvaluationError> {
+        for guard in guards {
+            if !self.evaluate_single_guard(guard, args, context)? {
+                return Ok(false); // Short-circuit on first failed guard
+            }
+        }
+        Ok(true) // All guards passed
+    }
+
+    /// Evaluate a single guard condition
+    fn evaluate_single_guard(
+        &self,
+        guard: &Guard,
+        _args: &[Value],
+        _context: &mut InterpreterContext,
+    ) -> Result<bool, EvaluationError> {
+        match guard {
+            Guard::TypeCompatible { target_type, implementing_type, .. } => {
+                // For now, do simple type compatibility check
+                // TODO: Implement proper runtime type checking based on values
+                Ok(target_type == implementing_type)
+            }
+            Guard::ValueGuard { expression, .. } => {
+                // TODO: Implement runtime value guard evaluation
+                // For now, evaluate the expression and check if it's truthy
+                let result = self.evaluate(expression, _context)?;
+                Ok(result.is_truthy())
+            }
+            Guard::AlwaysTrue => Ok(true),
+        }
+    }
+
+    /// Execute the body of a matched clause
+    fn execute_clause_body(
+        &self,
+        body: &outrun_typechecker::universal_dispatch::FunctionBody,
+        args: &[Value],
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        use outrun_typechecker::universal_dispatch::FunctionBody;
+        
+        match body {
+            FunctionBody::IntrinsicFunction(intrinsic_name) => {
+                // Execute intrinsic function
+                self.intrinsics
+                    .execute_intrinsic(intrinsic_name, args, span)
+                    .map_err(|e| EvaluationError::Intrinsic { source: e })
+            }
+            FunctionBody::UserFunction(block) => {
+                // TODO: Execute user-defined function body
+                // For now, return an error indicating this is not yet implemented
+                Err(EvaluationError::UnsupportedExpression {
+                    expr_type: "user_function_body".to_string(),
+                    span,
+                })
+            }
+            FunctionBody::StructConstructor { struct_name, field_mappings } => {
+                // TODO: Execute struct constructor
+                // For now, return an error indicating this is not yet implemented
+                Err(EvaluationError::UnsupportedExpression {
+                    expr_type: format!("struct_constructor_{}", struct_name),
+                    span,
+                })
+            }
+            FunctionBody::ProtocolImplementation { implementation_name, body } => {
+                // TODO: Execute protocol implementation
+                // For now, return an error indicating this is not yet implemented
+                Err(EvaluationError::UnsupportedExpression {
+                    expr_type: format!("protocol_implementation_{}", implementation_name),
+                    span,
+                })
+            }
         }
     }
 

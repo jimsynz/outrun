@@ -36,6 +36,7 @@ impl OutrunParser {
             arguments,
             span,
             resolved_function_key: None,
+            universal_clause_ids: None,
         })
     }
 

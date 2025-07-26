@@ -2,7 +2,9 @@
 
 pub mod test_automatic_any_inspect;
 pub mod test_boolean_type_bug;
+pub mod test_constraint_system_redesign;
 pub mod test_constraint_validation;
+pub mod test_constraint_without_core;
 pub mod test_core_boolean_debug;
 pub mod test_core_library_isolated;
 pub mod test_core_library_loading;

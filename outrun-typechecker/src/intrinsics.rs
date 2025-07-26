@@ -577,6 +577,31 @@ fn register_boolean_intrinsics(registry: &mut FunctionRegistry) {
         vec![("value", boolean_type.clone())],
         string_type.clone(),
     );
+
+    // Boolean operations
+    register_intrinsic(
+        registry,
+        "Outrun.Intrinsic",
+        "bool_and",
+        vec![("lhs", boolean_type.clone()), ("rhs", boolean_type.clone())],
+        boolean_type.clone(),
+    );
+
+    register_intrinsic(
+        registry,
+        "Outrun.Intrinsic",
+        "bool_or",
+        vec![("lhs", boolean_type.clone()), ("rhs", boolean_type.clone())],
+        boolean_type.clone(),
+    );
+
+    register_intrinsic(
+        registry,
+        "Outrun.Intrinsic",
+        "bool_not",
+        vec![("value", boolean_type.clone())],
+        boolean_type.clone(),
+    );
 }
 
 /// Register String intrinsic functions
@@ -1005,6 +1030,19 @@ fn register_general_intrinsics(registry: &mut FunctionRegistry) {
         Type::Protocol {
             id: ProtocolId::new("Option"),
             args: vec![string_type.clone()],
+            span: None,
+        },
+    );
+
+    // System panic function
+    register_intrinsic(
+        registry,
+        "Outrun.Intrinsic",
+        "panic",
+        vec![("message", string_type.clone())],
+        Type::Protocol {
+            id: ProtocolId::new("Panic"),
+            args: vec![],
             span: None,
         },
     );

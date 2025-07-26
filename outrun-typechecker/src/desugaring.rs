@@ -56,11 +56,12 @@ impl DesugaringEngine {
                 self.desugar_expression(expr)?;
             }
             ItemKind::FunctionDefinition(func_def) => {
-                // FunctionDefinition.body is a Block, not Option<Block>
-                // For now, we don't desugar function bodies at the item level
-                // They'll be desugared when type checking the function body expressions
-                // TODO: Add block expression desugaring when implementing control flow
-                let _ = &func_def.body; // Acknowledge the field exists
+                // Desugar guard expressions in function definitions
+                if let Some(ref mut guard) = func_def.guard {
+                    self.desugar_expression(&mut guard.condition)?;
+                }
+                // Note: Function bodies are blocks which will be desugared during type checking
+                // when individual expressions within the block are processed
             }
             ItemKind::LetBinding(let_binding) => {
                 self.desugar_expression(&mut let_binding.expression)?;
@@ -273,6 +274,7 @@ impl DesugaringEngine {
             ],
             span: binary_op.span,
             resolved_function_key: None,
+            universal_clause_ids: None,
         })
     }
 
@@ -320,6 +322,7 @@ impl DesugaringEngine {
             }],
             span: unary_op.span,
             resolved_function_key: None,
+            universal_clause_ids: None,
         })
     }
 }
@@ -392,6 +395,51 @@ mod tests {
         // Check transformation was recorded
         assert_eq!(engine.transformations.len(), 1);
         assert!(engine.transformations[0].contains("Binary add → BinaryAddition.add"));
+    }
+
+    #[test]
+    fn test_function_guard_desugaring() {
+        use outrun_parser::parse_program;
+        
+        let source = r#"
+            def divide(a: Integer, b: Integer): Float
+            when b != 0 {
+                Float.from_integer(a) / Float.from_integer(b)
+            }
+        "#;
+        
+        let mut program = parse_program(source).unwrap();
+        let mut engine = DesugaringEngine::new();
+        
+        // Desugar the program (should desugar the guard expression)
+        engine.desugar_program(&mut program).unwrap();
+        
+        // Check that the guard expression was desugared
+        if let Some(item) = program.items.first() {
+            if let outrun_parser::ItemKind::FunctionDefinition(func_def) = &item.kind {
+                if let Some(guard) = &func_def.guard {
+                    // The guard "b != 0" should be desugared to "Equality.not_equal?(left: b, right: 0)"
+                    match &guard.condition.kind {
+                        outrun_parser::ExpressionKind::FunctionCall(func_call) => {
+                            match &func_call.path {
+                                outrun_parser::FunctionPath::Qualified { module, name } => {
+                                    assert_eq!(module.name, "Equality");
+                                    assert_eq!(name.name, "not_equal?");
+                                }
+                                _ => panic!("Expected qualified function call for !="),
+                            }
+                        }
+                        _ => panic!("Expected function call after desugaring !="),
+                    }
+                } else {
+                    panic!("Expected guard clause in function definition");
+                }
+            } else {
+                panic!("Expected function definition");
+            }
+        } else {
+            panic!("Expected at least one item in program");
+        }
     }
 
     #[test]
