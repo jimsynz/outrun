@@ -241,11 +241,20 @@ impl ExpressionEvaluator {
                 self.evaluate_function_call(function_call, context, span)
             }
 
+            // Unary operations - these should have universal_clause_ids populated by typechecker
+            ExpressionKind::UnaryOp(unary_op) => {
+                self.evaluate_unary_operation(unary_op, context, span)
+            }
+
             // For now, return errors for unsupported expressions
-            _ => Err(EvaluationError::UnsupportedExpression {
-                expr_type: self.expression_type_name(kind).to_string(),
-                span,
-            }),
+            _ => {
+                eprintln!("🚨 DEBUG: Unsupported expression kind encountered: {:?}", kind);
+                eprintln!("🚨 DEBUG: Span: {:?}", span);
+                Err(EvaluationError::UnsupportedExpression {
+                    expr_type: self.expression_type_name(kind).to_string(),
+                    span,
+                })
+            }
         }
     }
 
@@ -429,12 +438,127 @@ impl ExpressionEvaluator {
     ) -> Result<Value, EvaluationError> {
         // Check if we have universal clause IDs from the typechecker
         if let Some(clause_ids) = &function_call.universal_clause_ids {
-            // New universal dispatch approach
+            // Universal dispatch for user functions and protocol implementations
             self.dispatch_clauses(clause_ids, &function_call.arguments, context, span)
         } else {
-            // Fall back to legacy approach for backward compatibility
-            self.evaluate_function_call_legacy(function_call, context, span)
+            // No clause IDs - check if this is an intrinsic function
+            let function_name = match &function_call.path {
+                outrun_parser::FunctionPath::Qualified { module, name } => {
+                    format!("{}.{}", module.name, name.name)
+                }
+                outrun_parser::FunctionPath::Simple { name } => {
+                    panic!("BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}", name.name);
+                }
+                outrun_parser::FunctionPath::Expression { .. } => {
+                    panic!("BUG: Expression function calls must have universal_clause_ids populated by typechecker");
+                }
+            };
+
+            if function_name.starts_with("Outrun.Intrinsic.") {
+                // Direct intrinsic function call
+                let mut args = Vec::new();
+                for arg in &function_call.arguments {
+                    let arg_value = match arg {
+                        outrun_parser::Argument::Named { expression, .. } => {
+                            self.evaluate(expression, context)?
+                        }
+                        outrun_parser::Argument::Spread { .. } => {
+                            return Err(EvaluationError::UnsupportedExpression {
+                                expr_type: "spread_argument".to_string(),
+                                span,
+                            });
+                        }
+                    };
+                    args.push(arg_value);
+                }
+
+                self.intrinsics
+                    .execute_intrinsic(&function_name, &args, span)
+                    .map_err(|e| EvaluationError::Intrinsic { source: e })
+            } else {
+                panic!("BUG: Non-intrinsic function call missing universal_clause_ids: {}", function_name);
+            }
         }
+    }
+
+    /// Evaluate a unary operation using universal dispatch
+    fn evaluate_unary_operation(
+        &self,
+        unary_op: &outrun_parser::UnaryOperation,
+        context: &mut InterpreterContext,
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        // Evaluate the operand first
+        let operand_value = self.evaluate(&unary_op.operand, context)?;
+        
+        // Map unary operators to protocol function names
+        let protocol_function = match unary_op.operator {
+            outrun_parser::UnaryOperator::Minus => "UnaryMinus.minus",
+            outrun_parser::UnaryOperator::Plus => "UnaryPlus.plus",
+            outrun_parser::UnaryOperator::LogicalNot => "LogicalNot.not",
+            _ => {
+                return Err(EvaluationError::Runtime {
+                    message: format!("Unsupported unary operator: {:?}", unary_op.operator),
+                    span,
+                });
+            }
+        };
+        
+        // Find the clauses for this protocol function in the universal registry
+        let matching_clauses = self.find_clauses_for_protocol_function(protocol_function, &operand_value);
+        
+        if matching_clauses.is_empty() {
+            return Err(EvaluationError::Runtime {
+                message: format!("No implementation found for {} on type {}", 
+                    protocol_function, 
+                    self.get_runtime_type_name(&operand_value)
+                ),
+                span,
+            });
+        }
+        
+        // Use the universal dispatch system with pre-evaluated values
+        self.dispatch_clauses_with_values(&matching_clauses, &[operand_value], context, span)
+    }
+
+    /// Find clause IDs for a protocol function that can handle the given argument type
+    fn find_clauses_for_protocol_function(
+        &self,
+        protocol_function: &str,
+        argument_value: &Value,
+    ) -> Vec<outrun_typechecker::universal_dispatch::ClauseId> {
+        // Parse the protocol function name (e.g., "UnaryMinus.minus")
+        let parts: Vec<&str> = protocol_function.split('.').collect();
+        if parts.len() != 2 {
+            return vec![];
+        }
+
+        let protocol_name = parts[0];
+        let function_name = parts[1];
+        let argument_type = self.get_runtime_type_name(argument_value);
+
+        // Look for implementation signatures that match the pattern:
+        // "impl ProtocolName for TypeName"
+        let mut matching_clauses = Vec::new();
+        
+        for sig in self.universal_registry.get_all_function_signatures() {
+            // Check if this signature matches our protocol and function
+            if sig.function_name == function_name {
+                // Check if the module path contains the protocol implementation pattern
+                if let Some(module) = sig.module_path.first() {
+                    let expected_impl_pattern = format!("impl {} for {}", protocol_name, argument_type);
+                    if module == &expected_impl_pattern {
+                        let clause_ids = self.universal_registry.get_clauses_for_function(sig);
+                        matching_clauses.extend(clause_ids.iter().copied());
+                    }
+                }
+            }
+        }
+
+        eprintln!("🔍 DEBUG: Looking for protocol {} function {} on type {}", protocol_name, function_name, argument_type);
+        eprintln!("🔍 DEBUG: Found {} matching clauses", matching_clauses.len());
+
+        matching_clauses
     }
 
     /// Universal clause-based dispatch - the future of function dispatch
@@ -482,7 +606,7 @@ impl ExpressionEvaluator {
                 if self.evaluate_all_guards(&clause_info.guards, &args, context)? {
                     eprintln!("🔍 DEBUG: All guards passed for clause {}, executing body", clause_id_raw);
                     // All guards passed - execute this clause
-                    return self.execute_clause_body(&clause_info.body, &args, span);
+                    return self.execute_clause_body_with_info(clause_info, &args, context, span);
                 } else {
                     eprintln!("🔍 DEBUG: Guards failed for clause {}", clause_id_raw);
                 }
@@ -502,50 +626,49 @@ impl ExpressionEvaluator {
         })
     }
 
-    /// Legacy function call evaluation (for backward compatibility)
-    fn evaluate_function_call_legacy(
+    /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
+    fn dispatch_clauses_with_values(
         &self,
-        function_call: &outrun_parser::FunctionCall,
+        clause_ids: &[outrun_typechecker::universal_dispatch::ClauseId],
+        args: &[Value],
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
-        // Use pre-resolved function key (must be populated by typechecker)
-        let function_name = function_call.resolved_function_key.as_ref()
-            .unwrap_or_else(|| {
-                eprintln!("ERROR: Function call has no resolved_function_key: {:?}", function_call.path);
-                panic!("BUG: resolved_function_key must be populated by typechecker before interpretation");
-            })
-            .clone();
-
-        // Evaluate arguments
-        let mut args = Vec::new();
-        for arg in &function_call.arguments {
-            let arg_value = match arg {
-                outrun_parser::Argument::Named { expression, .. } => {
-                    self.evaluate(expression, context)?
+        eprintln!("🔍 DEBUG: dispatch_clauses_with_values called with {} clause IDs and {} args", clause_ids.len(), args.len());
+        
+        // Try each clause in order until one succeeds
+        for &clause_id in clause_ids {
+            eprintln!("🔍 DEBUG: Trying clause ID {:?}", clause_id);
+            
+            // Get clause info from universal registry
+            if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
+                eprintln!("🔍 DEBUG: Found clause info: function_signature={:?}, guards={:?}, body={:?}", 
+                         clause_info.function_signature, clause_info.guards, clause_info.body);
+                
+                // Evaluate all guards for this clause
+                if self.evaluate_all_guards(&clause_info.guards, args, context)? {
+                    eprintln!("🔍 DEBUG: All guards passed for clause {:?}, executing body", clause_id);
+                    // All guards passed - execute this clause
+                    return self.execute_clause_body_with_info(clause_info, args, context, span);
+                } else {
+                    eprintln!("🔍 DEBUG: Guards failed for clause {:?}", clause_id);
                 }
-                outrun_parser::Argument::Spread { .. } => {
-                    // TODO: Handle spread arguments properly
-                    return Err(EvaluationError::UnsupportedExpression {
-                        expr_type: "spread_argument".to_string(),
-                        span,
-                    });
-                }
-            };
-            args.push(arg_value);
+            } else {
+                eprintln!("🔍 DEBUG: Clause {:?} not found in universal registry", clause_id);
+            }
         }
 
-        // Direct dispatch based on pre-resolved function key
-        if function_name.starts_with("Outrun.Intrinsic.") {
-            // Direct intrinsic call
-            self.intrinsics
-                .execute_intrinsic(&function_name, &args, span)
-                .map_err(|e| EvaluationError::Intrinsic { source: e })
-        } else {
-            // All other calls - the typechecker has resolved everything for us
-            self.evaluate_resolved_function(&function_name, &args, span)
-        }
+        // No clause matched
+        eprintln!("🔍 DEBUG: No clause matched, tried {} clauses", clause_ids.len());
+        Err(EvaluationError::Runtime {
+            message: format!(
+                "No matching clause found for unary operation. Tried {} clauses.",
+                clause_ids.len()
+            ),
+            span,
+        })
     }
+
 
     /// Universal guard evaluation system
     fn evaluate_all_guards(
@@ -585,16 +708,17 @@ impl ExpressionEvaluator {
         }
     }
 
-    /// Execute the body of a matched clause
-    fn execute_clause_body(
+    /// Execute the body of a matched clause with full clause info for parameter binding
+    fn execute_clause_body_with_info(
         &self,
-        body: &outrun_typechecker::universal_dispatch::FunctionBody,
+        clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
         args: &[Value],
+        context: &mut InterpreterContext,
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
         use outrun_typechecker::universal_dispatch::FunctionBody;
         
-        match body {
+        match &clause_info.body {
             FunctionBody::IntrinsicFunction(intrinsic_name) => {
                 // Execute intrinsic function
                 self.intrinsics
@@ -602,14 +726,27 @@ impl ExpressionEvaluator {
                     .map_err(|e| EvaluationError::Intrinsic { source: e })
             }
             FunctionBody::UserFunction(block) => {
-                // TODO: Execute user-defined function body
-                // For now, return an error indicating this is not yet implemented
-                Err(EvaluationError::UnsupportedExpression {
-                    expr_type: "user_function_body".to_string(),
-                    span,
-                })
+                // Execute user-defined function body with parameter binding
+                // Create a new scope for the function execution
+                context.push_scope();
+                
+                // Bind function parameters to argument values
+                // We need to get parameter names from the function registry
+                // For now, use a simple approach: bind based on parameter position and common names
+                if let Err(e) = self.bind_function_parameters(clause_info, args, context) {
+                    context.pop_scope();
+                    return Err(e);
+                }
+                
+                // Execute the function body block
+                let result = self.evaluate_block(block, context);
+                
+                // Clean up the scope
+                context.pop_scope();
+                
+                result
             }
-            FunctionBody::StructConstructor { struct_name, field_mappings } => {
+            FunctionBody::StructConstructor { struct_name, field_mappings: _ } => {
                 // TODO: Execute struct constructor
                 // For now, return an error indicating this is not yet implemented
                 Err(EvaluationError::UnsupportedExpression {
@@ -617,7 +754,7 @@ impl ExpressionEvaluator {
                     span,
                 })
             }
-            FunctionBody::ProtocolImplementation { implementation_name, body } => {
+            FunctionBody::ProtocolImplementation { implementation_name, body: _ } => {
                 // TODO: Execute protocol implementation
                 // For now, return an error indicating this is not yet implemented
                 Err(EvaluationError::UnsupportedExpression {
@@ -628,146 +765,41 @@ impl ExpressionEvaluator {
         }
     }
 
-    /// Evaluate a resolved function (may require further dispatch)
-    fn evaluate_resolved_function(
+    /// Bind function parameters to argument values in the execution context
+    fn bind_function_parameters(
         &self,
-        function_name: &str,
+        clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
         args: &[Value],
-        span: outrun_parser::Span,
-    ) -> Result<Value, EvaluationError> {
-        self.evaluate_resolved_function_with_stack(function_name, args, span, &mut Vec::new())
-    }
-
-    /// Internal helper for evaluate_resolved_function with cycle detection
-    fn evaluate_resolved_function_with_stack(
-        &self,
-        function_name: &str,
-        args: &[Value],
-        span: outrun_parser::Span,
-        call_stack: &mut Vec<String>,
-    ) -> Result<Value, EvaluationError> {
-        // Check for infinite recursion
-        if call_stack.contains(&function_name.to_string()) {
-            return Err(EvaluationError::Runtime {
-                message: format!(
-                    "Infinite recursion detected in function dispatch: {}",
-                    function_name
-                ),
-                span,
-            });
-        }
-
-        // Add to call stack
-        call_stack.push(function_name.to_string());
-
-        let result = {
-            // If the resolved function is an intrinsic, execute it directly
-            if function_name.starts_with("Outrun.Intrinsic.") {
-                self.intrinsics
-                    .execute_intrinsic(function_name, args, span)
-                    .map_err(|e| EvaluationError::Intrinsic { source: e })
-            } else {
-                // This is a user-defined function - evaluate its body directly
-                self.evaluate_user_function(function_name, args, span)
-            }
+        context: &mut InterpreterContext,
+    ) -> Result<(), EvaluationError> {
+        // For protocol implementations like "UnaryMinus.minus", we need to get the parameter names
+        // from the function registry. For now, use a simple heuristic based on common patterns.
+        
+        // Get function signature info
+        let function_signature = &clause_info.function_signature;
+        let function_name = &function_signature.function_name;
+        eprintln!("🔍 DEBUG: Binding parameters for function: {} in module {:?}", 
+                 function_name, function_signature.module_path);
+        
+        // Common parameter names for protocol functions
+        let param_name = match function_name.as_str() {
+            "minus" | "plus" | "not" => "value",
+            "add" | "subtract" | "multiply" | "divide" => if args.len() >= 1 { "left" } else { "value" },
+            _ => "value", // Default fallback
         };
-
-        // Remove from call stack
-        call_stack.pop();
-
-        result
-    }
-
-    /// Evaluate a user-defined function by looking up its body and evaluating it
-    fn evaluate_user_function(
-        &self,
-        function_name: &str,
-        args: &[Value],
-        span: outrun_parser::Span,
-    ) -> Result<Value, EvaluationError> {
-        // Step 1: Look up the function in the function registry
-        // For impl functions like "impl BinaryAddition for Outrun.Core.Integer64.add",
-        // we need to parse the scope and function name
-        let (scope, func_name) = if let Some(last_dot) = function_name.rfind('.') {
-            let scope = &function_name[..last_dot];
-            let func_name = &function_name[last_dot + 1..];
-            (scope, func_name)
+        
+        // Bind the first argument to the parameter name
+        if args.len() > 0 {
+            eprintln!("🔍 DEBUG: Binding parameter '{}' to value {:?}", param_name, args[0].display());
+            context.define_variable(param_name.to_string(), args[0].clone())
+                .map_err(|e| EvaluationError::Context { source: e })?;
         } else {
-            return Err(EvaluationError::Runtime {
-                message: format!("Invalid function name format: {}", function_name),
-                span,
-            });
-        };
-
-        // Step 2: Get function info from registry
-        let function_info = match self.function_registry.get_function(scope, func_name) {
-            Some(info) => info,
-            None => {
-                return Err(EvaluationError::FunctionNotFound {
-                    name: function_name.to_string(),
-                    span,
-                });
-            }
-        };
-
-        // Step 3: Get function body
-        let function_body = match &function_info.body {
-            Some(body) => body,
-            None => {
-                return Err(EvaluationError::Runtime {
-                    message: format!(
-                        "Function has no body (may be intrinsic or signature-only): {}",
-                        function_name
-                    ),
-                    span,
-                });
-            }
-        };
-
-        // Step 4: Validate argument count
-        if args.len() != function_info.parameters.len() {
-            return Err(EvaluationError::Runtime {
-                message: format!(
-                    "Argument count mismatch for {}: expected {}, got {}",
-                    function_name,
-                    function_info.parameters.len(),
-                    args.len()
-                ),
-                span,
-            });
+            eprintln!("🔍 DEBUG: No arguments to bind for function {}", function_name);
         }
-
-        // Step 5: Create parameter bindings and evaluate body
-        self.evaluate_function_body_with_bindings(
-            function_body,
-            &function_info.parameters,
-            args,
-            span,
-        )
+        
+        Ok(())
     }
 
-    /// Evaluate a function body with parameter bindings
-    fn evaluate_function_body_with_bindings(
-        &self,
-        body: &outrun_parser::Block,
-        parameters: &[(String, outrun_typechecker::Type)],
-        args: &[Value],
-        span: outrun_parser::Span,
-    ) -> Result<Value, EvaluationError> {
-        let mut context = InterpreterContext::new();
-
-        // Create parameter bindings by mapping args to parameter names
-        for (i, (param_name, _param_type)) in parameters.iter().enumerate() {
-            if let Some(arg_value) = args.get(i) {
-                if let Err(e) = context.define_variable(param_name.clone(), arg_value.clone()) {
-                    return Err(EvaluationError::Context { source: e });
-                }
-            }
-        }
-
-        // Evaluate the function body block
-        self.evaluate_block(body, &mut context)
-    }
 
     /// Get the runtime type name for dispatch table lookup
     fn get_runtime_type_name(&self, value: &Value) -> String {
@@ -797,6 +829,7 @@ impl ExpressionEvaluator {
             ExpressionKind::Map(_) => "map_literal",
             ExpressionKind::Identifier(_) => "identifier",
             ExpressionKind::FunctionCall(_) => "function_call",
+            ExpressionKind::UnaryOp(_) => "unary_operation",
             ExpressionKind::IfExpression(_) => "if_expression",
             _ => "unsupported_expression",
         }

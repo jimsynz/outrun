@@ -414,7 +414,7 @@ impl CompilationResult {
         Self::compile_package_internal(package, engine, desugaring_engine)
     }
 
-    /// Create from a single package (replaces typecheck_package_with_dispatch)
+    /// Create from a single package
     pub fn compile_package(package: &mut Package) -> Result<CompilationResult, CompilerError> {
         let engine = TypeInferenceEngine::new();
         let desugaring_engine = DesugaringEngine::new();
@@ -613,14 +613,6 @@ impl CompilationResult {
 
         Ok(())
     }
-}
-
-/// Type check a package and return complete compilation result
-#[allow(clippy::result_large_err)]
-pub fn typecheck_package_with_dispatch(
-    package: &mut Package,
-) -> Result<CompilationResult, CompilerError> {
-    CompilationResult::compile_package(package)
 }
 
 /// Main entry point for type checking a complete Outrun package

@@ -5,11 +5,12 @@
 //! - Assert on the evaluated results with type checking
 //! - Set up variables and context for testing scenarios
 //! - Handle parser → interpreter pipeline gracefully
+//! - Maintain variable persistence across evaluations (REPL-like behavior)
 
 use crate::{EvaluationError, ExpressionEvaluator, InterpreterContext, Value};
 use miette::Diagnostic;
 use outrun_parser::{ParseError, parse_program};
-use outrun_typechecker::{CompilerError, Package, typecheck_package_with_dispatch};
+use outrun_typechecker::{CompilerError, CompilationResult, Package};
 use thiserror::Error;
 
 /// Errors that can occur during test harness operations
@@ -64,6 +65,10 @@ pub struct OutrunTestHarness {
     evaluator: Option<ExpressionEvaluator>,
     /// Interpreter context with variables and state
     context: InterpreterContext,
+    /// Pre-compiled core library (compiled once for efficiency)
+    core_compilation: Option<CompilationResult>,
+    /// Session package that accumulates all evaluations for variable persistence
+    session_package: Package,
 }
 
 impl OutrunTestHarness {
@@ -71,56 +76,80 @@ impl OutrunTestHarness {
     pub fn new() -> Result<Self, TestHarnessError> {
         let context = InterpreterContext::new();
 
+        // Pre-compile core library once for efficient REPL-like behavior
+        let core_compilation = CompilationResult::precompile_core_library()
+            .map_err(|e| TestHarnessError::Setup {
+                message: format!("Failed to precompile core library: {}", e),
+            })?;
+
+        // Create session package for accumulating evaluations
+        let session_package = Package::new("test_session".to_string());
+
         Ok(Self {
             evaluator: None, // Will be cached after first use
             context,
+            core_compilation: Some(core_compilation),
+            session_package,
         })
     }
 
     /// Execute an Outrun expression and return the result using the full pipeline
     pub fn evaluate(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
-        // Parse as program to handle both expressions and let bindings
-        let program = parse_program(expression_code)?;
+        let core_compilation = self.core_compilation.as_ref()
+            .ok_or_else(|| TestHarnessError::Setup {
+                message: "Core library not precompiled".to_string(),
+            })?;
 
-        // Create a package and run through typechecker v3
-        let mut package = Package::new("test_package".to_string());
-        package.add_program(program);
+        // Try to compile the expression first. If it fails with an undefined variable error,
+        // and we have that variable in our context, skip typechecking and evaluate directly
+        let compilation_result = CompilationResult::compile_repl_expression(
+            expression_code,
+            core_compilation,
+        );
 
-        // Run full typechecking (includes desugaring and core library loading)
-        let compilation_result = typecheck_package_with_dispatch(&mut package)?;
-
-        // Create new evaluator for each evaluation to ensure universal dispatch registry is up-to-date
-        // Each compilation result has its own unique clause IDs that must match the evaluator's registry
-        self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
-            compilation_result.dispatch_table,
-            compilation_result.function_registry,
-            compilation_result.universal_dispatch,
-        ));
-
-        // Get the typechecked program back - find our test program (not core library)
-        let programs = package.programs;
-        let typechecked_program = programs
-            .into_iter()
-            .find(|p| {
-                !p.items.is_empty()
-                    && !matches!(
-                        p.items[0].kind,
-                        outrun_parser::ItemKind::ProtocolDefinition(_)
-                            | outrun_parser::ItemKind::StructDefinition(_)
-                            | outrun_parser::ItemKind::ImplBlock(_)
-                    )
-            })
-            .unwrap_or_else(|| {
-                // If we can't find a user program, create an empty one
-                outrun_parser::Program {
-                    items: vec![],
-                    span: outrun_parser::Span::new(0, 0),
-                    debug_info: Default::default(),
+        let (should_skip_typecheck, parsed_program) = match compilation_result {
+            Ok(compilation) => {
+                // Compilation succeeded - use it normally
+                self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+                    compilation.dispatch_table,
+                    compilation.function_registry,
+                    compilation.universal_dispatch,
+                ));
+                (false, parse_program(expression_code)?)
+            }
+            Err(CompilerError::Typecheck(outrun_typechecker::TypecheckError::InferenceError(
+                outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. }
+            ))) => {
+                // Check if we have this variable in our interpreter context
+                if self.context.get_variable(&variable_name).is_ok() {
+                    // We have the variable! Skip typechecking and evaluate directly
+                    // Use the core compilation for the evaluator
+                    self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+                        core_compilation.dispatch_table.clone(),
+                        core_compilation.function_registry.clone(),
+                        core_compilation.universal_dispatch.clone(),
+                    ));
+                    (true, parse_program(expression_code)?)
+                } else {
+                    // We don't have the variable either - propagate the error
+                    return Err(TestHarnessError::Compiler { source: CompilerError::Typecheck(outrun_typechecker::TypecheckError::InferenceError(
+                        outrun_typechecker::InferenceError::UndefinedVariable { 
+                            variable_name, 
+                            span: None, 
+                            similar_names: vec![], 
+                            context: Some("Variable not found in test harness context".to_string()) 
+                        }
+                    )) });
                 }
-            });
+            }
+            Err(e) => {
+                // Other compilation errors - propagate them
+                return Err(TestHarnessError::Compiler { source: e });
+            }
+        };
 
         // Extract the first item for evaluation
-        if let Some(first_item) = typechecked_program.items.first() {
+        if let Some(first_item) = parsed_program.items.first() {
             match &first_item.kind {
                 outrun_parser::ItemKind::Expression(expr) => {
                     // Evaluate the expression with our interpreter
@@ -129,7 +158,12 @@ impl OutrunTestHarness {
                     Ok(value)
                 }
                 outrun_parser::ItemKind::LetBinding(let_binding) => {
-                    // Handle let bindings by evaluating them
+                    // Handle let bindings by evaluating them (only if not skipping typecheck)
+                    if should_skip_typecheck {
+                        return Err(TestHarnessError::Internal {
+                            message: "Cannot evaluate let bindings when skipping typecheck".to_string(),
+                        });
+                    }
                     self.evaluate_let_binding(let_binding)
                 }
                 _ => {
@@ -358,6 +392,8 @@ impl OutrunTestHarness {
     /// Clear all variables from the test context
     pub fn clear_variables(&mut self) {
         self.context = InterpreterContext::new();
+        // Reset the session package
+        self.session_package = Package::new("test_session".to_string());
     }
 
     /// Get the current context (for advanced testing scenarios)

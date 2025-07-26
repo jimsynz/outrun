@@ -1,7 +1,7 @@
 //! Debug test to investigate literal AST transformation issues
 
 use outrun_parser::parse_program;
-use outrun_typechecker::{Package, typecheck_package_with_dispatch};
+use outrun_typechecker::{CompilationResult, Package};
 
 #[test]
 fn test_debug_literal_ast_transformation() {
@@ -15,7 +15,7 @@ fn test_debug_literal_ast_transformation() {
     let mut package = Package::new("debug_test".to_string());
     package.add_program(program);
     
-    let compilation_result = typecheck_package_with_dispatch(&mut package).expect("Failed to typecheck");
+    let compilation_result = CompilationResult::compile_package(&mut package).expect("Failed to typecheck");
     
     println!("\nTypechecked program:");  
     for program in &package.programs {
