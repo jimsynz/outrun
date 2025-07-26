@@ -271,7 +271,7 @@ impl<'a> FunctionDispatcher<'a> {
                 ) {
                     // Found in implementation
                     Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
-                        qualified_name: format!("{}.{}", protocol_id.0, function_name),
+                        qualified_name: format!("{}.{}:{}", protocol_id.0, function_name, implementing_type.name()),
                         implementing_type: Some(implementing_type.clone()),
                         function_info: func_info.clone(),
                     })))
@@ -316,14 +316,14 @@ impl<'a> FunctionDispatcher<'a> {
                     self.protocol_registry
                         .get_implementation(&protocol_id, &id, args)
                 {
-                    // Found implementation - look up the specific function
+                    // Found implementation - look up the specific function using impl scope format
                     let impl_scope = format!("impl {} for {}", protocol_name, id.name());
                     if let Some(func_info) = self
                         .function_registry
                         .get_function(&impl_scope, function_name)
                     {
                         Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
-                            qualified_name: format!("{protocol_name}.{function_name}"),
+                            qualified_name: format!("{protocol_name}.{function_name}:{}", id.name()),
                             implementing_type: Some(id),
                             function_info: func_info.clone(),
                         })))
@@ -805,7 +805,7 @@ pub fn build_dispatch_table(
 
         for (func_name, func_info) in function_registry.get_module_functions(&impl_scope) {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", impl_scope, func_name),
+                qualified_name: format!("{}.{}", impl_info.protocol_id.0, func_name),
                 implementing_type: Some(impl_info.implementing_type.clone()),
                 function_info: func_info.clone(),
             };

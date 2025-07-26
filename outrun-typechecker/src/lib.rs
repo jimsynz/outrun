@@ -484,7 +484,7 @@ impl CompilationResult {
         let (local_modules, defined_modules) = Self::collect_module_info(&package.programs);
 
         Ok(CompilationResult {
-            protocol_registry: engine.protocol_registry_rc(),
+            protocol_registry: std::rc::Rc::new(engine.protocol_registry().clone()),
             function_registry: engine.function_registry_rc(),
             dispatch_table,
             monomorphisation_table,
@@ -785,7 +785,7 @@ protocol Display {
         engine1.register_protocols_and_structs(&package1_program).expect("Should register package1");
 
         // Get the registries from engine1 as dependencies for engine2
-        let protocol_registry1 = engine1.protocol_registry_rc();
+        let protocol_registry1 = std::rc::Rc::new(engine1.protocol_registry().clone());
         let function_registry1 = engine1.function_registry_rc();
 
         // Import package1 registries into engine2 as dependencies

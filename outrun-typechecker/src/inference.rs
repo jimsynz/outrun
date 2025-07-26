@@ -30,14 +30,11 @@ type FunctionClauseInferenceResult = (Vec<(String, Type)>, Type, Vec<crate::type
 
 /// Main type inference engine that orchestrates all typechecker components
 pub struct TypeInferenceEngine {
-    /// Registry of protocol implementations (shared)
-    protocol_registry: Rc<ProtocolRegistry>,
-
     /// Registry of function signatures (shared)
     function_registry: Rc<FunctionRegistry>,
 
-    /// Unified type registry for protocols and concrete types
-    type_registry: TypeRegistry,
+    /// Unified type registry for protocols and concrete types (shared)
+    type_registry: Rc<TypeRegistry>,
 
     /// Current module being processed
     current_module: ModuleId,
@@ -353,18 +350,17 @@ impl FunctionSignatureAnalyzer {
 impl TypeInferenceEngine {
     /// Create a new type inference engine
     pub fn new() -> Self {
-        let protocol_registry = Rc::new(ProtocolRegistry::new());
         let mut function_registry = FunctionRegistry::new();
 
         // Register all intrinsic functions that are provided by the runtime
         crate::intrinsics::register_intrinsics(&mut function_registry);
 
         let function_registry = Rc::new(function_registry);
+        let type_registry = Rc::new(TypeRegistry::with_core_types());
 
         Self {
-            protocol_registry,
             function_registry,
-            type_registry: TypeRegistry::with_core_types(),
+            type_registry,
             current_module: ModuleId::new("main"),
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
@@ -388,29 +384,34 @@ impl TypeInferenceEngine {
     /// Set the current module being processed
     pub fn set_current_module(&mut self, module: ModuleId) {
         self.current_module = module.clone();
-        // We need to get a mutable reference to the registry
-        if let Some(registry) = Rc::get_mut(&mut self.protocol_registry) {
-            registry.set_current_module(module);
+        // Update the protocol registry within the type registry
+        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
+            type_registry.protocol_registry_mut().set_current_module(module);
         } else {
             // If there are multiple references, we need to clone and replace
-            let mut new_registry = (*self.protocol_registry).clone();
-            new_registry.set_current_module(module);
-            self.protocol_registry = Rc::new(new_registry);
+            let mut new_type_registry = (*self.type_registry).clone();
+            new_type_registry.protocol_registry_mut().set_current_module(module);
+            self.type_registry = Rc::new(new_type_registry);
         }
     }
 
-    /// Get a mutable reference to the protocol registry
+    /// Get a mutable reference to the protocol registry within the type registry
     pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
-        // Always clone and replace to avoid borrow checker issues
-        let new_registry = (*self.protocol_registry).clone();
-        self.protocol_registry = Rc::new(new_registry);
-        Rc::get_mut(&mut self.protocol_registry)
+        // Clone and replace the type registry to get mutable access
+        let new_registry = (*self.type_registry).clone();
+        self.type_registry = Rc::new(new_registry);
+        Rc::get_mut(&mut self.type_registry)
             .expect("Should be uniquely owned after replacement")
+            .protocol_registry_mut()
     }
 
     /// Get mutable access to type registry for testing and configuration
     pub fn type_registry_mut(&mut self) -> &mut TypeRegistry {
-        &mut self.type_registry
+        // Always clone and replace to avoid borrow checker issues
+        let new_registry = (*self.type_registry).clone();
+        self.type_registry = Rc::new(new_registry);
+        Rc::get_mut(&mut self.type_registry)
+            .expect("Should be uniquely owned after replacement")
     }
 
     pub fn function_registry_mut(&mut self) -> &mut FunctionRegistry {
@@ -430,9 +431,9 @@ impl TypeInferenceEngine {
         self.function_registry.clone()
     }
 
-    /// Get a cloned Rc to the protocol registry for compilation results
-    pub fn protocol_registry_rc(&self) -> std::rc::Rc<ProtocolRegistry> {
-        self.protocol_registry.clone()
+    /// Get a cloned Rc to the type registry for compilation results
+    pub fn type_registry_rc(&self) -> std::rc::Rc<TypeRegistry> {
+        self.type_registry.clone()
     }
 
     /// Import dependency registries into this engine for package composition
@@ -497,12 +498,12 @@ impl TypeInferenceEngine {
     /// Get a reference to the protocol registry for testing
     #[cfg(test)]
     pub fn get_protocol_registry(&self) -> &ProtocolRegistry {
-        &self.protocol_registry
+        self.type_registry.protocol_registry()
     }
 
     /// Get a reference to the protocol registry for dispatch table building
     pub fn protocol_registry(&self) -> &ProtocolRegistry {
-        &self.protocol_registry
+        self.type_registry.protocol_registry()
     }
 
     /// Test helper to expose types_are_compatible for testing
@@ -898,14 +899,28 @@ impl TypeInferenceEngine {
 
         // Also register the protocol in the type registry so that convert_type_annotation
         // can distinguish protocols from concrete types
-        self.type_registry.protocol_registry_mut().register_protocol_definition(
-            protocol_id,
-            HashSet::new(), // Don't duplicate requirement tracking
-            module_id,
-            HashSet::new(), // Don't duplicate default implementation tracking  
-            HashSet::new(), // Don't duplicate function tracking
-            Some(protocol_def.span),
-        );
+        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
+            type_registry.protocol_registry_mut().register_protocol_definition(
+                protocol_id,
+                HashSet::new(), // Don't duplicate requirement tracking
+                module_id,
+                HashSet::new(), // Don't duplicate default implementation tracking  
+                HashSet::new(), // Don't duplicate function tracking
+                Some(protocol_def.span),
+            );
+        } else {
+            // If there are multiple references, we need to clone and replace
+            let mut new_type_registry = (*self.type_registry).clone();
+            new_type_registry.protocol_registry_mut().register_protocol_definition(
+                protocol_id,
+                HashSet::new(), // Don't duplicate requirement tracking
+                module_id,
+                HashSet::new(), // Don't duplicate default implementation tracking  
+                HashSet::new(), // Don't duplicate function tracking
+                Some(protocol_def.span),
+            );
+            self.type_registry = Rc::new(new_type_registry);
+        }
 
         // Phase 2: Skip function processing - functions will be registered in Phase 4
         // Only register the protocol definition itself during this phase
@@ -1691,7 +1706,7 @@ impl TypeInferenceEngine {
     pub fn typecheck_item(&mut self, item: &mut Item) -> Result<(), TypecheckError> {
         use outrun_parser::ItemKind;
 
-        match &item.kind {
+        match &mut item.kind {
             ItemKind::StructDefinition(struct_def) => self.typecheck_struct_functions(struct_def),
             ItemKind::ProtocolDefinition(protocol_def) => {
                 self.typecheck_protocol_functions(protocol_def)
@@ -1699,9 +1714,23 @@ impl TypeInferenceEngine {
             ItemKind::ImplBlock(impl_block) => self.typecheck_impl_block_functions(impl_block),
             ItemKind::FunctionDefinition(func_def) => self.typecheck_standalone_function(func_def),
             ItemKind::LetBinding(let_binding) => self.typecheck_let_binding(let_binding),
+            ItemKind::Expression(expr) => {
+                // Type check standalone expressions (needed for desugared expressions like UnaryMinus.minus)
+                let mut context = InferenceContext {
+                    substitution: Substitution::new(),
+                    constraints: Vec::new(),
+                    expected_type: None,
+                    self_binding: SelfBindingContext::ProtocolDefinition {
+                        protocol_id: ProtocolId::new("Unknown"),
+                        protocol_args: Vec::new(),
+                    },
+                    bindings: HashMap::new(),
+                };
+                self.infer_expression(expr, &mut context)?;
+                Ok(())
+            }
             // Other items don't need body type checking
             ItemKind::ConstDefinition(_)
-            | ItemKind::Expression(_)
             | ItemKind::Comment(_)
             | ItemKind::ImportDefinition(_)
             | ItemKind::AliasDefinition(_)
@@ -2123,7 +2152,7 @@ impl TypeInferenceEngine {
                 Type::Protocol { id: protocol, .. },
             ) => {
                 // Check if the concrete type implements the protocol (with all requirements)
-                self.protocol_registry
+                self.protocol_registry()
                     .type_satisfies_protocol(concrete_type, protocol)
             }
 
@@ -2135,7 +2164,7 @@ impl TypeInferenceEngine {
                 },
             ) => {
                 // Check if the concrete type implements the protocol (reverse direction)
-                self.protocol_registry
+                self.protocol_registry()
                     .type_satisfies_protocol(concrete_type, protocol)
             }
 
@@ -2407,7 +2436,7 @@ impl TypeInferenceEngine {
 
         // Create a function dispatcher with the appropriate context
         let function_context = self.create_function_context_from_inference_context(context);
-        let dispatcher = FunctionDispatcher::new(&self.protocol_registry, &self.function_registry, None, None)
+        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None)
             .with_context(function_context);
 
         // Try to resolve local function call using dispatcher
@@ -2440,7 +2469,7 @@ impl TypeInferenceEngine {
         let protocol_id = crate::types::ProtocolId::new(&module.name);
 
         // Check if this is a protocol call requiring Self/generic type resolution
-        let target_type = if self.protocol_registry.has_protocol(&protocol_id) {
+        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
             // Use comprehensive signature analysis for protocol calls
             self.resolve_protocol_call_target_type(&qualified_name, function_call, context)?
         } else {
@@ -2448,7 +2477,7 @@ impl TypeInferenceEngine {
         };
 
         // Create a function dispatcher
-        let dispatcher = FunctionDispatcher::new(&self.protocol_registry, &self.function_registry, None, None);
+        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
 
         // Try to resolve qualified function call using dispatcher
         match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(name.span)) {
@@ -4575,7 +4604,7 @@ impl TypeInferenceEngine {
     /// Check if a type name is a known protocol (by looking in the registry)
     fn is_known_protocol(&self, type_name: &str) -> bool {
         let protocol_id = ProtocolId::new(type_name);
-        self.protocol_registry.has_protocol(&protocol_id)
+        self.protocol_registry().has_protocol(&protocol_id)
     }
 
     /// Convert a parser type annotation to a typechecker type

@@ -157,6 +157,16 @@ mod generic_parameter_resolution_tests {
             option_protocol_id.clone(),
             std::collections::HashSet::new(), // No required protocols
             ModuleId::new("TestModule"),
+            std::collections::HashSet::new(), // No default implementations  
+            std::collections::HashSet::new(), // No required functions
+            None,                             // No span
+        );
+
+        // Also register in type registry so convert_type_annotation can find it
+        engine.type_registry_mut().protocol_registry_mut().register_protocol_definition(
+            option_protocol_id,
+            std::collections::HashSet::new(), // No required protocols
+            ModuleId::new("TestModule"),
             std::collections::HashSet::new(), // No default implementations
             std::collections::HashSet::new(), // No required functions
             None,                             // No span
