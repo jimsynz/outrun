@@ -178,7 +178,7 @@ fn register_basic_implementations(protocol_registry: &mut ProtocolRegistry) {
 }
 
 #[test]
-fn test_static_protocol_call_resolution() {
+fn test_protocol_function_call_resolution() {
     let mut protocol_registry = create_test_protocol_registry();
     let function_registry = create_test_function_registry();
     register_basic_implementations(&mut protocol_registry);
@@ -193,7 +193,7 @@ fn test_static_protocol_call_resolution() {
 
     match result {
         DispatchResult::Resolved(resolved_func) => {
-            assert_eq!(resolved_func.qualified_name, "Equality.equal?");
+            assert_eq!(resolved_func.qualified_name, "Equality.equal?:Outrun.Core.String");
             assert_eq!(
                 resolved_func.implementing_type.as_ref().unwrap().name(),
                 "Outrun.Core.String"

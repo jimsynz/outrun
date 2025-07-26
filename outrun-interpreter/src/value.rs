@@ -45,6 +45,14 @@ pub enum Value {
         value_type_info: Option<outrun_parser::ParsedTypeInfo>,
     },
 
+    /// Tuple (Outrun.Core.Tuple<T1, T2, ...>)
+    Tuple {
+        /// The tuple elements in order
+        elements: Vec<Value>,
+        /// Type information for each element
+        element_type_info: Vec<Option<outrun_parser::ParsedTypeInfo>>,
+    },
+
     /// Struct values created by protocol functions
     /// This represents concrete types like Outrun.Option.Some<T>
     Struct {
@@ -133,6 +141,15 @@ impl Value {
         }
     }
 
+    /// Create a tuple with the given elements
+    pub fn tuple(elements: Vec<Value>) -> Self {
+        let element_type_info = vec![None; elements.len()];
+        Value::Tuple {
+            elements,
+            element_type_info,
+        }
+    }
+
     /// Get the type name of this value for dispatch
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -143,6 +160,7 @@ impl Value {
             Value::Atom(_) => "Atom",
             Value::List { .. } => "List",
             Value::Map { .. } => "Map",
+            Value::Tuple { .. } => "Tuple",
             Value::Struct { .. } => "Struct",
             Value::Function { .. } => "Function",
         }
@@ -167,6 +185,7 @@ impl Value {
             Value::Atom(a) => format!(":{}", a),
             Value::List { list, .. } => format_list(list),
             Value::Map { entries, .. } => format_map(entries),
+            Value::Tuple { elements, .. } => format_tuple(elements),
             Value::Struct {
                 type_name, fields, ..
             } => {
@@ -211,6 +230,15 @@ fn format_fields(fields: &HashMap<String, Value>) -> String {
         .map(|(k, v)| format!("{}: {}", k, v.display()))
         .collect();
     formatted_fields.join(", ")
+}
+
+/// Format a tuple for display
+fn format_tuple(elements: &[Value]) -> String {
+    let formatted_elements: Vec<String> = elements
+        .iter()
+        .map(|v| v.display())
+        .collect();
+    format!("({})", formatted_elements.join(", "))
 }
 
 impl List {
@@ -303,5 +331,29 @@ mod tests {
         assert_eq!(Value::string("hello".to_string()).display(), "\"hello\"");
         assert_eq!(Value::atom("test".to_string()).display(), ":test");
         assert_eq!(Value::boolean(true).display(), "true");
+    }
+
+    #[test]
+    fn test_tuple_creation_and_display() {
+        // Test empty tuple
+        let empty_tuple = Value::tuple(vec![]);
+        assert_eq!(empty_tuple.display(), "()");
+        assert_eq!(empty_tuple.type_name(), "Tuple");
+
+        // Test single element tuple
+        let single_tuple = Value::tuple(vec![Value::integer(42)]);
+        assert_eq!(single_tuple.display(), "(42)");
+
+        // Test two element tuple
+        let pair_tuple = Value::tuple(vec![Value::integer(1), Value::integer(2)]);
+        assert_eq!(pair_tuple.display(), "(1, 2)");
+
+        // Test mixed type tuple
+        let mixed_tuple = Value::tuple(vec![
+            Value::integer(42),
+            Value::string("hello".to_string()),
+            Value::boolean(true),
+        ]);
+        assert_eq!(mixed_tuple.display(), "(42, \"hello\", true)");
     }
 }

@@ -397,17 +397,8 @@ impl ExpressionEvaluator {
             elements.push(element_value);
         }
 
-        // Create a tuple struct with indexed fields
-        let mut fields = std::collections::HashMap::new();
-        for (i, element) in elements.into_iter().enumerate() {
-            fields.insert(i.to_string(), element);
-        }
-
-        Ok(Value::Struct {
-            type_name: format!("Tuple{}", tuple_literal.elements.len()),
-            fields,
-            type_info: None,
-        })
+        // Create a proper Tuple value
+        Ok(Value::tuple(elements))
     }
 
     /// Evaluate a function call through the intrinsics system
@@ -606,6 +597,7 @@ impl ExpressionEvaluator {
             Value::Atom(_) => "Outrun.Core.Atom".to_string(),
             Value::List { .. } => "Outrun.Core.List".to_string(), // TODO: Handle generic types properly
             Value::Map { .. } => "Outrun.Core.Map".to_string(), // TODO: Handle generic types properly
+            Value::Tuple { .. } => "Outrun.Core.Tuple".to_string(), // TODO: Handle generic types properly
             Value::Struct { type_name, .. } => type_name.clone(),
             Value::Function { .. } => "Function".to_string(), // TODO: Handle function types properly
         }
