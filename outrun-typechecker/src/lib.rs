@@ -987,7 +987,7 @@ protocol Display {
         let package_a_code = r#"
             struct User {
                 def new(name: String): User {
-                    # package A version
+                    User {}
                 }
             }
         "#;
@@ -996,7 +996,7 @@ protocol Display {
         let package_b_code = r#"
             struct User {
                 def new(id: Integer): User {
-                    # package B version - conflict!
+                    User {}
                 }
             }
         "#;

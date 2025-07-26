@@ -737,8 +737,9 @@ mod tests {
 
         // Test that a known intrinsic can be found and executed
         let args = vec![Value::integer(5), Value::integer(3)];
-        let result = handler.execute_intrinsic("Outrun.Intrinsic.add_integer64", &args, span);
+        let result = handler.execute_intrinsic("Outrun.Intrinsic.i64_add", &args, span);
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Value::integer(8));
 
         // Test that an unknown intrinsic returns error
         let result = handler.execute_intrinsic("Outrun.Intrinsic.nonexistent", &args, span);

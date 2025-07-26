@@ -1443,10 +1443,18 @@ impl TypeInferenceEngine {
         use std::rc::Rc;
 
         if block.statements.is_empty() {
-            return Ok(Type::concrete("Outrun.Core.Unit"));
+            return Err(TypecheckError::UnificationError(
+                OriginalUnificationError::TypeMismatch {
+                    expected: Type::concrete("NonEmptyBlock"),
+                    found: Type::concrete("EmptyBlock"),
+                    expected_context: Some("non-empty function body".to_string()),
+                    found_context: Some("empty block".to_string()),
+                    span: to_source_span(Some(block.span)),
+                },
+            ));
         }
 
-        let mut last_type = Type::concrete("Outrun.Core.Unit");
+        let mut last_type = None;
 
         // Type check each statement
         for statement in &block.statements {
@@ -1458,18 +1466,34 @@ impl TypeInferenceEngine {
                         let mut expr_mut = expr_cell.borrow_mut();
                         self.infer_expression(&mut expr_mut, context)?
                     };
-                    last_type = result.inferred_type;
+                    last_type = Some(result.inferred_type);
                 }
                 outrun_parser::StatementKind::LetBinding(let_binding) => {
                     // Type check the let binding expression and add to symbol table
                     self.typecheck_let_binding_statement_readonly(let_binding, context)?;
-                    last_type = Type::concrete("Outrun.Core.Unit"); // Let bindings return unit
+                    // Let bindings don't change the block's return type unless they're the last statement
+                    // If this is the last statement in the block, then the block has no meaningful return value
+                    // which should be an error since Outrun doesn't have Unit types.
+                    // We'll handle this case in validation after the loop.
                 }
             }
         }
 
         // The type of a block is the type of its last statement
-        Ok(last_type)
+        // If there's no meaningful return type (e.g., last statement was a let binding), 
+        // that's an error since Outrun doesn't have Unit types
+        match last_type {
+            Some(t) => Ok(t),
+            None => Err(TypecheckError::UnificationError(
+                OriginalUnificationError::TypeMismatch {
+                    expected: Type::concrete("BlockWithReturnValue"),
+                    found: Type::concrete("BlockWithoutReturnValue"),
+                    expected_context: Some("block with meaningful return value".to_string()),
+                    found_context: Some("block ending with let binding".to_string()),
+                    span: to_source_span(Some(block.span)),
+                },
+            )),
+        }
     }
 
     /// Type check a let binding statement without requiring mutability

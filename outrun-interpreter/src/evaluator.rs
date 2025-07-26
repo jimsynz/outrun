@@ -484,10 +484,16 @@ impl ExpressionEvaluator {
     /// Returns the resolved implementation function qualified name if found
     fn try_protocol_dispatch(&self, function_name: &str, args: &[Value]) -> Option<String> {
         // Check if this looks like a protocol call (e.g., "BinaryAddition.add")
-        if let Some((protocol_name, _method_name)) = function_name.split_once('.') {
+        if let Some((protocol_name, method_name)) = function_name.split_once('.') {
             // Get the type of the first argument (self parameter for protocols)
             if let Some(first_arg) = args.first() {
                 let arg_type_name = self.get_runtime_type_name(first_arg);
+
+                // TEMPORARY: Hardcoded protocol-to-intrinsic mappings for common cases
+                // TODO: These should come from the typechecker's dispatch table
+                if let Some(intrinsic_name) = self.get_hardcoded_intrinsic_mapping(protocol_name, method_name, &arg_type_name) {
+                    return Some(intrinsic_name);
+                }
 
                 // Look up in dispatch table to get the actual implementation function
                 if let Some(resolved_func) =
@@ -501,6 +507,37 @@ impl ExpressionEvaluator {
             }
         }
         None
+    }
+
+    /// TEMPORARY: Hardcoded protocol-to-intrinsic mappings
+    /// TODO: This should be replaced by proper dispatch table entries from the typechecker
+    fn get_hardcoded_intrinsic_mapping(&self, protocol_name: &str, method_name: &str, type_name: &str) -> Option<String> {
+        match (protocol_name, method_name, type_name) {
+            // UnaryMinus protocol
+            ("UnaryMinus", "minus", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_neg".to_string()),
+            
+            // BinaryAddition protocol
+            ("BinaryAddition", "add", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_add".to_string()),
+            
+            // BinarySubtraction protocol
+            ("BinarySubtraction", "subtract", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_sub".to_string()),
+            
+            // BinaryMultiplication protocol
+            ("BinaryMultiplication", "multiply", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_mul".to_string()),
+            
+            // BinaryDivision protocol
+            ("BinaryDivision", "divide", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_div".to_string()),
+            
+            // Equality protocol
+            ("Equality", "equal?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_eq".to_string()),
+            
+            // Comparison protocol
+            ("Comparison", "less_than?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_lt".to_string()),
+            ("Comparison", "greater_than?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_gt".to_string()),
+            
+            // Add more mappings as needed
+            _ => None,
+        }
     }
 
     /// Evaluate a resolved function (may require further dispatch)

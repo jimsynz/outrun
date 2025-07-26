@@ -106,70 +106,8 @@ fn test_case_expression_basic() {
     harness.assert_evaluates_to_string(code, "ok").unwrap();
 }
 
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_negative_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // Negative literals currently fail due to parser/evaluator gap
-    harness.assert_evaluates_to_integer("-42", -42).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_tuple_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // Tuple literals not yet implemented in evaluator
-    let code = "(1, 2)";
-    harness.evaluate(code).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_list_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // List literals not yet implemented in evaluator
-    let code = "[]";
-    harness.evaluate(code).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_function_calls() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // Function calls not yet implemented
-    let code = "List.head(value: [1, 2, 3])";
-    harness.evaluate(code).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_arithmetic() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // Arithmetic operators not yet implemented as expressions
-    let code = "1 + 2";
-    harness.evaluate(code).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "UnsupportedExpression")]
-fn test_unsupported_if_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
-
-    // If expressions not yet implemented
-    let code = r#"
-        if true {
-            "yes"
-        } else {
-            "no"
-        }
-    "#;
-    harness.evaluate(code).unwrap();
-}
+// Removed outdated "unsupported" tests that were testing for lack of functionality
+// that the interpreter now supports. These tests no longer provide value.
 
 #[test]
 fn test_current_interpreter_capabilities_summary() {

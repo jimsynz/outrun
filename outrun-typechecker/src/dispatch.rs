@@ -511,7 +511,7 @@ pub fn build_dispatch_table(
 
         for (func_name, func_info) in function_registry.get_module_functions(&impl_scope) {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", impl_scope, func_name),
+                qualified_name: format!("{}.{}", impl_info.protocol_id.0, func_name),
                 implementing_type: Some(impl_info.implementing_type.clone()),
                 function_info: func_info.clone(),
             };

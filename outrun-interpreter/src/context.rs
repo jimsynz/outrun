@@ -13,8 +13,6 @@ pub enum InterpreterError {
     #[error("Variable '{name}' not found in current scope")]
     VariableNotFound { name: String },
 
-    #[error("Variable '{name}' already defined in current scope")]
-    VariableAlreadyDefined { name: String },
 
     #[error("Type error: {message}")]
     TypeError { message: String },
@@ -151,12 +149,9 @@ impl InterpreterContext {
         self.variable_environment.is_empty() && self.call_stack.is_empty()
     }
 
-    /// Define a variable in the current scope
+    /// Define a variable in the current scope (allows rebinding with let statements)
     pub fn define_variable(&mut self, name: String, value: Value) -> Result<(), InterpreterError> {
-        if self.variable_environment.current_scope_contains(&name) {
-            return Err(InterpreterError::VariableAlreadyDefined { name });
-        }
-
+        // In Outrun, variable rebinding with `let` is allowed (but not mutation)
         self.variable_environment.define(name, value);
         Ok(())
     }
@@ -428,15 +423,14 @@ mod tests {
             Err(InterpreterError::VariableNotFound { .. })
         ));
 
-        // Try to define duplicate variable in same scope
+        // Test variable rebinding (should be allowed with let statements)
         context
             .define_variable("x".to_string(), Value::integer(1))
             .unwrap();
-        let result = context.define_variable("x".to_string(), Value::integer(2));
-        assert!(matches!(
-            result,
-            Err(InterpreterError::VariableAlreadyDefined { .. })
-        ));
+        // Rebinding should succeed
+        context.define_variable("x".to_string(), Value::integer(2)).unwrap();
+        // Value should be updated
+        assert_eq!(context.get_variable("x").unwrap(), &Value::integer(2));
 
         // Try to update non-existent variable
         let result = context.update_variable("nonexistent".to_string(), Value::integer(1));
