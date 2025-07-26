@@ -8,7 +8,6 @@ use std::fs;
 use std::path::Path;
 
 /// Recursively collect all .outrun files from a directory
-#[allow(clippy::result_large_err)]
 pub fn collect_outrun_files(
     dir: &Path,
     programs: &mut Vec<(String, String)>,
@@ -49,7 +48,6 @@ pub fn collect_outrun_files(
 }
 
 /// Get the default core library path relative to the current project
-#[allow(clippy::result_large_err)]
 pub fn default_core_library_path() -> Result<std::path::PathBuf, TypecheckError> {
     // Try to find outrun-core relative to the current working directory
     let current_dir = std::env::current_dir().map_err(|e| {

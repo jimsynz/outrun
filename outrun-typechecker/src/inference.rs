@@ -5108,7 +5108,7 @@ impl TypeInferenceEngine {
 
                     // Use unified TypeRegistry for consistent type resolution
                     match self.type_registry.get_type_kind(&type_name) {
-                        Some(crate::registry::TypeKind::Protocol(protocol_def)) => {
+                        Some(crate::registry::TypeKind::Protocol(_protocol_def)) => {
                             // Known protocol type
                             Ok(Type::Protocol {
                                 id: ProtocolId::new(type_name),

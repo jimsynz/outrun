@@ -209,30 +209,6 @@ impl CompilationResult {
         Self::compile_with_dependencies(package, dependencies)
     }
 
-    /// Extract all modules defined by a package for redefinition checking
-    fn extract_package_modules(programs: &[outrun_parser::Program]) -> HashSet<ModuleId> {
-        let mut modules = HashSet::new();
-        
-        for program in programs {
-            for item in &program.items {
-                let module_id = match &item.kind {
-                    outrun_parser::ItemKind::StructDefinition(struct_def) => {
-                        Some(ModuleId::from(&struct_def.name))
-                    }
-                    outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
-                        Some(ModuleId::from(&protocol_def.name))
-                    }
-                    _ => None,
-                };
-                
-                if let Some(module) = module_id {
-                    modules.insert(module);
-                }
-            }
-        }
-        
-        modules
-    }
 
     /// Extract modules and their content digests for change detection during hot reloading
     fn extract_package_module_digests(programs: &[outrun_parser::Program]) -> HashMap<ModuleId, u64> {
@@ -616,14 +592,12 @@ impl CompilationResult {
 }
 
 /// Main entry point for type checking a complete Outrun package
-#[allow(clippy::result_large_err)]
 pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
     CompilationResult::compile_package(package).map(|_| ())
 }
 
 
 /// Convenience function for single-file type checking (mainly for testing)
-#[allow(clippy::result_large_err)]
 pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), CompilerError> {
     let mut package = Package::new("single_file".to_string());
     package.add_program(program.clone());

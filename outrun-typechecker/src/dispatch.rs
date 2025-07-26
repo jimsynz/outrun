@@ -429,7 +429,7 @@ impl<'a> FunctionDispatcher<'a> {
                     }
                 }
             },
-            Type::Protocol { id: protocol_id, ref args, .. } => {
+            Type::Protocol { id: protocol_id, args: _, .. } => {
                 // Protocol type like Option<Integer> - this is valid for protocol calls
                 // The protocol_name should match the protocol_id
                 if protocol_id.0 == protocol_name {
@@ -707,7 +707,7 @@ impl MonomorphisationTable {
         // Track instantiation by original function
         self.instantiations_by_function
             .entry(function_key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key);
     }
     
@@ -773,7 +773,7 @@ impl MonomorphisationTable {
                 } else {
                     let arg_names: Vec<String> = args
                         .iter()
-                        .map(|arg| Self::type_to_key_component(arg))
+                        .map(Self::type_to_key_component)
                         .collect();
                     format!("{}_{}", id.name(), arg_names.join("_"))
                 }
@@ -784,7 +784,7 @@ impl MonomorphisationTable {
                 } else {
                     let arg_names: Vec<String> = args
                         .iter()
-                        .map(|arg| Self::type_to_key_component(arg))
+                        .map(Self::type_to_key_component)
                         .collect();
                     format!("{}_{}", id.0, arg_names.join("_"))
                 }

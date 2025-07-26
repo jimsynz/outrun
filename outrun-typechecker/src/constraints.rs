@@ -237,7 +237,6 @@ impl ConstraintSolver {
     }
 
     /// Convert a type to a canonical string representation
-    #[allow(clippy::only_used_in_recursion)]
     fn type_to_string(&self, ty: &Type) -> String {
         match ty {
             Type::Concrete { id, args, .. } => {
@@ -331,7 +330,6 @@ impl ConstraintSolver {
     }
 
     /// Solve a Self binding constraint: Self = SomeType
-    #[allow(clippy::only_used_in_recursion)]
     fn solve_self_binding_constraint(
         &mut self,
         self_context: &SelfBindingContext,

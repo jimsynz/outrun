@@ -13,6 +13,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ClauseId(pub u64);
 
+impl Default for ClauseId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClauseId {
     pub fn new() -> Self {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -76,6 +82,12 @@ pub enum Guard {
 pub struct ConstraintContext {
     pub generic_substitutions: HashMap<String, Type>,
     pub self_type: Option<Type>,
+}
+
+impl Default for ConstraintContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConstraintContext {
@@ -206,14 +218,14 @@ impl UniversalDispatchRegistry {
         // Add to dispatch index
         self.dispatch_index
             .entry(clause.function_signature.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(clause_id);
         
         // Add to type index for optimization
         if let Some(type_pattern) = self.extract_type_pattern(&clause) {
             self.type_index
                 .entry((clause.function_signature.clone(), type_pattern))
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(clause_id);
         }
         

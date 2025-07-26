@@ -78,10 +78,6 @@ pub enum EvaluationError {
 pub struct ExpressionEvaluator {
     /// Intrinsics handler for executing built-in operations
     intrinsics: crate::intrinsics::IntrinsicsHandler,
-    /// Dispatch table for runtime protocol function resolution (LEGACY)
-    dispatch_table: DispatchTable,
-    /// Function registry for looking up user-defined function bodies (LEGACY)
-    function_registry: std::rc::Rc<FunctionRegistry>,
     /// Universal dispatch registry for clause-based function dispatch
     universal_registry: UniversalDispatchRegistry,
 }
@@ -89,27 +85,23 @@ pub struct ExpressionEvaluator {
 impl ExpressionEvaluator {
     /// Create a new expression evaluator with a dispatch table and function registry
     pub fn with_dispatch_table(
-        dispatch_table: DispatchTable,
-        function_registry: std::rc::Rc<FunctionRegistry>,
+        _dispatch_table: DispatchTable,
+        _function_registry: std::rc::Rc<FunctionRegistry>,
     ) -> Self {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
-            dispatch_table,
-            function_registry,
             universal_registry: UniversalDispatchRegistry::new(),
         }
     }
 
     /// Create a new expression evaluator with universal dispatch registry
     pub fn with_universal_dispatch(
-        dispatch_table: DispatchTable,
-        function_registry: std::rc::Rc<FunctionRegistry>,
+        _dispatch_table: DispatchTable,
+        _function_registry: std::rc::Rc<FunctionRegistry>,
         universal_registry: UniversalDispatchRegistry,
     ) -> Self {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
-            dispatch_table,
-            function_registry,
             universal_registry,
         }
     }
@@ -118,8 +110,6 @@ impl ExpressionEvaluator {
     pub fn new() -> Self {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
-            dispatch_table: DispatchTable::new(),
-            function_registry: std::rc::Rc::new(FunctionRegistry::new()),
             universal_registry: UniversalDispatchRegistry::new(),
         }
     }
@@ -370,12 +360,6 @@ impl ExpressionEvaluator {
         Ok(())
     }
 
-    /// Extract string content from string literal (handling interpolation)
-    fn extract_string_content(&self, literal: &outrun_parser::StringLiteral) -> String {
-        // TODO: Handle string interpolation properly with parts
-        // For now, just return a placeholder
-        format!("string_literal_{}", literal.span.start)
-    }
 
     /// Evaluate a list literal by evaluating all elements
     fn evaluate_list_literal(

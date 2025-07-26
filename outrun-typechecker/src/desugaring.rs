@@ -40,7 +40,6 @@ impl DesugaringEngine {
     }
 
     /// Desugar all operators in a program, transforming them into protocol function calls
-    #[allow(clippy::result_large_err)]
     pub fn desugar_program(&mut self, program: &mut Program) -> Result<(), TypecheckError> {
         for item in &mut program.items {
             self.desugar_item(item)?;
@@ -49,7 +48,6 @@ impl DesugaringEngine {
     }
 
     /// Desugar operators in a single item
-    #[allow(clippy::result_large_err)]
     fn desugar_item(&mut self, item: &mut Item) -> Result<(), TypecheckError> {
         match &mut item.kind {
             ItemKind::Expression(expr) => {
@@ -76,7 +74,6 @@ impl DesugaringEngine {
     }
 
     /// Iteratively desugar all operators in an expression tree to prevent stack overflow
-    #[allow(clippy::result_large_err)]
     pub fn desugar_expression(&mut self, expr: &mut Expression) -> Result<(), TypecheckError> {
         // Use iterative approach to handle deep expression trees
         let mut work_stack: Vec<&mut Expression> = vec![expr];
@@ -182,7 +179,6 @@ impl DesugaringEngine {
     }
 
     /// Transform a binary operation into a protocol function call
-    #[allow(clippy::result_large_err)]
     fn desugar_binary_operation(
         &mut self,
         binary_op: &BinaryOperation,
@@ -279,7 +275,6 @@ impl DesugaringEngine {
     }
 
     /// Transform a unary operation into a protocol function call
-    #[allow(clippy::result_large_err)]
     fn desugar_unary_operation(
         &mut self,
         unary_op: &UnaryOperation,

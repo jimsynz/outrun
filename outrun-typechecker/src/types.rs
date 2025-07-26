@@ -366,7 +366,6 @@ impl Type {
     }
 
     /// Helper to collect types from SelfBindingContext for iterative traversal
-    #[allow(clippy::only_used_in_recursion)]
     fn collect_binding_context_types<'a>(
         &self,
         context: &'a SelfBindingContext,
@@ -595,7 +594,6 @@ impl Type {
 
 /// Type constraints for protocol bounds
 #[derive(Debug, Clone, PartialEq)]
-#[allow(clippy::large_enum_variant)]
 pub enum Constraint {
     /// T: Display
     Implements {

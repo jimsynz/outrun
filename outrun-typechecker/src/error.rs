@@ -9,8 +9,6 @@ use thiserror::Error;
 
 /// Main typechecker error type extending the existing parser error system
 #[derive(Error, Diagnostic, Debug)]
-#[allow(clippy::result_large_err)]
-#[allow(clippy::large_enum_variant)]
 pub enum TypecheckError {
     #[error("Type unification failed")]
     #[diagnostic(code(outrun::typecheck::unification_failed))]
@@ -182,7 +180,6 @@ pub enum ConstraintError {
 
 /// Implementation errors (orphan rules, conflicts, etc.)
 #[derive(Error, Diagnostic, Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum ImplementationError {
     #[error("Orphan rule violation: cannot implement foreign protocol {protocol_name} for foreign type {type_name}")]
     #[diagnostic(
@@ -285,7 +282,6 @@ pub enum ExhaustivenessError {
 
 /// Type inference errors
 #[derive(Error, Diagnostic, Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum InferenceError {
     #[error("Cannot infer type: ambiguous expression")]
     #[diagnostic(
@@ -417,8 +413,6 @@ pub enum InferenceError {
 
 /// Unified compiler error combining parser and typechecker errors
 #[derive(Error, Diagnostic, Debug)]
-#[allow(clippy::result_large_err)]
-#[allow(clippy::large_enum_variant)]
 pub enum CompilerError {
     #[error(transparent)]
     Parse(#[from] ParseError),

@@ -43,14 +43,12 @@ impl Unifier {
     }
 
     /// Unify two types, returning a substitution that makes them equal
-    #[allow(clippy::result_large_err)]
     pub fn unify(&mut self, left: &Type, right: &Type) -> Result<Substitution, UnificationError> {
         self.unify_with_context(left, right, None, None)
     }
 
     /// Unify two types with source context for better error messages
     /// Uses iterative work queue to prevent stack overflow on deep type hierarchies
-    #[allow(clippy::result_large_err)]
     pub fn unify_with_context(
         &mut self,
         left: &Type,
@@ -63,7 +61,6 @@ impl Unifier {
     }
 
     /// Iterative unification implementation using work queue
-    #[allow(clippy::result_large_err)]
     fn unify_iterative(
         &mut self,
         initial_left: &Type,
@@ -97,7 +94,6 @@ impl Unifier {
     }
 
     /// Handle a single unification step, potentially adding sub-tasks to the work queue
-    #[allow(clippy::result_large_err)]
     fn unify_single_step(
         &mut self,
         left: &Type,
@@ -309,7 +305,6 @@ impl Unifier {
     }
 
     /// Unify a type variable with another type
-    #[allow(clippy::result_large_err)]
     fn unify_variable(
         &mut self,
         var_id: TypeVarId,

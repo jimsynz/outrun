@@ -23,8 +23,6 @@ pub enum InterpreterError {
     #[error("Cannot access variable from outer scope: {name}")]
     ScopeError { name: String },
 
-    #[error("Integration error with typechecker: {message}")]
-    TypecheckerIntegration { message: String },
 }
 
 /// Runtime context for the new Outrun interpreter
@@ -41,9 +39,6 @@ pub struct InterpreterContext {
     /// Maximum recursion depth to prevent stack overflow
     max_stack_depth: usize,
 
-    /// Integration with typechecker v3 - stores package compilation results
-    /// This will contain the type information and dispatch tables from typechecker
-    typechecker_integration: Option<TypecheckerIntegration>,
 }
 
 /// Variable environment managing lexical scoping
@@ -64,50 +59,6 @@ pub struct CallFrame {
     pub locals: HashMap<String, Value>,
 }
 
-/// Integration point with typechecker v3
-///
-/// This will store the results of package compilation and provide
-/// access to type information and dispatch tables.
-#[derive(Debug)]
-struct TypecheckerIntegration {
-    /// Package that has been type-checked
-    /// For now, we'll store a simplified representation
-    package_name: String,
-    /// Type information extracted from the typechecker
-    type_registry: HashMap<String, TypeInfo>,
-    /// Function dispatch table from typechecker
-    function_registry: HashMap<String, FunctionInfo>,
-}
-
-/// Simplified type information for integration
-#[derive(Debug, Clone)]
-struct TypeInfo {
-    /// Type name
-    name: String,
-    /// Whether this is a protocol or concrete type
-    kind: TypeKind,
-}
-
-/// Kind of type for dispatch purposes
-#[derive(Debug, Clone)]
-enum TypeKind {
-    Protocol,
-    Struct,
-    Primitive,
-}
-
-/// Function information for dispatch
-#[derive(Debug, Clone)]
-struct FunctionInfo {
-    /// Function name
-    name: String,
-    /// Parameter names and types
-    parameters: Vec<(String, TypeInfo)>,
-    /// Return type
-    return_type: TypeInfo,
-    /// Whether this is an intrinsic function
-    is_intrinsic: bool,
-}
 
 impl InterpreterContext {
     /// Create a new interpreter context
@@ -116,33 +67,9 @@ impl InterpreterContext {
             variable_environment: VariableEnvironment::new(),
             call_stack: Vec::new(),
             max_stack_depth: 1000, // Reasonable default
-            typechecker_integration: None,
         }
     }
 
-    /// Create a new context with integration to a type-checked package
-    pub fn with_package(package: &outrun_typechecker::Package) -> Result<Self, InterpreterError> {
-        let mut context = Self::new();
-        context.integrate_package(package)?;
-        Ok(context)
-    }
-
-    /// Integrate with a type-checked package from typechecker v3
-    pub fn integrate_package(
-        &mut self,
-        package: &outrun_typechecker::Package,
-    ) -> Result<(), InterpreterError> {
-        // TODO: Extract type and function information from the package
-        // For now, create a minimal integration
-        let integration = TypecheckerIntegration {
-            package_name: package.package_name.clone(),
-            type_registry: HashMap::new(),
-            function_registry: HashMap::new(),
-        };
-
-        self.typechecker_integration = Some(integration);
-        Ok(())
-    }
 
     /// Check if the context is empty (no variables or call stack)
     pub fn is_empty(&self) -> bool {
@@ -222,21 +149,6 @@ impl InterpreterContext {
         &self.call_stack
     }
 
-    /// Look up function information for dispatch
-    pub fn get_function_info(&self, name: &str) -> Option<&FunctionInfo> {
-        self.typechecker_integration
-            .as_ref()?
-            .function_registry
-            .get(name)
-    }
-
-    /// Look up type information
-    pub fn get_type_info(&self, name: &str) -> Option<&TypeInfo> {
-        self.typechecker_integration
-            .as_ref()?
-            .type_registry
-            .get(name)
-    }
 }
 
 impl VariableEnvironment {
@@ -284,13 +196,6 @@ impl VariableEnvironment {
         self.get(name).is_some()
     }
 
-    /// Check if the current scope contains a variable
-    fn current_scope_contains(&self, name: &str) -> bool {
-        self.scopes
-            .last()
-            .map(|scope| scope.contains_key(name))
-            .unwrap_or(false)
-    }
 
     /// Push a new scope
     fn push_scope(&mut self) {
