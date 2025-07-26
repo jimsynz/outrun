@@ -61,6 +61,10 @@ pub struct FunctionInfo {
     pub body: Option<outrun_parser::Block>,
     /// Source location
     pub span: Option<Span>,
+    /// Generic parameters for this function (e.g., ["T", "U"] for generic functions)
+    pub generic_parameters: Vec<String>,
+    /// Whether this function is generic (has type parameters)
+    pub is_generic: bool,
 }
 
 /// Result of function resolution
@@ -171,6 +175,8 @@ pub struct FunctionDispatcher<'a> {
     protocol_registry: &'a ProtocolRegistry,
     /// Function registry
     function_registry: &'a FunctionRegistry,
+    /// Monomorphisation table for generic function instantiations
+    monomorphisation_table: Option<&'a MonomorphisationTable>,
     /// Current substitution context for type variable resolution
     substitution: Option<&'a Substitution>,
     /// Current function context for local resolution
@@ -182,25 +188,14 @@ impl<'a> FunctionDispatcher<'a> {
     pub fn new(
         protocol_registry: &'a ProtocolRegistry,
         function_registry: &'a FunctionRegistry,
+        monomorphisation_table: Option<&'a MonomorphisationTable>,
+        substitution: Option<&'a Substitution>,
     ) -> Self {
         Self {
             protocol_registry,
             function_registry,
-            substitution: None,
-            context: FunctionContext::TopLevel,
-        }
-    }
-
-    /// Create dispatcher with substitution context
-    pub fn with_substitution(
-        protocol_registry: &'a ProtocolRegistry,
-        function_registry: &'a FunctionRegistry,
-        substitution: &'a Substitution,
-    ) -> Self {
-        Self {
-            protocol_registry,
-            function_registry,
-            substitution: Some(substitution),
+            monomorphisation_table,
+            substitution,
             context: FunctionContext::TopLevel,
         }
     }
@@ -410,6 +405,100 @@ impl<'a> FunctionDispatcher<'a> {
         }
     }
 
+    /// Resolve a generic function call with concrete type arguments
+    pub fn resolve_generic_call(
+        &self,
+        module_name: &str,
+        function_name: &str,
+        type_args: &[&Type],
+        span: Option<Span>,
+    ) -> Result<DispatchResult, DispatchError> {
+        // Check if we have a monomorphisation table available
+        if let Some(mono_table) = self.monomorphisation_table {
+            // Generate the monomorphised key for this function call
+            let mono_key = MonomorphisationTable::generate_key(module_name, function_name, type_args);
+            
+            // Try to find an existing monomorphisation
+            if let Some(mono_entry) = mono_table.get_instantiation(&mono_key) {
+                // Found a monomorphised version - return it
+                return Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
+                    qualified_name: format!("{}.{}", module_name, function_name),
+                    implementing_type: None,
+                    function_info: mono_entry.monomorphised_function.clone(),
+                })));
+            }
+        }
+        
+        // Fall back to generic function resolution if no monomorphisation found
+        // First, try to find the generic function
+        if let Some(func_info) = self.function_registry.get_function(module_name, function_name) {
+            if func_info.is_generic {
+                // This is a generic function but we don't have a monomorphised version
+                // This could happen during type inference when we haven't generated the instantiation yet
+                // Return the generic function info with a note that it needs monomorphisation
+                return Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
+                    qualified_name: format!("{}.{}", module_name, function_name),
+                    implementing_type: None,
+                    function_info: func_info.clone(),
+                })));
+            }
+        }
+        
+        // If we get here, either the function doesn't exist or it's not generic
+        // Fall back to standard static call resolution
+        self.resolve_static_call(module_name, function_name, span)
+    }
+    
+    /// Resolve a qualified call with potential generic type arguments
+    /// This is an enhanced version that can handle both generic and non-generic functions
+    pub fn resolve_qualified_call_with_types(
+        &self,
+        qualified_name: &str,
+        type_args: &[&Type],
+        target_type: Option<&Type>,
+        span: Option<Span>,
+    ) -> Result<DispatchResult, DispatchError> {
+        // Split qualified name: everything before last dot is module, everything after is function
+        let last_dot_pos = qualified_name.rfind('.');
+        if let Some(pos) = last_dot_pos {
+            let module_name = &qualified_name[..pos];
+            let function_name = &qualified_name[pos + 1..];
+
+            // Ensure we have both parts
+            if module_name.is_empty() || function_name.is_empty() {
+                return Err(DispatchError::InvalidTarget {
+                    protocol_name: qualified_name.to_string(),
+                    target_description: "malformed qualified name".to_string(),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                });
+            }
+
+            // If we have type arguments, try generic resolution first
+            if !type_args.is_empty() {
+                match self.resolve_generic_call(module_name, function_name, type_args, span) {
+                    Ok(result) => return Ok(result),
+                    Err(_) => {
+                        // Fall through to normal resolution if generic resolution fails
+                    }
+                }
+            }
+
+            // Check if this is a protocol call (has target type)
+            if let Some(target) = target_type {
+                self.resolve_protocol_call(module_name, function_name, target, span)
+            } else {
+                self.resolve_static_call(module_name, function_name, span)
+            }
+        } else {
+            // No dot found - invalid qualified name
+            return Err(DispatchError::InvalidTarget {
+                protocol_name: qualified_name.to_string(),
+                target_description: "malformed qualified name".to_string(),
+                span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+            });
+        }
+    }
+
     /// Check if we have local access to a module (for private function visibility)
     fn is_local_access(&self, module_name: &str) -> bool {
         match &self.context {
@@ -428,8 +517,8 @@ impl<'a> FunctionDispatcher<'a> {
 /// Dispatch table for efficient runtime dispatch
 #[derive(Debug, Clone)]
 pub struct DispatchTable {
-    /// Map from (protocol, type) to resolved function
-    entries: HashMap<(String, String), ResolvedFunction>,
+    /// Map from "Protocol.function:TargetType" to resolved function
+    entries: HashMap<String, ResolvedFunction>,
 }
 
 impl DispatchTable {
@@ -440,25 +529,22 @@ impl DispatchTable {
         }
     }
 
-    /// Add a dispatch entry
+    /// Add a dispatch entry with monomorphised key format
     pub fn add_entry(
         &mut self,
-        protocol_name: String,
-        type_name: String,
+        key: String,
         resolved_func: ResolvedFunction,
     ) {
-        self.entries
-            .insert((protocol_name, type_name), resolved_func);
+        self.entries.insert(key, resolved_func);
     }
 
-    /// Look up a dispatch target
-    pub fn lookup(&self, protocol_name: &str, type_name: &str) -> Option<&ResolvedFunction> {
-        self.entries
-            .get(&(protocol_name.to_string(), type_name.to_string()))
+    /// Look up a dispatch target using monomorphised key
+    pub fn lookup(&self, key: &str) -> Option<&ResolvedFunction> {
+        self.entries.get(key)
     }
 
     /// Get all entries in the dispatch table
-    pub fn entries(&self) -> &HashMap<(String, String), ResolvedFunction> {
+    pub fn entries(&self) -> &HashMap<String, ResolvedFunction> {
         &self.entries
     }
 
@@ -484,10 +570,218 @@ impl Default for DispatchTable {
     }
 }
 
-/// Build a complete dispatch table from protocol and function registries
+/// Monomorphisation entry for tracking generic function instantiations
+#[derive(Debug, Clone, PartialEq)]
+pub struct MonomorphisationEntry {
+    /// Original generic function info
+    pub generic_function: FunctionInfo,
+    /// Concrete type substitutions for each generic parameter
+    /// Maps generic parameter name (e.g., "T") to concrete type (e.g., "Integer64")
+    pub type_substitutions: HashMap<String, Type>,
+    /// Monomorphised key for dispatch table lookup
+    /// Format: "ModuleName.function_name:Type1:Type2" for multi-parameter generics
+    pub monomorphised_key: String,
+    /// Monomorphised function info with concrete types substituted
+    pub monomorphised_function: FunctionInfo,
+}
+
+/// Registry for tracking generic function instantiations and monomorphisation
+#[derive(Debug, Clone)]
+pub struct MonomorphisationTable {
+    /// Map from monomorphised key to instantiation entry
+    entries: HashMap<String, MonomorphisationEntry>,
+    /// Map from original function signature to all instantiations
+    instantiations_by_function: HashMap<(String, String), Vec<String>>, // (module, function) -> keys
+}
+
+impl MonomorphisationTable {
+    /// Create a new empty monomorphisation table
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            instantiations_by_function: HashMap::new(),
+        }
+    }
+    
+    /// Add a monomorphisation entry for a generic function instantiation
+    pub fn add_instantiation(
+        &mut self,
+        entry: MonomorphisationEntry,
+    ) {
+        let key = entry.monomorphised_key.clone();
+        let function_key = (entry.generic_function.defining_scope.clone(), entry.generic_function.function_name.clone());
+        
+        // Add to main entries table
+        self.entries.insert(key.clone(), entry);
+        
+        // Track instantiation by original function
+        self.instantiations_by_function
+            .entry(function_key)
+            .or_insert_with(Vec::new)
+            .push(key);
+    }
+    
+    /// Look up a monomorphised function by key
+    pub fn get_instantiation(&self, key: &str) -> Option<&MonomorphisationEntry> {
+        self.entries.get(key)
+    }
+    
+    /// Get all instantiations for a specific function
+    pub fn get_function_instantiations(&self, module: &str, function: &str) -> Vec<&MonomorphisationEntry> {
+        if let Some(keys) = self.instantiations_by_function.get(&(module.to_string(), function.to_string())) {
+            keys.iter()
+                .filter_map(|key| self.entries.get(key))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+    
+    /// Check if a specific instantiation exists
+    pub fn has_instantiation(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+    
+    /// Get total number of instantiations
+    pub fn instantiation_count(&self) -> usize {
+        self.entries.len()
+    }
+    
+    /// Check if table is empty
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    
+    /// Get all entries (for debug and inspection)
+    pub fn all_entries(&self) -> impl Iterator<Item = (&String, &MonomorphisationEntry)> {
+        self.entries.iter()
+    }
+    
+    /// Generate monomorphised key for generic function call
+    pub fn generate_key(
+        module: &str,
+        function: &str,
+        type_args: &[&Type],
+    ) -> String {
+        if type_args.is_empty() {
+            format!("{}.{}", module, function)
+        } else {
+            let type_names: Vec<String> = type_args
+                .iter()
+                .map(|t| Self::type_to_key_component(t))
+                .collect();
+            format!("{}.{}:{}", module, function, type_names.join(":"))
+        }
+    }
+    
+    /// Convert a type to a string component for monomorphised keys
+    fn type_to_key_component(ty: &Type) -> String {
+        match ty {
+            Type::Concrete { id, args, .. } => {
+                if args.is_empty() {
+                    id.name().to_string()
+                } else {
+                    let arg_names: Vec<String> = args
+                        .iter()
+                        .map(|arg| Self::type_to_key_component(arg))
+                        .collect();
+                    format!("{}_{}", id.name(), arg_names.join("_"))
+                }
+            }
+            Type::Protocol { id, args, .. } => {
+                if args.is_empty() {
+                    id.0.clone()
+                } else {
+                    let arg_names: Vec<String> = args
+                        .iter()
+                        .map(|arg| Self::type_to_key_component(arg))
+                        .collect();
+                    format!("{}_{}", id.0, arg_names.join("_"))
+                }
+            }
+            Type::Variable { .. } => "Var".to_string(), // Should not appear in monomorphised keys
+            Type::SelfType { .. } => "Self".to_string(), // Should be resolved before monomorphisation
+            Type::Function { .. } => "Function".to_string(), // Function types in generic args
+        }
+    }
+    
+    /// Create monomorphised function info by substituting generic parameters
+    pub fn create_monomorphised_function(
+        generic_function: &FunctionInfo,
+        type_substitutions: &HashMap<String, Type>,
+    ) -> FunctionInfo {
+        FunctionInfo {
+            defining_scope: generic_function.defining_scope.clone(),
+            function_name: generic_function.function_name.clone(),
+            visibility: generic_function.visibility,
+            parameters: generic_function.parameters
+                .iter()
+                .map(|(name, ty)| (name.clone(), Self::substitute_type_parameters(ty, type_substitutions)))
+                .collect(),
+            return_type: Self::substitute_type_parameters(&generic_function.return_type, type_substitutions),
+            body: generic_function.body.clone(),
+            span: generic_function.span,
+            generic_parameters: Vec::new(), // Monomorphised functions are not generic
+            is_generic: false,
+        }
+    }
+    
+    /// Substitute generic type parameters in a type with concrete types
+    fn substitute_type_parameters(
+        ty: &Type,
+        substitutions: &HashMap<String, Type>,
+    ) -> Type {
+        match ty {
+            Type::Concrete { id, args, span } => {
+                // Check if this is a generic parameter
+                if let Some(substitution) = substitutions.get(id.name()) {
+                    substitution.clone()
+                } else {
+                    // Recursively substitute in generic arguments
+                    Type::Concrete {
+                        id: id.clone(),
+                        args: args.iter().map(|arg| Self::substitute_type_parameters(arg, substitutions)).collect(),
+                        span: *span,
+                    }
+                }
+            }
+            Type::Protocol { id, args, span } => {
+                // Check if this is a generic parameter
+                if let Some(substitution) = substitutions.get(&id.0) {
+                    substitution.clone()
+                } else {
+                    // Recursively substitute in generic arguments
+                    Type::Protocol {
+                        id: id.clone(),
+                        args: args.iter().map(|arg| Self::substitute_type_parameters(arg, substitutions)).collect(),
+                        span: *span,
+                    }
+                }
+            }
+            Type::Variable { .. } => ty.clone(), // Type variables remain unchanged
+            Type::SelfType { .. } => ty.clone(), // Self types should be resolved before monomorphisation
+            Type::Function { params, return_type, span } => {
+                Type::Function {
+                    params: params.iter().map(|(name, param_type)| (name.clone(), Self::substitute_type_parameters(param_type, substitutions))).collect(),
+                    return_type: Box::new(Self::substitute_type_parameters(return_type, substitutions)),
+                    span: *span,
+                }
+            }
+        }
+    }
+}
+
+impl Default for MonomorphisationTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Build a complete dispatch table from protocol and function registries with monomorphisation support
 pub fn build_dispatch_table(
     protocol_registry: &ProtocolRegistry,
     function_registry: &FunctionRegistry,
+    monomorphisation_table: Option<&MonomorphisationTable>,
 ) -> DispatchTable {
     let mut table = DispatchTable::new();
 
@@ -511,23 +805,43 @@ pub fn build_dispatch_table(
 
         for (func_name, func_info) in function_registry.get_module_functions(&impl_scope) {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", impl_info.protocol_id.0, func_name),
+                qualified_name: format!("{}.{}", impl_scope, func_name),
                 implementing_type: Some(impl_info.implementing_type.clone()),
                 function_info: func_info.clone(),
             };
 
+            // Generate monomorphised key: "Protocol.function:TargetType"
+            let monomorphised_key = format!(
+                "{}.{}:{}",
+                impl_info.protocol_id.0,
+                func_name,
+                impl_info.implementing_type.name()
+            );
+
             // Debug output (can be removed in production)
-            // println!("🔧 Adding dispatch entry: {} for {} -> {}",
-            //     impl_info.protocol_id.0,
-            //     impl_info.implementing_type.name(),
-            //     resolved_func.qualified_name
+            // println!("🔧 Adding dispatch entry: {} -> {} (has_body: {})",
+            //     monomorphised_key,
+            //     resolved_func.qualified_name,
+            //     resolved_func.function_info.body.is_some()
             // );
 
-            table.add_entry(
-                impl_info.protocol_id.0.clone(),
-                impl_info.implementing_type.name().to_string(),
-                resolved_func,
-            );
+            table.add_entry(monomorphised_key, resolved_func);
+        }
+    }
+
+    // Add monomorphised function entries if available
+    if let Some(mono_table) = monomorphisation_table {
+        for (mono_key, mono_entry) in mono_table.all_entries() {
+            let resolved_func = ResolvedFunction {
+                qualified_name: format!("{}.{}", 
+                    mono_entry.generic_function.defining_scope, 
+                    mono_entry.generic_function.function_name),
+                implementing_type: None, // Monomorphised struct functions don't have implementing types
+                function_info: mono_entry.monomorphised_function.clone(),
+            };
+            
+            // Add the monomorphised function to the dispatch table
+            table.add_entry(mono_key.clone(), resolved_func);
         }
     }
 
@@ -536,6 +850,3 @@ pub fn build_dispatch_table(
     table
 }
 
-// Legacy type aliases for backward compatibility during transition
-pub type DispatchResolver<'a> = FunctionDispatcher<'a>;
-pub type DispatchTarget = ResolvedFunction;

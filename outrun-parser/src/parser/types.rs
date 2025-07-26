@@ -277,8 +277,6 @@ impl OutrunParser {
 
         // Skip "impl" keyword
         let _impl_keyword = inner_pairs.next().unwrap();
-
-        let mut generic_params = None;
         let mut protocol_spec = None;
         let mut type_spec = None;
         let mut constraints = None;
@@ -286,9 +284,6 @@ impl OutrunParser {
 
         for remaining_pair in inner_pairs {
             match remaining_pair.as_rule() {
-                Rule::generic_params => {
-                    generic_params = Some(Self::parse_generic_params(remaining_pair)?);
-                }
                 Rule::protocol_spec => {
                     protocol_spec = Some(Self::parse_type_spec(remaining_pair)?);
                 }
@@ -322,7 +317,6 @@ impl OutrunParser {
         })?;
 
         Ok(ImplBlock {
-            generic_params,
             protocol_spec,
             type_spec,
             constraints,

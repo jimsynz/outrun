@@ -14,7 +14,6 @@ fn test_basic_impl_block() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            assert!(impl_block.generic_params.is_none());
             assert!(impl_block.constraints.is_none());
             assert_eq!(impl_block.functions.len(), 1);
 
@@ -32,7 +31,7 @@ fn test_basic_impl_block() {
 
 #[test]
 fn test_impl_with_generics() {
-    let input = r#"impl<T> Serializable<T> for Container<T> {
+    let input = r#"impl Serializable<T> for Container<T> {
         def serialize(self: Self): T {
             self.value
         }
@@ -43,16 +42,19 @@ fn test_impl_with_generics() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            assert!(impl_block.generic_params.is_some());
-            let generics = impl_block.generic_params.as_ref().unwrap();
-            assert_eq!(generics.params.len(), 1);
-            assert_eq!(generics.params[0].name.name, "T");
-
+            // With new semantic approach, T is extracted from the type expressions
             assert_eq!(impl_block.protocol_spec.path[0].name, "Serializable");
             assert!(impl_block.protocol_spec.generic_args.is_some());
 
             assert_eq!(impl_block.type_spec.path[0].name, "Container");
             assert!(impl_block.type_spec.generic_args.is_some());
+
+            // Verify the generic args contain T
+            let protocol_args = impl_block.protocol_spec.generic_args.as_ref().unwrap();
+            assert_eq!(protocol_args.args.len(), 1);
+            
+            let type_args = impl_block.type_spec.generic_args.as_ref().unwrap();
+            assert_eq!(type_args.args.len(), 1);
         }
         _ => panic!("Expected impl block"),
     }
@@ -60,7 +62,7 @@ fn test_impl_with_generics() {
 
 #[test]
 fn test_impl_with_constraints() {
-    let input = r#"impl<T> Comparable<T> for List<T> when T: Orderable {
+    let input = r#"impl Comparable<T> for List<T> when T: Orderable {
         def compare(self: Self, other: List<T>): Integer {
             List.compare(self, other)
         }
@@ -91,7 +93,7 @@ fn test_impl_with_constraints() {
 
 #[test]
 fn test_impl_with_complex_constraints() {
-    let input = r#"impl<T, U> Converter<T, U> for Adapter<T, U> when T: Serializable && U: Deserializable {
+    let input = r#"impl Converter<T, U> for Adapter<T, U> when T: Serializable && U: Deserializable {
         def convert(input: T): U {
             U.deserialize(data: T.serialize(value: input))
         }
@@ -102,10 +104,12 @@ fn test_impl_with_complex_constraints() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            let generics = impl_block.generic_params.as_ref().unwrap();
-            assert_eq!(generics.params.len(), 2);
-            assert_eq!(generics.params[0].name.name, "T");
-            assert_eq!(generics.params[1].name.name, "U");
+            // Verify T and U are used in the type specs
+            let protocol_args = impl_block.protocol_spec.generic_args.as_ref().unwrap();
+            assert_eq!(protocol_args.args.len(), 2);
+            
+            let type_args = impl_block.type_spec.generic_args.as_ref().unwrap();
+            assert_eq!(type_args.args.len(), 2);
 
             match impl_block.constraints.as_ref().unwrap() {
                 ConstraintExpression::And { left, right, .. } => {
@@ -172,12 +176,12 @@ fn test_impl_display_formatting() {
             vec!["impl Drawable for User"],
         ),
         (
-            r#"impl<T> Serializable<T> for Container<T> {}"#,
-            vec!["impl<T>", "Serializable", "for Container"],
+            r#"impl Serializable<T> for Container<T> {}"#,
+            vec!["Serializable", "for Container"],
         ),
         (
-            r#"impl<T> Comparable<T> for List<T> when T: Orderable {}"#,
-            vec!["impl<T>", "when T: Orderable"],
+            r#"impl Comparable<T> for List<T> when T: Orderable {}"#,
+            vec!["Comparable", "when T: Orderable"],
         ),
     ];
 

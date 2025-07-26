@@ -128,6 +128,31 @@ pub enum Type {
     },
 }
 
+/// Position tracking for type variables and Self within complex type structures
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypePosition {
+    /// Type variable position with path from root type
+    VariablePosition { path: Vec<String> },
+    /// Self position with path from root type  
+    SelfPosition { path: Vec<String> },
+    /// Argument position in function signature
+    ArgumentPosition { index: usize, path: Vec<String> },
+    /// Return type position in function signature
+    ReturnPosition { path: Vec<String> },
+    /// Generic argument position within container type
+    GenericArgument { container: String, arg_index: usize, path: Vec<String> },
+}
+
+/// Self type position with binding context
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelfPosition {
+    /// Path from root type to this Self occurrence
+    pub path: Vec<String>,
+    /// Binding context for this Self occurrence
+    pub binding_context: SelfBindingContext,
+}
+
+
 /// Context for Self type binding
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelfBindingContext {
@@ -377,7 +402,172 @@ impl Type {
         }
     }
 
-    /// Resolve Self to its concrete type if in implementation context
+    /// Check if this type represents a protocol constraint (e.g., Option<Integer>)
+    /// rather than a concrete monomorphizable type
+    pub fn is_protocol_constraint(&self) -> bool {
+        match self {
+            Self::Protocol { .. } => true,
+            Self::Concrete { args, .. } => {
+                // Concrete type with protocol arguments is a constraint
+                args.iter().any(|arg| arg.is_protocol_constraint())
+            }
+            Self::Variable { .. } => false, // Type variables are not constraints
+            Self::SelfType { .. } => false, // Self will be resolved to concrete type
+            Self::Function { params, return_type, .. } => {
+                // Function with protocol constraints in signature
+                params.iter().any(|(_, param_type)| param_type.is_protocol_constraint()) ||
+                return_type.is_protocol_constraint()
+            }
+        }
+    }
+
+    /// Check if this type can be monomorphized to concrete implementations
+    pub fn is_concrete_monomorphizable(&self) -> bool {
+        match self {
+            Self::Concrete { args, .. } => {
+                // Concrete type is monomorphizable if all args are monomorphizable
+                args.iter().all(|arg| arg.is_concrete_monomorphizable())
+            }
+            Self::Variable { .. } => true, // Type variables can be substituted
+            Self::SelfType { .. } => true, // Self can be resolved
+            Self::Protocol { .. } => false, // Protocol constraints need implementation resolution
+            Self::Function { params, return_type, .. } => {
+                // Function is monomorphizable if all types in signature are
+                params.iter().all(|(_, param_type)| param_type.is_concrete_monomorphizable()) &&
+                return_type.is_concrete_monomorphizable()
+            }
+        }
+    }
+
+    /// Collect all positions where type variables (including Self) appear in this type
+    pub fn collect_type_variable_positions(&self) -> HashMap<String, Vec<TypePosition>> {
+        let mut positions = HashMap::new();
+        self.collect_type_variable_positions_recursive(&mut positions, &[]);
+        positions
+    }
+
+    /// Recursive helper for collecting type variable positions with path tracking
+    fn collect_type_variable_positions_recursive(
+        &self,
+        positions: &mut HashMap<String, Vec<TypePosition>>,
+        path: &[String],
+    ) {
+        match self {
+            Self::Variable { name: Some(var_name), .. } => {
+                positions.entry(var_name.clone())
+                    .or_default()
+                    .push(TypePosition::VariablePosition { path: path.to_vec() });
+            }
+            Self::SelfType { .. } => {
+                positions.entry("Self".to_string())
+                    .or_default()
+                    .push(TypePosition::SelfPosition { path: path.to_vec() });
+            }
+            Self::Concrete { args, .. } | Self::Protocol { args, .. } => {
+                for (i, arg) in args.iter().enumerate() {
+                    let mut new_path = path.to_vec();
+                    new_path.push(i.to_string());
+                    arg.collect_type_variable_positions_recursive(positions, &new_path);
+                }
+            }
+            Self::Function { params, return_type, .. } => {
+                for (i, (_, param_type)) in params.iter().enumerate() {
+                    let mut new_path = path.to_vec();
+                    new_path.push(format!("param_{}", i));
+                    param_type.collect_type_variable_positions_recursive(positions, &new_path);
+                }
+                let mut return_path = path.to_vec();
+                return_path.push("return".to_string());
+                return_type.collect_type_variable_positions_recursive(positions, &return_path);
+            }
+            _ => {} // Variables without names, nothing to track
+        }
+    }
+
+    /// Extract all positions where Self appears in this type
+    pub fn extract_self_positions(&self) -> Vec<SelfPosition> {
+        let mut positions = Vec::new();
+        self.extract_self_positions_recursive(&mut positions, &[]);
+        positions
+    }
+
+    /// Recursive helper for extracting Self positions
+    fn extract_self_positions_recursive(&self, positions: &mut Vec<SelfPosition>, path: &[String]) {
+        match self {
+            Self::SelfType { binding_context, .. } => {
+                positions.push(SelfPosition {
+                    path: path.to_vec(),
+                    binding_context: binding_context.clone(),
+                });
+            }
+            Self::Concrete { args, .. } | Self::Protocol { args, .. } => {
+                for (i, arg) in args.iter().enumerate() {
+                    let mut new_path = path.to_vec();
+                    new_path.push(i.to_string());
+                    arg.extract_self_positions_recursive(positions, &new_path);
+                }
+            }
+            Self::Function { params, return_type, .. } => {
+                for (i, (_, param_type)) in params.iter().enumerate() {
+                    let mut new_path = path.to_vec();
+                    new_path.push(format!("param_{}", i));
+                    param_type.extract_self_positions_recursive(positions, &new_path);
+                }
+                let mut return_path = path.to_vec();
+                return_path.push("return".to_string());
+                return_type.extract_self_positions_recursive(positions, &return_path);
+            }
+            _ => {} // Other types don't contain Self
+        }
+    }
+
+    /// Substitute type variables with concrete types throughout this type
+    pub fn substitute_type_variables(&self, substitutions: &HashMap<String, Type>) -> Type {
+        match self {
+            Self::Variable { name: Some(var_name), .. } => {
+                substitutions.get(var_name).cloned().unwrap_or_else(|| self.clone())
+            }
+            Self::SelfType { .. } => {
+                substitutions.get("Self").cloned().unwrap_or_else(|| self.clone())
+            }
+            Self::Concrete { id, args, span } => {
+                let substituted_args = args.iter()
+                    .map(|arg| arg.substitute_type_variables(substitutions))
+                    .collect();
+                Self::Concrete {
+                    id: id.clone(),
+                    args: substituted_args,
+                    span: *span,
+                }
+            }
+            Self::Protocol { id, args, span } => {
+                let substituted_args = args.iter()
+                    .map(|arg| arg.substitute_type_variables(substitutions))
+                    .collect();
+                Self::Protocol {
+                    id: id.clone(),
+                    args: substituted_args,
+                    span: *span,
+                }
+            }
+            Self::Function { params, return_type, span } => {
+                let substituted_params = params.iter()
+                    .map(|(name, param_type)| (name.clone(), param_type.substitute_type_variables(substitutions)))
+                    .collect();
+                let substituted_return = return_type.substitute_type_variables(substitutions);
+                Self::Function {
+                    params: substituted_params,
+                    return_type: Box::new(substituted_return),
+                    span: *span,
+                }
+            }
+            _ => self.clone(), // Variables without names, no substitution needed
+        }
+    }
+
+    /// Temporary compatibility method for resolve_self (will be removed in Phase 2)
+    /// This provides a basic Self resolution to prevent compilation errors
+    /// during the Phase 1 type system rewrite
     pub fn resolve_self(&self) -> Option<Type> {
         match self {
             Self::SelfType {
@@ -442,6 +632,15 @@ pub enum Constraint {
     SelfBinding {
         self_context: SelfBindingContext,
         bound_type: Box<Type>,
+        span: Option<Span>,
+    },
+
+    /// Type variable must resolve to a specific named type (for deferred type resolution)
+    /// Used when type annotation references unknown type name that may be registered later
+    NameBinding {
+        type_var: TypeVarId,
+        expected_name: String,
+        expected_args: Vec<Type>,  // Generic arguments for the expected type
         span: Option<Span>,
     },
 }
@@ -719,6 +918,17 @@ impl fmt::Display for Constraint {
             }
             Self::SelfBinding { bound_type, .. } => {
                 write!(f, "Self = {bound_type}")
+            }
+            Self::NameBinding { type_var, expected_name, expected_args, .. } => {
+                if expected_args.is_empty() {
+                    write!(f, "T{} must resolve to {}", type_var.0, expected_name)
+                } else {
+                    let args_str = expected_args.iter()
+                        .map(|arg| format!("{}", arg))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "T{} must resolve to {}<{}>", type_var.0, expected_name, args_str)
+                }
             }
         }
     }

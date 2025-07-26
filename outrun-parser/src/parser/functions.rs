@@ -35,6 +35,7 @@ impl OutrunParser {
             path,
             arguments,
             span,
+            resolved_function_key: None,
         })
     }
 

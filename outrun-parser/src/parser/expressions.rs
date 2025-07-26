@@ -268,6 +268,7 @@ impl OutrunParser {
                                 },
                                 arguments,
                                 span,
+                                resolved_function_key: None,
                             }),
                             span,
                         );

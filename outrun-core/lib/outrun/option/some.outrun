@@ -23,7 +23,7 @@ rather than being constructed directly.
 struct Outrun.Option.Some<T>(value: T)
 
 # Implementation of Option protocol for Some variant
-impl<T> Option<T> for Outrun.Option.Some<T> {
+impl Option<T> for Outrun.Option.Some<T> {
     def some?(value: Self): Boolean {
         true  # Some always contains a value
     }

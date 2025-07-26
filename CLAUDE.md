@@ -59,6 +59,60 @@ outrun/
 - **Immutable and functional** - No mutation, rebinding allowed
 - **Actor model runtime** - Built for concurrent, distributed systems
 
+## 🚫 ABSOLUTE PROHIBITION: No Hardcoded Function Mappings
+
+**NEVER, UNDER ANY CIRCUMSTANCES, add hardcoded mappings from protocol functions to intrinsic functions or any other implementation functions.**
+
+### Why This Is Forbidden
+
+1. **Architectural Violation** - Hardcoded mappings bypass the protocol system that is the core of Outrun's design
+2. **Maintenance Nightmare** - Every new protocol or type requires manual mapping updates
+3. **Breaks Extensibility** - User-defined protocols and implementations become second-class citizens
+4. **Wrong Abstraction** - The dispatch system should be generic, not specific to core library functions
+
+### The Correct Approach
+
+**Protocol dispatch must work through the proper CompilationResult mechanism:**
+
+1. **Monomorphised Implementations** - CompilationResult contains concrete implementations for every protocol function × implementing type combination
+2. **AST-Based Dispatch** - Use the parsed AST structure to determine module and function names, never parse strings
+3. **Type-Driven Resolution** - Determine concrete implementations by typechecking arguments or using type hints for Self-derived results
+4. **Uniform Treatment** - All functions (core library, user-defined, intrinsics) go through the same dispatch mechanism
+
+### Examples of Forbidden Code
+
+```rust
+// 🚫 FORBIDDEN - Hardcoded protocol-to-intrinsic mapping
+match (protocol_name, method_name, type_name) {
+    ("UnaryMinus", "minus", "Integer64") => Some("Outrun.Intrinsic.i64_neg"),
+    // ...
+}
+
+// 🚫 FORBIDDEN - String parsing for function dispatch
+let (protocol_name, method_name) = function_name.split_once('.')?;
+
+// 🚫 FORBIDDEN - Direct intrinsic calls for protocol functions
+if protocol_name == "BinaryAddition" {
+    return intrinsics.execute("Outrun.Intrinsic.i64_add", args);
+}
+```
+
+### The Right Way
+
+```rust
+// ✅ CORRECT - Use AST structure and CompilationResult
+let resolved_impl = compilation_result.resolve_protocol_implementation(
+    protocol_call.protocol_name,
+    &argument_types,
+    protocol_call.method_name
+)?;
+
+// ✅ CORRECT - Execute the resolved implementation (whatever it may be)
+execute_function(&resolved_impl.qualified_name, args)
+```
+
+**Remember: ALL functions in Outrun are user functions, including core library functions. They must all be treated uniformly through the protocol dispatch system.**
+
 ## ⚡ CRITICAL: Minimalist Development Philosophy
 
 **ABSOLUTE PRIORITY: Write as little code as humanly possible to achieve any feature.**

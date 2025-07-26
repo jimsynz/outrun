@@ -309,7 +309,7 @@ impl Drawable for User {
 }
 
 # With generics
-impl<T> Display for SynthesizerBank<T> when T: Waveform {
+impl Display for SynthesizerBank<T> when T: Waveform {
     def to_string(self: Self): String {
         "SynthBank: #{self.patches.length()} patches loaded"
     }
@@ -636,7 +636,7 @@ Outrun's type system distinguishes between **concrete types** (actual runtime va
 
 **In Implementation Blocks:**
 - `Self` refers to the specific concrete type being implemented
-- For generic implementations: `impl<T> Display for Container<T>`, `Self` = `Container<T>`
+- For generic implementations: `impl Display<T> for Container<T>`, `Self` = `Container<T>`
 - Always refers to the complete type including all generic parameters
 
 ### Generic Constraints

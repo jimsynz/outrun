@@ -57,18 +57,18 @@ fn test_function_dispatch_with_simple_calls() {
 
     // These tests will show what function call syntax works
 
-    // Try a simple function call (this might fail if not implemented)
-    let result = harness.evaluate("add_integer64(left: 5, right: 3)");
+    // Try a simple arithmetic expression that should be desugared to protocol calls
+    let result = harness.evaluate("5 + 3");
     match result {
         Ok(value) => {
-            println!("Function call succeeded: {}", value.display());
+            println!("Arithmetic expression succeeded: {}", value.display());
             // If this works, let's test it
-            if let Ok(val) = harness.evaluate("add_integer64(left: 5, right: 3)") {
+            if let Ok(val) = harness.evaluate("5 + 3") {
                 assert_eq!(val.display(), "8");
             }
         }
         Err(e) => {
-            println!("Function call failed (expected): {:?}", e);
+            println!("Arithmetic expression failed (this shows what's not working yet): {:?}", e);
         }
     }
 }

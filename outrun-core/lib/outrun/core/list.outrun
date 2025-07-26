@@ -22,7 +22,7 @@ struct Outrun.Core.List<T>() {}
 
 
 # Equality protocol implementation - recursive equality check
-impl<T> Equality for Outrun.Core.List<T> when T: Equality {
+impl Equality for Outrun.Core.List<T> when T: Equality {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         let lhs_head = List.head(value: lhs)
         let rhs_head = List.head(value: rhs)
@@ -38,7 +38,7 @@ impl<T> Equality for Outrun.Core.List<T> when T: Equality {
 }
 
 # List protocol implementation
-impl<T> List<T> for Outrun.Core.List<T> {
+impl List<T> for Outrun.Core.List<T> {
     def head(value: Self): Option<T> {
         Outrun.Intrinsic.list_head(value: value)
     }
@@ -57,7 +57,7 @@ impl<T> List<T> for Outrun.Core.List<T> {
 }
 
 # Default protocol implementation
-impl<T> Default for Outrun.Core.List<T> {
+impl Default for Outrun.Core.List<T> {
     def default(): Self {
         Outrun.Intrinsic.list_empty()
     }

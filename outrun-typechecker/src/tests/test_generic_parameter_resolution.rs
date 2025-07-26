@@ -10,7 +10,7 @@ mod generic_parameter_resolution_tests {
     fn test_impl_block_generic_parameter_context() {
         let mut engine = TypeInferenceEngine::new();
 
-        // Test that generic parameters from impl<T> are properly set up
+        // Test that generic parameters from impl syntax are properly extracted
         let source = r#"
             protocol TestProtocol<T> {
                 def test_method(value: T): T
@@ -18,7 +18,7 @@ mod generic_parameter_resolution_tests {
             
             struct TestStruct<T>()
             
-            impl<T> TestProtocol<T> for TestStruct<T> {
+            impl TestProtocol<T> for TestStruct<T> {
                 def test_method(value: T): T {
                     value
                 }

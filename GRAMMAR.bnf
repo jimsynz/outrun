@@ -83,7 +83,7 @@ protocol_function ::= function_signature | function_definition | static_function
 static_function_definition ::= attribute* "defs" IDENTIFIER "(" parameter_list ")" return_type? function_body
 
 # Implementation Block
-impl_block ::= "impl" generic_params? protocol_spec "for" type_spec protocol_constraints? "{" impl_body "}"
+impl_block ::= "impl" protocol_spec "for" type_spec protocol_constraints? "{" impl_body "}"
 
 impl_body ::= function_definition*
 

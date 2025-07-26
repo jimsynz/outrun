@@ -399,7 +399,7 @@ protocol Comparable<T> {
     def compare(left: T, right: T): Ordering
 }
 
-impl<T> Comparable<List<T>> for List<T> 
+impl Comparable<List<T>> for List<T> 
 where T: Comparable<T> {
     def compare(left: List<T>, right: List<T>): Ordering {
         // Lexicographic comparison implementation

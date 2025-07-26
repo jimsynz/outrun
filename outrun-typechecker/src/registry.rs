@@ -112,6 +112,11 @@ impl ProtocolRegistry {
         self.local_modules.insert(module);
     }
 
+    /// Get a protocol definition by ID
+    pub fn get_protocol_definition(&self, protocol_id: &ProtocolId) -> Option<&ProtocolDefinition> {
+        self.protocol_definitions.get(protocol_id)
+    }
+
     /// Register a protocol definition with its requirements
     pub fn register_protocol_definition(
         &mut self,
@@ -1059,5 +1064,133 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+}
+
+/// Information about a concrete type definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConcreteTypeDefinition {
+    /// The concrete type itself
+    pub type_id: TypeId,
+    /// Module where this type is defined
+    pub defining_module: ModuleId,
+    /// Whether this type is generic (has type parameters)
+    pub is_generic: bool,
+    /// Source location for error reporting
+    pub span: Option<Span>,
+}
+
+/// Enumeration of type kinds for unified type resolution
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeKind {
+    Protocol(ProtocolDefinition),
+    ConcreteType(ConcreteTypeDefinition),
+}
+
+/// Unified registry for both protocols and concrete types
+/// Enables consistent type resolution without hardcoding
+#[derive(Debug, Clone)]
+pub struct TypeRegistry {
+    /// Protocol registry for protocol implementations and definitions
+    protocol_registry: ProtocolRegistry,
+    /// Map from type name to concrete type definitions
+    concrete_types: HashMap<String, ConcreteTypeDefinition>,
+}
+
+impl TypeRegistry {
+    /// Create a new unified type registry
+    pub fn new() -> Self {
+        Self {
+            protocol_registry: ProtocolRegistry::new(),
+            concrete_types: HashMap::new(),
+        }
+    }
+
+    /// Register a concrete type in the registry
+    pub fn register_concrete_type(
+        &mut self,
+        type_name: &str,
+        defining_module: ModuleId,
+        is_generic: bool,
+        span: Option<Span>,
+    ) {
+        let type_definition = ConcreteTypeDefinition {
+            type_id: TypeId::new(type_name),
+            defining_module,
+            is_generic,
+            span,
+        };
+        self.concrete_types.insert(type_name.to_string(), type_definition);
+    }
+
+    /// Check what kind of type a name refers to
+    /// Returns Some(TypeKind) if known, None if unknown (deferred resolution needed)
+    pub fn get_type_kind(&self, type_name: &str) -> Option<TypeKind> {
+        // First check if it's a protocol
+        let protocol_id = ProtocolId::new(type_name);
+        if let Some(protocol_def) = self.protocol_registry.get_protocol_definition(&protocol_id) {
+            return Some(TypeKind::Protocol(protocol_def.clone()));
+        }
+
+        // Then check if it's a concrete type
+        if let Some(concrete_def) = self.concrete_types.get(type_name) {
+            return Some(TypeKind::ConcreteType(concrete_def.clone()));
+        }
+
+        // Unknown type
+        None
+    }
+
+    /// Check if a type name is a known protocol
+    pub fn is_protocol(&self, type_name: &str) -> bool {
+        let protocol_id = ProtocolId::new(type_name);
+        self.protocol_registry.has_protocol(&protocol_id)
+    }
+
+    /// Check if a type name is a known concrete type
+    pub fn is_concrete_type(&self, type_name: &str) -> bool {
+        self.concrete_types.contains_key(type_name)
+    }
+
+    /// Get mutable access to the underlying protocol registry
+    pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
+        &mut self.protocol_registry
+    }
+
+    /// Get immutable access to the underlying protocol registry
+    pub fn protocol_registry(&self) -> &ProtocolRegistry {
+        &self.protocol_registry
+    }
+
+    /// Initialize with core types that are always available
+    pub fn with_core_types() -> Self {
+        let mut registry = Self::new();
+        registry.register_core_types();
+        registry
+    }
+
+    /// Register all core types (Integer64, String, Float64, etc.)
+    fn register_core_types(&mut self) {
+        let core_module = ModuleId::new("Outrun.Core");
+        
+        // Register core concrete types
+        self.register_concrete_type("Outrun.Core.Integer64", core_module.clone(), false, None);
+        self.register_concrete_type("Outrun.Core.String", core_module.clone(), false, None);
+        self.register_concrete_type("Outrun.Core.Float64", core_module.clone(), false, None);
+        self.register_concrete_type("Outrun.Core.Boolean", core_module.clone(), false, None);
+        self.register_concrete_type("Outrun.Core.Atom", core_module.clone(), false, None);
+        
+        // Register generic core types
+        self.register_concrete_type("Outrun.Core.List", core_module.clone(), true, None);
+        self.register_concrete_type("Outrun.Core.Map", core_module.clone(), true, None);
+        self.register_concrete_type("Outrun.Core.Tuple", core_module.clone(), true, None);
+        self.register_concrete_type("Outrun.Core.Option", core_module.clone(), true, None);
+        self.register_concrete_type("Outrun.Core.Result", core_module.clone(), true, None);
+    }
+}
+
+impl Default for TypeRegistry {
+    fn default() -> Self {
+        Self::with_core_types()
     }
 }

@@ -144,7 +144,6 @@ fn test_simple_impl_block() {
 
     match &program.items[0].kind {
         ItemKind::ImplBlock(impl_block) => {
-            assert!(impl_block.generic_params.is_none());
             assert!(impl_block.constraints.is_none());
             assert_eq!(impl_block.functions.len(), 1);
 

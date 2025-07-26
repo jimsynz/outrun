@@ -54,6 +54,258 @@ outrun-typechecker/
 5. **Module Conflict Detection** - Prevent cross-package module redefinition
 6. **Result Packaging** - Create reusable CompilationResult for composition
 
+## Type Inference Rules
+
+### Self Type Resolution in Protocol Function Calls
+
+Resolving the `Self` type in protocol function calls is complex because `Self` can appear in multiple positions and contexts:
+
+#### Direct Self References
+
+- **Self as argument type**: `protocol Inspect { def inspect(value: Self): String }`
+  - Note: argument ordering is arbitrary due to keyword arguments
+  - Self could be any parameter, not necessarily the first
+  - Inference must examine all arguments to find the Self type
+
+- **Self as return type**: `protocol Default { def default(): Self }`
+  - Requires inference from calling context or explicit type hints
+  - May need type annotation: `let value: SomeType = Default.default()`
+
+#### Generic Types Over Self
+
+- **Argument generic over Self**: `protocol MaybeInspect { def maybe_inspect(value: Option<Self>): String }`
+  - Must apply enough constraints to understand possible concrete types for Self
+  - Requires unwrapping generic containers to extract Self
+
+- **Return type generic over Self**: `protocol MaybeDefault { def maybe_default(): Option<Self> }`
+  - Inference from usage context: `case MaybeDefault.maybe_default() { Some(value) -> ... }`
+  - May need explicit type hints for disambiguation
+
+#### Constraint-Based Self Resolution
+
+- **Self as protocol constraint**: When inference suggests Self may be another protocol
+  - Self becomes a set of possible concrete types - those implementing the constraining protocol
+  - Example: `def process<T: Display>(value: T): String where T implements Display`
+  - Results in multiple possible dispatch targets, requiring constraint solving
+
+### Generic Struct Function Resolution
+
+Structs can also be generic, requiring similar inference and monomorphisation:
+
+#### Generic Struct Functions
+
+```outrun
+struct Wrapper<T> {
+    def wrap(value: T): Wrapper<T> { 
+        Wrapper { value } 
+    }
+}
+```
+
+**Inference Requirements:**
+- **Generic argument types**: Infer `T` from `value` parameter
+- **Generic return types**: Construct `Wrapper<T>` based on inferred `T`
+- **Monomorphisation**: Generate `Wrapper.wrap:Integer64` for `Wrapper.wrap(value: 42)`
+
+#### Complex Generic Scenarios
+
+- **Multiple type parameters**: `struct Map<K, V> { def put(key: K, value: V): Map<K, V> }`
+- **Bounded generics**: `struct SortedList<T: Comparable> { def insert(value: T): SortedList<T> }`
+- **Generic over generic**: `struct Container<T<U>> { def unwrap(): T<U> }`
+
+#### Dispatch Table Generation
+
+For generic functions, the typechecker must:
+1. **Collect all call sites** and their inferred type parameters
+2. **Generate monomorphised entries** for each unique type combination
+3. **Register dispatch targets** using composite keys: `StructName.function:Type1:Type2`
+4. **Handle constraint satisfaction** for bounded generics
+
+### Type Variable Unification Requirements
+
+**Critical Constraint**: All occurrences of the same type variable or `Self` within a function signature must unify to the same concrete type.
+
+#### Examples of Unification Requirements
+
+```outrun
+protocol Clone {
+    def clone(value: Self): Self
+    // Both Self occurrences must unify to the same concrete type
+}
+
+struct Map<K, V> {
+    def get(map: Map<K, V>, key: K): Option<V>
+    // First K must unify with second K
+    // First V must unify with second V
+    // Map<K, V> parameter must unify with the struct's K, V
+}
+
+protocol Transform<T, U> {
+    def transform(input: T, processor: Function<(T) -> U>): U
+    // First T must unify with T in Function<(T) -> U>
+    // Function return U must unify with transform return U
+}
+```
+
+#### Unification Failure Examples
+
+```outrun
+// ERROR: Self appears as both Integer and String
+Clone.clone(value: 42): String  // Invalid - Self cannot be both Integer and String
+
+// ERROR: K appears as both String and Integer  
+Map.get(map: Map<String, Integer>, key: 42)  // Invalid - K cannot be both String and Integer
+```
+
+#### Implementation Requirements
+
+- **Constraint generation**: Create equality constraints for all same-variable occurrences
+- **Unification validation**: Ensure all constraints can be satisfied simultaneously
+- **Error reporting**: Provide clear messages when unification fails
+- **Substitution consistency**: Apply the same substitution to all occurrences of a variable
+
+### Generic Type Variable Semantics in Impl Blocks
+
+**CRITICAL DESIGN DECISION**: Type variable names in impl declarations have semantic meaning for constraint generation.
+
+#### Same Name = Same Type Constraint
+
+```outrun
+protocol Display<T> { def display(value: T): String }
+struct Wrapper<U> { value: U }
+
+impl Display<T> for Wrapper<T>
+// Constraint: Display's T must unify with Wrapper's T
+// Results in: Display<Integer> for Wrapper<Integer>, Display<String> for Wrapper<String>, etc.
+```
+
+#### Different Names = Independent Type Variables
+
+```outrun
+impl Display<A> for Wrapper<B>
+// A and B are independent - can be any types
+// Results in: Display<String> for Wrapper<Integer>, Display<Boolean> for Wrapper<List<String>>, etc.
+```
+
+#### Explicit Concrete Types
+
+```outrun
+impl Display<String> for Wrapper<Integer>
+// Concrete implementation: Display specialized to String, Wrapper specialized to Integer
+// No type variables involved
+```
+
+#### Implementation Requirements
+
+1. **Type Variable Extraction**: Parse type variables from `impl Protocol<...> for Type<...>` syntax
+2. **Constraint Generation**: Same variable names create unification constraints
+3. **Independence Tracking**: Different variable names are tracked as separate type parameters
+4. **No Explicit Declaration**: No `impl<T, U>` syntax needed - variable names are self-declaring
+
+This design is more intuitive than explicit generic parameter declaration while maintaining full expressiveness.
+
+### Constraint Validation System
+
+**CRITICAL FEATURE**: All constrained type variables in impl blocks must appear in the type specifications to prevent invalid constraints.
+
+#### Constraint Validation Rules
+
+1. **Type Variable Scope**: Constrained type variables must appear in either:
+   - Protocol specification: `impl Display<T> for Wrapper<U> when T: Debug` ✅ (T appears in Display<T>)
+   - Implementing type specification: `impl Display<T> for Wrapper<U> when U: Clone` ✅ (U appears in Wrapper<U>)
+
+2. **Self Constraints**: `Self` can always be constrained in protocol and impl contexts:
+   ```outrun
+   impl Display<T> for Wrapper<U> when Self: Debug  // ✅ Self is always valid
+   ```
+
+3. **Invalid Constraints**: Variables not appearing in type specifications are rejected:
+   ```outrun
+   impl Display<T> for Wrapper<U> when V: Debug  // ❌ V doesn't appear in type specs
+   impl Display for Wrapper when Z: Clone        // ❌ No type variables available
+   ```
+
+#### Error Reporting
+
+When invalid constraints are detected, the system provides:
+- **Clear error messages**: "Variable 'V' does not appear in impl type specifications"
+- **Available variables**: Lists valid type variables that can be constrained
+- **Self guidance**: Reminds that Self can also be constrained
+- **Precise spans**: Points to the exact constraint expression causing the error
+
+#### Implementation Details
+
+**Validation Method**: `validate_impl_constraint_variables(impl_block, available_type_vars)`
+- Extracts constrained variables from constraint expressions
+- Validates each variable appears in available type variables or is "Self"
+- Generates `InvalidConstraintVariable` errors for violations
+
+**Integration Points**:
+- Collection phase: Validates during impl block collection
+- Function collection phase: Validates during impl function registration  
+- Type checking phase: Validates during impl block type checking
+
+**Error Type**: `InferenceError::InvalidConstraintVariable`
+- Contains variable name, available variables, and helpful suggestions
+- Integrates with existing error reporting infrastructure
+
+#### Examples of Valid Constraints
+
+```outrun
+// Single type variable constraint
+impl Display<T> for Wrapper<U> when T: Debug {
+    def display(value: T): String { Debug.debug(value: value) }
+}
+
+// Multiple type variable constraints
+impl Transform<A, B> for Adapter<C, D> when A: Debug && B: Display && C: Clone {
+    def transform(from: A): B { /* ... */ }
+}
+
+// Self constraint
+impl Display<T> for Wrapper<U> when Self: Debug {
+    def display(value: T): String { Self.debug(value: self) }
+}
+
+// Mixed constraints
+impl Display<T> for Wrapper<U> when T: Debug && Self: Clone && U: Display {
+    def display(value: T): String { /* ... */ }
+}
+```
+
+#### Examples of Invalid Constraints
+
+```outrun
+// Variable not in type specifications
+impl Display<T> for Wrapper<U> when V: Debug {  // ❌ V not found
+    def display(value: T): String { /* ... */ }
+}
+
+// No type variables available
+impl Display for Wrapper when Z: Clone {  // ❌ No generics, Z invalid
+    def display(value: Self): String { /* ... */ }
+}
+
+// Complex expression with invalid variable
+impl Display<T> for Wrapper<U> when T: Debug && X: Clone {  // ❌ X not found
+    def display(value: T): String { /* ... */ }
+}
+```
+
+This constraint validation system ensures type safety and prevents runtime errors by catching invalid constraint specifications at compile time.
+
+### Implementation Strategy
+
+The type inference engine must:
+
+1. **Multi-position Self detection** - Scan all parameter and return types for Self references
+2. **Constraint propagation** - Propagate type constraints through generic containers
+3. **Context-sensitive inference** - Use calling context to resolve ambiguous Self types
+4. **Type variable unification** - Ensure all occurrences of the same type variable unify to the same concrete type
+5. **Impl block constraint generation** - Extract type variables from impl syntax and generate appropriate constraints
+6. **Monomorphisation scheduling** - Queue generic functions for monomorphisation after type resolution
+7. **Dispatch table population** - Generate all necessary monomorphised dispatch entries
+
 ## Integration Points
 
 **Parser AST Extension:**

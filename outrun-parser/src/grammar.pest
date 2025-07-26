@@ -314,8 +314,8 @@ protocol_function = { static_function_definition | function_definition | functio
 static_function_definition = { attribute* ~ keyword_defs ~ identifier ~ parameter_list? ~ return_type? ~ block }
 function_signature = { attribute* ~ function_visibility ~ identifier ~ parameter_list? ~ return_type? ~ guard_clause? }
 
-// Implementation block: impl<T> ProtocolName<T> for TypeName<T> when T: Constraint { functions }
-impl_block = { keyword_impl ~ generic_params? ~ protocol_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_functions? ~ "}" }
+// Implementation block: impl ProtocolName<T> for TypeName<T> when T: Constraint { functions }
+impl_block = { keyword_impl ~ protocol_spec ~ keyword_for ~ type_spec ~ impl_constraints? ~ "{" ~ impl_functions? ~ "}" }
 protocol_spec = { module_path ~ generic_args? }
 type_spec = { module_path ~ generic_args? }
 impl_functions = { impl_function_item+ }

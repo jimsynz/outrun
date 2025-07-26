@@ -189,41 +189,6 @@ def simple_string_function(): String {
     );
 }
 
-#[test]
-fn test_inspect_function_with_minimal_setup() {
-    let mut engine = TypeInferenceEngine::new();
-
-    // Set up minimal environment - just String protocol and Outrun.Core.String
-    let minimal_core_code = r#"
-protocol String {
-    def to_string(value: Self): Outrun.Core.String
-}
-
-struct Outrun.Core.String() {}
-
-impl String for Outrun.Core.String {
-    def to_string(value: Self): Outrun.Core.String {
-        value
-    }
-}
-
-def inspect(value: Outrun.Core.String): String {
-    value
-}
-"#;
-
-    let mut program = parse_program(minimal_core_code).expect("Failed to parse minimal setup");
-
-    // Process in the correct order (typecheck_program does all phases)
-    let result = engine.typecheck_program(&mut program);
-
-    match result {
-        Ok(()) => {
-            println!("✅ Minimal inspect function succeeded!");
-        }
-        Err(e) => {
-            println!("❌ Minimal inspect function failed: {:?}", e);
-            panic!("Minimal setup should work if protocol registry is correct");
-        }
-    }
-}
+// Note: test_inspect_function_with_minimal_setup was removed because it duplicated
+// protocol-concrete compatibility testing that is now covered by test_option_integer_function_calls
+// The core issue (String protocol vs Outrun.Core.String concrete compatibility) is tested elsewhere

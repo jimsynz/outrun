@@ -419,6 +419,10 @@ pub struct FunctionCall {
     pub path: FunctionPath,
     pub arguments: Vec<Argument>,
     pub span: Span,
+    /// Resolved function registry key populated during typechecking
+    /// Format: "Protocol.function:TargetType" for protocol calls
+    /// Format: "Module.function" for static calls
+    pub resolved_function_key: Option<String>,
 }
 
 /// Function path (simple or qualified)
@@ -1467,7 +1471,6 @@ pub struct FunctionSignature {
 /// Implementation block
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock {
-    pub generic_params: Option<GenericParams>,
     pub protocol_spec: TypeSpec,
     pub type_spec: TypeSpec,
     pub constraints: Option<ConstraintExpression>,
@@ -1642,11 +1645,7 @@ impl std::fmt::Display for StaticFunctionDefinition {
 
 impl std::fmt::Display for ImplBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "impl")?;
-        if let Some(generics) = &self.generic_params {
-            write!(f, "{generics}")?;
-        }
-        write!(f, " {} for {}", self.protocol_spec, self.type_spec)?;
+        write!(f, "impl {} for {}", self.protocol_spec, self.type_spec)?;
         if let Some(constraints) = &self.constraints {
             write!(f, " when {constraints}")?;
         }

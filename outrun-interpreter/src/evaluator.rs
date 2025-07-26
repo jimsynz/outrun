@@ -417,24 +417,13 @@ impl ExpressionEvaluator {
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
-        use outrun_parser::FunctionPath;
-
-        // Build function name from the call path
-        let function_name = match &function_call.path {
-            FunctionPath::Simple { name } => {
-                format!("Outrun.Intrinsic.{}", name.name)
-            }
-            FunctionPath::Qualified { module, name } => {
-                format!("{}.{}", module.name, name.name)
-            }
-            FunctionPath::Expression { expression: _ } => {
-                // TODO: Handle complex expression-based function paths
-                return Err(EvaluationError::UnsupportedExpression {
-                    expr_type: "expression_function_path".to_string(),
-                    span,
-                });
-            }
-        };
+        // Use pre-resolved function key (must be populated by typechecker)
+        let function_name = function_call.resolved_function_key.as_ref()
+            .unwrap_or_else(|| {
+                eprintln!("ERROR: Function call has no resolved_function_key: {:?}", function_call.path);
+                panic!("BUG: resolved_function_key must be populated by typechecker before interpretation");
+            })
+            .clone();
 
         // Evaluate arguments
         let mut args = Vec::new();
@@ -454,89 +443,15 @@ impl ExpressionEvaluator {
             args.push(arg_value);
         }
 
-        // If it's a direct intrinsic call, execute it immediately
+        // Direct dispatch based on pre-resolved function key
         if function_name.starts_with("Outrun.Intrinsic.") {
-            return self
-                .intrinsics
+            // Direct intrinsic call
+            self.intrinsics
                 .execute_intrinsic(&function_name, &args, span)
-                .map_err(|e| EvaluationError::Intrinsic { source: e });
-        }
-
-        // Check if this is a protocol call that needs dispatch
-        // Skip dispatch for resolved function names (they start with "impl")
-        if !function_name.starts_with("impl ") {
-            if let Some(resolved_function_name) = self.try_protocol_dispatch(&function_name, &args)
-            {
-                // This is a protocol call - recursively evaluate the resolved implementation
-                return self.evaluate_resolved_function(&resolved_function_name, &args, span);
-            }
-        }
-
-        // For other function calls, we need to implement user-defined function dispatch
-        // For now, return an error
-        Err(EvaluationError::FunctionNotFound {
-            name: function_name.clone(),
-            span,
-        })
-    }
-
-    /// Try to resolve a protocol call using the dispatch table
-    /// Returns the resolved implementation function qualified name if found
-    fn try_protocol_dispatch(&self, function_name: &str, args: &[Value]) -> Option<String> {
-        // Check if this looks like a protocol call (e.g., "BinaryAddition.add")
-        if let Some((protocol_name, method_name)) = function_name.split_once('.') {
-            // Get the type of the first argument (self parameter for protocols)
-            if let Some(first_arg) = args.first() {
-                let arg_type_name = self.get_runtime_type_name(first_arg);
-
-                // TEMPORARY: Hardcoded protocol-to-intrinsic mappings for common cases
-                // TODO: These should come from the typechecker's dispatch table
-                if let Some(intrinsic_name) = self.get_hardcoded_intrinsic_mapping(protocol_name, method_name, &arg_type_name) {
-                    return Some(intrinsic_name);
-                }
-
-                // Look up in dispatch table to get the actual implementation function
-                if let Some(resolved_func) =
-                    self.dispatch_table.lookup(protocol_name, &arg_type_name)
-                {
-                    // Return the qualified name of the resolved implementation function
-                    // This could be either another function that needs further dispatch,
-                    // or an intrinsic function that can be executed directly
-                    return Some(resolved_func.qualified_name.clone());
-                }
-            }
-        }
-        None
-    }
-
-    /// TEMPORARY: Hardcoded protocol-to-intrinsic mappings
-    /// TODO: This should be replaced by proper dispatch table entries from the typechecker
-    fn get_hardcoded_intrinsic_mapping(&self, protocol_name: &str, method_name: &str, type_name: &str) -> Option<String> {
-        match (protocol_name, method_name, type_name) {
-            // UnaryMinus protocol
-            ("UnaryMinus", "minus", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_neg".to_string()),
-            
-            // BinaryAddition protocol
-            ("BinaryAddition", "add", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_add".to_string()),
-            
-            // BinarySubtraction protocol
-            ("BinarySubtraction", "subtract", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_sub".to_string()),
-            
-            // BinaryMultiplication protocol
-            ("BinaryMultiplication", "multiply", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_mul".to_string()),
-            
-            // BinaryDivision protocol
-            ("BinaryDivision", "divide", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_div".to_string()),
-            
-            // Equality protocol
-            ("Equality", "equal?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_eq".to_string()),
-            
-            // Comparison protocol
-            ("Comparison", "less_than?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_lt".to_string()),
-            ("Comparison", "greater_than?", "Outrun.Core.Integer64") => Some("Outrun.Intrinsic.i64_gt".to_string()),
-            
-            // Add more mappings as needed
-            _ => None,
+                .map_err(|e| EvaluationError::Intrinsic { source: e })
+        } else {
+            // All other calls - the typechecker has resolved everything for us
+            self.evaluate_resolved_function(&function_name, &args, span)
         }
     }
 

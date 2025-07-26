@@ -26,7 +26,7 @@ impl Boolean for Outrun.Core.Boolean {
 }
 
 # Mock implementation of Option.some? that returns a boolean literal
-impl<T> Option<T> for Outrun.Option.Some<T> {
+impl Option<T> for Outrun.Option.Some<T> {
     def some?(value: Self): Boolean {
         true  # This should infer as Outrun.Core.Boolean (concrete)
     }

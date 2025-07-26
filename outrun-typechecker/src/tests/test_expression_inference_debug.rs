@@ -152,6 +152,8 @@ mod expression_inference_debug_tests {
             return_type: integer_type.clone(),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         };
 
         engine.function_registry_mut().register_function(

@@ -19,7 +19,7 @@ case in optional value scenarios.
 struct Outrun.Option.None<T>() {}
 
 # Implementation of Option protocol for None variant - works for any T
-impl<T> Option<T> for Outrun.Option.None<T> {
+impl Option<T> for Outrun.Option.None<T> {
     def some?(value: Self): Boolean {
         false  # None never contains a value
     }

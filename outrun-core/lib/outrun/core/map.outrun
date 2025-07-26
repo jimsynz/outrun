@@ -22,7 +22,7 @@ struct Outrun.Core.Map<K, V>() {}
 
 
 # Equality protocol implementation - structural equality
-impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
+impl Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
     def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         # Maps are equal if they have the same size and all key-value pairs match
         if Map.size(map: lhs) == Map.size(map: rhs) {
@@ -34,7 +34,7 @@ impl<K, V> Equality for Outrun.Core.Map<K, V> when K: Equality && V: Equality {
 }
 
 # Map protocol implementation
-impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
+impl Map<K, V> for Outrun.Core.Map<K, V> {
     def get(map: Self, key: K): Option<V> {
         Outrun.Intrinsic.map_get(map: map, key: key)
     }
@@ -53,7 +53,7 @@ impl<K, V> Map<K, V> for Outrun.Core.Map<K, V> {
 }
 
 # Default protocol implementation
-impl<K, V> Default for Outrun.Core.Map<K, V> {
+impl Default for Outrun.Core.Map<K, V> {
     def default(): Self {
         {}
     }

@@ -109,6 +109,13 @@ impl ConstraintSolver {
                 bound_type,
                 span,
             } => self.solve_self_binding_constraint(self_context, bound_type, substitution, *span),
+
+            Constraint::NameBinding {
+                type_var,
+                expected_name,
+                expected_args,
+                span,
+            } => self.solve_name_binding_constraint(*type_var, expected_name, expected_args, substitution, *span),
         }
     }
 
@@ -386,6 +393,67 @@ impl ConstraintSolver {
         // of protocol relationships.
 
         Ok(())
+    }
+
+    /// Solve a name binding constraint: TypeVar must resolve to specific named type
+    fn solve_name_binding_constraint(
+        &mut self,
+        type_var: TypeVarId,
+        expected_name: &str,
+        _expected_args: &[Type],
+        substitution: &Substitution,
+        span: Option<outrun_parser::Span>,
+    ) -> Result<(), ConstraintError> {
+        // Apply substitution to resolve the type variable
+        let resolved_type = self.resolve_type_var(type_var, substitution)?;
+
+        match resolved_type {
+            Type::Variable { .. } => {
+                // Type variable still unbound - constraint cannot be verified yet
+                // This is not necessarily an error; it may be resolved later
+                Ok(())
+            }
+
+            Type::Concrete { id, .. } => {
+                // Check if the concrete type name matches the expected name
+                if id.name() == expected_name {
+                    Ok(())
+                } else {
+                    Err(ConstraintError::Unsatisfiable {
+                        constraint: format!("type variable must resolve to {}, but got {}", expected_name, id.name()),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    })
+                }
+            }
+
+            Type::Protocol { id, .. } => {
+                // Check if the protocol name matches the expected name
+                if id.0 == expected_name {
+                    Ok(())
+                } else {
+                    Err(ConstraintError::Unsatisfiable {
+                        constraint: format!("type variable must resolve to {}, but got protocol {}", expected_name, id.0),
+                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    })
+                }
+            }
+
+            Type::SelfType { .. } => {
+                // Self types would need to be resolved first
+                Err(ConstraintError::Unsatisfiable {
+                    constraint: format!("type variable must resolve to {}, but got unresolved Self type", expected_name),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                })
+            }
+
+            Type::Function { .. } => {
+                // Function types don't match simple names
+                Err(ConstraintError::Unsatisfiable {
+                    constraint: format!("type variable must resolve to {}, but got function type", expected_name),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                })
+            }
+        }
     }
 
     /// Clear the solution cache (useful when implementation context changes)

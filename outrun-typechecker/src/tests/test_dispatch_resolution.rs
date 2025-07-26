@@ -47,6 +47,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -64,6 +66,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -82,6 +86,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -103,6 +109,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             ),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -118,6 +126,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -133,6 +143,8 @@ fn create_test_function_registry() -> FunctionRegistry {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -171,7 +183,7 @@ fn test_static_protocol_call_resolution() {
     let function_registry = create_test_function_registry();
     register_basic_implementations(&mut protocol_registry);
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     // Test Equality.equal?(value: "hello", other: "world")
     let string_type = Type::concrete("Outrun.Core.String");
@@ -197,7 +209,7 @@ fn test_static_module_call_resolution() {
     let protocol_registry = create_test_protocol_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     // Test User.create(name: "john", email: "john@example.com")
     let result = dispatcher
@@ -229,7 +241,7 @@ fn test_local_call_in_protocol_context() {
     };
 
     let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry).with_context(context);
+        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
 
     // Local call: equal?(self, other) inside Equality.not_equal?
     // Should resolve to Equality.equal?
@@ -255,7 +267,7 @@ fn test_local_call_in_module_context() {
     };
 
     let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry).with_context(context);
+        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
 
     // Local call: validate_email?(email) inside User.create
     // Should resolve to User.validate_email?
@@ -281,7 +293,7 @@ fn test_no_implementation_error() {
     let protocol_registry = create_test_protocol_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     // Try to call a non-existent protocol function
     let string_type = Type::concrete("Outrun.Core.String");
@@ -297,10 +309,10 @@ fn test_dispatch_table_creation() {
     let function_registry = create_test_function_registry();
     register_basic_implementations(&mut protocol_registry);
 
-    let table = build_dispatch_table(&protocol_registry, &function_registry);
+    let table = build_dispatch_table(&protocol_registry, &function_registry, None);
 
-    // Table should contain implementation entries
-    let entry = table.lookup("Equality", "Outrun.Core.String");
+    // Table should contain implementation entries using monomorphised key format
+    let entry = table.lookup("Equality.equal?:Outrun.Core.String");
     assert!(entry.is_some());
 
     let entry = entry.unwrap();
@@ -312,7 +324,7 @@ fn test_malformed_qualified_name_error() {
     let protocol_registry = create_test_protocol_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     // Test malformed qualified name (no dot)
     let result = dispatcher.resolve_qualified_call("NotQualified", None, None);
@@ -334,7 +346,7 @@ fn test_private_protocol_function_access() {
     };
 
     let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry).with_context(context);
+        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
 
     // Private protocol function should be accessible within protocol context
     let result = dispatcher.resolve_local_call("helper?", None).unwrap();
@@ -358,7 +370,7 @@ fn test_private_protocol_function_blocked_externally() {
     let function_registry = create_test_function_registry();
 
     // Top-level context - no local access to private protocol functions
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     // Private protocol function should NOT be accessible from external context
     let result = dispatcher.resolve_qualified_call("Equality.helper?", None, None);
@@ -385,6 +397,8 @@ fn test_protocol_default_implementation_with_private_helper() {
             return_type: Type::concrete("Outrun.Core.Boolean"),
             body: None, // Test function without body
             span: None,
+            generic_parameters: vec![],
+            is_generic: false,
         },
     );
 
@@ -394,7 +408,7 @@ fn test_protocol_default_implementation_with_private_helper() {
     };
 
     let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry).with_context(context);
+        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
 
     // Within the protocol context, the default implementation should be able to call:
     // 1. Other public protocol functions

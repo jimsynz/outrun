@@ -45,16 +45,15 @@ pub use core_library::{collect_outrun_files, default_core_library_path};
 pub use desugaring::DesugaringEngine;
 pub use dispatch::{
     build_dispatch_table,
-    // Legacy aliases
-    DispatchResolver,
     DispatchResult,
     DispatchTable,
-    DispatchTarget,
     FunctionContext,
     FunctionDispatcher,
     FunctionInfo,
     FunctionRegistry,
     FunctionVisibility,
+    MonomorphisationEntry,
+    MonomorphisationTable,
     ResolvedFunction,
 };
 pub use error::{
@@ -112,6 +111,8 @@ pub struct CompilationResult {
     pub function_registry: std::rc::Rc<FunctionRegistry>,
     /// Runtime dispatch table for function resolution
     pub dispatch_table: DispatchTable,
+    /// Monomorphisation table for tracking generic function instantiations
+    pub monomorphisation_table: MonomorphisationTable,
     /// Package identity for dependency tracking
     pub package_name: String,
     /// Processed programs with type information attached
@@ -469,17 +470,24 @@ impl CompilationResult {
             engine.typecheck_function_bodies(program)?;
         }
 
-        // Phase 7: Build dispatch table for runtime function resolution
-        let dispatch_table =
-            build_dispatch_table(engine.protocol_registry(), engine.function_registry());
+        // Phase 7: Create monomorphisation table for generic functions
+        let monomorphisation_table = MonomorphisationTable::new();
 
-        // Phase 8: Collect module information for conflict prevention and orphan rule checking
+        // Phase 8: Build dispatch table for runtime function resolution
+        let dispatch_table = build_dispatch_table(
+            engine.protocol_registry(),
+            engine.function_registry(),
+            Some(&monomorphisation_table),
+        );
+
+        // Phase 9: Collect module information for conflict prevention and orphan rule checking
         let (local_modules, defined_modules) = Self::collect_module_info(&package.programs);
 
         Ok(CompilationResult {
             protocol_registry: engine.protocol_registry_rc(),
             function_registry: engine.function_registry_rc(),
             dispatch_table,
+            monomorphisation_table,
             package_name: package.package_name.clone(),
             programs: package.programs.clone(),
             local_modules,

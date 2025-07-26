@@ -375,6 +375,44 @@ pub enum InferenceError {
         #[label("found {found_element_type:?}")]
         found_span: Option<SourceSpan>,
     },
+
+    #[error("Self type unification failure: conflicting Self types {first_self_type} and {conflicting_self_type}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::self_unification_failure),
+        help("All occurrences of Self in a function signature must resolve to the same concrete type")
+    )]
+    SelfTypeUnificationFailure {
+        first_self_type: Type,
+        conflicting_self_type: Type,
+        #[label("Self types must be consistent across function signature")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Type variable unification failure: variable {variable_name} has conflicting types {first_type} and {conflicting_type}")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::type_variable_unification_failure),
+        help("All occurrences of the same type variable must unify to the same concrete type")
+    )]
+    TypeVariableUnificationFailure {
+        variable_name: String,
+        first_type: Type,
+        conflicting_type: Type,
+        #[label("type variable {variable_name} has conflicting types")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error("Invalid constraint variable: {variable_name} does not appear in impl type specifications")]
+    #[diagnostic(
+        code(outrun::typecheck::inference::invalid_constraint_variable),
+        help("Constrained type variables must appear in either the protocol or implementing type specifications")
+    )]
+    InvalidConstraintVariable {
+        variable_name: String,
+        available_variables: String,
+        #[label("variable '{variable_name}' is constrained but not defined in impl types")]
+        span: Option<SourceSpan>,
+        suggestions: Vec<String>,
+    },
 }
 
 /// Unified compiler error combining parser and typechecker errors

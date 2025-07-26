@@ -1029,6 +1029,8 @@ fn register_intrinsic(
         return_type,
         body: None, // Intrinsic functions don't have user-defined bodies
         span: None,
+        generic_parameters: Vec::new(), // Intrinsics are not generic
+        is_generic: false,
     };
 
     registry.register_function(module.to_string(), name.to_string(), function_info);

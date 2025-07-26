@@ -272,6 +272,7 @@ impl DesugaringEngine {
                 },
             ],
             span: binary_op.span,
+            resolved_function_key: None,
         })
     }
 
@@ -318,6 +319,7 @@ impl DesugaringEngine {
                 span: unary_op.operand.span,
             }],
             span: unary_op.span,
+            resolved_function_key: None,
         })
     }
 }

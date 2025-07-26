@@ -46,6 +46,8 @@ fn test_single_option_file_debug() {
             let dispatcher = crate::dispatch::FunctionDispatcher::new(
                 &engine.get_protocol_registry(),
                 &engine.function_registry(),
+                None,
+                None,
             );
             match dispatcher.resolve_qualified_call("Option.some?", None, None) {
                 Ok(dispatch_result) => match dispatch_result {
