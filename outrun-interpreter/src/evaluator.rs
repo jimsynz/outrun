@@ -238,8 +238,6 @@ impl ExpressionEvaluator {
 
             // For now, return errors for unsupported expressions
             _ => {
-                eprintln!("🚨 DEBUG: Unsupported expression kind encountered: {:?}", kind);
-                eprintln!("🚨 DEBUG: Span: {:?}", span);
                 Err(EvaluationError::UnsupportedExpression {
                     expr_type: self.expression_type_name(kind).to_string(),
                     span,
@@ -539,8 +537,6 @@ impl ExpressionEvaluator {
             }
         }
 
-        eprintln!("🔍 DEBUG: Looking for protocol {} function {} on type {}", protocol_name, function_name, argument_type);
-        eprintln!("🔍 DEBUG: Found {} matching clauses", matching_clauses.len());
 
         matching_clauses
     }
@@ -554,14 +550,16 @@ impl ExpressionEvaluator {
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
         // DEBUG: Add logging to understand clause dispatch issues
-        eprintln!("🔍 DEBUG: dispatch_clauses called with {} clause IDs: {:?}", clause_ids.len(), clause_ids);
         
-        // Evaluate arguments first
-        let mut args = Vec::new();
+        // Evaluate arguments and preserve their names
+        let mut named_args = Vec::new();
+        let mut arg_values = Vec::new(); // For guard evaluation
         for arg in arguments {
-            let arg_value = match arg {
-                outrun_parser::Argument::Named { expression, .. } => {
-                    self.evaluate(expression, context)?
+            match arg {
+                outrun_parser::Argument::Named { name, expression, .. } => {
+                    let arg_value = self.evaluate(expression, context)?;
+                    named_args.push((name.name.clone(), arg_value.clone()));
+                    arg_values.push(arg_value);
                 }
                 outrun_parser::Argument::Spread { .. } => {
                     // TODO: Handle spread arguments properly
@@ -571,36 +569,25 @@ impl ExpressionEvaluator {
                     });
                 }
             };
-            args.push(arg_value);
         }
 
-        eprintln!("🔍 DEBUG: Evaluated {} arguments: {:?}", args.len(), args.iter().map(|v| v.display()).collect::<Vec<_>>());
 
         // Try each clause in order until one succeeds
         for &clause_id_raw in clause_ids {
             let clause_id = ClauseId(clause_id_raw);
-            eprintln!("🔍 DEBUG: Trying clause ID {}", clause_id_raw);
             
             // Get clause info from universal registry
             if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
-                eprintln!("🔍 DEBUG: Found clause info: function_signature={:?}, guards={:?}, body={:?}", 
-                         clause_info.function_signature, clause_info.guards, clause_info.body);
                 
                 // Evaluate all guards for this clause
-                if self.evaluate_all_guards(&clause_info.guards, &args, context)? {
-                    eprintln!("🔍 DEBUG: All guards passed for clause {}, executing body", clause_id_raw);
-                    // All guards passed - execute this clause
-                    return self.execute_clause_body_with_info(clause_info, &args, context, span);
-                } else {
-                    eprintln!("🔍 DEBUG: Guards failed for clause {}", clause_id_raw);
+                if self.evaluate_all_guards(&clause_info.guards, &arg_values, context)? {
+                    // All guards passed - execute this clause with named arguments
+                    return self.execute_clause_body_with_named_args(clause_info, &named_args, context, span);
                 }
-            } else {
-                eprintln!("🔍 DEBUG: Clause {} not found in universal registry", clause_id_raw);
             }
         }
 
         // No clause matched
-        eprintln!("🔍 DEBUG: No clause matched, tried {} clauses", clause_ids.len());
         Err(EvaluationError::Runtime {
             message: format!(
                 "No matching clause found for function call. Tried {} clauses.",
@@ -618,32 +605,27 @@ impl ExpressionEvaluator {
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
-        eprintln!("🔍 DEBUG: dispatch_clauses_with_values called with {} clause IDs and {} args", clause_ids.len(), args.len());
         
         // Try each clause in order until one succeeds
         for &clause_id in clause_ids {
-            eprintln!("🔍 DEBUG: Trying clause ID {:?}", clause_id);
             
             // Get clause info from universal registry
             if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
-                eprintln!("🔍 DEBUG: Found clause info: function_signature={:?}, guards={:?}, body={:?}", 
-                         clause_info.function_signature, clause_info.guards, clause_info.body);
                 
                 // Evaluate all guards for this clause
                 if self.evaluate_all_guards(&clause_info.guards, args, context)? {
-                    eprintln!("🔍 DEBUG: All guards passed for clause {:?}, executing body", clause_id);
                     // All guards passed - execute this clause
-                    return self.execute_clause_body_with_info(clause_info, args, context, span);
-                } else {
-                    eprintln!("🔍 DEBUG: Guards failed for clause {:?}", clause_id);
+                    // Convert positional args to named args (temporary hack for unary ops)
+                    let named_args: Vec<(String, Value)> = args.iter()
+                        .enumerate()
+                        .map(|(i, value)| (format!("arg_{}", i), value.clone()))
+                        .collect();
+                    return self.execute_clause_body_with_named_args(clause_info, &named_args, context, span);
                 }
-            } else {
-                eprintln!("🔍 DEBUG: Clause {:?} not found in universal registry", clause_id);
             }
         }
 
         // No clause matched
-        eprintln!("🔍 DEBUG: No clause matched, tried {} clauses", clause_ids.len());
         Err(EvaluationError::Runtime {
             message: format!(
                 "No matching clause found for unary operation. Tried {} clauses.",
@@ -693,10 +675,10 @@ impl ExpressionEvaluator {
     }
 
     /// Execute the body of a matched clause with full clause info for parameter binding
-    fn execute_clause_body_with_info(
+    fn execute_clause_body_with_named_args(
         &self,
         clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
-        args: &[Value],
+        named_args: &[(String, Value)],
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
     ) -> Result<Value, EvaluationError> {
@@ -704,20 +686,18 @@ impl ExpressionEvaluator {
         
         match &clause_info.body {
             FunctionBody::IntrinsicFunction(intrinsic_name) => {
-                // Execute intrinsic function
+                // Execute intrinsic function with positional args (intrinsics don't use named params)
+                let args: Vec<Value> = named_args.iter().map(|(_, value)| value.clone()).collect();
                 self.intrinsics
-                    .execute_intrinsic(intrinsic_name, args, span)
+                    .execute_intrinsic(intrinsic_name, &args, span)
                     .map_err(|e| EvaluationError::Intrinsic { source: e })
             }
             FunctionBody::UserFunction(block) => {
-                // Execute user-defined function body with parameter binding
-                // Create a new scope for the function execution
+                // Execute user-defined function body with named parameter binding
                 context.push_scope();
                 
-                // Bind function parameters to argument values
-                // We need to get parameter names from the function registry
-                // For now, use a simple approach: bind based on parameter position and common names
-                if let Err(e) = self.bind_function_parameters(clause_info, args, context) {
+                // Bind named arguments to their parameter names
+                if let Err(e) = self.bind_named_parameters(named_args, context) {
                     context.pop_scope();
                     return Err(e);
                 }
@@ -732,7 +712,6 @@ impl ExpressionEvaluator {
             }
             FunctionBody::StructConstructor { struct_name, field_mappings: _ } => {
                 // TODO: Execute struct constructor
-                // For now, return an error indicating this is not yet implemented
                 Err(EvaluationError::UnsupportedExpression {
                     expr_type: format!("struct_constructor_{}", struct_name),
                     span,
@@ -740,7 +719,6 @@ impl ExpressionEvaluator {
             }
             FunctionBody::ProtocolImplementation { implementation_name, body: _ } => {
                 // TODO: Execute protocol implementation
-                // For now, return an error indicating this is not yet implemented
                 Err(EvaluationError::UnsupportedExpression {
                     expr_type: format!("protocol_implementation_{}", implementation_name),
                     span,
@@ -750,35 +728,15 @@ impl ExpressionEvaluator {
     }
 
     /// Bind function parameters to argument values in the execution context
-    fn bind_function_parameters(
+    fn bind_named_parameters(
         &self,
-        clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
-        args: &[Value],
+        named_args: &[(String, Value)],
         context: &mut InterpreterContext,
     ) -> Result<(), EvaluationError> {
-        // For protocol implementations like "UnaryMinus.minus", we need to get the parameter names
-        // from the function registry. For now, use a simple heuristic based on common patterns.
-        
-        // Get function signature info
-        let function_signature = &clause_info.function_signature;
-        let function_name = &function_signature.function_name;
-        eprintln!("🔍 DEBUG: Binding parameters for function: {} in module {:?}", 
-                 function_name, function_signature.module_path);
-        
-        // Common parameter names for protocol functions
-        let param_name = match function_name.as_str() {
-            "minus" | "plus" | "not" => "value",
-            "add" | "subtract" | "multiply" | "divide" => if !args.is_empty() { "left" } else { "value" },
-            _ => "value", // Default fallback
-        };
-        
-        // Bind the first argument to the parameter name
-        if !args.is_empty() {
-            eprintln!("🔍 DEBUG: Binding parameter '{}' to value {:?}", param_name, args[0].display());
-            context.define_variable(param_name.to_string(), args[0].clone())
+        // Bind each named argument to its parameter name
+        for (param_name, arg_value) in named_args {
+            context.define_variable(param_name.clone(), arg_value.clone())
                 .map_err(|e| EvaluationError::Context { source: e })?;
-        } else {
-            eprintln!("🔍 DEBUG: No arguments to bind for function {}", function_name);
         }
         
         Ok(())

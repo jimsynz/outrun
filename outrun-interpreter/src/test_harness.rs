@@ -129,7 +129,12 @@ impl OutrunTestHarness {
                     compilation.function_registry,
                     compilation.universal_dispatch,
                 ));
-                (false, parse_program(expression_code)?)
+                // Use the desugared program from the compilation result, not the raw parsed expression
+                let desugared_program = compilation.programs.first()
+                    .ok_or_else(|| TestHarnessError::Internal {
+                        message: "No programs found in compilation result".to_string(),
+                    })?.clone();
+                (false, desugared_program)
             }
             Err(CompilerError::Typecheck(boxed_err)) => {
                 if let outrun_typechecker::TypecheckError::InferenceError(

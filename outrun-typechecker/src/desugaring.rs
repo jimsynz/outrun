@@ -185,10 +185,10 @@ impl DesugaringEngine {
     ) -> Result<FunctionCall, TypecheckError> {
         let (protocol_name, function_name, param_names) = match binary_op.operator {
             // Arithmetic operators
-            BinaryOperator::Add => ("BinaryAddition", "add", ("left", "right")),
-            BinaryOperator::Subtract => ("BinarySubtraction", "subtract", ("left", "right")),
-            BinaryOperator::Multiply => ("BinaryMultiplication", "multiply", ("left", "right")),
-            BinaryOperator::Divide => ("BinaryDivision", "divide", ("left", "right")),
+            BinaryOperator::Add => ("BinaryAddition", "add", ("lhs", "rhs")),
+            BinaryOperator::Subtract => ("BinarySubtraction", "subtract", ("lhs", "rhs")),
+            BinaryOperator::Multiply => ("BinaryMultiplication", "multiply", ("lhs", "rhs")),
+            BinaryOperator::Divide => ("BinaryDivision", "divide", ("lhs", "rhs")),
             BinaryOperator::Modulo => ("BinaryModulo", "modulo", ("left", "right")),
             BinaryOperator::Exponent => ("BinaryExponentiation", "power", ("base", "exponent")),
 
@@ -362,26 +362,26 @@ mod tests {
                     Argument::Named {
                         name, expression, ..
                     } => {
-                        assert_eq!(name.name, "left");
+                        assert_eq!(name.name, "lhs");
                         match &expression.kind {
                             ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 1),
-                            _ => panic!("Expected integer literal for left operand"),
+                            _ => panic!("Expected integer literal for lhs operand"),
                         }
                     }
-                    _ => panic!("Expected named argument for left operand"),
+                    _ => panic!("Expected named argument for lhs operand"),
                 }
 
                 match &func_call.arguments[1] {
                     Argument::Named {
                         name, expression, ..
                     } => {
-                        assert_eq!(name.name, "right");
+                        assert_eq!(name.name, "rhs");
                         match &expression.kind {
                             ExpressionKind::Integer(int_lit) => assert_eq!(int_lit.value, 2),
-                            _ => panic!("Expected integer literal for right operand"),
+                            _ => panic!("Expected integer literal for rhs operand"),
                         }
                     }
-                    _ => panic!("Expected named argument for right operand"),
+                    _ => panic!("Expected named argument for rhs operand"),
                 }
             }
             _ => panic!("Expected function call after desugaring"),

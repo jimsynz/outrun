@@ -9,6 +9,7 @@ pub mod test_core_boolean_debug;
 pub mod test_core_library_isolated;
 pub mod test_core_library_loading;
 pub mod test_core_library_replication;
+pub mod test_debug_clause_ids;
 pub mod test_debug_integer64;
 pub mod test_detailed_core_failures;
 pub mod test_dispatch_resolution;

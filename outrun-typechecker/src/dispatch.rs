@@ -313,15 +313,12 @@ impl<'a> FunctionDispatcher<'a> {
                 // Look up protocol implementation for this concrete type
                 // For generic types, we need to try both generic and non-generic protocol names
                 let protocol_id = ProtocolId::new(protocol_name);
-                eprintln!("🔍 DEBUG: Looking for implementation of protocol '{}' for type '{}' with args: {:?}", 
-                    protocol_name, id.name(), args);
                 
                 // First try exact match with current protocol name
                 let mut impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, args);
                 
                 // If not found and we have args, also try with empty args (for generic implementations registered without args)
                 if impl_info.is_none() && !args.is_empty() {
-                    eprintln!("🔍 DEBUG: Trying lookup with empty args for generic type");
                     impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, &[]);
                 }
                 
@@ -338,24 +335,18 @@ impl<'a> FunctionDispatcher<'a> {
                     let generic_protocol_name = format!("{}<{}>", protocol_name, generic_args_str);
                     let generic_protocol_id = ProtocolId::new(&generic_protocol_name);
                     
-                    eprintln!("🔍 DEBUG: Trying generic protocol name: '{}'", generic_protocol_name);
                     
                     // Debug: Show the exact key we're looking for with generic protocol name  
-                    let generic_search_key = crate::registry::ImplementationKey::new(
+                    let _generic_search_key = crate::registry::ImplementationKey::new(
                         generic_protocol_id.clone(),
                         id.clone(),
                         args
                     );
-                    eprintln!("🔍 DEBUG: Generic lookup key: protocol='{}' type='{}' args_signature='{}'", 
-                        generic_search_key.protocol_id.0, 
-                        generic_search_key.implementing_type.name(),
-                        generic_search_key.type_args_signature);
                     
                     impl_info = self.protocol_registry.get_implementation(&generic_protocol_id, &id, args);
                 }
                 
                 if let Some(_impl_info) = impl_info {
-                    eprintln!("🔍 DEBUG: Found implementation for {}::{}", protocol_name, id.name());
                     // Found implementation - look up the specific function using impl scope format
                     let impl_scope = format!("impl {} for {}", protocol_name, id.name());
                     if let Some(func_info) = self
@@ -372,35 +363,21 @@ impl<'a> FunctionDispatcher<'a> {
                         self.resolve_static_call(protocol_name, function_name, span)
                     }
                 } else {
-                    eprintln!("🔍 DEBUG: No implementation found for protocol '{}' and type '{}'", 
-                        protocol_name, id.name());
-                    eprintln!("🔍 DEBUG: Available implementations in protocol registry:");
                     
                     // Debug: List all available implementations
                     for impl_info in self.protocol_registry.all_implementations() {
-                        eprintln!("🔍 DEBUG:   {} :: {}", 
-                            impl_info.protocol_id.0, 
-                            impl_info.implementing_type.name());
                         
                         // Show details for List implementations
                         if impl_info.protocol_id.0.contains("List") {
-                            eprintln!("🔍 DEBUG:     List impl details: protocol='{}' type='{}' impl_args={:?}", 
-                                impl_info.protocol_id.0,
-                                impl_info.implementing_type.name(),
-                                impl_info.implementing_args);
                         }
                     }
                     
                     // Debug: Show the exact key we're looking for
-                    let search_key = crate::registry::ImplementationKey::new(
+                    let _search_key = crate::registry::ImplementationKey::new(
                         crate::types::ProtocolId::new(protocol_name),
                         id.clone(),
                         args
                     );
-                    eprintln!("🔍 DEBUG: Looking for key: protocol='{}' type='{}' args_signature='{}'", 
-                        search_key.protocol_id.0, 
-                        search_key.implementing_type.name(),
-                        search_key.type_args_signature);
                     // Add debug info about what implementations are actually available
                     Err(DispatchError::NoImplementation {
                         protocol_name: protocol_name.to_string(),
