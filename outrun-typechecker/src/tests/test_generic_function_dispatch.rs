@@ -157,7 +157,7 @@ fn test_dispatcher_creation_with_monomorphisation() {
     let mono_table = create_test_monomorphisation_table();
     
     // Test creating dispatcher with monomorphisation table
-    let dispatcher = FunctionDispatcher::new(
+    let _dispatcher = FunctionDispatcher::new(
         &protocol_registry,
         &function_registry,
         Some(&mono_table),
@@ -165,7 +165,7 @@ fn test_dispatcher_creation_with_monomorphisation() {
     );
     
     // Verify the dispatcher was created (this is mainly a compilation test)
-    assert!(true);
+    // If we get here without panicking, the test passes
 }
 
 #[test]

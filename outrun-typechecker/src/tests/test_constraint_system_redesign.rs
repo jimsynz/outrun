@@ -1,11 +1,9 @@
-use crate::inference::TypeInferenceEngine;
 use crate::types::Type;
 use crate::Package; 
 use outrun_parser::parse_program;
 
 #[test]
 fn test_unary_minus_parameter_name_based_constraint() {
-    let engine = TypeInferenceEngine::new();
     
     // Test code that uses UnaryMinus protocol
     let code = r#"

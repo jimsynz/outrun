@@ -30,14 +30,12 @@ pub enum TestHarnessError {
 
     #[error("Typecheck error: {source}")]
     Typecheck {
-        #[from]
-        source: outrun_typechecker::TypecheckError,
+        source: Box<outrun_typechecker::TypecheckError>,
     },
 
     #[error("Compiler error: {source}")]
     Compiler {
-        #[from]
-        source: CompilerError,
+        source: Box<CompilerError>,
     },
 
     #[error("Assertion failed: expected {expected}, but got {actual}")]
@@ -57,6 +55,22 @@ pub enum TestHarnessError {
 
     #[error("Internal error: {message}")]
     Internal { message: String },
+}
+
+impl From<outrun_typechecker::TypecheckError> for TestHarnessError {
+    fn from(err: outrun_typechecker::TypecheckError) -> Self {
+        TestHarnessError::Typecheck {
+            source: Box::new(err),
+        }
+    }
+}
+
+impl From<CompilerError> for TestHarnessError {
+    fn from(err: CompilerError) -> Self {
+        TestHarnessError::Compiler {
+            source: Box::new(err),
+        }
+    }
 }
 
 /// Test harness for evaluating Outrun expressions with the new interpreter system
@@ -117,34 +131,39 @@ impl OutrunTestHarness {
                 ));
                 (false, parse_program(expression_code)?)
             }
-            Err(CompilerError::Typecheck(outrun_typechecker::TypecheckError::InferenceError(
-                outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. }
-            ))) => {
-                // Check if we have this variable in our interpreter context
-                if self.context.get_variable(&variable_name).is_ok() {
-                    // We have the variable! Skip typechecking and evaluate directly
-                    // Use the core compilation for the evaluator
-                    self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
-                        core_compilation.dispatch_table.clone(),
-                        core_compilation.function_registry.clone(),
-                        core_compilation.universal_dispatch.clone(),
-                    ));
-                    (true, parse_program(expression_code)?)
+            Err(CompilerError::Typecheck(boxed_err)) => {
+                if let outrun_typechecker::TypecheckError::InferenceError(
+                    outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. }
+                ) = boxed_err.as_ref() {
+                    // Check if we have this variable in our interpreter context
+                    if self.context.get_variable(variable_name).is_ok() {
+                        // We have the variable! Skip typechecking and evaluate directly
+                        // Use the core compilation for the evaluator
+                        self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+                            core_compilation.dispatch_table.clone(),
+                            core_compilation.function_registry.clone(),
+                            core_compilation.universal_dispatch.clone(),
+                        ));
+                        (true, parse_program(expression_code)?)
+                    } else {
+                        // We don't have the variable either - propagate the error
+                        return Err(TestHarnessError::Compiler { source: Box::new(CompilerError::Typecheck(Box::new(outrun_typechecker::TypecheckError::InferenceError(
+                            outrun_typechecker::InferenceError::UndefinedVariable { 
+                                variable_name: variable_name.clone(), 
+                                span: None, 
+                                similar_names: vec![], 
+                                context: Some("Variable not found in test harness context".to_string()) 
+                            }
+                        )))) });
+                    }
                 } else {
-                    // We don't have the variable either - propagate the error
-                    return Err(TestHarnessError::Compiler { source: CompilerError::Typecheck(outrun_typechecker::TypecheckError::InferenceError(
-                        outrun_typechecker::InferenceError::UndefinedVariable { 
-                            variable_name, 
-                            span: None, 
-                            similar_names: vec![], 
-                            context: Some("Variable not found in test harness context".to_string()) 
-                        }
-                    )) });
+                    // Other typecheck error - propagate it
+                    return Err(TestHarnessError::Compiler { source: Box::new(CompilerError::Typecheck(boxed_err)) });
                 }
             }
             Err(e) => {
                 // Other compilation errors - propagate them
-                return Err(TestHarnessError::Compiler { source: e });
+                return Err(TestHarnessError::Compiler { source: Box::new(e) });
             }
         };
 
@@ -167,18 +186,18 @@ impl OutrunTestHarness {
                     self.evaluate_let_binding(let_binding)
                 }
                 _ => {
-                    return Err(TestHarnessError::Internal {
+                    Err(TestHarnessError::Internal {
                         message: format!(
                             "Unsupported item type in test harness: {:?}",
                             first_item.kind
                         ),
-                    });
+                    })
                 }
             }
         } else {
-            return Err(TestHarnessError::Internal {
+            Err(TestHarnessError::Internal {
                 message: "No items found in parsed program".to_string(),
-            });
+            })
         }
     }
 

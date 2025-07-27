@@ -10,6 +10,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use thiserror::Error;
 
+/// Type alias for intrinsic function signatures
+type IntrinsicFunction = fn(&[Value], Span) -> Result<Value, IntrinsicError>;
+
 /// Errors that can occur during intrinsic function execution
 #[derive(Debug, Error)]
 pub enum IntrinsicError {
@@ -40,7 +43,7 @@ pub enum IntrinsicError {
 /// Handler for intrinsic function execution
 pub struct IntrinsicsHandler {
     /// Registry of available intrinsic functions mapped to their execution functions
-    intrinsics: HashMap<String, fn(&[Value], Span) -> Result<Value, IntrinsicError>>,
+    intrinsics: HashMap<String, IntrinsicFunction>,
 }
 
 impl IntrinsicsHandler {

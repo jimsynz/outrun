@@ -264,7 +264,7 @@ fn test_package_with_no_programs() {
 
     // After type checking, core library should be integrated
     // This is the expected behavior for all Outrun packages
-    if empty_package.programs.len() > 0 {
+    if !empty_package.programs.is_empty() {
         println!(
             "✓ Core library integrated: {} programs",
             empty_package.programs.len()

@@ -296,7 +296,7 @@ fn test_nested_generic_types() {
 
 #[test]
 fn test_constraint_generation_with_non_generic_function() {
-    let engine = create_test_engine();
+    let _engine = create_test_engine();
     
     // Non-generic function: def add(a: Integer64, b: Integer64): Integer64
     let function_info = FunctionInfo {
@@ -331,9 +331,9 @@ fn test_constraint_generation_with_non_generic_function() {
         args: vec![],
         span: None,
     };
-    let inferred_arguments = vec![integer_type.clone(), integer_type];
+    let _inferred_arguments = vec![integer_type.clone(), integer_type];
     
-    let context = InferenceContext {
+    let _context = InferenceContext {
         substitution: Substitution::new(),
         constraints: Vec::new(),
         expected_type: None,

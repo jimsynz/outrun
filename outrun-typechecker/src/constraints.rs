@@ -145,7 +145,7 @@ impl ConstraintSolver {
                             "{}[{}]",
                             id.name(),
                             args.iter()
-                                .map(|arg| self.type_to_string(arg))
+                                .map(Self::type_to_string)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -237,7 +237,7 @@ impl ConstraintSolver {
     }
 
     /// Convert a type to a canonical string representation
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Concrete { id, args, .. } => {
                 if args.is_empty() {
@@ -247,7 +247,7 @@ impl ConstraintSolver {
                         "{}[{}]",
                         id.name(),
                         args.iter()
-                            .map(|arg| self.type_to_string(arg))
+                            .map(Self::type_to_string)
                             .collect::<Vec<_>>()
                             .join(", ")
                     )
@@ -288,7 +288,7 @@ impl ConstraintSolver {
                             implementing_type.name(),
                             implementing_args
                                 .iter()
-                                .map(|arg| self.type_to_string(arg))
+                                .map(Self::type_to_string)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -332,7 +332,7 @@ impl ConstraintSolver {
     /// Solve a Self binding constraint: Self = SomeType
     fn solve_self_binding_constraint(
         &mut self,
-        self_context: &SelfBindingContext,
+        mut self_context: &SelfBindingContext,
         bound_type: &Type,
         substitution: &Substitution,
         span: Option<outrun_parser::Span>,
@@ -340,39 +340,42 @@ impl ConstraintSolver {
         // Apply substitution to the bound type
         let resolved_bound_type = substitution.apply(bound_type);
 
-        match self_context {
-            SelfBindingContext::Implementation {
-                implementing_type,
-                implementing_args,
-                ..
-            } => {
-                // Self is already bound to the implementing type - check consistency
-                let expected_self = Type::Concrete {
-                    id: implementing_type.clone(),
-                    args: implementing_args.clone(),
-                    span: None,
-                };
+        // Iteratively follow parent contexts to avoid recursion
+        loop {
+            match self_context {
+                SelfBindingContext::Implementation {
+                    implementing_type,
+                    implementing_args,
+                    ..
+                } => {
+                    // Self is already bound to the implementing type - check consistency
+                    let expected_self = Type::Concrete {
+                        id: implementing_type.clone(),
+                        args: implementing_args.clone(),
+                        span: None,
+                    };
 
-                if expected_self != resolved_bound_type {
-                    return Err(ConstraintError::Unsatisfiable {
-                        constraint: format!("Self = {resolved_bound_type}"),
-                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
-                    });
+                    if expected_self != resolved_bound_type {
+                        return Err(ConstraintError::Unsatisfiable {
+                            constraint: format!("Self = {resolved_bound_type}"),
+                            span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                        });
+                    }
+
+                    return Ok(());
                 }
 
-                Ok(())
-            }
+                SelfBindingContext::ProtocolDefinition { .. } => {
+                    // In protocol definition, Self binding constraints establish requirements
+                    // for implementers. For now, accept any binding (would need more sophisticated
+                    // validation in a full implementation)
+                    return Ok(());
+                }
 
-            SelfBindingContext::ProtocolDefinition { .. } => {
-                // In protocol definition, Self binding constraints establish requirements
-                // for implementers. For now, accept any binding (would need more sophisticated
-                // validation in a full implementation)
-                Ok(())
-            }
-
-            SelfBindingContext::FunctionContext { parent_context, .. } => {
-                // Delegate to parent context
-                self.solve_self_binding_constraint(parent_context, bound_type, substitution, span)
+                SelfBindingContext::FunctionContext { parent_context, .. } => {
+                    // Continue with parent context
+                    self_context = parent_context;
+                }
             }
         }
     }

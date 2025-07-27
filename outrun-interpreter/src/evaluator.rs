@@ -207,7 +207,7 @@ impl ExpressionEvaluator {
             // Variable references
             ExpressionKind::Identifier(identifier) => context
                 .get_variable(&identifier.name)
-                .map(|v| v.clone())
+                .cloned()
                 .map_err(|_| EvaluationError::VariableNotFound {
                     name: identifier.name.clone(),
                     span,
@@ -768,12 +768,12 @@ impl ExpressionEvaluator {
         // Common parameter names for protocol functions
         let param_name = match function_name.as_str() {
             "minus" | "plus" | "not" => "value",
-            "add" | "subtract" | "multiply" | "divide" => if args.len() >= 1 { "left" } else { "value" },
+            "add" | "subtract" | "multiply" | "divide" => if !args.is_empty() { "left" } else { "value" },
             _ => "value", // Default fallback
         };
         
         // Bind the first argument to the parameter name
-        if args.len() > 0 {
+        if !args.is_empty() {
             eprintln!("🔍 DEBUG: Binding parameter '{}' to value {:?}", param_name, args[0].display());
             context.define_variable(param_name.to_string(), args[0].clone())
                 .map_err(|e| EvaluationError::Context { source: e })?;

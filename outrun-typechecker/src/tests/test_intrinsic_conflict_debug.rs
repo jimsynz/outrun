@@ -75,24 +75,21 @@ fn test_intrinsic_explicit_implementation_conflict() {
         Err(e) => {
             println!("  ❌ Phase 3 failed: {}", e);
             match &e {
-                crate::error::TypecheckError::ImplementationError(impl_err) => {
-                    match impl_err {
-                        crate::error::ImplementationError::ConflictingImplementation {
-                            protocol_name,
-                            type_name,
-                            ..
-                        } => {
-                            println!(
-                                "  🚨 CONFLICT: {} for {} during Phase 3!",
-                                protocol_name, type_name
-                            );
-
-                            // This proves the conflict happens during Phase 3, not Phase 6
-                            println!("  🔍 This means something registered BinaryAddition for Outrun.Core.Integer64 BEFORE Phase 3");
-                            println!("  💡 Likely candidates: intrinsic registration, or automatic implementations");
-                        }
-                        _ => {}
+                crate::error::TypecheckError::ImplementationError(
+                    crate::error::ImplementationError::ConflictingImplementation {
+                        protocol_name,
+                        type_name,
+                        ..
                     }
+                ) => {
+                    println!(
+                        "  🚨 CONFLICT: {} for {} during Phase 3!",
+                        protocol_name, type_name
+                    );
+
+                    // This proves the conflict happens during Phase 3, not Phase 6
+                    println!("  🔍 This means something registered BinaryAddition for Outrun.Core.Integer64 BEFORE Phase 3");
+                    println!("  💡 Likely candidates: intrinsic registration, or automatic implementations");
                 }
                 _ => {}
             }
@@ -113,22 +110,21 @@ fn test_intrinsic_explicit_implementation_conflict() {
         Err(e) => {
             println!("  ❌ Phase 6 failed: {}", e);
             match &e {
-                crate::error::TypecheckError::ImplementationError(impl_err) => match impl_err {
+                crate::error::TypecheckError::ImplementationError(
                     crate::error::ImplementationError::ConflictingImplementation {
                         protocol_name,
                         type_name,
                         ..
-                    } => {
-                        println!(
-                            "  🚨 CONFLICT: {} for {} during Phase 6!",
-                            protocol_name, type_name
-                        );
-                        println!(
-                            "  🔍 This suggests Phase 6 is trying to register implementations"
-                        );
                     }
-                    _ => {}
-                },
+                ) => {
+                    println!(
+                        "  🚨 CONFLICT: {} for {} during Phase 6!",
+                        protocol_name, type_name
+                    );
+                    println!(
+                        "  🔍 This suggests Phase 6 is trying to register implementations"
+                    );
+                }
                 _ => {}
             }
         }

@@ -44,8 +44,8 @@ fn test_single_option_file_debug() {
 
             // Check what type was registered for Option.some?
             let dispatcher = crate::dispatch::FunctionDispatcher::new(
-                &engine.get_protocol_registry(),
-                &engine.function_registry(),
+                engine.get_protocol_registry(),
+                engine.function_registry(),
                 None,
                 None,
             );

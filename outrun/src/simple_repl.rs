@@ -26,8 +26,7 @@ pub enum SimpleReplError {
 
     #[error("Runtime error: {source}")]
     Runtime {
-        #[from]
-        source: TestHarnessError,
+        source: BoxedTestHarnessError,
     },
 
     #[error("IO error: {source}")]
@@ -47,6 +46,63 @@ pub enum SimpleReplError {
 
     #[error("Internal REPL error: {message}")]
     Internal { message: String },
+}
+
+impl From<TestHarnessError> for SimpleReplError {
+    fn from(err: TestHarnessError) -> Self {
+        SimpleReplError::Runtime {
+            source: BoxedTestHarnessError(Box::new(err)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BoxedTestHarnessError(Box<TestHarnessError>);
+
+impl std::fmt::Display for BoxedTestHarnessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for BoxedTestHarnessError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+impl miette::Diagnostic for BoxedTestHarnessError {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.0.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.0.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.0.labels()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn miette::Diagnostic> + 'a>> {
+        self.0.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn miette::Diagnostic> {
+        self.0.diagnostic_source()
+    }
 }
 
 /// Simplified REPL session that maintains state across evaluations
@@ -124,8 +180,6 @@ pub enum SimpleReplResult {
     /// Executed a REPL command
     Command { message: String },
 
-    /// Let binding result
-    LetBinding { variables: String },
 
     /// Empty line or comment
     Empty,
@@ -153,7 +207,7 @@ impl SimpleReplSession {
 
         // Create test harness for full pipeline integration
         let test_harness = OutrunTestHarness::new().map_err(|e| SimpleReplError::Internal {
-            message: format!("Failed to create test harness: {}", e),
+            message: format!("Failed to create test harness: {e}"),
         })?;
 
         Ok(Self {
@@ -344,7 +398,7 @@ impl SimpleReplSession {
                 // Reset test harness (clears all variables)
                 self.test_harness =
                     OutrunTestHarness::new().map_err(|e| SimpleReplError::Internal {
-                        message: format!("Failed to reset test harness: {}", e),
+                        message: format!("Failed to reset test harness: {e}"),
                     })?;
                 Ok(SimpleReplResult::Command {
                     message: "Variables cleared".to_string(),
@@ -400,10 +454,6 @@ impl SimpleReplSession {
                 println!("{message}");
             }
 
-            SimpleReplResult::LetBinding { variables } => {
-                // For let bindings, just show that the variable was bound
-                println!("{variables} bound");
-            }
 
             SimpleReplResult::Empty => {} // No output for empty lines
 

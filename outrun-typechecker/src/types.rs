@@ -371,21 +371,26 @@ impl Type {
         context: &'a SelfBindingContext,
         work_stack: &mut Vec<&'a Type>,
     ) {
-        match context {
-            SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
-                work_stack.extend(protocol_args.iter());
-            }
-            SelfBindingContext::Implementation {
-                implementing_args,
-                protocol_args,
-                ..
-            } => {
-                work_stack.extend(implementing_args.iter());
-                work_stack.extend(protocol_args.iter());
-            }
-            SelfBindingContext::FunctionContext { parent_context, .. } => {
-                // Add parent context types (but limit depth to prevent infinite recursion)
-                self.collect_binding_context_types(parent_context.as_ref(), work_stack);
+        // Use iterative approach to avoid stack overflow on deep context chains
+        let mut context_stack = vec![context];
+        
+        while let Some(current_context) = context_stack.pop() {
+            match current_context {
+                SelfBindingContext::ProtocolDefinition { protocol_args, .. } => {
+                    work_stack.extend(protocol_args.iter());
+                }
+                SelfBindingContext::Implementation {
+                    implementing_args,
+                    protocol_args,
+                    ..
+                } => {
+                    work_stack.extend(implementing_args.iter());
+                    work_stack.extend(protocol_args.iter());
+                }
+                SelfBindingContext::FunctionContext { parent_context, .. } => {
+                    // Add parent context to stack for processing
+                    context_stack.push(parent_context.as_ref());
+                }
             }
         }
     }

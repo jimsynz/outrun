@@ -418,7 +418,7 @@ pub enum CompilerError {
     Parse(#[from] ParseError),
 
     #[error(transparent)]
-    Typecheck(#[from] TypecheckError),
+    Typecheck(Box<TypecheckError>),
 
     #[error("Module redefinition: module '{module_name}' is already defined by a dependency package")]
     #[diagnostic(
@@ -430,6 +430,12 @@ pub enum CompilerError {
         #[label("module redefined here")]
         span: Option<SourceSpan>,
     },
+}
+
+impl From<TypecheckError> for CompilerError {
+    fn from(err: TypecheckError) -> Self {
+        CompilerError::Typecheck(Box::new(err))
+    }
 }
 
 /// Utility functions for creating errors with source context

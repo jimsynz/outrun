@@ -75,7 +75,7 @@ impl Integer for Outrun.Core.Integer64 {
 
     println!("🔍 Testing Self type resolution...");
 
-    let _ = engine
+    engine
         .register_protocols_and_structs(&program)
         .expect("Phase 2 should succeed");
     engine
@@ -110,7 +110,7 @@ impl Integer for Outrun.Core.Integer64 {
 
     println!("🔍 Testing Boolean type consistency...");
 
-    let _ = engine
+    engine
         .register_protocols_and_structs(&program)
         .expect("Phase 2 should succeed");
     engine
@@ -145,7 +145,7 @@ impl Integer for Outrun.Core.Integer64 {
 
     println!("🔍 Testing protocol parameter types...");
 
-    let _ = engine
+    engine
         .register_protocols_and_structs(&program)
         .expect("Phase 2 should succeed");
     engine

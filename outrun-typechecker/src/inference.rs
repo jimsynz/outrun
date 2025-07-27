@@ -132,6 +132,12 @@ pub struct FunctionSignatureAnalyzer {
     current_analysis: SignatureAnalysis,
 }
 
+impl Default for FunctionSignatureAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FunctionSignatureAnalyzer {
     /// Create a new signature analyzer
     pub fn new() -> Self {
@@ -2698,7 +2704,7 @@ impl TypeInferenceEngine {
         }
         
         Ok((
-            literals.get(0).cloned().flatten(),
+            literals.first().cloned().flatten(),
             literals.get(1).cloned().flatten(),
         ))
     }
@@ -3283,11 +3289,11 @@ impl TypeInferenceEngine {
     /// Parse argument position from type position path (e.g., ["arg_0"] -> Some(0))
     fn parse_argument_position(&self, path: &[String]) -> Option<usize> {
         if let Some(first_segment) = path.first() {
-            if first_segment.starts_with("arg_") {
-                first_segment[4..].parse().ok()
-            } else if first_segment.starts_with("param_") {
+            if let Some(stripped) = first_segment.strip_prefix("arg_") {
+                stripped.parse().ok()
+            } else if let Some(stripped) = first_segment.strip_prefix("param_") {
                 // Legacy format for backward compatibility
-                first_segment[6..].parse().ok()
+                stripped.parse().ok()
             } else {
                 None
             }
@@ -4195,7 +4201,7 @@ impl TypeInferenceEngine {
             .enumerate()
         {
             // For each parameter-argument pair, extract type parameter constraints
-            let param_constraints = self.extract_type_parameter_constraints(
+            let param_constraints = Self::extract_type_parameter_constraints(
                 param_type,
                 arg_type,
                 &mut type_param_mappings,
@@ -4210,7 +4216,7 @@ impl TypeInferenceEngine {
             // For each occurrence of this type parameter in the function signature,
             // create a constraint that it must equal the inferred type
             for (param_index, (_param_name, param_type)) in function_info.parameters.iter().enumerate() {
-                let param_constraints = self.generate_type_parameter_equality_constraints(
+                let param_constraints = Self::generate_type_parameter_equality_constraints(
                     param_type,
                     type_param,
                     inferred_type,
@@ -4220,7 +4226,7 @@ impl TypeInferenceEngine {
             }
             
             // Also constrain the return type if it contains this type parameter
-            let return_constraints = self.generate_type_parameter_equality_constraints(
+            let return_constraints = Self::generate_type_parameter_equality_constraints(
                 &function_info.return_type,
                 type_param,
                 inferred_type,
@@ -4235,11 +4241,10 @@ impl TypeInferenceEngine {
     /// Extract type parameter constraints from parameter-argument type pairing
     #[allow(clippy::result_large_err)]
     fn extract_type_parameter_constraints(
-        &self,
         param_type: &Type,
         arg_type: &Type,
         type_param_mappings: &mut HashMap<String, Type>,
-        param_index: usize,
+        _param_index: usize,
         generic_parameters: &[String],
     ) -> Result<Vec<Constraint>, TypecheckError> {
         let mut constraints = Vec::new();
@@ -4274,11 +4279,11 @@ impl TypeInferenceEngine {
                             } else {
                                 // Recursively process generic arguments
                                 for (param_arg, arg_arg) in args.iter().zip(arg_args.iter()) {
-                                    let nested_constraints = self.extract_type_parameter_constraints(
+                                    let nested_constraints = Self::extract_type_parameter_constraints(
                                         param_arg,
                                         arg_arg,
                                         type_param_mappings,
-                                        param_index,
+                                        _param_index,
                                         generic_parameters,
                                     )?;
                                     constraints.extend(nested_constraints);
@@ -4312,7 +4317,6 @@ impl TypeInferenceEngine {
     /// Generate equality constraints for all occurrences of a type parameter
     #[allow(clippy::result_large_err)]
     fn generate_type_parameter_equality_constraints(
-        &self,
         typ: &Type,
         type_param: &str,
         inferred_type: &Type,
@@ -4332,7 +4336,7 @@ impl TypeInferenceEngine {
                 } else {
                     // Recursively check generic arguments
                     for arg in args {
-                        let nested_constraints = self.generate_type_parameter_equality_constraints(
+                        let nested_constraints = Self::generate_type_parameter_equality_constraints(
                             arg,
                             type_param,
                             inferred_type,
@@ -4367,18 +4371,17 @@ impl TypeInferenceEngine {
             .iter()
             .zip(inferred_arguments.iter())
         {
-            self.collect_type_parameter_substitutions(param_type, arg_type, &mut substitutions, &function_info.generic_parameters)?;
+            Self::collect_type_parameter_substitutions(param_type, arg_type, &mut substitutions, &function_info.generic_parameters)?;
         }
         
         
         // Apply substitutions to return type
-        self.substitute_type_parameters(return_type, &substitutions)
+        Self::substitute_type_parameters(return_type, &substitutions)
     }
     
     /// Collect type parameter substitutions from parameter-argument type matching
     #[allow(clippy::result_large_err)]
     fn collect_type_parameter_substitutions(
-        &self,
         param_type: &Type,
         arg_type: &Type,
         substitutions: &mut HashMap<String, Type>,
@@ -4396,7 +4399,7 @@ impl TypeInferenceEngine {
                         if id.name() == arg_id.name() {
                             // Recursively match type arguments
                             for (param_arg, arg_arg) in args.iter().zip(arg_args.iter()) {
-                                self.collect_type_parameter_substitutions(param_arg, arg_arg, substitutions, generic_parameters)?;
+                                Self::collect_type_parameter_substitutions(param_arg, arg_arg, substitutions, generic_parameters)?;
                             }
                         }
                         // If base types don't match, we can't extract substitutions
@@ -4413,7 +4416,6 @@ impl TypeInferenceEngine {
     /// Apply type parameter substitutions to a type
     #[allow(clippy::result_large_err)]
     fn substitute_type_parameters(
-        &self,
         typ: &Type,
         substitutions: &HashMap<String, Type>,
     ) -> Result<Type, TypecheckError> {
@@ -4426,7 +4428,7 @@ impl TypeInferenceEngine {
                     // Recursively substitute in generic arguments
                     let mut substituted_args = Vec::new();
                     for arg in args {
-                        substituted_args.push(self.substitute_type_parameters(arg, substitutions)?);
+                        substituted_args.push(Self::substitute_type_parameters(arg, substitutions)?);
                     }
                     Ok(Type::Concrete {
                         id: id.clone(),
@@ -5326,6 +5328,14 @@ impl TypeInferenceEngine {
         ty: Type,
         substitution: &HashMap<String, Type>,
     ) -> Result<Type, TypecheckError> {
+        Self::apply_substitution_static(ty, substitution)
+    }
+    
+    /// Static helper for applying generic substitution to a type
+    fn apply_substitution_static(
+        ty: Type,
+        substitution: &HashMap<String, Type>,
+    ) -> Result<Type, TypecheckError> {
         match ty {
             Type::Concrete { id, args, span } => {
                 // If this is a generic parameter, substitute it
@@ -5335,7 +5345,7 @@ impl TypeInferenceEngine {
                     // Apply substitution to generic arguments
                     let substituted_args: Result<Vec<Type>, TypecheckError> = args
                         .into_iter()
-                        .map(|arg| self.apply_generic_substitution_to_type(arg, substitution))
+                        .map(|arg| Self::apply_substitution_static(arg, substitution))
                         .collect();
 
                     Ok(Type::Concrete {
@@ -5349,7 +5359,7 @@ impl TypeInferenceEngine {
                 // Apply substitution to protocol arguments
                 let substituted_args: Result<Vec<Type>, TypecheckError> = args
                     .into_iter()
-                    .map(|arg| self.apply_generic_substitution_to_type(arg, substitution))
+                    .map(|arg| Self::apply_substitution_static(arg, substitution))
                     .collect();
 
                 Ok(Type::Protocol {

@@ -63,7 +63,6 @@ fn test_phase3_registration_detailed_tracking() {
     ];
 
     for (file_path, program) in &parsed_programs {
-        let file_name = file_path.split('/').last().unwrap_or(file_path);
         let is_problematic = problematic_files.iter().any(|pf| file_path.ends_with(pf));
 
         if is_problematic {

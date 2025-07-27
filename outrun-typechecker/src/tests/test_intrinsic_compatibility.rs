@@ -8,7 +8,6 @@ mod intrinsic_compatibility_tests {
 
     #[test]
     fn test_self_type_resolution() {
-        let engine = TypeInferenceEngine::new();
 
         // Create a SelfType with Implementation context like in the error
         let self_type = Type::SelfType {

@@ -184,8 +184,8 @@ impl VariableEnvironment {
     /// Update an existing variable (searches all scopes)
     fn update(&mut self, name: String, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(&name) {
-                scope.insert(name, value);
+            if let std::collections::hash_map::Entry::Occupied(mut entry) = scope.entry(name.clone()) {
+                entry.insert(value);
                 return;
             }
         }

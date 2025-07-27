@@ -215,7 +215,7 @@ fn format_list(list: &List) -> String {
 }
 
 /// Format a map for display
-fn format_map(entries: &Vec<(Value, Value)>) -> String {
+fn format_map(entries: &[(Value, Value)]) -> String {
     let formatted_entries: Vec<String> = entries
         .iter()
         .map(|(k, v)| format!("{}: {}", k.display(), v.display()))

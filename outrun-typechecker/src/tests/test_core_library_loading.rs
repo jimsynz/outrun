@@ -131,7 +131,7 @@ mod core_library_loading_tests {
                     // Check if it's the ConflictingImplementation error we were trying to fix
                     match &e {
                         crate::error::CompilerError::Typecheck(typecheck_err) => {
-                            match typecheck_err {
+                            match typecheck_err.as_ref() {
                                 crate::error::TypecheckError::ImplementationError(impl_err) => {
                                     match impl_err {
                                         crate::error::ImplementationError::ConflictingImplementation { protocol_name, type_name, .. } => {

@@ -153,9 +153,9 @@ impl CompilationResult {
             
             Ok(core_result)
         } else {
-            Err(CompilerError::Typecheck(
+            Err(CompilerError::Typecheck(Box::new(
                 crate::error::TypecheckError::CoreLibraryError(
-                    "Could not load core library for pre-compilation".to_string()
+                    "Could not load core library for pre-compilation".to_string())
                 )
             ))
         }
@@ -840,12 +840,13 @@ protocol Display {
         println!("   Traditional approach: {:?}", traditional_time);
         println!("   Optimized approach:   {:?}", optimized_time);
         
+        // Assert both approaches work (implicit - if we got here they succeeded)
+        assert!(traditional_time.as_nanos() > 0, "Traditional approach should take some time");
+        assert!(optimized_time.as_nanos() > 0, "Optimized approach should take some time");
+        
         // Note: The optimized approach may not always be faster in this simple test
         // because the core library compilation is included in the timing.
         // In a real REPL, the core library would be pre-compiled once at startup.
-        
-        // The test passes if both approaches work - performance benefit is seen in real usage
-        assert!(true, "Both compilation approaches should work");
     }
 
     #[test]
