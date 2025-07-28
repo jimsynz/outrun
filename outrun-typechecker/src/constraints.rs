@@ -6,7 +6,71 @@
 use crate::error::ConstraintError;
 use crate::registry::ProtocolRegistry;
 use crate::types::{Constraint, ProtocolId, SelfBindingContext, Substitution, Type, TypeVarId};
+use outrun_parser::Span;
 use std::collections::HashMap;
+
+/// Compiler warning system for type complexity and recursive patterns
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompilerWarning {
+    /// Warning about recursive protocol implementation pattern
+    RecursiveProtocolImplementation {
+        /// Location of the implementation that creates recursion
+        implementation_span: Option<Span>,
+        /// Protocol name involved in recursion
+        protocol_name: String,
+        /// Type implementing the protocol
+        implementing_type: String,
+        /// Explanation of the recursive pattern
+        explanation: String,
+        /// Impact description
+        impact: String,
+        /// Suggested improvements
+        suggestions: Vec<String>,
+    },
+    /// Warning about high complexity dispatch with many concrete combinations
+    HighConcreteCombinationCount {
+        /// Location of the call site generating many combinations
+        call_site: Option<Span>,
+        /// Number of concrete combinations generated
+        combination_count: usize,
+        /// Sample of the generated combinations (first few)
+        sample_combinations: Vec<Type>,
+        /// Explanation of why this generates many combinations
+        explanation: String,
+        /// Suggested improvements
+        suggestions: Vec<String>,
+    },
+    /// Warning about complex generic constraints
+    ComplexGenericConstraints {
+        /// Implementation that has complex constraints
+        implementation: String,
+        /// Number of concrete combinations this generates
+        concrete_combinations: usize,
+        /// Sample combinations
+        sample_combinations: Vec<Type>,
+        /// Explanation of complexity
+        explanation: String,
+        /// Suggested improvements
+        suggestions: Vec<String>,
+    },
+}
+
+/// Information about a detected recursive pattern in protocol implementations
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecursivePatternInfo {
+    /// Unique identifier for this pattern
+    pub pattern_key: String,
+    /// Type implementing the protocol (e.g., Option<T>)
+    pub implementing_type: Type,
+    /// Protocol being implemented (e.g., Empty)
+    pub protocol: ProtocolId,
+    /// Detected recursion depth (None = unbounded)
+    pub recursion_depth: Option<usize>,
+    /// Whether warning has been emitted for this pattern
+    pub warning_emitted: bool,
+    /// Source location of the implementation
+    pub implementation_span: Option<Span>,
+}
 
 /// Constraint solver implementing logical constraint satisfaction
 #[derive(Debug)]
@@ -15,6 +79,10 @@ pub struct ConstraintSolver {
     protocol_registry: ProtocolRegistry,
     /// Cache of solved constraint results
     solution_cache: HashMap<String, bool>,
+    /// Detected recursive patterns in protocol implementations
+    recursive_patterns: HashMap<String, RecursivePatternInfo>,
+    /// Collected warnings during constraint solving
+    warnings: Vec<CompilerWarning>,
 }
 
 impl ConstraintSolver {
@@ -22,6 +90,8 @@ impl ConstraintSolver {
         Self {
             protocol_registry: ProtocolRegistry::new(),
             solution_cache: HashMap::new(),
+            recursive_patterns: HashMap::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -30,6 +100,8 @@ impl ConstraintSolver {
         Self {
             protocol_registry: registry,
             solution_cache: HashMap::new(),
+            recursive_patterns: HashMap::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -41,6 +113,21 @@ impl ConstraintSolver {
     /// Get immutable access to protocol registry
     pub fn protocol_registry(&self) -> &ProtocolRegistry {
         &self.protocol_registry
+    }
+
+    /// Get all collected warnings
+    pub fn warnings(&self) -> &[CompilerWarning] {
+        &self.warnings
+    }
+
+    /// Take all warnings (consuming them)
+    pub fn take_warnings(&mut self) -> Vec<CompilerWarning> {
+        std::mem::take(&mut self.warnings)
+    }
+
+    /// Get recursive patterns detected
+    pub fn recursive_patterns(&self) -> &HashMap<String, RecursivePatternInfo> {
+        &self.recursive_patterns
     }
 
     /// Solve a set of constraints with a given substitution
@@ -460,6 +547,142 @@ impl ConstraintSolver {
     /// Clear the solution cache (useful when implementation context changes)
     pub fn clear_cache(&mut self) {
         self.solution_cache.clear();
+    }
+
+    /// Analyze protocol implementations to detect recursive patterns
+    /// Should be called after all protocol implementations are registered
+    pub fn analyze_recursive_type_patterns(&mut self) {
+        let mut recursive_patterns = HashMap::new();
+        let mut patterns_to_warn = Vec::new();
+        
+        // First pass: collect all recursive patterns (immutable borrow)
+        for impl_info in self.protocol_registry.all_implementations() {
+            if let Some(recursive_info) = self.detect_recursive_pattern(&impl_info) {
+                recursive_patterns.insert(recursive_info.pattern_key.clone(), recursive_info.clone());
+                patterns_to_warn.push(recursive_info);
+            }
+        }
+        
+        // Second pass: emit warnings (mutable borrow)
+        for pattern in patterns_to_warn {
+            self.emit_recursive_implementation_warning(&pattern);
+        }
+        
+        self.recursive_patterns = recursive_patterns;
+    }
+
+    /// Detect if an implementation creates a recursive pattern
+    /// Example: impl Empty for Option<T> when T: Empty
+    /// Pattern: Option<T> implements Empty, constraint requires T: Empty
+    /// This creates: Option<X> -> Option<Option<X>> -> Option<Option<Option<X>>> -> ...
+    fn detect_recursive_pattern(&self, impl_info: &crate::registry::ImplementationInfo) -> Option<RecursivePatternInfo> {
+        // We need to check if this implementation has constraints that could create recursion
+        // Since we don't have direct access to constraints in ImplementationInfo,
+        // we'll need to infer recursion from the type structure
+        
+        // For now, detect simple cases where a generic type implements a protocol
+        // and the same generic type could appear in constraints
+        
+        // Check if implementing type is generic and could recurse
+        if !impl_info.implementing_args.is_empty() {
+            // This is a generic implementation like Option<T>
+            // Check if the protocol could be implemented by the same generic pattern
+            
+            // Simple heuristic: if we have Option<T> implementing Protocol,
+            // and Protocol could theoretically be implemented by Option<U>,
+            // then this could create recursion
+            
+            let pattern_key = format!("{}:{}", impl_info.protocol_id.0, impl_info.implementing_type.name());
+            
+            // Check if this protocol has other implementations that could chain
+            let mut could_recurse = false;
+            for other_impl in self.protocol_registry.all_implementations() {
+                if other_impl.protocol_id == impl_info.protocol_id && 
+                   other_impl.implementing_type.name() != impl_info.implementing_type.name() {
+                    // Different type implementing same protocol - potential for chaining
+                    could_recurse = true;
+                    break;
+                }
+            }
+            
+            if could_recurse {
+                return Some(RecursivePatternInfo {
+                    pattern_key,
+                    implementing_type: Type::Concrete {
+                        id: impl_info.implementing_type.clone(),
+                        args: impl_info.implementing_args.clone(),
+                        span: impl_info.span,
+                    },
+                    protocol: impl_info.protocol_id.clone(),
+                    recursion_depth: None, // Will be calculated during resolution
+                    warning_emitted: false,
+                    implementation_span: impl_info.span,
+                });
+            }
+        }
+        
+        None
+    }
+
+    /// Generate and store a warning about recursive implementation patterns
+    fn emit_recursive_implementation_warning(&mut self, pattern: &RecursivePatternInfo) {
+        let type_name = self.get_type_name(&pattern.implementing_type);
+        let explanation = format!(
+            "Implementation creates recursive pattern: {} -> {} -> {} -> ...",
+            type_name,
+            self.expand_recursive_pattern(pattern, 1),
+            self.expand_recursive_pattern(pattern, 2)
+        );
+        
+        let warning = CompilerWarning::RecursiveProtocolImplementation {
+            implementation_span: pattern.implementation_span,
+            protocol_name: pattern.protocol.0.clone(),
+            implementing_type: type_name,
+            explanation,
+            impact: "This may generate many concrete type combinations during clause generation".to_string(),
+            suggestions: vec![
+                "Consider adding explicit depth bounds in constraints".to_string(),
+                "Consider using sealed trait pattern to limit recursion".to_string(),
+                "Monitor compilation warnings for excessive clause generation".to_string(),
+            ],
+        };
+        
+        self.warnings.push(warning);
+    }
+
+    /// Generate an example of how the recursive pattern expands at given depth
+    fn expand_recursive_pattern(&self, pattern: &RecursivePatternInfo, depth: usize) -> String {
+        // Simple expansion for demonstration
+        // In real implementation, this would be more sophisticated
+        let base_name = self.get_type_name(&pattern.implementing_type);
+        
+        let mut result = base_name.clone();
+        for _ in 0..depth {
+            result = format!("{}[{}]", base_name, result);
+        }
+        result
+    }
+
+    /// Extract a name from a Type for display purposes
+    fn get_type_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Concrete { id, .. } => id.name().to_string(),
+            Type::Protocol { id, .. } => id.0.clone(),
+            Type::Variable { name: Some(name), .. } => name.clone(),
+            Type::Variable { var_id, .. } => format!("T{}", var_id.0),
+            Type::SelfType { .. } => "Self".to_string(),
+            Type::Function { .. } => "Function".to_string(),
+        }
+    }
+
+    /// Add a warning to the collection
+    pub fn add_warning(&mut self, warning: CompilerWarning) {
+        self.warnings.push(warning);
+    }
+
+    /// Get all compiler warnings collected during constraint solving
+    pub fn get_warnings(&self) -> &[CompilerWarning] {
+        &self.warnings
     }
 }
 

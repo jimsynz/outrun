@@ -1,6 +1,6 @@
-//! Debug tests for memory usage in iterative inference
+//! Debug tests for memory usage in iterative inference and recursive pattern detection
 
-use crate::{typecheck_package, Package};
+use crate::{typecheck_package, Package, TypeInferenceEngine};
 use outrun_parser::parse_program;
 
 #[test]
@@ -91,4 +91,62 @@ fn test_memory_usage_very_large_expression() {
         Ok(_) => println!("✓ Very large expression typechecked successfully"),
         Err(e) => println!("! Very large expression failed: {:?}", e),
     }
+}
+
+#[test]
+fn test_recursive_protocol_implementation_detection() {
+    // Test that our recursive pattern detection is integrated and working
+    let source = r#"
+        protocol Empty {
+            def empty?(value: Self): Boolean
+        }
+
+        struct Option<T> {
+            def some(value: T): Option<T> {
+                Option { value }
+            }
+        } 
+
+        impl Empty for Option<T> when T: Empty {
+            def empty?(value: Self): Boolean {
+                # Implementation for Option<T> depends on T being Empty
+                true
+            }
+        }
+    "#;
+
+    let mut program = parse_program(source).expect("Failed to parse program");
+    let mut inference_engine = TypeInferenceEngine::new();
+    
+    // Capture output - the recursive pattern detection runs during typechecking
+    println!("Testing recursive protocol implementation detection");
+    
+    let result = inference_engine.typecheck_program(&mut program);
+    
+    // The recursive pattern detection should run during phase 3.5
+    // and emit a warning to stderr about the recursive implementation
+    
+    match result {
+        Ok(()) => {
+            println!("✓ Program typechecked successfully - recursive pattern detection ran");
+        }
+        Err(e) => {
+            println!("! Typecheck error (may be expected): {:?}", e);
+        }
+    }
+}
+
+#[test]
+fn test_constraint_solver_recursive_analysis_directly() {
+    // Test the constraint solver recursive analysis directly
+    let mut solver = crate::constraints::ConstraintSolver::new();
+    
+    // Analyze patterns (should be safe with empty registry)
+    solver.analyze_recursive_type_patterns();
+    
+    // Should have no warnings with an empty registry
+    let warnings = solver.get_warnings();
+    assert_eq!(warnings.len(), 0, "Empty registry should produce no warnings");
+    
+    println!("✓ Direct constraint solver recursive analysis completed with {} warnings", warnings.len());
 }

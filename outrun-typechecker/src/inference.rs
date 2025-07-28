@@ -515,6 +515,53 @@ impl TypeInferenceEngine {
         self.type_registry.clone()
     }
 
+    /// Analyze recursive type patterns and emit compiler warnings
+    #[allow(clippy::result_large_err)]
+    fn analyze_recursive_patterns_and_emit_warnings(&mut self) -> Result<(), TypecheckError> {
+        // Create a constraint solver to analyze the protocol registry
+        let mut constraint_solver = crate::constraints::ConstraintSolver::with_registry(
+            self.type_registry.protocol_registry().clone()
+        );
+
+        // Analyze recursive patterns in protocol implementations
+        constraint_solver.analyze_recursive_type_patterns();
+
+        // Collect any warnings and add them to the error context
+        let warnings = constraint_solver.get_warnings();
+        for warning in warnings {
+            // For now, we'll print warnings to stderr
+            // In the future, this could be integrated with a proper compiler warning system
+            match warning {
+                crate::constraints::CompilerWarning::RecursiveProtocolImplementation {
+                    protocol_name,
+                    implementing_type,
+                    explanation,
+                    impact,
+                    suggestions,
+                    ..
+                } => {
+                    eprintln!("⚠️  Recursive protocol implementation detected:");
+                    eprintln!("   Protocol: {}", protocol_name);
+                    eprintln!("   Type: {}", implementing_type);
+                    eprintln!("   {}", explanation);
+                    eprintln!("   Impact: {}", impact);
+                    for suggestion in suggestions {
+                        eprintln!("   Suggestion: {}", suggestion);
+                    }
+                    eprintln!();
+                }
+                crate::constraints::CompilerWarning::HighConcreteCombinationCount { .. } => {
+                    // Handle other warning types as they're implemented
+                }
+                crate::constraints::CompilerWarning::ComplexGenericConstraints { .. } => {
+                    // Handle other warning types as they're implemented
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get the universal dispatch registry containing all registered clauses
     pub fn universal_dispatch_registry(&self) -> &crate::universal_dispatch::UniversalDispatchRegistry {
         &self.universal_dispatch_registry
@@ -1735,6 +1782,9 @@ impl TypeInferenceEngine {
         for item in &program.items {
             self.register_item_implementations(item)?;
         }
+
+        // Phase 3.5: Analyze recursive type patterns after all implementations are registered
+        self.analyze_recursive_patterns_and_emit_warnings()?;
 
         Ok(())
     }
