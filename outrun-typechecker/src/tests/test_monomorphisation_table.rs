@@ -115,7 +115,7 @@ fn test_add_and_lookup_instantiation() {
     let monomorphised_function = MonomorphisationTable::create_monomorphised_function(
         &generic_function,
         &type_substitutions,
-    );
+    ).expect("Monomorphization should succeed");
     
     // Verify monomorphised function has concrete types
     assert!(!monomorphised_function.is_generic);
@@ -217,7 +217,7 @@ fn test_multiple_instantiations_same_function() {
                 args: vec![],
                 span: None,
             })]),
-        ),
+        ).expect("Monomorphization should succeed"),
     };
     
     table.add_instantiation(int_entry);
@@ -241,7 +241,7 @@ fn test_multiple_instantiations_same_function() {
                 args: vec![],
                 span: None,
             })]),
-        ),
+        ).expect("Monomorphization should succeed"),
     };
     
     table.add_instantiation(string_entry);
@@ -327,7 +327,7 @@ fn test_type_substitution_in_complex_types() {
     let monomorphised = MonomorphisationTable::create_monomorphised_function(
         &generic_function,
         &substitutions,
-    );
+    ).expect("Monomorphization should succeed");
     
     // Verify parameter substitutions
     assert_eq!(monomorphised.parameters.len(), 2);
@@ -420,7 +420,7 @@ fn test_all_entries_iteration() {
                     args: vec![],
                     span: None,
                 })]),
-            ),
+            ).expect("Monomorphization should succeed"),
         };
         
         table.add_instantiation(entry);

@@ -58,3 +58,4 @@ pub mod test_unified_package_processing;
 pub mod test_unified_type_registry;
 pub mod test_core_library_debug;
 pub mod test_protocol_dispatch_debug;
+pub mod test_protocol_return_types;

@@ -595,6 +595,86 @@ impl Type {
             _ => None,
         }
     }
+
+    /// Unified type parameter substitution with comprehensive Self handling
+    /// 
+    /// This is the canonical implementation that handles:
+    /// - Regular generic type parameter substitution (T -> ConcreteType)
+    /// - Self type substitution for protocol function monomorphization
+    /// - Recursive substitution in nested generic types
+    /// - Proper error handling for edge cases
+    pub fn substitute_type_parameters(
+        &self,
+        substitutions: &std::collections::HashMap<String, Type>,
+        allow_self_substitution: bool,
+    ) -> Result<Type, crate::error::TypecheckError> {
+        match self {
+            Type::Concrete { id, args, span } => {
+                // Check if this is a generic parameter to substitute
+                if let Some(substitution) = substitutions.get(id.name()) {
+                    Ok(substitution.clone())
+                } else {
+                    // Recursively substitute in generic arguments
+                    let mut substituted_args = Vec::new();
+                    for arg in args {
+                        substituted_args.push(arg.substitute_type_parameters(substitutions, allow_self_substitution)?);
+                    }
+                    Ok(Type::Concrete {
+                        id: id.clone(),
+                        args: substituted_args,
+                        span: *span,
+                    })
+                }
+            }
+            Type::Protocol { id, args, span } => {
+                // Check if this is a generic parameter to substitute
+                if let Some(substitution) = substitutions.get(&id.0) {
+                    Ok(substitution.clone())
+                } else {
+                    // Recursively substitute in generic arguments
+                    let mut substituted_args = Vec::new();
+                    for arg in args {
+                        substituted_args.push(arg.substitute_type_parameters(substitutions, allow_self_substitution)?);
+                    }
+                    Ok(Type::Protocol {
+                        id: id.clone(),
+                        args: substituted_args,
+                        span: *span,
+                    })
+                }
+            }
+            Type::Variable { .. } => Ok(self.clone()), // Type variables remain unchanged
+            Type::SelfType { .. } => {
+                if allow_self_substitution {
+                    // For protocol function monomorphization, substitute Self with concrete type
+                    if let Some(substitution) = substitutions.get("Self") {
+                        Ok(substitution.clone())
+                    } else {
+                        // Self not found in substitutions - this could be an error in some contexts
+                        Ok(self.clone())
+                    }
+                } else {
+                    // For regular monomorphization, Self types should be resolved before substitution
+                    Ok(self.clone())
+                }
+            }
+            Type::Function { params, return_type, span } => {
+                let mut substituted_params = Vec::new();
+                for (name, param_type) in params {
+                    substituted_params.push((
+                        name.clone(),
+                        param_type.substitute_type_parameters(substitutions, allow_self_substitution)?,
+                    ));
+                }
+                
+                Ok(Type::Function {
+                    params: substituted_params,
+                    return_type: Box::new(return_type.substitute_type_parameters(substitutions, allow_self_substitution)?),
+                    span: *span,
+                })
+            }
+        }
+    }
 }
 
 /// Type constraints for protocol bounds

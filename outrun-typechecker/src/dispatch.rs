@@ -782,66 +782,57 @@ impl MonomorphisationTable {
     pub fn create_monomorphised_function(
         generic_function: &FunctionInfo,
         type_substitutions: &HashMap<String, Type>,
-    ) -> FunctionInfo {
-        FunctionInfo {
+    ) -> Result<FunctionInfo, crate::error::TypecheckError> {
+        let mut substituted_parameters = Vec::new();
+        for (name, ty) in &generic_function.parameters {
+            substituted_parameters.push((
+                name.clone(),
+                ty.substitute_type_parameters(type_substitutions, false)?,
+            ));
+        }
+        
+        Ok(FunctionInfo {
             defining_scope: generic_function.defining_scope.clone(),
             function_name: generic_function.function_name.clone(),
             visibility: generic_function.visibility,
-            parameters: generic_function.parameters
-                .iter()
-                .map(|(name, ty)| (name.clone(), Self::substitute_type_parameters(ty, type_substitutions)))
-                .collect(),
-            return_type: Self::substitute_type_parameters(&generic_function.return_type, type_substitutions),
+            parameters: substituted_parameters,
+            return_type: generic_function.return_type.substitute_type_parameters(type_substitutions, false)?,
             body: generic_function.body.clone(),
             span: generic_function.span,
             generic_parameters: Vec::new(), // Monomorphised functions are not generic
             is_generic: false,
+        })
+    }
+
+    /// Create monomorphised protocol function info by substituting Self with concrete type
+    pub fn create_monomorphised_protocol_function(
+        protocol_function: &FunctionInfo,
+        self_type: &Type,
+    ) -> Result<FunctionInfo, crate::error::TypecheckError> {
+        let mut substitutions = HashMap::new();
+        substitutions.insert("Self".to_string(), self_type.clone());
+        
+        let mut substituted_parameters = Vec::new();
+        for (name, ty) in &protocol_function.parameters {
+            substituted_parameters.push((
+                name.clone(),
+                ty.substitute_type_parameters(&substitutions, true)?,
+            ));
         }
+        
+        Ok(FunctionInfo {
+            defining_scope: protocol_function.defining_scope.clone(),
+            function_name: protocol_function.function_name.clone(),
+            visibility: protocol_function.visibility,
+            parameters: substituted_parameters,
+            return_type: protocol_function.return_type.substitute_type_parameters(&substitutions, true)?,
+            body: protocol_function.body.clone(),
+            span: protocol_function.span,
+            generic_parameters: Vec::new(), // Monomorphised functions are not generic
+            is_generic: false,
+        })
     }
     
-    /// Substitute generic type parameters in a type with concrete types
-    fn substitute_type_parameters(
-        ty: &Type,
-        substitutions: &HashMap<String, Type>,
-    ) -> Type {
-        match ty {
-            Type::Concrete { id, args, span } => {
-                // Check if this is a generic parameter
-                if let Some(substitution) = substitutions.get(id.name()) {
-                    substitution.clone()
-                } else {
-                    // Recursively substitute in generic arguments
-                    Type::Concrete {
-                        id: id.clone(),
-                        args: args.iter().map(|arg| Self::substitute_type_parameters(arg, substitutions)).collect(),
-                        span: *span,
-                    }
-                }
-            }
-            Type::Protocol { id, args, span } => {
-                // Check if this is a generic parameter
-                if let Some(substitution) = substitutions.get(&id.0) {
-                    substitution.clone()
-                } else {
-                    // Recursively substitute in generic arguments
-                    Type::Protocol {
-                        id: id.clone(),
-                        args: args.iter().map(|arg| Self::substitute_type_parameters(arg, substitutions)).collect(),
-                        span: *span,
-                    }
-                }
-            }
-            Type::Variable { .. } => ty.clone(), // Type variables remain unchanged
-            Type::SelfType { .. } => ty.clone(), // Self types should be resolved before monomorphisation
-            Type::Function { params, return_type, span } => {
-                Type::Function {
-                    params: params.iter().map(|(name, param_type)| (name.clone(), Self::substitute_type_parameters(param_type, substitutions))).collect(),
-                    return_type: Box::new(Self::substitute_type_parameters(return_type, substitutions)),
-                    span: *span,
-                }
-            }
-        }
-    }
 }
 
 impl Default for MonomorphisationTable {

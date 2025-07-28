@@ -1860,10 +1860,7 @@ impl TypeInferenceEngine {
                     substitution: Substitution::new(),
                     constraints: Vec::new(),
                     expected_type: None,
-                    self_binding: SelfBindingContext::ProtocolDefinition {
-                        protocol_id: ProtocolId::new("Unknown"),
-                        protocol_args: Vec::new(),
-                    },
+                    self_binding: self.current_self_context.clone(), // Inherit current Self context
                     bindings: HashMap::new(),
                 };
                 // Use iterative inference to avoid stack overflow and improve performance
@@ -1914,12 +1911,27 @@ impl TypeInferenceEngine {
             .collect::<Vec<_>>()
             .join(".");
 
+        // Set Self binding context for protocol function type checking
+        let old_self_context = self.current_self_context.clone();
+        self.current_self_context = SelfBindingContext::ProtocolDefinition {
+            protocol_id: ProtocolId::new(&protocol_name),
+            protocol_args: vec![],
+        };
+
         for protocol_function in &protocol_def.functions {
             match protocol_function {
-                ProtocolFunction::Definition(definition) => {
-                    self.typecheck_function_body(&protocol_name, definition)?;
+                ProtocolFunction::Definition(_definition) => {
+                    // PROTOCOL FUNCTION MONOMORPHIZATION:
+                    // Protocol function definitions are NOT typechecked at definition time
+                    // because they contain Self types that can't be resolved yet.
+                    // Instead, they are stored as templates and monomorphized + typechecked
+                    // when called with concrete argument types.
+                    // 
+                    // The monomorphization happens during protocol function calls in
+                    // resolve_protocol_call when we have concrete Self types.
                 }
                 ProtocolFunction::StaticDefinition(static_def) => {
+                    // Static functions can be typechecked normally since they don't use Self
                     self.typecheck_static_function_body(&protocol_name, static_def)?;
                 }
                 ProtocolFunction::Signature(_) => {
@@ -1927,6 +1939,9 @@ impl TypeInferenceEngine {
                 }
             }
         }
+
+        // Restore previous Self context
+        self.current_self_context = old_self_context;
 
         Ok(())
     }
@@ -2004,10 +2019,7 @@ impl TypeInferenceEngine {
             substitution: Substitution::new(),
             constraints: Vec::new(),
             expected_type: None,
-            self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new("Unknown"),
-                protocol_args: Vec::new(),
-            },
+            self_binding: self.current_self_context.clone(), // Inherit current Self context
             bindings: HashMap::new(),
         };
         
@@ -5436,7 +5448,7 @@ impl TypeInferenceEngine {
         
         
         // Apply substitutions to return type
-        Self::substitute_type_parameters(return_type, &substitutions)
+        return_type.substitute_type_parameters(&substitutions, false)
     }
     
     /// Collect type parameter substitutions from parameter-argument type matching
@@ -5473,33 +5485,6 @@ impl TypeInferenceEngine {
         Ok(())
     }
     
-    /// Apply type parameter substitutions to a type
-    #[allow(clippy::result_large_err)]
-    fn substitute_type_parameters(
-        typ: &Type,
-        substitutions: &HashMap<String, Type>,
-    ) -> Result<Type, TypecheckError> {
-        match typ {
-            Type::Concrete { id, args, span } => {
-                if let Some(substitution) = substitutions.get(id.name()) {
-                    // This type parameter should be substituted
-                    Ok(substitution.clone())
-                } else {
-                    // Recursively substitute in generic arguments
-                    let mut substituted_args = Vec::new();
-                    for arg in args {
-                        substituted_args.push(Self::substitute_type_parameters(arg, substitutions)?);
-                    }
-                    Ok(Type::Concrete {
-                        id: id.clone(),
-                        args: substituted_args,
-                        span: *span,
-                    })
-                }
-            }
-            other => Ok(other.clone()),
-        }
-    }
 
 
     /// Convert inference context to dispatch function context

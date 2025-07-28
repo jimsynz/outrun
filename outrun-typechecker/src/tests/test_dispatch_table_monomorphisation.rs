@@ -67,7 +67,7 @@ fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationT
             monomorphised_function: MonomorphisationTable::create_monomorphised_function(
                 &generic_function,
                 &HashMap::from([("T".to_string(), concrete_type)]),
-            ),
+            ).expect("Monomorphization should succeed"),
         };
         
         mono_table.add_instantiation(mono_entry);
@@ -291,7 +291,7 @@ fn test_complex_generic_types_in_dispatch_table() {
         monomorphised_function: MonomorphisationTable::create_monomorphised_function(
             &generic_function,
             &substitutions,
-        ),
+        ).expect("Monomorphization should succeed"),
     };
     
     mono_table.add_instantiation(mono_entry);

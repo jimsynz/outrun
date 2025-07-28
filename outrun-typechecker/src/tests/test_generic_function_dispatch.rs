@@ -122,7 +122,7 @@ fn create_test_monomorphisation_table() -> MonomorphisationTable {
         monomorphised_function: MonomorphisationTable::create_monomorphised_function(
             &generic_function,
             &HashMap::from([("T".to_string(), int_type)]),
-        ),
+        ).expect("Monomorphization should succeed"),
     };
     
     table.add_instantiation(int_entry);
@@ -143,7 +143,7 @@ fn create_test_monomorphisation_table() -> MonomorphisationTable {
         monomorphised_function: MonomorphisationTable::create_monomorphised_function(
             &generic_function,
             &HashMap::from([("T".to_string(), string_type)]),
-        ),
+        ).expect("Monomorphization should succeed"),
     };
     
     table.add_instantiation(string_entry);
