@@ -407,16 +407,22 @@ impl<'a> FunctionDispatcher<'a> {
                 }
             },
             Type::Protocol { id: protocol_id, args: _, .. } => {
-                // Protocol type like Option<Integer> - this is valid for protocol calls
-                // The protocol_name should match the protocol_id
+                // Protocol type like Integer - check if it can call the target protocol
+                let target_protocol_id = ProtocolId::new(protocol_name);
+                
+                // Direct match: the protocol itself (e.g., Integer calling Integer.method)
                 if protocol_id.0 == protocol_name {
-                    // This is a valid protocol call - look for implementations
-                    // For now, return an abstract protocol result
+                    self.resolve_static_call(protocol_name, function_name, span)
+                }
+                // Protocol requirement match: Integer requires BinarySubtraction, so Integer can call BinarySubtraction.method
+                else if self.protocol_registry.protocol_requires(&protocol_id, &target_protocol_id) {
+                    // The protocol type satisfies the requirement for the target protocol
+                    // Look for concrete implementations of the protocol type that implement the target protocol
                     self.resolve_static_call(protocol_name, function_name, span)
                 } else {
                     Err(DispatchError::InvalidTarget {
                         protocol_name: protocol_name.to_string(),
-                        target_description: format!("Protocol mismatch: expected {}, got {}", protocol_name, protocol_id.0),
+                        target_description: format!("Protocol mismatch: {} does not require {}", protocol_id.0, protocol_name),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }

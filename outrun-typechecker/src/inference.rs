@@ -723,6 +723,53 @@ impl TypeInferenceEngine {
         Ok(())
     }
 
+    /// Extract protocol requirements from constraint expressions (e.g., "when Self: BinaryAddition && Self: BinarySubtraction")
+    fn extract_protocol_requirements(
+        &self,
+        constraint_expr: &outrun_parser::ConstraintExpression,
+    ) -> Result<HashSet<ProtocolId>, TypecheckError> {
+        let mut required_protocols = HashSet::new();
+        self.collect_protocol_requirements_recursive(constraint_expr, &mut required_protocols)?;
+        Ok(required_protocols)
+    }
+
+    /// Recursively collect protocol requirements from constraint expressions
+    fn collect_protocol_requirements_recursive(
+        &self,
+        constraint_expr: &outrun_parser::ConstraintExpression,
+        required_protocols: &mut HashSet<ProtocolId>,
+    ) -> Result<(), TypecheckError> {
+        use outrun_parser::ConstraintExpression;
+
+        match constraint_expr {
+            ConstraintExpression::And { left, right, .. } => {
+                // Handle "Self: A && Self: B" patterns
+                self.collect_protocol_requirements_recursive(left, required_protocols)?;
+                self.collect_protocol_requirements_recursive(right, required_protocols)?;
+            }
+            ConstraintExpression::Constraint { type_param, protocol_bound, .. } => {
+                // Handle "Self: BinarySubtraction" patterns
+                if type_param.name == "Self" {
+                    // Convert protocol_bound (Vec<TypeIdentifier>) to protocol name
+                    let protocol_name = protocol_bound
+                        .iter()
+                        .map(|segment| segment.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    required_protocols.insert(ProtocolId::new(&protocol_name));
+                }
+                // Note: We only handle Self constraints for protocol requirements
+                // Other type parameter constraints would be handled differently
+            }
+            ConstraintExpression::Parenthesized { expression, .. } => {
+                // Handle parenthesized expressions by recursing
+                self.collect_protocol_requirements_recursive(expression, required_protocols)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Phase 4: Register all functions (standalone + impl block functions)
     pub fn register_functions(&mut self, program: &Program) -> Result<(), TypecheckError> {
         // Register both standalone functions and impl block functions
@@ -969,8 +1016,17 @@ impl TypeInferenceEngine {
         let protocol_id = ProtocolId::new(&protocol_name);
         let module_id = ModuleId::new(&protocol_name); // Protocol name as module
 
-        // TODO: Extract required protocols from constraints/requirements
-        let required_protocols = HashSet::new();
+        // Extract required protocols from constraint expressions  
+        let required_protocols = if let Some(constraints) = &protocol_def.constraints {
+            self.extract_protocol_requirements(constraints)?
+        } else {
+            HashSet::new()
+        };
+
+        // Clone data for dual registration  
+        let required_protocols_clone = required_protocols.clone();
+        let default_implementations_clone = default_implementations.clone();
+        let required_functions_clone = required_functions.clone();
 
         self.protocol_registry_mut().register_protocol_definition(
             protocol_id.clone(),
@@ -982,14 +1038,14 @@ impl TypeInferenceEngine {
         );
 
         // Also register the protocol in the type registry so that convert_type_annotation
-        // can distinguish protocols from concrete types
+        // can distinguish protocols from concrete types - WITH SAME REQUIREMENTS
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry.protocol_registry_mut().register_protocol_definition(
                 protocol_id,
-                HashSet::new(), // Don't duplicate requirement tracking
+                required_protocols_clone, // Include the same requirements for consistency
                 module_id,
-                HashSet::new(), // Don't duplicate default implementation tracking  
-                HashSet::new(), // Don't duplicate function tracking
+                default_implementations_clone, // Include same implementations for consistency  
+                required_functions_clone, // Include same functions for consistency
                 Some(protocol_def.span),
             );
         } else {
@@ -997,10 +1053,10 @@ impl TypeInferenceEngine {
             let mut new_type_registry = (*self.type_registry).clone();
             new_type_registry.protocol_registry_mut().register_protocol_definition(
                 protocol_id,
-                HashSet::new(), // Don't duplicate requirement tracking
+                required_protocols_clone, // Include the same requirements for consistency
                 module_id,
-                HashSet::new(), // Don't duplicate default implementation tracking  
-                HashSet::new(), // Don't duplicate function tracking
+                default_implementations_clone, // Include same implementations for consistency  
+                required_functions_clone, // Include same functions for consistency
                 Some(protocol_def.span),
             );
             self.type_registry = Rc::new(new_type_registry);
