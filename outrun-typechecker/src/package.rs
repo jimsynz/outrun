@@ -4,7 +4,7 @@
 //! manifests and collecting source files according to the package specification.
 
 use crate::error::TypecheckError;
-use outrun_parser::{parse_program, Program};
+use outrun_parser::{parse_program, parse_program_with_source, Program};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -154,7 +154,7 @@ fn collect_and_parse_outrun_files(
                 ))
             })?;
 
-            match parse_program(&content) {
+            match parse_program_with_source(&content, Some(file_path.clone())) {
                 Ok(program) => {
                     programs.push(program);
                 }

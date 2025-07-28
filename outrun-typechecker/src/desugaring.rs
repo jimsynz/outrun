@@ -41,9 +41,12 @@ impl DesugaringEngine {
 
     /// Desugar all operators in a program, transforming them into protocol function calls
     pub fn desugar_program(&mut self, program: &mut Program) -> Result<(), TypecheckError> {
-        for item in &mut program.items {
+        eprintln!("🔧 Starting program desugaring with {} items", program.items.len());
+        for (i, item) in program.items.iter_mut().enumerate() {
+            eprintln!("🔧 Desugaring item {}", i);
             self.desugar_item(item)?;
         }
+        eprintln!("🔧 Program desugaring complete. Total transformations: {}", self.transformations.len());
         Ok(())
     }
 
@@ -58,8 +61,8 @@ impl DesugaringEngine {
                 if let Some(ref mut guard) = func_def.guard {
                     self.desugar_expression(&mut guard.condition)?;
                 }
-                // Note: Function bodies are blocks which will be desugared during type checking
-                // when individual expressions within the block are processed
+                // Desugar expressions in function body
+                self.desugar_block(&mut func_def.body)?;
             }
             ItemKind::LetBinding(let_binding) => {
                 self.desugar_expression(&mut let_binding.expression)?;
@@ -67,14 +70,74 @@ impl DesugaringEngine {
             ItemKind::ConstDefinition(const_def) => {
                 self.desugar_expression(&mut const_def.expression)?;
             }
+            ItemKind::StructDefinition(struct_def) => {
+                // Desugar expressions in struct function bodies
+                for function in &mut struct_def.functions {
+                    if let Some(ref mut guard) = function.guard {
+                        self.desugar_expression(&mut guard.condition)?;
+                    }
+                    self.desugar_block(&mut function.body)?;
+                }
+            }
+            ItemKind::ProtocolDefinition(protocol_def) => {
+                // Desugar expressions in protocol function bodies
+                for protocol_function in &mut protocol_def.functions {
+                    match protocol_function {
+                        outrun_parser::ProtocolFunction::Definition(function_def) => {
+                            if let Some(ref mut guard) = function_def.guard {
+                                self.desugar_expression(&mut guard.condition)?;
+                            }
+                            self.desugar_block(&mut function_def.body)?;
+                        }
+                        outrun_parser::ProtocolFunction::StaticDefinition(static_def) => {
+                            self.desugar_block(&mut static_def.body)?;
+                        }
+                        // Signatures don't have bodies to desugar
+                        outrun_parser::ProtocolFunction::Signature(_) => {}
+                    }
+                }
+            }
+            ItemKind::ImplBlock(impl_block) => {
+                // Desugar expressions in impl block function bodies
+                for function in &mut impl_block.functions {
+                    if let Some(ref mut guard) = function.guard {
+                        self.desugar_expression(&mut guard.condition)?;
+                    }
+                    self.desugar_block(&mut function.body)?;
+                }
+            }
+            ItemKind::MacroDefinition(macro_def) => {
+                // Desugar expressions in macro body
+                self.desugar_block(&mut macro_def.body)?;
+            }
             // Other item types don't contain expressions that need desugaring
             _ => {}
         }
         Ok(())
     }
 
+    /// Desugar all expressions within a block
+    fn desugar_block(&mut self, block: &mut outrun_parser::Block) -> Result<(), TypecheckError> {
+        for statement in &mut block.statements {
+            match &mut statement.kind {
+                outrun_parser::StatementKind::Expression(expr) => {
+                    self.desugar_expression(&mut **expr)?;
+                }
+                outrun_parser::StatementKind::LetBinding(let_binding) => {
+                    // CRITICAL FIX: Desugar expressions in let binding statements
+                    // This was the root cause of the binary operations not being desugared
+                    // in function bodies that contain let bindings
+                    self.desugar_expression(&mut let_binding.expression)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Iteratively desugar all operators in an expression tree to prevent stack overflow
     pub fn desugar_expression(&mut self, expr: &mut Expression) -> Result<(), TypecheckError> {
+        eprintln!("🔍 Starting expression desugaring at span {:?}", expr.span);
+        
         // Use iterative approach to handle deep expression trees
         let mut work_stack: Vec<&mut Expression> = vec![expr];
         let mut transform_stack: Vec<*mut Expression> = Vec::new();
@@ -87,10 +150,14 @@ impl DesugaringEngine {
             // Add child expressions to work stack
             match &mut current_expr.kind {
                 ExpressionKind::BinaryOp(binary_op) => {
+                    eprintln!("🎯 Found binary operation {:?} at span {:?} during traversal", 
+                             binary_op.operator, current_expr.span);
                     work_stack.push(&mut binary_op.left);
                     work_stack.push(&mut binary_op.right);
                 }
                 ExpressionKind::UnaryOp(unary_op) => {
+                    eprintln!("🎯 Found unary operation {:?} at span {:?} during traversal", 
+                             unary_op.operator, current_expr.span);
                     work_stack.push(&mut unary_op.operand);
                 }
                 ExpressionKind::FunctionCall(func_call) => {
@@ -131,9 +198,20 @@ impl DesugaringEngine {
                 }
                 ExpressionKind::IfExpression(if_expr) => {
                     work_stack.push(&mut if_expr.condition);
-                    // if_expr.then_block and else_block are Block types, not Expression
-                    // For now, we don't desugar block expressions
-                    // TODO: Add block expression desugaring when implementing control flow
+                    // Process expressions in then block
+                    for statement in &mut if_expr.then_block.statements {
+                        if let outrun_parser::StatementKind::Expression(expr) = &mut statement.kind {
+                            work_stack.push(&mut **expr);
+                        }
+                    }
+                    // Process expressions in optional else block
+                    if let Some(ref mut else_block) = if_expr.else_block {
+                        for statement in &mut else_block.statements {
+                            if let outrun_parser::StatementKind::Expression(expr) = &mut statement.kind {
+                                work_stack.push(&mut **expr);
+                            }
+                        }
+                    }
                 }
                 ExpressionKind::CaseExpression(case_expr) => {
                     work_stack.push(&mut case_expr.expression);
@@ -141,16 +219,96 @@ impl DesugaringEngine {
                         if let Some(ref mut guard) = clause.guard {
                             work_stack.push(guard);
                         }
-                        // clause.result is a CaseResult enum (Block or Expression)
-                        // For now, we don't desugar case results
-                        // TODO: Add case result desugaring when implementing control flow
+                        // Process expressions in case result bodies
+                        match &mut clause.result {
+                            outrun_parser::CaseResult::Block(block) => {
+                                for statement in &mut block.statements {
+                                    if let outrun_parser::StatementKind::Expression(expr) = &mut statement.kind {
+                                        work_stack.push(&mut **expr);
+                                    }
+                                }
+                            }
+                            outrun_parser::CaseResult::Expression(expr) => {
+                                work_stack.push(&mut **expr);
+                            }
+                        }
                     }
                 }
                 ExpressionKind::Parenthesized(inner_expr) => {
                     work_stack.push(inner_expr);
                 }
-                // Literals and identifiers don't contain nested expressions
-                _ => {}
+                ExpressionKind::FieldAccess(field_access) => {
+                    // Process the object being accessed
+                    work_stack.push(&mut field_access.object);
+                }
+                ExpressionKind::Struct(struct_literal) => {
+                    // Process expressions in struct field values
+                    for field in &mut struct_literal.fields {
+                        match field {
+                            outrun_parser::StructLiteralField::Assignment { value, .. } => {
+                                work_stack.push(&mut **value);
+                            }
+                            outrun_parser::StructLiteralField::Shorthand(_) => {
+                                // Shorthand just references identifiers, no expressions
+                            }
+                            outrun_parser::StructLiteralField::Spread(_) => {
+                                // Spread fields just reference identifiers, no expressions
+                            }
+                        }
+                    }
+                }
+                ExpressionKind::AnonymousFunction(anon_fn) => {
+                    // Process expressions in function clauses
+                    for clause in &mut anon_fn.clauses {
+                        if let Some(ref mut guard) = clause.guard {
+                            work_stack.push(guard);
+                        }
+                        // Process body based on its type
+                        match &mut clause.body {
+                            outrun_parser::AnonymousBody::Expression(expr) => {
+                                work_stack.push(&mut **expr);
+                            }
+                            outrun_parser::AnonymousBody::Block(block) => {
+                                // Process expressions within the block
+                                for statement in &mut block.statements {
+                                    if let outrun_parser::StatementKind::Expression(expr) = &mut statement.kind {
+                                        work_stack.push(&mut **expr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                ExpressionKind::MacroInjection(_) => {
+                    // MacroInjection only contains parameter identifier, no expressions to desugar
+                }
+                ExpressionKind::String(string_literal) => {
+                    // Process expressions in string interpolations
+                    for part in &mut string_literal.parts {
+                        if let outrun_parser::StringPart::Interpolation { expression, .. } = part {
+                            work_stack.push(&mut **expression);
+                        }
+                    }
+                }
+                ExpressionKind::Sigil(sigil_literal) => {
+                    // Process expressions in sigil string interpolations
+                    for part in &mut sigil_literal.string.parts {
+                        if let outrun_parser::StringPart::Interpolation { expression, .. } = part {
+                            work_stack.push(&mut **expression);
+                        }
+                    }
+                }
+                // Literals and simple identifiers don't contain nested expressions
+                ExpressionKind::Identifier(_) |
+                ExpressionKind::TypeIdentifier(_) |
+                ExpressionKind::QualifiedIdentifier(_) |
+                ExpressionKind::Integer(_) |
+                ExpressionKind::Float(_) |
+                ExpressionKind::Boolean(_) |
+                ExpressionKind::Atom(_) |
+                ExpressionKind::FunctionCapture(_) => {
+                    // These don't contain nested expressions that need desugaring
+                }
             }
         }
 
@@ -161,13 +319,29 @@ impl DesugaringEngine {
                 match &mut current_expr.kind {
                     ExpressionKind::BinaryOp(binary_op) => {
                         // Transform this binary operation
-                        let desugared_call = self.desugar_binary_operation(binary_op)?;
-                        current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                        match self.desugar_binary_operation(binary_op) {
+                            Ok(desugared_call) => {
+                                println!("✅ Successfully desugared binary op {:?} at span {:?}", binary_op.operator, current_expr.span);
+                                current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to desugar binary op {:?} at span {:?}: {}", binary_op.operator, current_expr.span, e);
+                                return Err(e);
+                            }
+                        }
                     }
                     ExpressionKind::UnaryOp(unary_op) => {
                         // Transform this unary operation
-                        let desugared_call = self.desugar_unary_operation(unary_op)?;
-                        current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                        match self.desugar_unary_operation(unary_op) {
+                            Ok(desugared_call) => {
+                                println!("✅ Successfully desugared unary op {:?} at span {:?}", unary_op.operator, current_expr.span);
+                                current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to desugar unary op {:?} at span {:?}: {}", unary_op.operator, current_expr.span, e);
+                                return Err(e);
+                            }
+                        }
                     }
                     // Other expressions don't need transformation, just traversal
                     _ => {}
@@ -175,6 +349,8 @@ impl DesugaringEngine {
             }
         }
 
+        eprintln!("🔍 Expression desugaring complete at span {:?}. Transformations made: {}", 
+                 expr.span, self.transformations.len());
         Ok(())
     }
 

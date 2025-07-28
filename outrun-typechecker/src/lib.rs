@@ -422,7 +422,13 @@ impl CompilationResult {
         mut desugaring_engine: DesugaringEngine,
     ) -> Result<CompilationResult, CompilerError> {
         // Phase 1: Desugar all operators into protocol function calls
-        for program in &mut package.programs {
+        for (i, program) in package.programs.iter_mut().enumerate() {
+            eprintln!("🔧 PHASE 1: Desugaring program {} from package '{}'", i, package.package_name);
+            if let Some(file_path) = &program.debug_info.source_file {
+                eprintln!("🔧   File: {}", file_path);
+            } else {
+                eprintln!("🔧   File: <unknown>");
+            }
             desugaring_engine.desugar_program(program)?;
         }
 

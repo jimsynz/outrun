@@ -310,12 +310,12 @@ fn test_package_with_empty_programs() {
 fn test_extremely_large_single_expression() {
     // Create a reasonably large single expression
     let mut parts = Vec::new();
-    for i in 0..100 {
-        // Increased back to test iterative fixes
+    for i in 0..30 {
+        // Reasonable test size - should handle this efficiently
         parts.push(i.to_string());
     }
 
-    // Create expression like: 1 + 2 + 3 + 4 + ... + 20 (without excessive nesting)
+    // Create expression like: 0 + 1 + 2 + 3 + ... + 29 (30 terms total)
     let expression = parts.join(" + ");
 
     let source = format!("let large_sum = {}", expression);

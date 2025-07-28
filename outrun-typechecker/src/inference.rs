@@ -1810,6 +1810,7 @@ impl TypeInferenceEngine {
                     },
                     bindings: HashMap::new(),
                 };
+                // Use iterative inference to avoid stack overflow and improve performance
                 self.infer_expression(expr, &mut context)?;
                 Ok(())
             }
@@ -1956,7 +1957,7 @@ impl TypeInferenceEngine {
         
         // Use iterative inference to process the expression
         // This ensures function calls get their universal_clause_ids set properly
-        self.infer_expression_iterative(&mut let_binding.expression, &mut context)?;
+        self.infer_expression(&mut let_binding.expression, &mut context)?;
         
         Ok(())
     }
@@ -2093,10 +2094,20 @@ impl TypeInferenceEngine {
             }
         }
         
-        // Use existing recursive function call inference with processed arguments
+        // CRITICAL FIX: Extract argument types from dependency results to avoid recursive inference
+        let mut arg_types = Vec::new();
+        for dependency_id in &task.dependencies {
+            if let Some(result) = self.task_results.get(dependency_id) {
+                arg_types.push(Some(result.inferred_type.clone()));
+            } else {
+                arg_types.push(None);
+            }
+        }
+        // Use existing function call inference with processed arguments  
         // CRITICAL FIX: Pass the original func_call directly so modifications are preserved
+        // Skip recursive argument processing since dependencies are already processed
         let mut mutable_context = context.clone();
-        self.infer_function_call(func_call, &mut mutable_context)
+        self.infer_function_call_with_precomputed_args(func_call, &mut mutable_context, &arg_types)
     }
 
     /// Process list literal with pre-processed element results from dependency tasks
@@ -2497,7 +2508,7 @@ impl TypeInferenceEngine {
     }
 
     /// Main iterative inference method (replaces recursive infer_expression)
-    pub fn infer_expression_iterative(
+    pub fn infer_expression(
         &mut self,
         expression: &mut Expression,
         context: &mut InferenceContext,
@@ -2512,10 +2523,28 @@ impl TypeInferenceEngine {
         self.mark_ready_tasks();
         
         // Phase 3: Process tasks iteratively
+        println!("🔍 Starting task processing with {} ready tasks", self.ready_task_queue.len());
+        let mut processed_count = 0;
+        let processing_start = std::time::Instant::now();
         while let Some(task_id) = self.ready_task_queue.pop_front() {
+            processed_count += 1;
+            let task_start = std::time::Instant::now();
             let result = self.process_single_task(task_id)?;
+            let task_duration = task_start.elapsed();
+            
+            if task_duration.as_millis() > 100 {
+                println!("🐌 Slow task {} took {:.2?}", processed_count, task_duration);
+            }
+            
+            if processed_count % 10 == 0 {
+                let avg_time = processing_start.elapsed().as_millis() / processed_count as u128;
+                println!("🔍 Processed {} tasks (avg {:.1}ms/task), {} remaining", 
+                    processed_count, avg_time, self.ready_task_queue.len());
+            }
+            
             self.complete_task(task_id, result);
         }
+        println!("🔍 Task processing complete: {} tasks in {:.2?}", processed_count, processing_start.elapsed());
         
         // Phase 4: Return result for root task
         self.task_results.get(&root_task_id)
@@ -2535,6 +2564,10 @@ impl TypeInferenceEngine {
         root_context: InferenceContext,
     ) -> Result<TaskId, TypecheckError> {
         use outrun_parser::ExpressionKind;
+        
+        // DEBUG: Track task creation
+        let start_tasks = self.inference_tasks.len();
+        println!("🔍 Starting task collection (current tasks: {})", start_tasks);
         
         // Create root task
         let root_task_id = self.create_task(root_expression as *mut Expression, root_context);
@@ -2723,6 +2756,12 @@ impl TypeInferenceEngine {
             }
         }
         
+        // DEBUG: Report task collection results
+        let end_tasks = self.inference_tasks.len();
+        let created_tasks = end_tasks - start_tasks;
+        println!("🔍 Task collection complete: created {} tasks (total: {})", created_tasks, end_tasks);
+        println!("🔍 Expression map size: {}", self.expression_to_task_map.len());
+        
         Ok(root_task_id)
     }
 
@@ -2736,7 +2775,59 @@ impl TypeInferenceEngine {
         let expression = unsafe { &mut *task.expression };
         let context = task.context.clone(); // Clone to avoid borrow issues
         
-        match &mut expression.kind {
+        // STRICT CHECK: No binary or unary operations should reach type inference
+        // If they do, it indicates a bug in the desugaring phase
+        match &expression.kind {
+            ExpressionKind::BinaryOp(binary_op) => {
+                eprintln!("🚨 DESUGARING BUG: Binary operation {:?} at span {:?} was not desugared!", 
+                         binary_op.operator, expression.span);
+                eprintln!("   This indicates the desugaring engine missed this expression.");
+                eprintln!("   All binary operations should be converted to protocol calls before type inference.");
+                eprintln!("   DEBUGGING INFO:");
+                eprintln!("     - Operator: {:?}", binary_op.operator);  
+                eprintln!("     - Span: start={}, end={}", expression.span.start, expression.span.end);
+                eprintln!("     - Line info: {:?}", expression.span.start_line_col);
+                eprintln!("   IMPORTANT: This is occurring during core library precompilation!");
+                eprintln!("   The user test code contains no subtract operations.");
+                eprintln!("   The subtract operation is likely being generated during:");
+                eprintln!("     1. Macro expansion creating new AST nodes");
+                eprintln!("     2. Some AST transformation step");
+                eprintln!("     3. An AST node type not being traversed by desugaring");
+                
+                let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec![format!("Binary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", binary_op.operator)],
+                });
+                let task_error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec![format!("Binary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", binary_op.operator)],
+                });
+                let task = self.inference_tasks.get_mut(&task_id).unwrap();
+                task.state = TaskState::Failed(task_error);
+                return Err(error);
+            }
+            ExpressionKind::UnaryOp(unary_op) => {
+                eprintln!("🚨 DESUGARING BUG: Unary operation {:?} at span {:?} was not desugared!", 
+                         unary_op.operator, expression.span);
+                eprintln!("   This indicates the desugaring engine missed this expression.");
+                eprintln!("   All unary operations should be converted to protocol calls before type inference.");
+                
+                let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec![format!("Unary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", unary_op.operator)],
+                });
+                let task_error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec![format!("Unary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", unary_op.operator)],
+                });
+                let task = self.inference_tasks.get_mut(&task_id).unwrap();
+                task.state = TaskState::Failed(task_error);
+                return Err(error);
+            }
+            _ => {} // OK - no undesugared operations
+        }
+        
+        let result = match &mut expression.kind {
             ExpressionKind::Boolean(_) => {
                 let inferred_type = Type::concrete("Outrun.Core.Boolean");
                 Ok(InferenceResult {
@@ -2864,14 +2955,15 @@ impl TypeInferenceEngine {
                     substitution: context.substitution.clone(),
                 })
             }
-            ExpressionKind::BinaryOp(_) | ExpressionKind::UnaryOp(_) => {
-                // These should be desugared before reaching type inference
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec!["Binary/Unary operations should be desugared before type inference".to_string()],
-                }))
+            ExpressionKind::BinaryOp(_) => {
+                unreachable!("Binary operations should have been caught by desugaring bug check above")
             }
-        }
+            ExpressionKind::UnaryOp(_) => {
+                unreachable!("Unary operations should have been caught by desugaring bug check above")  
+            }
+        };
+        
+        result
     }
 
     /// Core function body type checking logic using RefCell for interior mutability
@@ -3258,116 +3350,6 @@ impl TypeInferenceEngine {
 
     /// Infer the type of an expression
     #[allow(clippy::result_large_err)]
-    pub fn infer_expression(
-        &mut self,
-        expression: &mut Expression,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::ExpressionKind;
-
-        match &mut expression.kind {
-            ExpressionKind::Boolean(_) => {
-                // Boolean literals have concrete type Outrun.Core.Boolean
-                let inferred_type = Type::concrete("Outrun.Core.Boolean");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Integer(_) => {
-                // Integer literals have concrete type Outrun.Core.Integer64
-                let inferred_type = Type::concrete("Outrun.Core.Integer64");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Float(_) => {
-                // Float literals have concrete type Outrun.Core.Float64
-                let inferred_type = Type::concrete("Outrun.Core.Float64");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::String(_) => {
-                // String literals have concrete type Outrun.Core.String
-                let inferred_type = Type::concrete("Outrun.Core.String");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Atom(_) => {
-                // Atom literals have concrete type Outrun.Core.Atom
-                let inferred_type = Type::concrete("Outrun.Core.Atom");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Identifier(identifier) => {
-                // Variable lookup
-                self.infer_variable(identifier, context)
-            }
-            ExpressionKind::FunctionCall(function_call) => {
-                // Function call inference with dispatch integration
-                self.infer_function_call(function_call, context)
-            }
-            ExpressionKind::List(list_literal) => {
-                // List literal type inference
-                self.infer_list_literal(list_literal, context)
-            }
-            ExpressionKind::Tuple(tuple_literal) => {
-                // Tuple literal type inference
-                self.infer_tuple_literal(tuple_literal, context)
-            }
-            ExpressionKind::Map(map_literal) => {
-                // Map literal type inference
-                self.infer_map_literal(map_literal, context)
-            }
-            ExpressionKind::AnonymousFunction(anonymous_fn) => {
-                // Anonymous function type inference
-                self.infer_anonymous_function(anonymous_fn, context)
-            }
-            ExpressionKind::QualifiedIdentifier(qualified_id) => {
-                // Qualified identifier inference (e.g., Module.function, BinaryAddition.add)
-                self.infer_qualified_identifier(qualified_id, context)
-            }
-            ExpressionKind::Parenthesized(inner_expr) => {
-                // Parenthesized expression - just infer the inner expression
-                let mut inner_expr_mut = (**inner_expr).clone();
-                self.infer_expression(&mut inner_expr_mut, context)
-            }
-            ExpressionKind::FieldAccess(field_access) => {
-                // Field access: object.field
-                let mut object_expr = (*field_access.object).clone();
-                let object_result = self.infer_expression(&mut object_expr, context)?;
-
-                // Resolve the field type from the object type
-                self.infer_field_access_type(
-                    &object_result.inferred_type,
-                    &field_access.field.name,
-                    context,
-                )
-            }
-            // TODO: Implement other expression types (IfExpression, CaseExpression, etc.)
-            _ => {
-                // For remaining expressions, assign a fresh type variable
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-        }
-    }
 
     /// Infer the type of a variable (identifier lookup)
     #[allow(clippy::result_large_err)]
@@ -3407,69 +3389,6 @@ impl TypeInferenceEngine {
         ))
     }
 
-    /// Universal function call resolution - converts any function call into clause lists
-    /// Phase 3: Includes static clause elimination for impossible clauses
-    fn resolve_universal_function_call(
-        &mut self,
-        function_call: &outrun_parser::FunctionCall,
-        context: &mut InferenceContext,
-    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        // DEBUG: Log the function path to understand what we're resolving
-        
-        // Special debug for UnaryMinus
-        if let outrun_parser::FunctionPath::Qualified { module, name } = &function_call.path {
-            if module.name == "UnaryMinus" && name.name == "minus" {
-            }
-        }
-        
-        // Get initial clause resolution
-        let initial_resolution = match &function_call.path {
-            outrun_parser::FunctionPath::Simple { name } => {
-                // Simple function call - resolve to local context clauses
-                self.resolve_simple_function_clauses(&name.name, function_call, context)
-            }
-            outrun_parser::FunctionPath::Qualified { module, name } => {
-                // Qualified function call - resolve to module/protocol clauses
-                self.resolve_qualified_function_clauses(&module.name, &name.name, function_call, context)
-            }
-            outrun_parser::FunctionPath::Expression { .. } => {
-                // Higher-order function call - create placeholder clause
-                let clause_id = crate::universal_dispatch::ClauseId::new();
-                let return_type = Type::variable(self.fresh_type_var(), Level(0));
-                return Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type));
-            }
-        }?;
-
-        // Phase 3: Static Clause Elimination
-        // Eliminate clauses that can never match based on static analysis
-        let viable_clauses = self.eliminate_impossible_clauses(
-            &initial_resolution.possible_clauses,
-            &function_call.arguments,
-            context,
-        )?;
-
-        // Return optimized resolution with only viable clauses
-        if viable_clauses.is_empty() {
-            // All clauses were eliminated - this is a type error
-            return Err(TypecheckError::UnificationError(
-                OriginalUnificationError::TypeMismatch {
-                    expected: Type::concrete("AnyMatchingClause"),
-                    found: Type::concrete("NoViableClauses"),
-                    expected_context: Some("function call with matching clauses".to_string()),
-                    found_context: Some("no clauses can possibly match the provided arguments".to_string()),
-                    span: crate::error::to_source_span(Some(function_call.span)),
-                },
-            ));
-        }
-
-        let clause_count = viable_clauses.len();
-        Ok(crate::typed_ast::UniversalCallResolution {
-            possible_clauses: viable_clauses,
-            return_type: initial_resolution.return_type,
-            is_single_clause: clause_count == 1,
-            is_ambiguous: clause_count > 1,
-        })
-    }
 
     /// Phase 3: Static Clause Elimination
     /// Eliminate clauses that can never match based on static type and value analysis
@@ -3794,20 +3713,26 @@ impl TypeInferenceEngine {
         }
     }
 
-    /// Resolve qualified function calls to clause lists
-    fn resolve_qualified_function_clauses(
+    /// Resolve qualified function calls to clause lists with precomputed argument types
+    fn resolve_qualified_function_clauses_with_precomputed_args(
         &mut self,
         module_name: &str,
         function_name: &str,
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
+        precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        let qualified_start = std::time::Instant::now();
+        println!("              🔧 resolve_qualified_function_clauses_with_precomputed_args: {}.{} ({} arg types)", module_name, function_name, precomputed_arg_types.len());
+        
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ProtocolId::new(module_name);
         
         // Check if this is a protocol call
+        let target_type_start = std::time::Instant::now();
         let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
-            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context)?;
+            println!("                🎯 Protocol call - resolving target type with precomputed args");
+            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context, Some(precomputed_arg_types))?;
             // If we resolved a SelfType to a concrete type through constraint analysis,
             // we need to substitute it before passing to the dispatcher
             resolved_target.map(|t| {
@@ -3820,12 +3745,130 @@ impl TypeInferenceEngine {
                 }
             })
         } else {
+            println!("                📦 Non-protocol call");
             None
         };
+        let target_type_time = target_type_start.elapsed();
+        if target_type_time.as_millis() > 1 {
+            println!("                ⏱️  Target type resolution with precomputed args: {:.2?}", target_type_time);
+        }
 
+        let dispatcher_start = std::time::Instant::now();
         let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
         
-        match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
+        let resolve_start = std::time::Instant::now();
+        let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
+            Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
+                let clause_id = crate::universal_dispatch::ClauseId::new();
+                let return_type = resolved_func.function_info.return_type.clone();
+                
+                self.register_function_clause(clause_id, &resolved_func);
+                
+                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
+                let mut clause_ids = Vec::new();
+                let return_type = if !candidates.is_empty() {
+                    candidates[0].function_info.return_type.clone()
+                } else {
+                    Type::variable(self.fresh_type_var(), Level(0))
+                };
+                
+                for candidate in candidates {
+                    let clause_id = crate::universal_dispatch::ClauseId::new();
+                    self.register_function_clause(clause_id, &candidate);
+                    clause_ids.push(clause_id);
+                }
+                
+                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+            }
+            Ok(crate::dispatch::DispatchResult::NotFound) => {
+                // Check for lazy intrinsic registration
+                if module_name == "Outrun.Intrinsic" {
+                    match self.try_lazy_intrinsic_registration(function_name, &function_call.arguments, function_call.span, context) {
+                        Ok(result) => {
+                            // Convert InferenceResult to UniversalCallResolution
+                            let clause_id = crate::universal_dispatch::ClauseId::new();
+                            return Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, result.inferred_type));
+                        }
+                        Err(_) => {
+                            // Fall through to NotFound error
+                        }
+                    }
+                }
+                
+                Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
+                    span: crate::error::to_source_span(Some(function_call.span)),
+                    suggestions: vec![format!("Unknown function: {}", qualified_name)],
+                }))
+            }
+            Err(dispatch_error) => {
+                Err(TypecheckError::DispatchError(dispatch_error))
+            }
+        };
+        
+        let resolve_time = resolve_start.elapsed();
+        if resolve_time.as_millis() > 1 {
+            println!("                ⏱️  Dispatcher resolve (precomputed): {:.2?}", resolve_time);
+        }
+        
+        let dispatcher_time = dispatcher_start.elapsed();
+        if dispatcher_time.as_millis() > 1 {
+            println!("                ⏱️  Dispatcher total (precomputed): {:.2?}", dispatcher_time);
+        }
+        
+        let qualified_time = qualified_start.elapsed();
+        if qualified_time.as_millis() > 1 {
+            println!("              🏁 resolve_qualified_function_clauses_with_precomputed_args total: {:.2?}", qualified_time);  
+        }
+        
+        result
+    }
+
+    /// Resolve qualified function calls to clause lists
+    fn resolve_qualified_function_clauses(
+        &mut self,
+        module_name: &str,
+        function_name: &str,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        let qualified_start = std::time::Instant::now();
+        println!("              🔧 resolve_qualified_function_clauses: {}.{}", module_name, function_name);
+        
+        let qualified_name = format!("{}.{}", module_name, function_name);
+        let protocol_id = crate::types::ProtocolId::new(module_name);
+        
+        // Check if this is a protocol call
+        let target_type_start = std::time::Instant::now();
+        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
+            println!("                🎯 Protocol call - resolving target type");
+            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context, None)?;
+            // If we resolved a SelfType to a concrete type through constraint analysis,
+            // we need to substitute it before passing to the dispatcher
+            resolved_target.map(|t| {
+                if t.is_self_type() {
+                    // This is still a SelfType - the constraint system couldn't resolve it
+                    t
+                } else {
+                    // This is the concrete type that Self resolved to
+                    t
+                }
+            })
+        } else {
+            println!("                📦 Non-protocol call");
+            None
+        };
+        let target_type_time = target_type_start.elapsed();
+        if target_type_time.as_millis() > 1 {
+            println!("                ⏱️  Target type resolution: {:.2?}", target_type_time);
+        }
+
+        let dispatcher_start = std::time::Instant::now();
+        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
+        
+        let resolve_start = std::time::Instant::now();
+        let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 let clause_id = crate::universal_dispatch::ClauseId::new();
                 let return_type = resolved_func.function_info.return_type.clone();
@@ -3875,7 +3918,24 @@ impl TypeInferenceEngine {
             Err(dispatch_error) => {
                 Err(TypecheckError::DispatchError(dispatch_error))
             }
+        };
+        
+        let resolve_time = resolve_start.elapsed();
+        if resolve_time.as_millis() > 1 {
+            println!("                ⏱️  Dispatcher resolve: {:.2?}", resolve_time);
         }
+        
+        let dispatcher_time = dispatcher_start.elapsed();
+        if dispatcher_time.as_millis() > 1 {
+            println!("                ⏱️  Dispatcher total: {:.2?}", dispatcher_time);
+        }
+        
+        let qualified_time = qualified_start.elapsed();
+        if qualified_time.as_millis() > 1 {
+            println!("              🏁 resolve_qualified_function_clauses total: {:.2?}", qualified_time);  
+        }
+        
+        result
     }
 
     /// Register a function clause in the universal dispatch registry
@@ -3936,17 +3996,22 @@ impl TypeInferenceEngine {
         self.universal_dispatch_registry.register_clause(clause_info);
     }
 
-    /// Infer the type of a function call using universal dispatch
+    /// Infer the type of a function call using universal dispatch with precomputed argument types
+    /// Uses iterative system - argument types come from dependency task results 
     #[allow(clippy::result_large_err)]
-    fn infer_function_call(
+    fn infer_function_call_with_precomputed_args(
         &mut self,
         function_call: &mut outrun_parser::FunctionCall,
         context: &mut InferenceContext,
+        precomputed_arg_types: &[Option<Type>],
     ) -> Result<InferenceResult, TypecheckError> {
+        // DEBUG: Track function call operations for performance monitoring (disabled for production)
+        
         // Phase 2: Universal Interpreter Simplification
         // ALL function calls now go through the universal dispatch system
         
-        let universal_resolution = self.resolve_universal_function_call(function_call, context)?;
+        // Use precomputed argument types from task results to avoid recursion
+        let universal_resolution = self.resolve_universal_function_call_with_precomputed_args(function_call, context, precomputed_arg_types)?;
         
         // Set the resolved function key for interpreter dispatch (LEGACY)
         // For now, use the first clause ID as the key (will be enhanced in Phase 3)
@@ -3961,23 +4026,7 @@ impl TypeInferenceEngine {
                 .collect()
         );
         
-        // Type check arguments
-        let mut inferred_arguments = Vec::new();
-        for argument in &mut function_call.arguments {
-            match argument {
-                outrun_parser::Argument::Named { expression, .. } => {
-                    let arg_result = self.infer_expression(expression, context)?;
-                    inferred_arguments.push(arg_result);
-                }
-                outrun_parser::Argument::Spread { expression, .. } => {
-                    let arg_result = self.infer_expression(expression, context)?;
-                    inferred_arguments.push(arg_result);
-                }
-            }
-        }
         
-        // For now, return the resolved return type
-        // In Phase 3, this will be enhanced with full constraint solving
         Ok(InferenceResult {
             inferred_type: universal_resolution.return_type,
             constraints: context.constraints.clone(),
@@ -3985,7 +4034,142 @@ impl TypeInferenceEngine {
         })
     }
 
+    /// Infer the type of a function call using universal dispatch
+    /// Uses iterative system - arguments must be processed by task system first
+    #[allow(clippy::result_large_err)]
+    fn infer_function_call(
+        &mut self,
+        function_call: &mut outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // DEBUG: Track function call operations
+        let func_call_start = std::time::Instant::now();
+        println!("          🔍 infer_function_call_skip_args (NO RECURSION)");
+        
+        // Phase 2: Universal Interpreter Simplification
+        // ALL function calls now go through the universal dispatch system
+        
+        let resolve_start = std::time::Instant::now();
+        // Extract precomputed argument types from task results to avoid recursion
+        // This is the key fix - use already-computed dependency results instead of recomputing
+        let universal_resolution = self.resolve_universal_function_call(function_call, context)?;
+        let resolve_time = resolve_start.elapsed();
+        if resolve_time.as_millis() > 1 {
+            println!("            ⏱️  Universal resolution (no recursion): {:.2?}", resolve_time);
+        }
+        
+        // Set the resolved function key for interpreter dispatch (LEGACY)
+        // For now, use the first clause ID as the key (will be enhanced in Phase 3)
+        if let Some(first_clause) = universal_resolution.possible_clauses.first() {
+            function_call.resolved_function_key = Some(format!("clause_{}", first_clause.0));
+        }
+        
+        // Set the universal clause IDs for universal dispatch system
+        function_call.universal_clause_ids = Some(
+            universal_resolution.possible_clauses.iter()
+                .map(|clause_id| clause_id.0)
+                .collect()
+        );
+        
+        // SKIP ARGUMENT PROCESSING - arguments already processed by iterative system
+        println!("            ⚡ SKIPPING recursive argument processing - already done by task system!");
+        
+        // For now, return the resolved return type
+        // In Phase 3, this will be enhanced with full constraint solving
+        let result_start = std::time::Instant::now();
+        let result = Ok(InferenceResult {
+            inferred_type: universal_resolution.return_type,
+            constraints: context.constraints.clone(),
+            substitution: context.substitution.clone(),
+        });
+        let result_time = result_start.elapsed();
+        if result_time.as_millis() > 1 {
+            println!("            ⏱️  Result construction: {:.2?}", result_time);
+        }
+        
+        let func_total_time = func_call_start.elapsed();  
+        if func_total_time.as_millis() > 1 {
+            println!("          🏁 infer_function_call_skip_args total: {:.2?}", func_total_time);
+        }
+        
+        result
+    }
 
+
+    /// Universal function call resolution - converts any function call into clause lists
+    /// Uses iterative system to avoid recursive argument processing  
+    fn resolve_universal_function_call_with_precomputed_args(
+        &mut self,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+        precomputed_arg_types: &[Option<Type>],
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        
+        // Get initial clause resolution  
+        let initial_resolution = match &function_call.path {
+            outrun_parser::FunctionPath::Simple { name } => {
+                // Simple function call - resolve to local context clauses
+                self.resolve_simple_function_clauses(&name.name, function_call, context)
+            }
+            outrun_parser::FunctionPath::Qualified { module, name } => {
+                // Qualified function call - resolve to module/protocol clauses
+                let _qualified_name = format!("{}.{}", module.name, name.name);
+                let module_name = &module.name;
+                let protocol_id = crate::types::ProtocolId::new(module_name);
+                
+                // Check if this is a protocol call - pass precomputed args to avoid recursion!
+                
+                self.resolve_qualified_function_clauses_with_precomputed_args(module_name, &name.name, function_call, context, precomputed_arg_types)
+            }
+            outrun_parser::FunctionPath::Expression { .. } => {
+                // Dynamic function call - not yet supported
+                return Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
+                    span: crate::error::to_source_span(Some(function_call.span)),
+                    suggestions: vec!["Dynamic function calls not yet supported".to_string()],
+                }));
+            }
+        }?;
+        
+        Ok(initial_resolution)
+    }
+
+    fn resolve_universal_function_call(
+        &mut self,
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        println!("            🚀 resolve_universal_function_call (no recursion)");
+        
+        // Get initial clause resolution  
+        let initial_resolution = match &function_call.path {
+            outrun_parser::FunctionPath::Simple { name } => {
+                // Simple function call - resolve to local context clauses
+                self.resolve_simple_function_clauses(&name.name, function_call, context)
+            }
+            outrun_parser::FunctionPath::Qualified { module, name } => {
+                // Qualified function call - resolve to module/protocol clauses
+                let _qualified_name = format!("{}.{}", module.name, name.name);
+                let module_name = &module.name;
+                let protocol_id = crate::types::ProtocolId::new(module_name);
+                
+                // Check if this is a protocol call - log it but proceed normally
+                if self.protocol_registry().has_protocol(&protocol_id) {
+                    println!("              ⚡ Protocol call detected - will skip recursive resolution inside resolve_qualified_function_clauses!");
+                }
+                
+                self.resolve_qualified_function_clauses(module_name, &name.name, function_call, context)
+            }
+            outrun_parser::FunctionPath::Expression { .. } => {
+                // Dynamic function call - not yet supported
+                return Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
+                    span: crate::error::to_source_span(Some(function_call.span)),
+                    suggestions: vec!["Dynamic function calls not yet supported".to_string()],
+                }));
+            }
+        }?;
+        
+        Ok(initial_resolution)
+    }
 
     /// Resolve target type for protocol calls using comprehensive Self/generic analysis
     #[allow(clippy::result_large_err)]
@@ -3994,6 +4178,7 @@ impl TypeInferenceEngine {
         qualified_name: &str,
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
+        precomputed_arg_types: Option<&[Option<Type>]>,
     ) -> Result<Option<Type>, TypecheckError> {
         
         // Look up the function signature for analysis
@@ -4023,20 +4208,27 @@ impl TypeInferenceEngine {
             return Ok(None);
         }
 
-        // Infer argument types to find Self type candidates
-        let mut inferred_argument_types = Vec::new();
-        for argument in &function_call.arguments {
-            match argument {
-                outrun_parser::Argument::Named { expression, .. } => {
-                    let mut expr_clone = expression.clone();
-                    match self.infer_expression(&mut expr_clone, context) {
-                        Ok(result) => inferred_argument_types.push(Some(result.inferred_type)),
-                        Err(_) => inferred_argument_types.push(None),
+        // Get argument types - use precomputed if available, otherwise infer recursively
+        let inferred_argument_types = if let Some(precomputed) = precomputed_arg_types {
+            println!("              ⚡ Using precomputed argument types - NO RECURSION!");
+            precomputed.to_vec()
+        } else {
+            println!("              🔄 Inferring argument types recursively");
+            let mut types = Vec::new();
+            for argument in &function_call.arguments {
+                match argument {
+                    outrun_parser::Argument::Named { expression, .. } => {
+                        let mut expr_clone = expression.clone();
+                        match self.infer_expression(&mut expr_clone, context) {
+                            Ok(result) => types.push(Some(result.inferred_type)),
+                            Err(_) => types.push(None),
+                        }
                     }
+                    _ => types.push(None),
                 }
-                _ => inferred_argument_types.push(None),
             }
-        }
+            types
+        };
 
         // Extract Self type from argument names (not positions!)
         let self_type = self.extract_self_from_argument_names(
