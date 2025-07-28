@@ -72,6 +72,107 @@ pub struct RecursivePatternInfo {
     pub implementation_span: Option<Span>,
 }
 
+/// Call stack context for enhanced constraint resolution through backtracking
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallStackContext {
+    /// Stack of function call contexts leading to current constraint
+    pub call_stack: Vec<CallContext>,
+    
+    /// Additional type constraints discovered through backtracking  
+    pub backtracked_constraints: Vec<BacktrackedConstraint>,
+    
+    /// Call depth limit to prevent infinite backtracking
+    pub max_depth: usize,
+}
+
+/// Context information for a single function call in the call stack
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallContext {
+    /// Function signature being called
+    pub function_signature: String,
+    
+    /// Module path where the call originates
+    pub module_path: Vec<String>,
+    
+    /// Type constraints at this call site
+    pub local_constraints: Vec<Type>,
+    
+    /// Generic type substitutions active at this call site
+    pub generic_substitutions: HashMap<String, Type>,
+    
+    /// Source span of the function call
+    pub span: Option<Span>,
+    
+    /// Call depth in the stack
+    pub depth: usize,
+}
+
+/// A constraint discovered through call stack backtracking
+#[derive(Debug, Clone, PartialEq)]
+pub struct BacktrackedConstraint {
+    /// The original constraint that triggered backtracking
+    pub original_constraint: Constraint,
+    
+    /// Additional type information found by backtracking
+    pub discovered_types: Vec<Type>,
+    
+    /// The call context where this information was found
+    pub source_context: CallContext,
+    
+    /// Confidence level in this constraint (0.0 to 1.0)
+    pub confidence: f64,
+}
+
+impl CallStackContext {
+    /// Create a new empty call stack context
+    pub fn new(max_depth: usize) -> Self {
+        Self {
+            call_stack: Vec::new(),
+            backtracked_constraints: Vec::new(),
+            max_depth,
+        }
+    }
+    
+    /// Get the current call depth
+    pub fn current_depth(&self) -> usize {
+        self.call_stack.len()
+    }
+    
+    /// Check if we're at maximum backtracking depth
+    pub fn at_max_depth(&self) -> bool {
+        self.current_depth() >= self.max_depth
+    }
+}
+
+impl CallContext {
+    /// Create a new call context
+    pub fn new(
+        function_signature: String,
+        module_path: Vec<String>,
+        span: Option<Span>,
+        depth: usize,
+    ) -> Self {
+        Self {
+            function_signature,
+            module_path,
+            local_constraints: Vec::new(),
+            generic_substitutions: HashMap::new(),
+            span,
+            depth,
+        }
+    }
+    
+    /// Add a local type constraint to this call context
+    pub fn add_local_constraint(&mut self, constraint: Type) {
+        self.local_constraints.push(constraint);
+    }
+    
+    /// Add a generic type substitution to this call context
+    pub fn add_generic_substitution(&mut self, param_name: String, concrete_type: Type) {
+        self.generic_substitutions.insert(param_name, concrete_type);
+    }
+}
+
 /// Constraint solver implementing logical constraint satisfaction
 #[derive(Debug)]
 pub struct ConstraintSolver {
@@ -83,6 +184,10 @@ pub struct ConstraintSolver {
     recursive_patterns: HashMap<String, RecursivePatternInfo>,
     /// Collected warnings during constraint solving
     warnings: Vec<CompilerWarning>,
+    /// Call stack context for backtracking support
+    call_stack_context: Option<CallStackContext>,
+    /// Maximum backtracking depth to prevent infinite recursion
+    max_backtrack_depth: usize,
 }
 
 impl ConstraintSolver {
@@ -92,6 +197,8 @@ impl ConstraintSolver {
             solution_cache: HashMap::new(),
             recursive_patterns: HashMap::new(),
             warnings: Vec::new(),
+            call_stack_context: None,
+            max_backtrack_depth: 10, // Default backtracking depth limit
         }
     }
 
@@ -102,6 +209,8 @@ impl ConstraintSolver {
             solution_cache: HashMap::new(),
             recursive_patterns: HashMap::new(),
             warnings: Vec::new(),
+            call_stack_context: None,
+            max_backtrack_depth: 10, // Default backtracking depth limit
         }
     }
 
@@ -683,6 +792,193 @@ impl ConstraintSolver {
     /// Get all compiler warnings collected during constraint solving
     pub fn get_warnings(&self) -> &[CompilerWarning] {
         &self.warnings
+    }
+
+    /// Set call stack context for backtracking support
+    pub fn set_call_stack_context(&mut self, context: CallStackContext) {
+        self.call_stack_context = Some(context);
+    }
+
+    /// Get current call stack context
+    pub fn call_stack_context(&self) -> Option<&CallStackContext> {
+        self.call_stack_context.as_ref()
+    }
+
+    /// Push a new call context onto the call stack
+    pub fn push_call_context(&mut self, context: CallContext) {
+        if let Some(ref mut stack_context) = self.call_stack_context {
+            stack_context.call_stack.push(context);
+        } else {
+            // Initialize call stack if it doesn't exist
+            self.call_stack_context = Some(CallStackContext {
+                call_stack: vec![context],
+                backtracked_constraints: Vec::new(),
+                max_depth: self.max_backtrack_depth,
+            });
+        }
+    }
+
+    /// Pop the most recent call context from the call stack
+    pub fn pop_call_context(&mut self) -> Option<CallContext> {
+        self.call_stack_context
+            .as_mut()
+            .and_then(|ctx| ctx.call_stack.pop())
+    }
+
+    /// Perform call stack backtracking to find additional type constraints
+    pub fn backtrack_for_enhanced_context(&mut self, constraint: &Constraint) -> Vec<BacktrackedConstraint> {
+        let mut backtracked_constraints = Vec::new();
+        
+        if let Some(stack_context) = &self.call_stack_context {
+            // Walk backwards through the call stack to find additional constraints
+            for (depth, call_context) in stack_context.call_stack.iter().rev().enumerate() {
+                if depth >= self.max_backtrack_depth {
+                    break; // Prevent infinite backtracking
+                }
+                
+                // Analyze this call context for additional type information
+                let discovered_types = self.analyze_call_context_for_types(call_context, constraint);
+                
+                if !discovered_types.is_empty() {
+                    let backtracked_constraint = BacktrackedConstraint {
+                        original_constraint: constraint.clone(),
+                        discovered_types,
+                        source_context: call_context.clone(),
+                        confidence: self.calculate_constraint_confidence(call_context, depth),
+                    };
+                    
+                    backtracked_constraints.push(backtracked_constraint);
+                }
+            }
+        }
+        
+        // Store the backtracked constraints for future use
+        if let Some(ref mut stack_context) = self.call_stack_context {
+            stack_context.backtracked_constraints.extend(backtracked_constraints.clone());
+        }
+        
+        backtracked_constraints
+    }
+
+    /// Analyze a call context to extract additional type information
+    fn analyze_call_context_for_types(&self, call_context: &CallContext, constraint: &Constraint) -> Vec<Type> {
+        let mut discovered_types = Vec::new();
+        
+        // Extract type information from local constraints at this call site
+        for local_constraint in &call_context.local_constraints {
+            if self.constraint_is_relevant(constraint, local_constraint) {
+                discovered_types.push(local_constraint.clone());
+            }
+        }
+        
+        // Apply generic substitutions to discover concrete types
+        for (param_name, concrete_type) in &call_context.generic_substitutions {
+            if self.generic_parameter_is_relevant(constraint, param_name) {
+                discovered_types.push(concrete_type.clone());
+            }
+        }
+        
+        discovered_types
+    }
+
+    /// Check if a local constraint is relevant to the target constraint
+    fn constraint_is_relevant(&self, target_constraint: &Constraint, local_constraint: &Type) -> bool {
+        match target_constraint {
+            Constraint::Implements { type_var, protocol, .. } => {
+                // Check if local constraint provides information about this type variable or protocol
+                self.type_involves_variable(local_constraint, *type_var) || 
+                self.type_involves_protocol(local_constraint, protocol)
+            }
+            Constraint::SelfImplements { protocol, .. } => {
+                // Check if local constraint provides information about Self or this protocol
+                self.type_involves_self(local_constraint) ||
+                self.type_involves_protocol(local_constraint, protocol)
+            }
+            Constraint::Equality { left, right, .. } => {
+                // Check if local constraint involves either side of the equality
+                self.types_overlap(local_constraint, left) ||
+                self.types_overlap(local_constraint, right)
+            }
+            _ => false, // Other constraint types don't benefit from backtracking yet
+        }
+    }
+
+    /// Check if a generic parameter is relevant to the target constraint
+    fn generic_parameter_is_relevant(&self, target_constraint: &Constraint, _param_name: &str) -> bool {
+        match target_constraint {
+            Constraint::Implements { .. } => {
+                // Generic parameters could provide concrete type information
+                true // Conservative approach - consider all generic parameters relevant
+            }
+            _ => false,
+        }
+    }
+
+    /// Calculate confidence level for a backtracked constraint
+    fn calculate_constraint_confidence(&self, call_context: &CallContext, depth: usize) -> f64 {
+        // Higher confidence for shallower call stack depths
+        let depth_penalty = depth as f64 * 0.1;
+        
+        // Higher confidence for contexts with more local constraints
+        let constraint_bonus = (call_context.local_constraints.len() as f64 * 0.1).min(0.3);
+        
+        // Higher confidence for contexts with generic substitutions
+        let substitution_bonus = if call_context.generic_substitutions.is_empty() { 0.0 } else { 0.2 };
+        
+        // Base confidence starts at 0.8, adjusted by factors
+        (0.8 - depth_penalty + constraint_bonus + substitution_bonus).clamp(0.0, 1.0)
+    }
+
+    /// Helper methods for type analysis
+    fn type_involves_variable(&self, ty: &Type, var_id: TypeVarId) -> bool {
+        match ty {
+            Type::Variable { var_id: ty_var_id, .. } => *ty_var_id == var_id,
+            Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_variable(arg, var_id)),
+            Type::Protocol { args, .. } => args.iter().any(|arg| self.type_involves_variable(arg, var_id)),
+            Type::Function { params, return_type, .. } => {
+                params.iter().any(|(_, param_type)| self.type_involves_variable(param_type, var_id)) ||
+                self.type_involves_variable(return_type, var_id)
+            }
+            _ => false,
+        }
+    }
+
+    fn type_involves_protocol(&self, ty: &Type, protocol_id: &crate::types::ProtocolId) -> bool {
+        match ty {
+            Type::Protocol { id, args, .. } => {
+                // Check both if this is the target protocol and if args contain the protocol
+                id == protocol_id || args.iter().any(|arg| self.type_involves_protocol(arg, protocol_id))
+            }
+            Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_protocol(arg, protocol_id)),
+            Type::Function { params, return_type, .. } => {
+                params.iter().any(|(_, param_type)| self.type_involves_protocol(param_type, protocol_id)) ||
+                self.type_involves_protocol(return_type, protocol_id)
+            }
+            _ => false,
+        }
+    }
+
+    fn type_involves_self(&self, ty: &Type) -> bool {
+        match ty {
+            Type::SelfType { .. } => true,
+            Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_self(arg)),
+            Type::Protocol { args, .. } => args.iter().any(|arg| self.type_involves_self(arg)),
+            Type::Function { params, return_type, .. } => {
+                params.iter().any(|(_, param_type)| self.type_involves_self(param_type)) ||
+                self.type_involves_self(return_type)
+            }
+            _ => false,
+        }
+    }
+
+    fn types_overlap(&self, type1: &Type, type2: &Type) -> bool {
+        // Simple overlap check - in a full implementation this would be more sophisticated
+        match (type1, type2) {
+            (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => id1 == id2,
+            (Type::Protocol { id: id1, .. }, Type::Protocol { id: id2, .. }) => id1 == id2,
+            (Type::Variable { var_id: id1, .. }, Type::Variable { var_id: id2, .. }) => id1 == id2,
+            _ => false, // Conservative approach
+        }
     }
 }
 

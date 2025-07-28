@@ -79,6 +79,9 @@ pub struct TypeInferenceEngine {
     expression_to_task_map: HashMap<*mut Expression, TaskId>,
     /// Iterative inference support: Counter for generating unique task IDs
     next_task_id: u64,
+
+    /// Call stack backtracking support for enhanced constraint resolution
+    constraint_solver_with_backtracking: Option<crate::constraints::ConstraintSolver>,
 }
 
 /// Unique identifier for inference tasks in the iterative system
@@ -450,6 +453,8 @@ impl TypeInferenceEngine {
             task_results: HashMap::new(),
             expression_to_task_map: HashMap::new(),
             next_task_id: 0,
+            // Call stack backtracking support (initialized later)
+            constraint_solver_with_backtracking: None,
         }
     }
 
@@ -560,6 +565,34 @@ impl TypeInferenceEngine {
         }
 
         Ok(())
+    }
+
+    /// Initialize call stack backtracking for enhanced constraint resolution
+    /// This should be called before type checking function bodies
+    fn initialize_call_stack_backtracking(&mut self) {
+        // Create a constraint solver with backtracking capabilities
+        let mut constraint_solver = crate::constraints::ConstraintSolver::with_registry(
+            self.type_registry.protocol_registry().clone()
+        );
+        
+        // Initialize call stack context with reasonable depth limit
+        let call_stack_context = crate::constraints::CallStackContext::new(10);
+        constraint_solver.set_call_stack_context(call_stack_context);
+        
+        // Store the constraint solver for use during type inference
+        self.constraint_solver_with_backtracking = Some(constraint_solver);
+        
+        eprintln!("🔧 Call stack backtracking system initialized (Phase 2 complete)");
+    }
+
+    /// Get mutable access to the constraint solver with backtracking (if initialized)
+    pub fn constraint_solver_with_backtracking_mut(&mut self) -> Option<&mut crate::constraints::ConstraintSolver> {
+        self.constraint_solver_with_backtracking.as_mut()
+    }
+
+    /// Get immutable access to the constraint solver with backtracking (if initialized)
+    pub fn constraint_solver_with_backtracking(&self) -> Option<&crate::constraints::ConstraintSolver> {
+        self.constraint_solver_with_backtracking.as_ref()
     }
 
     /// Get the universal dispatch registry containing all registered clauses
@@ -1785,6 +1818,9 @@ impl TypeInferenceEngine {
 
         // Phase 3.5: Analyze recursive type patterns after all implementations are registered
         self.analyze_recursive_patterns_and_emit_warnings()?;
+
+        // Phase 3.75: Initialize call stack backtracking for enhanced context resolution
+        self.initialize_call_stack_backtracking();
 
         Ok(())
     }
