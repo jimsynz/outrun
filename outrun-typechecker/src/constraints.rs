@@ -123,6 +123,157 @@ pub struct BacktrackedConstraint {
     pub confidence: f64,
 }
 
+/// Template for a public function that dependent packages can use to generate clauses
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublicFunctionTemplate {
+    /// Function signature for identification
+    pub function_signature: crate::universal_dispatch::FunctionSignature,
+    
+    /// Generic parameters in this function (e.g., T, U, Self)
+    pub generic_parameters: Vec<GenericParameter>,
+    
+    /// Parameter types with their names and constraints
+    pub parameter_types: Vec<ParameterTemplate>,
+    
+    /// Return type template
+    pub return_type: TypeTemplate,
+    
+    /// Protocol constraints that must be satisfied (e.g., T: Display)
+    pub protocol_constraints: Vec<ProtocolConstraintTemplate>,
+    
+    /// Function visibility (public/private)
+    pub visibility: FunctionVisibility,
+    
+    /// Source span for debugging
+    pub span: Option<Span>,
+    
+    /// Package name this template comes from
+    pub source_package: String,
+    
+    /// Template generation timestamp for cache management
+    pub generated_at: std::time::SystemTime,
+}
+
+/// A generic parameter in a function template
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericParameter {
+    /// Parameter name (e.g., "T", "U", "Self")
+    pub name: String,
+    
+    /// Direct constraints on this parameter (e.g., T: Display)
+    pub direct_constraints: Vec<crate::types::ProtocolId>,
+    
+    /// Whether this parameter appears in multiple positions
+    pub multiple_occurrences: bool,
+    
+    /// Variance information for advanced constraint solving
+    pub variance: ParameterVariance,
+}
+
+/// Parameter template with constraint information
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParameterTemplate {
+    /// Parameter name
+    pub name: String,
+    
+    /// Parameter type template
+    pub type_template: TypeTemplate,
+    
+    /// Whether this parameter is required or optional
+    pub required: bool,
+}
+
+/// Template for types that can be instantiated with concrete types
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeTemplate {
+    /// Concrete type that requires no substitution
+    Concrete {
+        type_name: String,
+        generic_args: Vec<TypeTemplate>,
+    },
+    
+    /// Generic parameter that needs substitution
+    Generic {
+        parameter_name: String,
+        constraints: Vec<crate::types::ProtocolId>,
+    },
+    
+    /// Protocol reference
+    Protocol {
+        protocol_name: String,
+        generic_args: Vec<TypeTemplate>,
+    },
+    
+    /// Self type reference
+    SelfType {
+        context: SelfTypeContext,
+    },
+    
+    /// Function type template
+    Function {
+        parameter_templates: Vec<TypeTemplate>,
+        return_template: Box<TypeTemplate>,
+    },
+}
+
+/// Context information for Self type resolution
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelfTypeContext {
+    /// Self in protocol definition
+    ProtocolDefinition { protocol_name: String },
+    
+    /// Self in impl block
+    ImplementationBlock { 
+        protocol_name: String,
+        implementing_type: String,
+    },
+    
+    /// Self in struct method
+    StructMethod { struct_name: String },
+}
+
+/// Protocol constraint in a function template
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProtocolConstraintTemplate {
+    /// Generic parameter being constrained
+    pub parameter_name: String,
+    
+    /// Protocol that must be implemented
+    pub protocol_id: crate::types::ProtocolId,
+    
+    /// Additional generic arguments to the protocol
+    pub protocol_args: Vec<TypeTemplate>,
+    
+    /// Whether this constraint is required or optional
+    pub required: bool,
+}
+
+/// Function visibility for template generation
+#[derive(Debug, Clone, PartialEq)]
+pub enum FunctionVisibility {
+    /// Public function - generate template
+    Public,
+    
+    /// Private function - don't generate template
+    Private,
+}
+
+/// Parameter variance for advanced constraint solving
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParameterVariance {
+    /// Parameter appears in covariant position (return types, read-only)
+    Covariant,
+    
+    /// Parameter appears in contravariant position (parameter types, write-only)
+    Contravariant,
+    
+    /// Parameter appears in both positions (invariant)
+    Invariant,
+    
+    /// Variance not yet determined
+    Unknown,
+}
+
 impl CallStackContext {
     /// Create a new empty call stack context
     pub fn new(max_depth: usize) -> Self {
@@ -188,6 +339,10 @@ pub struct ConstraintSolver {
     call_stack_context: Option<CallStackContext>,
     /// Maximum backtracking depth to prevent infinite recursion
     max_backtrack_depth: usize,
+    /// Generated public function templates for dependent packages
+    public_function_templates: HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate>,
+    /// Package name for template generation
+    current_package_name: String,
 }
 
 impl ConstraintSolver {
@@ -199,6 +354,8 @@ impl ConstraintSolver {
             warnings: Vec::new(),
             call_stack_context: None,
             max_backtrack_depth: 10, // Default backtracking depth limit
+            public_function_templates: HashMap::new(),
+            current_package_name: "unknown".to_string(),
         }
     }
 
@@ -211,6 +368,8 @@ impl ConstraintSolver {
             warnings: Vec::new(),
             call_stack_context: None,
             max_backtrack_depth: 10, // Default backtracking depth limit
+            public_function_templates: HashMap::new(),
+            current_package_name: "unknown".to_string(),
         }
     }
 
@@ -979,6 +1138,252 @@ impl ConstraintSolver {
             (Type::Variable { var_id: id1, .. }, Type::Variable { var_id: id2, .. }) => id1 == id2,
             _ => false, // Conservative approach
         }
+    }
+
+    /// Set the current package name for template generation
+    pub fn set_package_name(&mut self, package_name: String) {
+        self.current_package_name = package_name;
+    }
+
+    /// Generate a public function template from a function definition
+    pub fn generate_public_function_template(
+        &mut self,
+        function_signature: crate::universal_dispatch::FunctionSignature,
+        function_def: &outrun_parser::FunctionDefinition,
+        visibility: FunctionVisibility,
+        available_generic_params: &[String], // Generic parameters from containing struct/protocol/impl
+    ) -> Result<PublicFunctionTemplate, String> {
+        // Extract generic parameters from the function definition using available generics
+        let generic_parameters = self.extract_generic_parameters_from_function(function_def, available_generic_params)?;
+        
+        // Convert parameter types to templates
+        let parameter_types = self.convert_parameters_to_templates(&function_def.parameters, available_generic_params)?;
+        
+        // Convert return type to template
+        let return_type = self.convert_type_to_template(&function_def.return_type, available_generic_params)?;
+        
+        // Extract protocol constraints (simplified for now)
+        let protocol_constraints = Vec::new(); // TODO: Extract protocol constraints from function_def
+        
+        let template = PublicFunctionTemplate {
+            function_signature: function_signature.clone(),
+            generic_parameters,
+            parameter_types,
+            return_type,
+            protocol_constraints,
+            visibility,
+            span: Some(function_def.span),
+            source_package: self.current_package_name.clone(),
+            generated_at: std::time::SystemTime::now(),
+        };
+        
+        // Store the template
+        self.public_function_templates.insert(function_signature, template.clone());
+        
+        Ok(template)
+    }
+
+    /// Extract generic parameters from a function definition
+    fn extract_generic_parameters_from_function(
+        &self,
+        function_def: &outrun_parser::FunctionDefinition,
+        available_generic_params: &[String],
+    ) -> Result<Vec<GenericParameter>, String> {
+        let mut parameters = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        
+        // Collect generic parameters from parameter types
+        for param in &function_def.parameters {
+            self.collect_generic_parameters_from_type(&param.type_annotation, &mut parameters, &mut seen_names, available_generic_params)?;
+        }
+        
+        // Collect generic parameters from return type
+        self.collect_generic_parameters_from_type(&function_def.return_type, &mut parameters, &mut seen_names, available_generic_params)?;
+        
+        Ok(parameters)
+    }
+
+    /// Recursively collect generic parameters from a type annotation
+    fn collect_generic_parameters_from_type(
+        &self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        parameters: &mut Vec<GenericParameter>,
+        seen_names: &mut std::collections::HashSet<String>,
+        available_generic_params: &[String],
+    ) -> Result<(), String> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple { path, generic_args, .. } => {
+                // Check the last component of the path for generic parameter names
+                if let Some(last_component) = path.last() {
+                    let name = &last_component.name;
+                    if available_generic_params.contains(name) && !seen_names.contains(name) {
+                        seen_names.insert(name.clone());
+                        parameters.push(GenericParameter {
+                            name: name.clone(),
+                            direct_constraints: Vec::new(), // Will be filled by constraint extraction
+                            multiple_occurrences: false,   // Will be updated if we see it again
+                            variance: ParameterVariance::Unknown,
+                        });
+                    } else if seen_names.contains(name) {
+                        // Mark as multiple occurrences
+                        for param in parameters.iter_mut() {
+                            if param.name == *name {
+                                param.multiple_occurrences = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // Recursively process generic arguments
+                if let Some(args) = generic_args {
+                    for arg in &args.args {
+                        self.collect_generic_parameters_from_type(arg, parameters, seen_names, available_generic_params)?;
+                    }
+                }
+            }
+            outrun_parser::TypeAnnotation::Function { params, return_type, .. } => {
+                // Process function parameter types
+                for param in params {
+                    self.collect_generic_parameters_from_type(&param.type_annotation, parameters, seen_names, available_generic_params)?;
+                }
+                // Process return type
+                self.collect_generic_parameters_from_type(return_type, parameters, seen_names, available_generic_params)?;
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
+                // Process tuple element types
+                for element_type in types {
+                    self.collect_generic_parameters_from_type(element_type, parameters, seen_names, available_generic_params)?;
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+
+    /// Convert function parameters to parameter templates
+    fn convert_parameters_to_templates(
+        &self,
+        params: &[outrun_parser::Parameter],
+        available_generic_params: &[String],
+    ) -> Result<Vec<ParameterTemplate>, String> {
+        let mut templates = Vec::new();
+        
+        for param in params {
+            let type_template = self.convert_type_to_template(&param.type_annotation, available_generic_params)?;
+            templates.push(ParameterTemplate {
+                name: param.name.name.clone(),
+                type_template,
+                required: true, // All parameters are required in Outrun
+            });
+        }
+        
+        Ok(templates)
+    }
+
+    /// Convert a type annotation to a type template
+    fn convert_type_to_template(
+        &self,
+        type_annotation: &outrun_parser::TypeAnnotation,
+        available_generic_params: &[String],
+    ) -> Result<TypeTemplate, String> {
+        match type_annotation {
+            outrun_parser::TypeAnnotation::Simple { path, generic_args, .. } => {
+                if let Some(last_component) = path.last() {
+                    let name = &last_component.name;
+                    if available_generic_params.contains(name) {
+                        Ok(TypeTemplate::Generic {
+                            parameter_name: name.clone(),
+                            constraints: Vec::new(), // Will be filled by constraint extraction
+                        })
+                    } else {
+                        // Convert generic arguments
+                        let generic_args = if let Some(args) = generic_args {
+                            let mut templates = Vec::new();
+                            for arg in &args.args {
+                                templates.push(self.convert_type_to_template(arg, available_generic_params)?);
+                            }
+                            templates
+                        } else {
+                            Vec::new()
+                        };
+                        
+                        // Use the full qualified path for concrete types
+                        let full_type_name = path.iter()
+                            .map(|component| component.name.clone())
+                            .collect::<Vec<_>>()
+                            .join(".");
+                        
+                        Ok(TypeTemplate::Concrete {
+                            type_name: full_type_name,
+                            generic_args,
+                        })
+                    }
+                } else {
+                    Err("Empty type path".to_string())
+                }
+            }
+            outrun_parser::TypeAnnotation::Function { params, return_type, .. } => {
+                let mut parameter_templates = Vec::new();
+                for param in params {
+                    parameter_templates.push(self.convert_type_to_template(&param.type_annotation, available_generic_params)?);
+                }
+                
+                let return_template = Box::new(self.convert_type_to_template(return_type, available_generic_params)?);
+                
+                Ok(TypeTemplate::Function {
+                    parameter_templates,
+                    return_template,
+                })
+            }
+            outrun_parser::TypeAnnotation::Tuple { types, .. } => {
+                let mut element_templates = Vec::new();
+                for element_type in types {
+                    element_templates.push(self.convert_type_to_template(element_type, available_generic_params)?);
+                }
+                
+                Ok(TypeTemplate::Concrete {
+                    type_name: "Tuple".to_string(),
+                    generic_args: element_templates,
+                })
+            }
+        }
+    }
+
+    /// Extract protocol constraints from a function signature
+    fn extract_protocol_constraints(
+        &self,
+        _signature: &outrun_parser::FunctionSignature,
+    ) -> Result<Vec<ProtocolConstraintTemplate>, String> {
+        let constraints = Vec::new();
+        
+        // For now, this is a simplified implementation
+        // In a full implementation, this would parse constraint clauses
+        // like "where T: Display + Clone"
+        
+        // TODO: Parse constraint expressions from function signature
+        // This would involve extending the parser to capture constraint clauses
+        
+        Ok(constraints)
+    }
+
+    /// Get all generated public function templates
+    pub fn get_public_function_templates(&self) -> &HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate> {
+        &self.public_function_templates
+    }
+
+    /// Get a specific public function template
+    pub fn get_public_function_template(
+        &self,
+        signature: &crate::universal_dispatch::FunctionSignature,
+    ) -> Option<&PublicFunctionTemplate> {
+        self.public_function_templates.get(signature)
+    }
+
+    /// Clear all generated templates (for testing)
+    pub fn clear_templates(&mut self) {
+        self.public_function_templates.clear();
     }
 }
 

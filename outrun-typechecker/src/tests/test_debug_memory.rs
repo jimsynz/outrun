@@ -284,3 +284,204 @@ fn test_phase2_complete_integration() {
     println!("✓ Phase 2 (Call Stack Backtracking) integration verified");
     println!("✓ Both Phase 1 (Recursive Pattern Detection) and Phase 2 are complete!");
 }
+
+#[test]
+fn test_phase3_public_function_template_generation() {
+    // Test Phase 3: Public Function Template Generation
+    let mut solver = crate::constraints::ConstraintSolver::new();
+    
+    // Create a test function definition
+    let function_def = outrun_parser::FunctionDefinition {
+        attributes: vec![],
+        visibility: outrun_parser::FunctionVisibility::Public,
+        name: outrun_parser::Identifier {
+            name: "test_function".to_string(),
+            span: outrun_parser::Span::new(0, 13),
+        },
+        parameters: vec![
+            outrun_parser::Parameter {
+                name: outrun_parser::Identifier {
+                    name: "value".to_string(),
+                    span: outrun_parser::Span::new(14, 19),
+                },
+                type_annotation: outrun_parser::TypeAnnotation::Simple {
+                    path: vec![outrun_parser::TypeIdentifier {
+                        name: "T".to_string(),
+                        span: outrun_parser::Span::new(21, 22),
+                    }],
+                    generic_args: None,
+                    span: outrun_parser::Span::new(21, 22),
+                },
+                span: outrun_parser::Span::new(14, 22),
+            },
+        ],
+        return_type: outrun_parser::TypeAnnotation::Simple {
+            path: vec![outrun_parser::TypeIdentifier {
+                name: "Boolean".to_string(),
+                span: outrun_parser::Span::new(25, 32),
+            }],
+            generic_args: None,
+            span: outrun_parser::Span::new(25, 32),
+        },
+        guard: None,
+        body: outrun_parser::Block {
+            statements: vec![],
+            span: outrun_parser::Span::new(34, 36),
+        },
+        span: outrun_parser::Span::new(0, 36),
+    };
+    
+    // Create function signature
+    let function_signature = crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
+    
+    // Generate template with available generic parameters
+    let available_generics = vec!["T".to_string()]; // Our test function uses generic parameter T
+    let result = solver.generate_public_function_template(
+        function_signature.clone(),
+        &function_def,
+        crate::constraints::FunctionVisibility::Public,
+        &available_generics,
+    );
+    
+    match result {
+        Ok(template) => {
+            println!("✓ Successfully generated public function template");
+            println!("  Function: {}", template.function_signature.function_name);
+            println!("  Generic parameters: {}", template.generic_parameters.len());
+            println!("  Parameter types: {}", template.parameter_types.len());
+            println!("  Visibility: {:?}", template.visibility);
+            
+            // Verify template structure
+            assert_eq!(template.function_signature.function_name, "test_function");
+            assert_eq!(template.generic_parameters.len(), 1, "Should detect 'T' as generic parameter");
+            assert_eq!(template.parameter_types.len(), 1, "Should have one parameter");
+            assert_eq!(template.parameter_types[0].name, "value");
+            
+            // Check that template was stored in the solver
+            let stored_templates = solver.get_public_function_templates();
+            assert!(stored_templates.contains_key(&function_signature), "Template should be stored in solver");
+            
+            println!("✓ Phase 3 (Public Function Template Generation) is working correctly!");
+        }
+        Err(e) => {
+            println!("! Template generation failed: {}", e);
+            panic!("Phase 3 template generation should work");
+        }
+    }
+}
+
+#[test]
+fn test_phase3_proper_generic_detection() {
+    // Test that generic parameter detection is based on available generics, not heuristics
+    let mut solver = crate::constraints::ConstraintSolver::new();
+    
+    // Create a function that uses 'T' (which should be generic) and 'Outrun.Core.String' (which should be concrete)
+    let function_def = outrun_parser::FunctionDefinition {
+        attributes: vec![],
+        visibility: outrun_parser::FunctionVisibility::Public,
+        name: outrun_parser::Identifier {
+            name: "mixed_function".to_string(),
+            span: outrun_parser::Span::new(0, 14),
+        },
+        parameters: vec![
+            outrun_parser::Parameter {
+                name: outrun_parser::Identifier {
+                    name: "generic_param".to_string(),
+                    span: outrun_parser::Span::new(15, 28),
+                },
+                type_annotation: outrun_parser::TypeAnnotation::Simple {
+                    path: vec![outrun_parser::TypeIdentifier {
+                        name: "T".to_string(),
+                        span: outrun_parser::Span::new(30, 31),
+                    }],
+                    generic_args: None,
+                    span: outrun_parser::Span::new(30, 31),
+                },
+                span: outrun_parser::Span::new(15, 31),
+            },
+            outrun_parser::Parameter {
+                name: outrun_parser::Identifier {
+                    name: "concrete_param".to_string(),
+                    span: outrun_parser::Span::new(33, 47),
+                },
+                type_annotation: outrun_parser::TypeAnnotation::Simple {
+                    path: vec![
+                        outrun_parser::TypeIdentifier {
+                            name: "Outrun".to_string(),
+                            span: outrun_parser::Span::new(49, 55),
+                        },
+                        outrun_parser::TypeIdentifier {
+                            name: "Core".to_string(),
+                            span: outrun_parser::Span::new(56, 60),
+                        },
+                        outrun_parser::TypeIdentifier {
+                            name: "String".to_string(),
+                            span: outrun_parser::Span::new(61, 67),
+                        },
+                    ],
+                    generic_args: None,
+                    span: outrun_parser::Span::new(49, 67),
+                },
+                span: outrun_parser::Span::new(33, 55),
+            },
+        ],
+        return_type: outrun_parser::TypeAnnotation::Simple {
+            path: vec![outrun_parser::TypeIdentifier {
+                name: "Boolean".to_string(),
+                span: outrun_parser::Span::new(58, 65),
+            }],
+            generic_args: None,
+            span: outrun_parser::Span::new(58, 65),
+        },
+        guard: None,
+        body: outrun_parser::Block {
+            statements: vec![],
+            span: outrun_parser::Span::new(67, 69),
+        },
+        span: outrun_parser::Span::new(0, 69),
+    };
+    
+    let function_signature = crate::universal_dispatch::FunctionSignature::simple("mixed_function".to_string());
+    
+    // Only 'T' is available as a generic parameter
+    let available_generics = vec!["T".to_string()];
+    
+    let result = solver.generate_public_function_template(
+        function_signature,
+        &function_def,
+        crate::constraints::FunctionVisibility::Public,
+        &available_generics,
+    );
+    
+    match result {
+        Ok(template) => {
+            println!("✓ Template generated with proper generic detection");
+            
+            // Should detect exactly 1 generic parameter ('T')
+            assert_eq!(template.generic_parameters.len(), 1, "Should detect exactly one generic parameter");
+            assert_eq!(template.generic_parameters[0].name, "T", "Should detect 'T' as generic");
+            
+            // Should have 2 parameters total
+            assert_eq!(template.parameter_types.len(), 2, "Should have two parameters");
+            
+            // First parameter should be generic
+            if let crate::constraints::TypeTemplate::Generic { parameter_name, .. } = &template.parameter_types[0].type_template {
+                assert_eq!(parameter_name, "T", "First parameter should be generic T");
+            } else {
+                panic!("First parameter should be generic, got: {:?}", template.parameter_types[0].type_template);
+            }
+            
+            // Second parameter should be concrete
+            if let crate::constraints::TypeTemplate::Concrete { type_name, .. } = &template.parameter_types[1].type_template {
+                assert_eq!(type_name, "Outrun.Core.String", "Second parameter should be concrete Outrun.Core.String");
+            } else {
+                panic!("Second parameter should be concrete Outrun.Core.String, got: {:?}", template.parameter_types[1].type_template);
+            }
+            
+            println!("✓ Generic parameter detection is now properly AST-based!");
+        }
+        Err(e) => {
+            panic!("Template generation should succeed: {}", e);
+        }
+    }
+}
