@@ -82,6 +82,9 @@ pub struct TypeInferenceEngine {
 
     /// Call stack backtracking support for enhanced constraint resolution
     constraint_solver_with_backtracking: Option<crate::constraints::ConstraintSolver>,
+
+    /// Depth tracking for nested inference calls to prevent premature task state clearing
+    inference_depth: u32,
 }
 
 /// Unique identifier for inference tasks in the iterative system
@@ -455,6 +458,8 @@ impl TypeInferenceEngine {
             next_task_id: 0,
             // Call stack backtracking support (initialized later)
             constraint_solver_with_backtracking: None,
+            // Depth tracking for nested inference calls
+            inference_depth: 0,
         }
     }
 
@@ -1029,18 +1034,41 @@ impl TypeInferenceEngine {
             return_type,
             body: Some(function.body.clone()), // Store function body for evaluation
             span: Some(function.span),
-            generic_parameters: struct_generic_params,
+            generic_parameters: struct_generic_params.clone(),
             is_generic,
         };
 
         // Register the function in the function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(struct_name.to_string(), function_name, function_info);
+            registry.register_function(struct_name.to_string(), function_name.clone(), function_info);
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
-            new_registry.register_function(struct_name.to_string(), function_name, function_info);
+            new_registry.register_function(struct_name.to_string(), function_name.clone(), function_info);
             self.function_registry = Rc::new(new_registry);
+        }
+
+        // Generate public function template for dependency usage (if public)
+        if matches!(function.visibility, outrun_parser::FunctionVisibility::Public) {
+            let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
+                struct_name.to_string(),
+                function_name,
+            );
+            
+            let template_visibility = crate::constraints::FunctionVisibility::Public;
+            let available_generics = struct_generic_params.clone();
+            
+            if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
+                if let Err(e) = constraint_solver.generate_public_function_template(
+                    function_signature,
+                    function,
+                    template_visibility,
+                    &available_generics,
+                ) {
+                    // Log template generation failure but don't fail compilation
+                    eprintln!("Warning: Failed to generate template for {}.{}: {}", struct_name, function.name.name, e);
+                }
+            }
         }
 
         Ok(())
@@ -1477,12 +1505,35 @@ impl TypeInferenceEngine {
 
         // Register the impl function in the function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(impl_scope.to_string(), function_name, function_info);
+            registry.register_function(impl_scope.to_string(), function_name.clone(), function_info);
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
-            new_registry.register_function(impl_scope.to_string(), function_name, function_info);
+            new_registry.register_function(impl_scope.to_string(), function_name.clone(), function_info);
             self.function_registry = Rc::new(new_registry);
+        }
+
+        // Generate public function template for dependency usage (if public)
+        if matches!(function.visibility, outrun_parser::FunctionVisibility::Public) {
+            let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
+                impl_scope.to_string(),
+                function_name,
+            );
+            
+            let template_visibility = crate::constraints::FunctionVisibility::Public;
+            let available_generics = self.extract_impl_block_generic_parameters(impl_block);
+            
+            if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
+                if let Err(e) = constraint_solver.generate_public_function_template(
+                    function_signature,
+                    function,
+                    template_visibility,
+                    &available_generics,
+                ) {
+                    // Log template generation failure but don't fail compilation
+                    eprintln!("Warning: Failed to generate template for {}.{}: {}", impl_scope, function.name.name, e);
+                }
+            }
         }
 
         Ok(())
@@ -1780,16 +1831,39 @@ impl TypeInferenceEngine {
 
         // Get mutable reference to function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(self.current_module.0.clone(), function_name, function_info);
+            registry.register_function(self.current_module.0.clone(), function_name.clone(), function_info);
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
             new_registry.register_function(
                 self.current_module.0.clone(),
-                function_name,
+                function_name.clone(),
                 function_info,
             );
             self.function_registry = Rc::new(new_registry);
+        }
+
+        // Generate public function template for dependency usage (if public)
+        if matches!(func_def.visibility, outrun_parser::FunctionVisibility::Public) {
+            let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
+                self.current_module.0.clone(),
+                function_name,
+            );
+            
+            let template_visibility = crate::constraints::FunctionVisibility::Public;
+            let available_generics = Vec::new(); // TODO: Handle top-level generic functions
+            
+            if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
+                if let Err(e) = constraint_solver.generate_public_function_template(
+                    function_signature,
+                    func_def,
+                    template_visibility,
+                    &available_generics,
+                ) {
+                    // Log template generation failure but don't fail compilation
+                    eprintln!("Warning: Failed to generate template for {}.{}: {}", self.current_module.0, func_def.name.name, e);
+                }
+            }
         }
 
         Ok(())
@@ -2120,13 +2194,20 @@ impl TypeInferenceEngine {
     // ITERATIVE INFERENCE INFRASTRUCTURE
     // ============================================================================
 
-    /// Reset the iterative inference state for a new inference operation
+    /// Reset the iterative inference state for a new inference operation  
+    /// CRITICAL FIX: Only clear task state at top level (depth 0) to preserve dependencies
+    /// across nested inference calls within the same inference session
     fn reset_iterative_state(&mut self) {
-        self.inference_tasks.clear();
-        self.ready_task_queue.clear();
-        self.task_results.clear();
-        self.expression_to_task_map.clear();
-        self.next_task_id = 0;
+        if self.inference_depth == 0 {
+            println!("🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})", self.inference_tasks.len(), self.inference_depth);
+            self.inference_tasks.clear();
+            self.ready_task_queue.clear();
+            self.task_results.clear();
+            self.expression_to_task_map.clear();
+            self.next_task_id = 0;
+        } else {
+            println!("🔄 PRESERVING TASK STATE: {} tasks preserved at depth {}", self.inference_tasks.len(), self.inference_depth);
+        }
     }
 
     /// Generate a unique task ID
@@ -2138,7 +2219,14 @@ impl TypeInferenceEngine {
 
     /// Create a new inference task for an expression
     fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
+        // CRITICAL FIX: Check if task already exists for this expression
+        if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
+            println!("      🔄 Reusing existing task {} for expression", existing_task_id);
+            return existing_task_id;
+        }
+        
         let task_id = self.generate_task_id();
+        println!("      ➕ Creating new task {} for expression", task_id);
         
         let task = InferenceTask {
             id: task_id,
@@ -2150,7 +2238,11 @@ impl TypeInferenceEngine {
         };
 
         self.inference_tasks.insert(task_id, task);
-        self.expression_to_task_map.insert(expression, task_id);
+        
+        // DEBUG: Check if we're overwriting an existing mapping
+        if let Some(old_task_id) = self.expression_to_task_map.insert(expression, task_id) {
+            println!("      ⚠️  OVERWRITING: Expression had task {} -> now has task {}", old_task_id, task_id);
+        }
         
         task_id
     }
@@ -2160,11 +2252,16 @@ impl TypeInferenceEngine {
         // Add dependency to the dependent task
         if let Some(dependent) = self.inference_tasks.get_mut(&dependent_task) {
             dependent.dependencies.push(dependency_task);
+            println!("      ✅ Task {} now has {} dependencies: {:?}", dependent_task, dependent.dependencies.len(), dependent.dependencies);
+        } else {
+            println!("      ❌ Failed to find dependent task {}", dependent_task);
         }
         
         // Add dependent to the dependency task
         if let Some(dependency) = self.inference_tasks.get_mut(&dependency_task) {
             dependency.dependents.push(dependent_task);
+        } else {
+            println!("      ❌ Failed to find dependency task {}", dependency_task);
         }
     }
 
@@ -2220,8 +2317,28 @@ impl TypeInferenceEngine {
         task_id: TaskId,
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
+        // DEBUG: Function call processing
+        let call_name = match &func_call.path {
+            outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
+            outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+            _ => "dynamic".to_string(),
+        };
+        
         // Get dependency results for arguments
         let task = &self.inference_tasks[&task_id];
+        println!("🔧 Processing function call: {} with {} dependencies (task_id: {})", call_name, task.dependencies.len(), task_id);
+        println!("    🔍 Task dependencies: {:?}", task.dependencies);
+        
+        // DEBUG: Check if this task exists in the map and compare
+        if let Some(stored_task) = self.inference_tasks.get(&task_id) {
+            println!("    🔍 Stored task dependencies: {:?}", stored_task.dependencies);
+            if stored_task.dependencies != task.dependencies {
+                println!("    ⚠️  MISMATCH: Retrieved task differs from stored task!");
+            }
+        } else {
+            println!("    ❌ Task {} not found in inference_tasks map!", task_id);
+        }
+        
         let mut arg_results = Vec::new();
         
         for dependency_id in &task.dependencies {
@@ -2250,10 +2367,13 @@ impl TypeInferenceEngine {
         
         // CRITICAL FIX: Extract argument types from dependency results to avoid recursive inference
         let mut arg_types = Vec::new();
-        for dependency_id in &task.dependencies {
+        println!("    🔍 Extracting {} argument types from dependencies", task.dependencies.len());
+        for (i, dependency_id) in task.dependencies.iter().enumerate() {
             if let Some(result) = self.task_results.get(dependency_id) {
+                println!("      ✅ Arg {}: {:?}", i, result.inferred_type);
                 arg_types.push(Some(result.inferred_type.clone()));
             } else {
+                println!("      ❌ Arg {}: Missing dependency result", i);
                 arg_types.push(None);
             }
         }
@@ -2576,20 +2696,108 @@ impl TypeInferenceEngine {
                 let expression = unsafe { &*task.expression };
                 
                 if let outrun_parser::ExpressionKind::IfExpression(if_expr) = &expression.kind {
-                    // Create modified if expression with processed condition type
-                    let mut processed_if = if_expr.clone();
+                    println!("🔧 Implementing if expression type inference");
                     
-                    // TODO: Convert Type to ParsedTypeInfo when needed
-                    let _ = condition_result; // Suppress unused variable warning
+                    // CRITICAL FIX: Collect dependency results first to avoid borrowing conflicts
+                    let mut dependency_results: Vec<Type> = Vec::new();
+                    for dependency_id in &task.dependencies {
+                        if let Some(result) = self.task_results.get(dependency_id) {
+                            dependency_results.push(result.inferred_type.clone());
+                        }
+                    }
                     
-                    // Use existing recursive if expression inference
-                    let mut mutable_context = context.clone();
-                    // For now, assign a fresh type variable since if expression inference is not yet implemented
-                    let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
+                    // Extract branch types from dependency results
+                    // dependency_results[0] = condition, dependency_results[1] = then, dependency_results[2] = else (if present)
+                    let then_result = if dependency_results.len() > 1 {
+                        dependency_results[1].clone()
+                    } else {
+                        // Fallback: if no dependency result, use fresh type variable
+                        Type::variable(self.fresh_type_var(), Level(0))
+                    };
+                    println!("  Then branch type: {:?}", then_result);
+                    
+                    let else_result = if dependency_results.len() > 2 {
+                        Some(dependency_results[2].clone())
+                    } else if if_expr.else_block.is_some() {
+                        // Else block exists but no dependency result - use fresh type variable
+                        Some(Type::variable(self.fresh_type_var(), Level(0)))
+                    } else {
+                        println!("  No else branch");
+                        None
+                    };
+                    
+                    if let Some(ref else_type) = else_result {
+                        println!("  Else branch type: {:?}", else_type);
+                    }
+                    
+                    // Determine the unified type
+                    let unified_type = match else_result {
+                        Some(else_result) => {
+                            // Both branches exist - they must have compatible types
+                            if self.types_are_compatible(&then_result, &else_result) {
+                                then_result // Use then branch type as the unified type
+                            } else {
+                                println!("  ❌ Branch types are incompatible");
+                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "If branches have incompatible types: then={:?}, else={:?}",
+                                        then_result, else_result
+                                    )],
+                                }));
+                            }
+                        }
+                        None => {
+                            // No else branch - the then block type must implement Default
+                            println!("  🔧 No else branch - checking Default protocol requirement");
+                            
+                            // Check if the then block type implements Default protocol
+                            let default_protocol_id = crate::types::ProtocolId::new("Default");
+                            
+                            // Extract the type ID from the then_result type
+                            let type_implements_default = match &then_result {
+                                Type::Concrete { id, .. } => {
+                                    self.protocol_registry().type_satisfies_protocol(id, &default_protocol_id)
+                                }
+                                Type::Protocol { id, .. } => {
+                                    // For protocol types, check if the protocol itself satisfies Default
+                                    let type_id = crate::types::TypeId::new(id.name());
+                                    self.protocol_registry().type_satisfies_protocol(&type_id, &default_protocol_id)
+                                }
+                                Type::SelfType { binding_context, .. } => {
+                                    // For Self types, check if the implementing type satisfies Default
+                                    match binding_context {
+                                        crate::types::SelfBindingContext::Implementation { implementing_type, .. } => {
+                                            self.protocol_registry().type_satisfies_protocol(implementing_type, &default_protocol_id)
+                                        }
+                                        _ => false
+                                    }
+                                }
+                                _ => false
+                            };
+                            
+                            if type_implements_default {
+                                println!("  ✅ Type implements Default protocol");
+                                then_result
+                            } else {
+                                println!("  ❌ Type does not implement Default protocol");
+                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "If expression without else block requires type {:?} to implement Default protocol",
+                                        then_result
+                                    )],
+                                }));
+                            }
+                        }
+                    };
+                    
+                    println!("  ✅ If expression unified type: {:?}", unified_type);
+                    
                     Ok(InferenceResult {
-                        inferred_type,
-                        constraints: mutable_context.constraints.clone(),
-                        substitution: mutable_context.substitution.clone(),
+                        inferred_type: unified_type,
+                        constraints: context.constraints.clone(),
+                        substitution: context.substitution.clone(),
                     })
                 } else {
                     Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
@@ -2667,7 +2875,28 @@ impl TypeInferenceEngine {
         expression: &mut Expression,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        // Reset state for new inference operation
+        // CRITICAL FIX: Track inference depth for proper task state management
+        self.inference_depth += 1;
+        println!("🔥 INFER_EXPRESSION CALLED (depth={}) - Expression type: {:?}", 
+            self.inference_depth, std::mem::discriminant(&expression.kind));
+        
+        // Execute main logic with proper cleanup
+        let result = self.infer_expression_impl(expression, context);
+        
+        // CRITICAL FIX: Always decrement depth on exit (both success and error paths)
+        self.inference_depth -= 1;
+        println!("✅ INFER_EXPRESSION COMPLETED (depth={})", self.inference_depth);
+        
+        result
+    }
+
+    /// Implementation of inference logic (separated for proper cleanup handling)
+    fn infer_expression_impl(
+        &mut self,
+        expression: &mut Expression,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Reset state for new inference operation (only at top level)
         self.reset_iterative_state();
         
         // Phase 1: Collect all tasks through non-recursive tree traversal
@@ -2736,14 +2965,25 @@ impl TypeInferenceEngine {
             // Add child expressions based on expression type and create dependencies
             match &mut current_expr.kind {
                 ExpressionKind::FunctionCall(function_call) => {
+                    // DEBUG: Function call task collection
+                    let call_name = match &function_call.path {
+                        outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
+                        outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+                        _ => "dynamic".to_string(),
+                    };
+                    println!("🔧 Task collection for function call: {} with {} arguments (task_id: {})", call_name, function_call.arguments.len(), current_task_id);
+                    
                     // Function call depends on all its arguments
-                    for argument in &mut function_call.arguments {
-                        if let outrun_parser::Argument::Named { expression, .. } = argument {
+                    for (i, argument) in function_call.arguments.iter_mut().enumerate() {
+                        if let outrun_parser::Argument::Named { name, expression, .. } = argument {
+                            println!("  📋 Creating dependency for argument {}: {} (type: {:?})", i, name.name, expression.kind);
+                            
                             // Create task for argument expression
                             let arg_context = self.inference_tasks[&current_task_id].context.clone();
                             let arg_task_id = self.create_task(expression as *mut Expression, arg_context);
                             
                             // Function call depends on its argument
+                            println!("    ➕ Adding dependency: {} -> {}", current_task_id, arg_task_id);
                             self.add_task_dependency(current_task_id, arg_task_id);
                             
                             // Add argument to work stack for further processing
@@ -2869,9 +3109,30 @@ impl TypeInferenceEngine {
                     self.add_task_dependency(current_task_id, condition_task_id);
                     work_stack.push(&mut if_expr.condition);
                     
-                    // Note: then_block and else_block are Block types, not Expression
-                    // For now, we don't process blocks iteratively
-                    // TODO: Add block processing when implementing full control flow
+                    // CRITICAL FIX: Process then and else blocks for proper if expression type inference
+                    // The then block is required
+                    if let Some(then_expr) = if_expr.then_block.statements.last_mut() {
+                        if let outrun_parser::StatementKind::Expression(expr) = &mut then_expr.kind {
+                            let then_context = self.inference_tasks[&current_task_id].context.clone();
+                            let then_task_id = self.create_task(expr.as_mut() as *mut Expression, then_context);
+                            
+                            self.add_task_dependency(current_task_id, then_task_id);
+                            work_stack.push(expr.as_mut());
+                        }
+                    }
+                    
+                    // The else block is optional
+                    if let Some(else_block) = &mut if_expr.else_block {
+                        if let Some(else_expr) = else_block.statements.last_mut() {
+                            if let outrun_parser::StatementKind::Expression(expr) = &mut else_expr.kind {
+                                let else_context = self.inference_tasks[&current_task_id].context.clone();
+                                let else_task_id = self.create_task(expr.as_mut() as *mut Expression, else_context);
+                                
+                                self.add_task_dependency(current_task_id, else_task_id);
+                                work_stack.push(expr.as_mut());
+                            }
+                        }
+                    }
                 }
                 ExpressionKind::CaseExpression(case_expr) => {
                     // Case expression depends on its scrutinee expression
@@ -3155,8 +3416,22 @@ impl TypeInferenceEngine {
         // Convert the declared return type
         let declared_return_type = self.convert_type_annotation(&function.return_type)?;
 
+        // CRITICAL DEBUG: Log detailed type information for any ceil function
+        if function.name.name == "ceil" {
+            println!("🚨 CRITICAL DEBUG: {}.{} function body type checking", scope, function.name.name);
+            println!("  Declared return type: {:?}", declared_return_type);
+            println!("  Inferred body type: {:?}", body_type);
+            println!("  Function parameters: {:?}", function.parameters.iter().map(|p| (&p.name.name, &p.type_annotation)).collect::<Vec<_>>());
+            println!("  Symbol table: {:?}", self.symbol_table);
+        }
+
         // Verify that the body type matches the declared return type
         if !self.types_are_compatible(&body_type, &declared_return_type) {
+            // CRITICAL DEBUG: Log the failing function
+            println!("🚨 TYPE MISMATCH ERROR in {}.{}", scope, function.name.name);
+            println!("  Expected: {:?}", declared_return_type);
+            println!("  Found: {:?}", body_type);
+            
             self.symbol_table = old_symbol_table; // Restore before error
             return Err(TypecheckError::UnificationError(
                 OriginalUnificationError::TypeMismatch {
@@ -3879,6 +4154,12 @@ impl TypeInferenceEngine {
         let qualified_start = std::time::Instant::now();
         println!("              🔧 resolve_qualified_function_clauses_with_precomputed_args: {}.{} ({} arg types)", module_name, function_name, precomputed_arg_types.len());
         
+        // CRITICAL DEBUG: Log every Option.unwrap call
+        if module_name == "Option" && function_name == "unwrap" {
+            println!("              🚨 CRITICAL: Option.unwrap call detected!");
+            println!("                Precomputed arg types: {:?}", precomputed_arg_types);
+        }
+        
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ProtocolId::new(module_name);
         
@@ -3914,7 +4195,20 @@ impl TypeInferenceEngine {
         let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                let return_type = resolved_func.function_info.return_type.clone();
+                
+                // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
+                let return_type = if self.protocol_registry().has_protocol(&protocol_id) {
+                    self.substitute_protocol_generics_in_return_type(
+                        &resolved_func.function_info.return_type,
+                        &qualified_name,
+                        target_type.as_ref(),
+                        precomputed_arg_types,
+                        function_call,
+                        context
+                    )?
+                } else {
+                    resolved_func.function_info.return_type.clone()
+                };
                 
                 self.register_function_clause(clause_id, &resolved_func);
                 
@@ -3990,6 +4284,12 @@ impl TypeInferenceEngine {
         let qualified_start = std::time::Instant::now();
         println!("              🔧 resolve_qualified_function_clauses: {}.{}", module_name, function_name);
         
+        // CRITICAL DEBUG: Log every Option.unwrap call
+        if module_name == "Option" && function_name == "unwrap" {
+            println!("              🚨 CRITICAL: Option.unwrap call detected (NON-PRECOMPUTED)!");
+            println!("                Function call arguments: {:?}", function_call.arguments.len());
+        }
+        
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ProtocolId::new(module_name);
         
@@ -4025,7 +4325,34 @@ impl TypeInferenceEngine {
         let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                let return_type = resolved_func.function_info.return_type.clone();
+                
+                // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
+                let return_type = if self.protocol_registry().has_protocol(&protocol_id) {
+                    // For non-precomputed version, we need to infer argument types first
+                    let arg_types: Vec<Option<Type>> = function_call.arguments.iter().map(|arg| {
+                        match arg {
+                            outrun_parser::Argument::Named { expression, .. } => {
+                                let mut expr_clone = expression.clone();
+                                match self.infer_expression(&mut expr_clone, context) {
+                                    Ok(result) => Some(result.inferred_type),
+                                    Err(_) => None,
+                                }
+                            }
+                            _ => None,
+                        }
+                    }).collect();
+                    
+                    self.substitute_protocol_generics_in_return_type(
+                        &resolved_func.function_info.return_type,
+                        &qualified_name,
+                        target_type.as_ref(),
+                        &arg_types,
+                        function_call,
+                        context
+                    )?
+                } else {
+                    resolved_func.function_info.return_type.clone()
+                };
                 
                 self.register_function_clause(clause_id, &resolved_func);
                 
@@ -4403,6 +4730,124 @@ impl TypeInferenceEngine {
         }
 
         Ok(self_type)
+    }
+
+    /// Substitute generic parameters in protocol function return types
+    /// Essential for correct type inference of protocol calls like Option.unwrap
+    #[allow(clippy::result_large_err)]
+    fn substitute_protocol_generics_in_return_type(
+        &mut self,
+        return_type: &Type,
+        qualified_name: &str,
+        _target_type: Option<&Type>,
+        precomputed_arg_types: &[Option<Type>],
+        function_call: &outrun_parser::FunctionCall,
+        _context: &mut InferenceContext,
+    ) -> Result<Type, TypecheckError> {
+        // Get the protocol definition to understand generic parameters
+        let (module_name, function_name) = if let Some(dot_pos) = qualified_name.rfind('.') {
+            (&qualified_name[..dot_pos], &qualified_name[dot_pos + 1..])
+        } else {
+            return Ok(return_type.clone()); // No module, can't be protocol
+        };
+
+        // Get function info to understand parameter types
+        let function_parameters = if let Some(info) = self.function_registry.get_function(module_name, function_name) {
+            info.parameters.clone()
+        } else {
+            return Ok(return_type.clone()); // Function not found
+        };
+
+        // Handle the most common case: Option<T> where T needs substitution
+        if module_name == "Option" {
+            println!("              🔧 Option protocol detected - attempting generic substitution");
+            println!("                Function: {}", function_name);
+            println!("                Precomputed arg types count: {}", precomputed_arg_types.len());
+            println!("                Function parameters: {:?}", function_parameters);
+            println!("                Original return type: {:?}", return_type);
+            
+            // Find the argument that contains the protocol type (usually named 'value' for Option.unwrap)
+            for (i, (param_name, _param_type)) in function_parameters.iter().enumerate() {
+                println!("                  Checking parameter {}: {} (type: {:?})", i, param_name, _param_type);
+                if param_name == "value" {
+                    // Get the actual argument type
+                    if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
+                        println!("                    Found argument type: {:?}", arg_type);
+                        // Extract T from Option<T>
+                        if let Type::Protocol { id, args, .. } = arg_type {
+                            if id.name() == "Option" && !args.is_empty() {
+                                // The first argument of Option<T> is T
+                                let inner_type = &args[0];
+                                println!("                    ✅ Substituting T with: {:?}", inner_type);
+                                let result = self.substitute_generic_parameter_in_type(return_type, "T", inner_type)?;
+                                println!("                    ✅ Final return type: {:?}", result);
+                                return Ok(result);
+                            }
+                        }
+                    } else {
+                        println!("                    ❌ No argument type available at index {}", i);
+                    }
+                    break;
+                }
+            }
+            println!("              ❌ No 'value' parameter found or substitution failed");
+        }
+        
+        // For other protocols, implement generic substitution as needed
+        // This can be extended for other protocol patterns
+        Ok(return_type.clone())
+    }
+    
+    /// Helper method to substitute a specific generic parameter in a type
+    fn substitute_generic_parameter_in_type(
+        &self,
+        target_type: &Type,
+        param_name: &str,
+        replacement: &Type,
+    ) -> Result<Type, TypecheckError> {
+        match target_type {
+            Type::Protocol { id, args, span } => {
+                // Check if this protocol ID matches the parameter name
+                if id.name() == param_name {
+                    return Ok(replacement.clone());
+                }
+                
+                // Recursively substitute in arguments
+                let substituted_args: Result<Vec<_>, _> = args.iter()
+                    .map(|arg| self.substitute_generic_parameter_in_type(arg, param_name, replacement))
+                    .collect();
+                
+                Ok(Type::Protocol {
+                    id: id.clone(),
+                    args: substituted_args?,
+                    span: *span,
+                })
+            }
+            Type::Concrete { id, args, span } => {
+                // Recursively substitute in generic arguments
+                let substituted_args: Result<Vec<_>, _> = args.iter()
+                    .map(|arg| self.substitute_generic_parameter_in_type(arg, param_name, replacement))
+                    .collect();
+                
+                Ok(Type::Concrete {
+                    id: id.clone(),
+                    args: substituted_args?,
+                    span: *span,
+                })
+            }
+            Type::Variable { .. } => {
+                // Type variables don't need substitution (they're different from protocol parameters)
+                Ok(target_type.clone())
+            }
+            Type::SelfType { .. } => {
+                // Self types are handled differently
+                Ok(target_type.clone())
+            }
+            Type::Function { .. } => {
+                // Function types don't have generic parameters to substitute
+                Ok(target_type.clone())
+            }
+        }
     }
 
     /// Extract Self type from argument names (keyword arguments)

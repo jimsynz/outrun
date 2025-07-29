@@ -37,6 +37,10 @@ impl ProtocolId {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
+    
+    pub fn name(&self) -> &str {
+        &self.0
+    }
 }
 
 /// Module identifier for tracking implementation sources (orphan rule enforcement)

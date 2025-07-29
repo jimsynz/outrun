@@ -1381,6 +1381,177 @@ impl ConstraintSolver {
         self.public_function_templates.get(signature)
     }
 
+    /// Import public function templates from a dependency package
+    pub fn import_dependency_templates(
+        &mut self,
+        dependency_templates: &std::collections::HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate>,
+        dependency_package: &str,
+    ) -> Result<usize, String> {
+        let mut imported_count = 0;
+        
+        for (signature, template) in dependency_templates {
+            // CRITICAL: Only import PUBLIC function templates - private functions must not be accessible
+            if template.visibility != FunctionVisibility::Public {
+                continue; // Skip private functions - they should never be accessible to dependent packages
+            }
+            
+            // Only import templates that we don't already have
+            if !self.public_function_templates.contains_key(signature) {
+                // Create a copy of the template with dependency package info
+                let mut imported_template = template.clone();
+                imported_template.source_package = dependency_package.to_string();
+                
+                self.public_function_templates.insert(signature.clone(), imported_template);
+                imported_count += 1;
+            }
+        }
+        
+        Ok(imported_count)
+    }
+
+    /// Generate a function clause from a public function template with concrete type substitutions
+    pub fn generate_clause_from_template(
+        &self,
+        template: &PublicFunctionTemplate,
+        concrete_type_substitutions: &std::collections::HashMap<String, String>, // generic param -> concrete type
+    ) -> Result<crate::universal_dispatch::ClauseInfo, String> {
+        // Substitute generic parameters with concrete types in all templates
+        let substituted_parameter_types = self.substitute_types_in_parameters(
+            &template.parameter_types,
+            concrete_type_substitutions,
+        )?;
+        
+        let substituted_return_type = self.substitute_types_in_type_template(
+            &template.return_type,
+            concrete_type_substitutions,
+        )?;
+        
+        // Generate type compatibility guards for the substituted types
+        let mut guards = Vec::new();
+        for (i, param_template) in substituted_parameter_types.iter().enumerate() {
+            if let TypeTemplate::Concrete { type_name, .. } = &param_template.type_template {
+                guards.push(crate::universal_dispatch::Guard::TypeCompatible {
+                    target_type: self.parse_concrete_type_name(type_name)?,
+                    implementing_type: self.parse_concrete_type_name(type_name)?,
+                    constraint_context: crate::universal_dispatch::ConstraintContext::new(),
+                });
+            }
+        }
+        
+        // If no specific guards were needed, add AlwaysTrue
+        if guards.is_empty() {
+            guards.push(crate::universal_dispatch::Guard::AlwaysTrue);
+        }
+        
+        // Create the clause with intrinsic function body (simplified for now)
+        let clause = crate::universal_dispatch::ClauseInfo {
+            clause_id: crate::universal_dispatch::ClauseId::new(),
+            function_signature: template.function_signature.clone(),
+            guards,
+            body: crate::universal_dispatch::FunctionBody::IntrinsicFunction(
+                format!("{}.{}", template.source_package, template.function_signature.function_name)
+            ),
+            estimated_cost: 1,
+            priority: 0,
+            span: template.span,
+        };
+        
+        Ok(clause)
+    }
+
+    /// Substitute generic types with concrete types in parameter templates
+    fn substitute_types_in_parameters(
+        &self,
+        parameters: &[ParameterTemplate],
+        substitutions: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<ParameterTemplate>, String> {
+        let mut substituted_params = Vec::new();
+        
+        for param in parameters {
+            let substituted_type = self.substitute_types_in_type_template(
+                &param.type_template,
+                substitutions,
+            )?;
+            
+            substituted_params.push(ParameterTemplate {
+                name: param.name.clone(),
+                type_template: substituted_type,
+                required: param.required,
+            });
+        }
+        
+        Ok(substituted_params)
+    }
+
+    /// Substitute generic types with concrete types in a type template
+    fn substitute_types_in_type_template(
+        &self,
+        type_template: &TypeTemplate,
+        substitutions: &std::collections::HashMap<String, String>,
+    ) -> Result<TypeTemplate, String> {
+        match type_template {
+            TypeTemplate::Generic { parameter_name, .. } => {
+                if let Some(concrete_type) = substitutions.get(parameter_name) {
+                    Ok(TypeTemplate::Concrete {
+                        type_name: concrete_type.clone(),
+                        generic_args: Vec::new(),
+                    })
+                } else {
+                    Err(format!("No concrete type provided for generic parameter '{}'", parameter_name))
+                }
+            }
+            TypeTemplate::Concrete { type_name, generic_args } => {
+                // Recursively substitute in generic arguments
+                let mut substituted_args = Vec::new();
+                for arg in generic_args {
+                    substituted_args.push(self.substitute_types_in_type_template(arg, substitutions)?);
+                }
+                
+                Ok(TypeTemplate::Concrete {
+                    type_name: type_name.clone(),
+                    generic_args: substituted_args,
+                })
+            }
+            TypeTemplate::Protocol { protocol_name, generic_args } => {
+                // Recursively substitute in generic arguments
+                let mut substituted_args = Vec::new();
+                for arg in generic_args {
+                    substituted_args.push(self.substitute_types_in_type_template(arg, substitutions)?);
+                }
+                
+                Ok(TypeTemplate::Protocol {
+                    protocol_name: protocol_name.clone(),
+                    generic_args: substituted_args,
+                })
+            }
+            TypeTemplate::SelfType { context } => {
+                // Self types need special handling - for now, keep as-is
+                Ok(TypeTemplate::SelfType { context: context.clone() })
+            }
+            TypeTemplate::Function { parameter_templates, return_template } => {
+                // Recursively substitute in function parameters and return type
+                let mut substituted_params = Vec::new();
+                for param in parameter_templates {
+                    substituted_params.push(self.substitute_types_in_type_template(param, substitutions)?);
+                }
+                
+                let substituted_return = Box::new(self.substitute_types_in_type_template(return_template, substitutions)?);
+                
+                Ok(TypeTemplate::Function {
+                    parameter_templates: substituted_params,
+                    return_template: substituted_return,
+                })
+            }
+        }
+    }
+
+    /// Parse a concrete type name into a Type (simplified implementation)
+    fn parse_concrete_type_name(&self, type_name: &str) -> Result<crate::types::Type, String> {
+        // For now, create simple concrete types
+        // In a full implementation, this would parse the qualified name properly
+        Ok(crate::types::Type::concrete(type_name))
+    }
+
     /// Clear all generated templates (for testing)
     pub fn clear_templates(&mut self) {
         self.public_function_templates.clear();
