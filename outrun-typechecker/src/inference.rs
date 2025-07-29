@@ -120,6 +120,9 @@ pub struct InferenceTask {
     pub dependents: Vec<TaskId>,
     /// Current state of this task
     pub state: TaskState,
+    /// CRITICAL FIX: Track completed dependencies to retrieve argument types during processing
+    /// Maps argument index to dependency task ID for function calls
+    pub completed_dependencies: Vec<TaskId>,
 }
 
 
@@ -1092,6 +1095,10 @@ impl TypeInferenceEngine {
         let protocol_module = ModuleId::new(&protocol_name);
         self.protocol_registry_mut()
             .add_local_module(protocol_module);
+
+        // WORKAROUND: Identify never types during protocol processing
+        // TODO: Replace with proper attribute system when macro system is implemented
+        // Never type identification is now handled in registry.is_never_type()
 
         // Set up generic parameter context
         let old_generic_context = self.generic_parameter_context.clone();
@@ -2191,6 +2198,25 @@ impl TypeInferenceEngine {
     }
 
     // ============================================================================
+    // NEVER TYPE SUPPORT (WORKAROUND)
+    // ============================================================================
+
+    /// WORKAROUND: Check if two types can be unified, considering never types
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    fn types_are_compatible_with_never(&self, expected: &Type, found: &Type) -> bool {
+        // Never types can unify with any type (bottom type property)
+        if self.type_registry.is_never_type(found) {
+            return true;
+        }
+        if self.type_registry.is_never_type(expected) {
+            return true;
+        }
+        
+        // Fall back to regular type compatibility
+        self.types_are_compatible(expected, found)
+    }
+
+    // ============================================================================
     // ITERATIVE INFERENCE INFRASTRUCTURE
     // ============================================================================
 
@@ -2219,9 +2245,15 @@ impl TypeInferenceEngine {
 
     /// Create a new inference task for an expression
     fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
-        // CRITICAL FIX: Check if task already exists for this expression
+        // DEBUGGING: Check if task already exists for this expression
         if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
             println!("      🔄 Reusing existing task {} for expression", existing_task_id);
+            
+            // DEBUG: Show current dependencies of reused task
+            if let Some(existing_task) = self.inference_tasks.get(&existing_task_id) {
+                println!("      📋 Reused task {} current dependencies: {:?}", existing_task_id, existing_task.dependencies);
+            }
+            
             return existing_task_id;
         }
         
@@ -2235,6 +2267,7 @@ impl TypeInferenceEngine {
             dependencies: Vec::new(),
             dependents: Vec::new(),
             state: TaskState::Pending,
+            completed_dependencies: Vec::new(),
         };
 
         self.inference_tasks.insert(task_id, task);
@@ -2251,6 +2284,12 @@ impl TypeInferenceEngine {
     fn add_task_dependency(&mut self, dependent_task: TaskId, dependency_task: TaskId) {
         // Add dependency to the dependent task
         if let Some(dependent) = self.inference_tasks.get_mut(&dependent_task) {
+            // DEBUG: Check if this dependency is already present
+            if dependent.dependencies.contains(&dependency_task) {
+                println!("      🔄 Task {} already has dependency {}, not adding duplicate", dependent_task, dependency_task);
+                return;
+            }
+            
             dependent.dependencies.push(dependency_task);
             println!("      ✅ Task {} now has {} dependencies: {:?}", dependent_task, dependent.dependencies.len(), dependent.dependencies);
         } else {
@@ -2259,7 +2298,9 @@ impl TypeInferenceEngine {
         
         // Add dependent to the dependency task
         if let Some(dependency) = self.inference_tasks.get_mut(&dependency_task) {
-            dependency.dependents.push(dependent_task);
+            if !dependency.dependents.contains(&dependent_task) {
+                dependency.dependents.push(dependent_task);
+            }
         } else {
             println!("      ❌ Failed to find dependency task {}", dependency_task);
         }
@@ -2298,8 +2339,13 @@ impl TypeInferenceEngine {
     /// Update a dependent task when one of its dependencies completes
     fn update_dependent_task(&mut self, dependent_id: TaskId, completed_dependency: TaskId) {
         if let Some(dependent_task) = self.inference_tasks.get_mut(&dependent_id) {
-            // Remove the completed dependency
-            dependent_task.dependencies.retain(|&dep| dep != completed_dependency);
+            // CRITICAL FIX: Move completed dependency to completed_dependencies list instead of removing it
+            if dependent_task.dependencies.contains(&completed_dependency) {
+                dependent_task.dependencies.retain(|&dep| dep != completed_dependency);
+                dependent_task.completed_dependencies.push(completed_dependency);
+                println!("      📋 Task {} moved dependency {} to completed (remaining: {}, completed: {})", 
+                    dependent_id, completed_dependency, dependent_task.dependencies.len(), dependent_task.completed_dependencies.len());
+            }
             
             // If no more dependencies, mark as ready
             if dependent_task.dependencies.is_empty() && matches!(dependent_task.state, TaskState::Pending) {
@@ -2341,7 +2387,7 @@ impl TypeInferenceEngine {
         
         let mut arg_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 arg_results.push(result.clone());
             }
@@ -2365,10 +2411,10 @@ impl TypeInferenceEngine {
             }
         }
         
-        // CRITICAL FIX: Extract argument types from dependency results to avoid recursive inference
+        // CRITICAL FIX: Extract argument types from completed dependency results
         let mut arg_types = Vec::new();
-        println!("    🔍 Extracting {} argument types from dependencies", task.dependencies.len());
-        for (i, dependency_id) in task.dependencies.iter().enumerate() {
+        println!("    🔍 Extracting {} argument types from completed dependencies", task.completed_dependencies.len());
+        for (i, dependency_id) in task.completed_dependencies.iter().enumerate() {
             if let Some(result) = self.task_results.get(dependency_id) {
                 println!("      ✅ Arg {}: {:?}", i, result.inferred_type);
                 arg_types.push(Some(result.inferred_type.clone()));
@@ -2396,7 +2442,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut element_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 element_results.push(result.clone());
             }
@@ -2433,7 +2479,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut element_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 element_results.push(result.clone());
             }
@@ -2468,7 +2514,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut entry_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 entry_results.push(result.clone());
             }
@@ -2521,7 +2567,7 @@ impl TypeInferenceEngine {
         // Get dependency result for inner expression
         let task = &self.inference_tasks[&task_id];
         
-        if let Some(dependency_id) = task.dependencies.first() {
+        if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(inner_result) = self.task_results.get(dependency_id) {
                 // Parenthesized expressions just pass through the inner type
                 Ok(InferenceResult {
@@ -2553,7 +2599,7 @@ impl TypeInferenceEngine {
         // Get dependency result for object expression
         let task = &self.inference_tasks[&task_id];
         
-        if let Some(dependency_id) = task.dependencies.first() {
+        if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(object_result) = self.task_results.get(dependency_id) {
                 // Clone the object result to avoid borrowing conflicts
                 let object_type = object_result.inferred_type.clone();
@@ -2601,7 +2647,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut dependency_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 dependency_results.push(result.clone());
             }
@@ -2630,7 +2676,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut field_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 field_results.push(result.clone());
             }
@@ -2690,7 +2736,7 @@ impl TypeInferenceEngine {
         // Get dependency result for condition
         let task = &self.inference_tasks[&task_id];
         
-        if let Some(dependency_id) = task.dependencies.first() {
+        if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(condition_result) = self.task_results.get(dependency_id) {
                 // Get the if expression
                 let expression = unsafe { &*task.expression };
@@ -2700,7 +2746,7 @@ impl TypeInferenceEngine {
                     
                     // CRITICAL FIX: Collect dependency results first to avoid borrowing conflicts
                     let mut dependency_results: Vec<Type> = Vec::new();
-                    for dependency_id in &task.dependencies {
+                    for dependency_id in &task.completed_dependencies {
                         if let Some(result) = self.task_results.get(dependency_id) {
                             dependency_results.push(result.inferred_type.clone());
                         }
@@ -2830,7 +2876,7 @@ impl TypeInferenceEngine {
         let task = &self.inference_tasks[&task_id];
         let mut dependency_results = Vec::new();
         
-        for dependency_id in &task.dependencies {
+        for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 dependency_results.push(result.clone());
             }
@@ -3426,7 +3472,9 @@ impl TypeInferenceEngine {
         }
 
         // Verify that the body type matches the declared return type
-        if !self.types_are_compatible(&body_type, &declared_return_type) {
+        // WORKAROUND: Use never type compatibility check
+        // TODO: Replace with proper attribute system when macro system is implemented
+        if !self.types_are_compatible_with_never(&declared_return_type, &body_type) {
             // CRITICAL DEBUG: Log the failing function
             println!("🚨 TYPE MISMATCH ERROR in {}.{}", scope, function.name.name);
             println!("  Expected: {:?}", declared_return_type);
@@ -3491,7 +3539,9 @@ impl TypeInferenceEngine {
         let declared_return_type = self.convert_type_annotation(&static_def.return_type)?;
 
         // Verify that the body type matches the declared return type
-        if !self.types_are_compatible(&body_type, &declared_return_type) {
+        // WORKAROUND: Use never type compatibility check
+        // TODO: Replace with proper attribute system when macro system is implemented
+        if !self.types_are_compatible_with_never(&declared_return_type, &body_type) {
             self.symbol_table = old_symbol_table; // Restore before error
             return Err(TypecheckError::UnificationError(
                 OriginalUnificationError::TypeMismatch {

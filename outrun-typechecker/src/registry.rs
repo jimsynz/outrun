@@ -1078,6 +1078,16 @@ pub struct ConcreteTypeDefinition {
     pub is_generic: bool,
     /// Source location for error reporting
     pub span: Option<Span>,
+    /// WORKAROUND: Never type info for @Never() attribute support
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub never_info: Option<NeverTypeInfo>,
+}
+
+/// WORKAROUND: Information about never types marked with @Never() attribute
+/// TODO: Replace with proper attribute system when macro system is implemented
+#[derive(Debug, Clone, PartialEq)]
+pub struct NeverTypeInfo {
+    pub message: String,
 }
 
 /// Enumeration of type kinds for unified type resolution
@@ -1119,8 +1129,56 @@ impl TypeRegistry {
             defining_module,
             is_generic,
             span,
+            // WORKAROUND: Default to no never type info (will be updated by protocol processing)
+            // TODO: Replace with proper attribute system when macro system is implemented
+            never_info: None,
         };
         self.concrete_types.insert(type_name.to_string(), type_definition);
+    }
+
+    /// WORKAROUND: Register a protocol as a never type (marked with @Never() attribute)
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub fn register_never_type(&mut self, type_name: &str, message: String) {
+        if let Some(type_def) = self.concrete_types.get_mut(type_name) {
+            type_def.never_info = Some(NeverTypeInfo { message });
+        }
+    }
+
+    /// WORKAROUND: Check if a type is marked as a never type (simplified hardcoded approach)
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub fn is_never_type(&self, type_ref: &Type) -> bool {
+        match type_ref {
+            Type::Protocol { id, .. } => {
+                // Hardcode Panic as never type for now
+                id.name() == "Panic"
+            }
+            Type::Concrete { id, .. } => {
+                // Check if this concrete type corresponds to a never protocol
+                id.name() == "Panic"
+            }
+            _ => false,
+        }
+    }
+
+    /// WORKAROUND: Get never type message for a type (simplified approach)
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub fn get_never_message(&self, type_ref: &Type) -> Option<String> {
+        if self.is_never_type(type_ref) {
+            Some("This function panics and never returns normally".to_string())
+        } else {
+            None
+        }
+    }
+
+    /// WORKAROUND: Process protocol definitions to identify never types (simplified hardcoded approach)
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub fn process_protocol_attributes(&mut self, protocol_def: &outrun_parser::ProtocolDefinition) {
+        let protocol_name = protocol_def.name_as_string();
+        
+        // Hardcode Panic as never type for now
+        if protocol_name == "Panic" {
+            self.register_never_type(&protocol_name, "This function panics and never returns normally".to_string());
+        }
     }
 
     /// Check what kind of type a name refers to

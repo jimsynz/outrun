@@ -1,4 +1,5 @@
 @Doc(content: "This protocol can be used as a marker for functions which explicitly panic.")
+@Never(message: "This function panics and never returns normally")
 protocol Panic {
 	defs panic(message: String): Panic {
 		Outrun.Intrinsic.panic(message)
