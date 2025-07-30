@@ -2278,6 +2278,12 @@ impl TypeInferenceEngine {
             self.next_task_id = 0;
         } else {
             println!("🔄 PRESERVING TASK STATE: {} tasks preserved at depth {}", self.inference_tasks.len(), self.inference_depth);
+            // CRITICAL FIX: Ensure next_task_id is set to avoid ID collisions with preserved tasks
+            // Find the highest existing task ID and set next_task_id to the next available ID
+            if let Some(&max_task_id) = self.inference_tasks.keys().max() {
+                self.next_task_id = max_task_id + 1;
+                println!("🔧 ADJUSTED next_task_id to {} to avoid collisions", self.next_task_id);
+            }
         }
     }
 
@@ -2292,14 +2298,18 @@ impl TypeInferenceEngine {
 
     /// Create a new inference task for an expression
     fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
-        // Check if this is an identifier expression - these are context-dependent and should not be reused
-        // because they depend on variable bindings which can differ between contexts
-        let is_context_dependent = unsafe { 
-            matches!((*expression).kind, outrun_parser::ExpressionKind::Identifier(_))
+        // Check if this expression should not be reused
+        // Identifiers are context-dependent due to variable bindings
+        // Function calls should not be reused because they represent different operations
+        let should_not_reuse = unsafe { 
+            matches!((*expression).kind, 
+                outrun_parser::ExpressionKind::Identifier(_) |
+                outrun_parser::ExpressionKind::FunctionCall(_)
+            )
         };
         
         // DEBUGGING: Check if task already exists for this expression
-        if !is_context_dependent {
+        if !should_not_reuse {
             if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
                 // CRITICAL FIX: Check if the Self context has changed since the task was created
                 // If the Self context is different, we must create a new task to avoid
@@ -2313,7 +2323,7 @@ impl TypeInferenceEngine {
             }
         }        
         let task_id = self.generate_task_id();
-        println!("      ➕ Creating new task {} for expression", task_id);
+        println!("      ➕ Creating new task {} for expression at {:p}", task_id, expression);
         
         let task = InferenceTask {
             id: task_id,
