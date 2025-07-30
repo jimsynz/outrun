@@ -139,7 +139,7 @@ impl CompilationResult {
 
             // Compile the core library without loading it again (it's already loaded)
             // Use compile_package_internal directly to avoid double-loading
-            let engine = crate::inference::TypeInferenceEngine::new();
+            let engine = crate::inference::TypeInferenceEngine::bootstrap();
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
             let core_result =
                 Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine)?;

@@ -1248,6 +1248,11 @@ impl TypeRegistry {
         registry
     }
 
+    /// Get all concrete type names for error reporting
+    pub fn get_concrete_type_names(&self) -> Vec<String> {
+        self.concrete_types.keys().cloned().collect()
+    }
+
     /// Register all core types (Integer64, String, Float64, etc.)
     fn register_core_types(&mut self) {
         let core_module = ModuleId::new("Outrun.Core");

@@ -451,16 +451,11 @@ impl FunctionSignatureAnalyzer {
 }
 
 impl TypeInferenceEngine {
-    /// Create a new type inference engine
-    pub fn new() -> Self {
-        let mut function_registry = FunctionRegistry::new();
-
-        // Register all intrinsic functions that are provided by the runtime
-        crate::intrinsics::register_intrinsics(&mut function_registry);
-
-        let function_registry = Rc::new(function_registry);
-        let type_registry = Rc::new(TypeRegistry::with_core_types());
-
+    /// Create a new type inference engine with provided registries
+    pub fn with_registries(
+        function_registry: Rc<FunctionRegistry>,
+        type_registry: Rc<TypeRegistry>,
+    ) -> Self {
         Self {
             function_registry,
             type_registry,
@@ -472,21 +467,44 @@ impl TypeInferenceEngine {
             error_context: ErrorContext::new(),
             current_self_context: SelfBindingContext::ProtocolDefinition {
                 protocol_id: ProtocolId::new("Unknown"),
-                protocol_args: vec![],
+                protocol_args: Vec::new(),
             },
             struct_registry: HashMap::new(),
             generic_parameter_context: HashMap::new(),
-            // Initialize iterative inference support
             inference_tasks: HashMap::new(),
             ready_task_queue: std::collections::VecDeque::new(),
             task_results: HashMap::new(),
             expression_to_task_map: HashMap::new(),
             next_task_id: 0,
-            // Call stack backtracking support (initialized later)
             constraint_solver_with_backtracking: None,
-            // Depth tracking for nested inference calls
             inference_depth: 0,
         }
+    }
+
+    /// Create a new type inference engine with hardcoded core types (legacy)
+    pub fn new() -> Self {
+        let mut function_registry = FunctionRegistry::new();
+
+        // Register all intrinsic functions that are provided by the runtime
+        crate::intrinsics::register_intrinsics(&mut function_registry);
+
+        let function_registry = Rc::new(function_registry);
+        let type_registry = Rc::new(TypeRegistry::with_core_types());
+
+        Self::with_registries(function_registry, type_registry)
+    }
+
+    /// Create a bootstrap engine for compiling core library (no hardcoded types)
+    pub fn bootstrap() -> Self {
+        let mut function_registry = FunctionRegistry::new();
+
+        // Register all intrinsic functions that are provided by the runtime
+        crate::intrinsics::register_intrinsics(&mut function_registry);
+
+        let function_registry = Rc::new(function_registry);
+        let type_registry = Rc::new(TypeRegistry::new()); // Empty registry!
+
+        Self::with_registries(function_registry, type_registry)
     }
 
     /// Generate a fresh type variable
@@ -741,20 +759,8 @@ impl TypeInferenceEngine {
         // Collect available variables from symbol table
         self.error_context.available_variables = self.symbol_table.keys().cloned().collect();
 
-        // TODO: Collect available types from type definitions
-        // TODO: Collect available protocols from protocol definitions
-        // For now, we'll add some common types and protocols
-        self.error_context.available_types = vec![
-            "String".to_string(),
-            "Integer64".to_string(),
-            "Float64".to_string(),
-            "Boolean".to_string(),
-            "List".to_string(),
-            "Map".to_string(),
-            "Tuple".to_string(),
-            "Option".to_string(),
-            "Result".to_string(),
-        ];
+        // Collect available types from type registry
+        self.error_context.available_types = self.type_registry.get_concrete_type_names();
 
         self.error_context.available_protocols = vec![
             "BinaryAddition".to_string(),
@@ -2997,7 +3003,7 @@ impl TypeInferenceEngine {
                     )?;
                     
                     // Guard must be Boolean - simplified constraint for now
-                    let _boolean_type = Type::concrete("Boolean");
+                    let _boolean_type = Type::concrete("Outrun.Core.Boolean");
                     let fresh_var = self.fresh_type_var();
                     result_constraints.push(Constraint::Implements {
                         type_var: match guard_result.inferred_type {
@@ -3158,7 +3164,7 @@ impl TypeInferenceEngine {
                 }
             }
             outrun_parser::ExpressionKind::Boolean(_) => {
-                let boolean_type = Type::concrete("Boolean");
+                let boolean_type = Type::concrete("Outrun.Core.Boolean");
                 Ok(InferenceResult {
                     inferred_type: boolean_type,
                     constraints: vec![],
@@ -3193,7 +3199,7 @@ impl TypeInferenceEngine {
             outrun_parser::FunctionPath::Simple { name } => {
                 if name.name.ends_with('?') {
                     // Guard function - must return Boolean
-                    let boolean_type = Type::concrete("Boolean");
+                    let boolean_type = Type::concrete("Outrun.Core.Boolean");
                     return Ok(InferenceResult {
                         inferred_type: boolean_type,
                         constraints: vec![],
@@ -3204,7 +3210,7 @@ impl TypeInferenceEngine {
             outrun_parser::FunctionPath::Qualified { name, .. } => {
                 if name.name.ends_with('?') {
                     // Guard function - must return Boolean
-                    let boolean_type = Type::concrete("Boolean");
+                    let boolean_type = Type::concrete("Outrun.Core.Boolean");
                     return Ok(InferenceResult {
                         inferred_type: boolean_type,
                         constraints: vec![],
@@ -3622,35 +3628,35 @@ impl TypeInferenceEngine {
         match &expression.kind {
             ExpressionKind::Boolean(_) => {
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("Boolean"),
+                    inferred_type: Type::concrete("Outrun.Core.Boolean"),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
             },
             ExpressionKind::Integer(_) => {
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("Integer64"),
+                    inferred_type: Type::concrete("Outrun.Core.Integer64"),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
             },
             ExpressionKind::Float(_) => {
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("Float64"),
+                    inferred_type: Type::concrete("Outrun.Core.Float64"),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
             },
             ExpressionKind::String(_) => {
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("String"),
+                    inferred_type: Type::concrete("Outrun.Core.String"),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
             },
             ExpressionKind::Atom(_) => {
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("Atom"),
+                    inferred_type: Type::concrete("Outrun.Core.Atom"),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
@@ -3659,7 +3665,7 @@ impl TypeInferenceEngine {
                 // Sigil literals need special handling - they're processed by sigil protocols
                 // For now, return a generic type - this should be enhanced later
                 Ok(InferenceResult {
-                    inferred_type: Type::concrete("String"), // Simplified - sigils often produce strings
+                    inferred_type: Type::concrete("Outrun.Core.String"), // Simplified - sigils often produce strings
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
@@ -3934,7 +3940,7 @@ impl TypeInferenceEngine {
                 };
                 
                 // Verify condition is Boolean
-                let boolean_type = Type::concrete("Boolean");
+                let boolean_type = Type::concrete("Outrun.Core.Boolean");
                 if !self.types_are_compatible(condition_type, &boolean_type) {
                     return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
                         span: to_source_span(Some(if_expr.condition.span)),
