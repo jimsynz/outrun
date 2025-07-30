@@ -28,9 +28,9 @@ impl Equality for Outrun.Core.List<T> when T: Equality {
         let rhs_head = List.head(value: rhs)
 
         case (lhs_head, rhs_head) {
-            (lhs, rhs) when Option.none?(value: lhs) && Option.none?(value: rhs) -> true
-            (lhs, rhs) when Option.some?(value: lhs) && Option.some?(value: rhs) ->
-                Equality.equal?(lhs: Option.unwrap(value: lhs), rhs: Option.unwrap(value: rhs)) &&
+            (lhs_opt, rhs_opt) when Option.none?(value: lhs_opt) && Option.none?(value: rhs_opt) -> true
+            (lhs_opt, rhs_opt) when Option.some?(value: lhs_opt) && Option.some?(value: rhs_opt) ->
+                Equality.equal?(lhs: Option.unwrap(value: lhs_opt), rhs: Option.unwrap(value: rhs_opt)) &&
                 Equality.equal?(lhs: List.tail(value: lhs), rhs: List.tail(value: rhs))
             _ -> false
         }

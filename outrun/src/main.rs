@@ -71,6 +71,12 @@ fn main() {
             handle_parse_command(files);
         }
         Some(Commands::Typecheck { files, core_lib }) => {
+            // Debug span corruption issue
+            if files.len() == 1 && files[0].to_string_lossy() == "debug-spans" {
+                outrun_typechecker::debug_spans::debug_minimal_typecheck();
+                return;
+            }
+            
             handle_typecheck_command(files, core_lib);
         }
         Some(Commands::Repl {
