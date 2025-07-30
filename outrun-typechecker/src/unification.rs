@@ -260,7 +260,9 @@ impl Unifier {
 
             // Self type with concrete type - resolve Self and unify
             (Type::SelfType { .. }, concrete_type) => {
+                eprintln!("🔍 Unification: Trying to unify Self with concrete type {}", concrete_type);
                 if let Some(resolved_self) = left.resolve_self() {
+                    eprintln!("🔍 Unification: Self resolved to {}", resolved_self);
                     work_queue.push_back(UnifyTask {
                         left: resolved_self,
                         right: concrete_type.clone(),
@@ -269,6 +271,7 @@ impl Unifier {
                     });
                     Ok(Substitution::new())
                 } else {
+                    eprintln!("🔍 Unification: Self could not be resolved - binding context: {:?}", left);
                     Err(UnificationError::CategoryMismatch {
                         expected: self.type_category(left),
                         found: self.type_category(right),
@@ -281,7 +284,9 @@ impl Unifier {
 
             // Concrete type with Self type - resolve Self and unify
             (concrete_type, Type::SelfType { .. }) => {
+                eprintln!("🔍 Unification: Trying to unify concrete type {} with Self", concrete_type);
                 if let Some(resolved_self) = right.resolve_self() {
+                    eprintln!("🔍 Unification: Self resolved to {}", resolved_self);
                     work_queue.push_back(UnifyTask {
                         left: concrete_type.clone(),
                         right: resolved_self,
@@ -290,6 +295,7 @@ impl Unifier {
                     });
                     Ok(Substitution::new())
                 } else {
+                    eprintln!("🔍 Unification: Self could not be resolved - binding context: {:?}", right);
                     Err(UnificationError::CategoryMismatch {
                         expected: self.type_category(left),
                         found: self.type_category(right),

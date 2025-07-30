@@ -116,8 +116,13 @@ impl FunctionRegistry {
 
     /// Get function info by module and name
     pub fn get_function(&self, module_name: &str, function_name: &str) -> Option<&FunctionInfo> {
-        self.functions
-            .get(&(module_name.to_string(), function_name.to_string()))
+        let result = self.functions
+            .get(&(module_name.to_string(), function_name.to_string()));
+        if module_name == "Outrun.Intrinsic" && function_name == "list_head" {
+            eprintln!("🔍 Function registry lookup: {}.{} -> {:?}", module_name, function_name, 
+                result.map(|f| &f.return_type));
+        }
+        result
     }
 
     /// Get all functions in a module

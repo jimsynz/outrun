@@ -93,6 +93,8 @@ pub struct TypeInferenceEngine {
 /// Unique identifier for inference tasks in the iterative system
 pub type TaskId = u64;
 
+
+
 /// State of an inference task in the iterative processing system
 #[derive(Debug)]
 pub enum TaskState {
@@ -1471,12 +1473,16 @@ impl TypeInferenceEngine {
 
         // Set Self binding context for impl block
         let old_self_context = self.current_self_context.clone();
-        self.current_self_context = SelfBindingContext::Implementation {
+        let new_context = SelfBindingContext::Implementation {
             implementing_type: crate::types::TypeId::new(&type_name),
             implementing_args,
             protocol_id: ProtocolId::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
+        eprintln!("🔄 CONTEXT CHANGE: Entering impl block");
+        eprintln!("  📤 Old context: {:?}", old_self_context);
+        eprintln!("  📥 New context: {} implementing {}", type_name, protocol_name);
+        self.current_self_context = new_context;
 
         // Collect impl block functions
         for function in &impl_block.functions {
@@ -1484,6 +1490,9 @@ impl TypeInferenceEngine {
         }
 
         // Restore previous contexts
+        eprintln!("🔄 CONTEXT RESTORE: Exiting impl block collection");
+        eprintln!("  📤 Current context: {} implementing {}", type_name, protocol_name);
+        eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
 
@@ -2190,6 +2199,9 @@ impl TypeInferenceEngine {
         }
 
         // Restore previous contexts
+        eprintln!("🔄 CONTEXT RESTORE: Exiting impl block typechecking");
+        eprintln!("  📤 Current context: {} implementing {}", type_name, protocol_name);
+        eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
 
@@ -2276,20 +2288,30 @@ impl TypeInferenceEngine {
         id
     }
 
+
+
     /// Create a new inference task for an expression
     fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
-        // DEBUGGING: Check if task already exists for this expression
-        if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
-            println!("      🔄 Reusing existing task {} for expression", existing_task_id);
-            
-            // DEBUG: Show current dependencies of reused task
-            if let Some(existing_task) = self.inference_tasks.get(&existing_task_id) {
-                println!("      📋 Reused task {} current dependencies: {:?}", existing_task_id, existing_task.dependencies);
-            }
-            
-            return existing_task_id;
-        }
+        // Check if this is an identifier expression - these are context-dependent and should not be reused
+        // because they depend on variable bindings which can differ between contexts
+        let is_context_dependent = unsafe { 
+            matches!((*expression).kind, outrun_parser::ExpressionKind::Identifier(_))
+        };
         
+        // DEBUGGING: Check if task already exists for this expression
+        if !is_context_dependent {
+            if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
+                // CRITICAL FIX: Check if the Self context has changed since the task was created
+                // If the Self context is different, we must create a new task to avoid
+                // reusing cached SelfType instances with the wrong binding context
+                if let Some(existing_task) = self.inference_tasks.get(&existing_task_id) {
+                    if existing_task.context.self_binding == context.self_binding {
+                        return existing_task_id;
+                    }
+                    // Self context has changed - fall through to create new task
+                }
+            }
+        }        
         let task_id = self.generate_task_id();
         println!("      ➕ Creating new task {} for expression", task_id);
         
@@ -3094,12 +3116,14 @@ impl TypeInferenceEngine {
         match &expression.kind {
             outrun_parser::ExpressionKind::Identifier(name) => {
                 if let Some(var_type) = context.bindings.get(&name.name) {
+                    eprintln!("🔍 process_single_task Identifier: {} -> {}", name.name, var_type);
                     Ok(InferenceResult {
                         inferred_type: var_type.clone(),
                         constraints: vec![],
                         substitution: Substitution::new(),
                     })
                 } else {
+                    eprintln!("🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings", name.name);
                     Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
                         span: Some(self.create_file_span(None).to_source_span()),
                         suggestions: vec![format!("Unknown variable: {}", name.name)],
@@ -3468,6 +3492,20 @@ impl TypeInferenceEngine {
         let expression = unsafe { &mut *task.expression };
         let context = task.context.clone(); // Clone to avoid borrow issues
         
+        // Debug: Check context during task processing
+        if let ExpressionKind::FunctionCall(func_call) = &expression.kind {
+            let func_name = match &func_call.path {
+                outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
+                outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+                outrun_parser::FunctionPath::Expression { .. } => "dynamic".to_string(),
+            };
+            if func_name.contains("list_head") {
+                eprintln!("🔍 TASK PROCESSING: Processing {} call (task {})", func_name, task_id);
+                eprintln!("  📋 Current self context: {:?}", self.current_self_context);
+                eprintln!("  📋 Task context: {:?}", context.self_binding);
+            }
+        }
+        
         // STRICT CHECK: No binary or unary operations should reach type inference
         // If they do, it indicates a bug in the desugaring phase
         match &expression.kind {
@@ -3666,6 +3704,8 @@ impl TypeInferenceEngine {
         scope: &str,
         function: &FunctionDefinition,
     ) -> Result<(), TypecheckError> {
+        eprintln!("🔍 FUNCTION TYPECHECK: Starting {}.{}", scope, function.name.name);
+        eprintln!("  📋 Current self context: {:?}", self.current_self_context);
         // Create a new inference context for this function
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
@@ -4015,19 +4055,25 @@ impl TypeInferenceEngine {
 
             // Self types need special handling based on context
             (Type::SelfType { .. }, other) => {
+                eprintln!("🔍 types_are_compatible: SelfType vs {}", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = found_type.resolve_self() {
+                    eprintln!("🔍 types_are_compatible: Self resolved to {}, checking compatibility", resolved_self);
                     self.types_are_compatible(&resolved_self, other)
                 } else {
+                    eprintln!("🔍 types_are_compatible: Self could not be resolved");
                     // Self is unbound (e.g., in protocol definition context)
                     false
                 }
             }
             (other, Type::SelfType { .. }) => {
+                eprintln!("🔍 types_are_compatible: {} vs SelfType", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = expected_type.resolve_self() {
+                    eprintln!("🔍 types_are_compatible: Self resolved to {}, checking compatibility", resolved_self);
                     self.types_are_compatible(other, &resolved_self)
                 } else {
+                    eprintln!("🔍 types_are_compatible: Self could not be resolved");
                     // Self is unbound (e.g., in protocol definition context)
                     false
                 }
@@ -5141,7 +5187,6 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<Option<Type>, TypecheckError> {
-        
         let mut candidate_self_types = Vec::new();
 
         // For each Self position in the function signature
@@ -5157,7 +5202,6 @@ impl TypeInferenceEngine {
                     let mut expr_clone = argument_expr.clone();
                     match self.infer_expression(&mut expr_clone, context) {
                         Ok(result) => {
-                            
                             // This is a candidate for the Self type
                             candidate_self_types.push(result.inferred_type);
                         }

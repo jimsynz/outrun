@@ -640,12 +640,19 @@ impl Type {
                         ..
                     },
                 span,
-            } => Some(Type::Concrete {
-                id: implementing_type.clone(),
-                args: implementing_args.clone(),
-                span: *span,
-            }),
-            Self::SelfType { .. } => None, // Self is unbound in protocol definitions
+            } => {
+                let resolved = Type::Concrete {
+                    id: implementing_type.clone(),
+                    args: implementing_args.clone(),
+                    span: *span,
+                };
+                eprintln!("🔍 resolve_self: Self -> {}", resolved);
+                Some(resolved)
+            },
+            Self::SelfType { binding_context, .. } => {
+                eprintln!("🔍 resolve_self: Self with unbound context: {:?}", binding_context);
+                None // Self is unbound in protocol definitions
+            },
             _ => None,
         }
     }
