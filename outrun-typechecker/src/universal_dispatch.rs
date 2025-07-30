@@ -1,7 +1,7 @@
 //! Universal Clause-Based Function Dispatch System
 //!
 //! This module implements the revolutionary universal dispatch architecture where
-//! ALL function calls - protocol instance, protocol static, concrete type, 
+//! ALL function calls - protocol instance, protocol static, concrete type,
 //! multi-clause with guards, single-clause - follow the same pattern:
 //! "Here's a list of clauses with guards - try each one until the guards pass"
 
@@ -66,13 +66,13 @@ pub enum Guard {
         implementing_type: Type,
         constraint_context: ConstraintContext,
     },
-    
+
     /// Runtime value guard expressions
     ValueGuard {
         expression: Expression,
         bound_variables: Vec<String>,
     },
-    
+
     /// Always-true guard for simple/fallback clauses
     AlwaysTrue,
 }
@@ -104,16 +104,16 @@ impl ConstraintContext {
 pub enum FunctionBody {
     /// User-defined function with AST body
     UserFunction(outrun_parser::Block),
-    
+
     /// Intrinsic function (built-in operations)
     IntrinsicFunction(String),
-    
+
     /// Struct constructor
     StructConstructor {
         struct_name: String,
         field_mappings: Vec<(String, ArgumentRef)>,
     },
-    
+
     /// Protocol function implementation
     ProtocolImplementation {
         implementation_name: String,
@@ -133,17 +133,17 @@ pub enum ArgumentRef {
 pub struct ClauseInfo {
     pub clause_id: ClauseId,
     pub function_signature: FunctionSignature,
-    
+
     /// Unified guard system - type compatibility + value guards
     pub guards: Vec<Guard>,
-    
+
     /// Function implementation body
     pub body: FunctionBody,
-    
+
     /// Optimization metadata
     pub estimated_cost: u32,
     pub priority: u32,
-    
+
     /// Source location for debugging
     pub span: Option<Span>,
 }
@@ -186,13 +186,13 @@ pub enum TypePattern {
 pub struct UniversalDispatchRegistry {
     /// Individual clauses with unique identifiers
     clauses: HashMap<ClauseId, ClauseInfo>,
-    
+
     /// Fast dispatch lookup: function_name -> ordered clause list
     dispatch_index: HashMap<FunctionSignature, Vec<ClauseId>>,
-    
+
     /// Type-based optimization index for O(1) type filtering
     type_index: HashMap<(FunctionSignature, TypePattern), Vec<ClauseId>>,
-    
+
     /// Universal performance monitoring
     statistics: HashMap<ClauseId, ClauseExecutionStats>,
 }
@@ -211,16 +211,16 @@ impl UniversalDispatchRegistry {
     /// Register a new clause in the universal system
     pub fn register_clause(&mut self, clause: ClauseInfo) -> ClauseId {
         let clause_id = clause.clause_id;
-        
+
         // Store the clause
         self.clauses.insert(clause_id, clause.clone());
-        
+
         // Add to dispatch index
         self.dispatch_index
             .entry(clause.function_signature.clone())
             .or_default()
             .push(clause_id);
-        
+
         // Add to type index for optimization
         if let Some(type_pattern) = self.extract_type_pattern(&clause) {
             self.type_index
@@ -228,16 +228,20 @@ impl UniversalDispatchRegistry {
                 .or_default()
                 .push(clause_id);
         }
-        
+
         // Initialize statistics
-        self.statistics.insert(clause_id, ClauseExecutionStats::default());
-        
+        self.statistics
+            .insert(clause_id, ClauseExecutionStats::default());
+
         clause_id
     }
 
     /// Get all clauses for a function signature
     pub fn get_clauses_for_function(&self, sig: &FunctionSignature) -> &[ClauseId] {
-        self.dispatch_index.get(sig).map(|v| v.as_slice()).unwrap_or(&[])
+        self.dispatch_index
+            .get(sig)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Get a specific clause by ID
@@ -246,7 +250,11 @@ impl UniversalDispatchRegistry {
     }
 
     /// Get clauses filtered by type pattern for optimization
-    pub fn get_clauses_for_type(&self, sig: &FunctionSignature, pattern: &TypePattern) -> Vec<ClauseId> {
+    pub fn get_clauses_for_type(
+        &self,
+        sig: &FunctionSignature,
+        pattern: &TypePattern,
+    ) -> Vec<ClauseId> {
         if let Some(clauses) = self.type_index.get(&(sig.clone(), pattern.clone())) {
             clauses.clone()
         } else {
@@ -268,7 +276,10 @@ impl UniversalDispatchRegistry {
     /// Extract type pattern from clause for indexing
     fn extract_type_pattern(&self, clause: &ClauseInfo) -> Option<TypePattern> {
         for guard in &clause.guards {
-            if let Guard::TypeCompatible { implementing_type, .. } = guard {
+            if let Guard::TypeCompatible {
+                implementing_type, ..
+            } = guard
+            {
                 return Some(match implementing_type {
                     Type::Concrete { id, .. } => TypePattern::Concrete(id.name().to_string()),
                     Type::Protocol { id, .. } => TypePattern::Protocol(id.0.clone()),
@@ -284,10 +295,17 @@ impl UniversalDispatchRegistry {
     /// Check if clause matches type pattern
     fn clause_matches_type_pattern(&self, clause: &ClauseInfo, pattern: &TypePattern) -> bool {
         for guard in &clause.guards {
-            if let Guard::TypeCompatible { implementing_type, .. } = guard {
+            if let Guard::TypeCompatible {
+                implementing_type, ..
+            } = guard
+            {
                 return match (implementing_type, pattern) {
-                    (Type::Concrete { id, .. }, TypePattern::Concrete(pattern_name)) => id.name() == pattern_name,
-                    (Type::Protocol { id, .. }, TypePattern::Protocol(pattern_name)) => &id.0 == pattern_name,
+                    (Type::Concrete { id, .. }, TypePattern::Concrete(pattern_name)) => {
+                        id.name() == pattern_name
+                    }
+                    (Type::Protocol { id, .. }, TypePattern::Protocol(pattern_name)) => {
+                        &id.0 == pattern_name
+                    }
                     (Type::Variable { .. }, TypePattern::Generic(_)) => true,
                     (Type::SelfType { .. }, TypePattern::Generic(_)) => true,
                     (Type::Function { .. }, TypePattern::Generic(_)) => true,
@@ -300,7 +318,12 @@ impl UniversalDispatchRegistry {
     }
 
     /// Record clause execution for performance monitoring
-    pub fn record_clause_execution(&mut self, clause_id: ClauseId, succeeded: bool, guard_count: u32) {
+    pub fn record_clause_execution(
+        &mut self,
+        clause_id: ClauseId,
+        succeeded: bool,
+        guard_count: u32,
+    ) {
         let stats = self.statistics.entry(clause_id).or_default();
         stats.call_count += 1;
         if succeeded {
@@ -308,7 +331,8 @@ impl UniversalDispatchRegistry {
         }
         stats.total_guard_evaluations += guard_count as u64;
         stats.success_rate = stats.success_count as f64 / stats.call_count as f64;
-        stats.average_guard_evaluations = stats.total_guard_evaluations as f64 / stats.call_count as f64;
+        stats.average_guard_evaluations =
+            stats.total_guard_evaluations as f64 / stats.call_count as f64;
     }
 
     /// Get all function signatures in the registry
@@ -335,7 +359,11 @@ impl UniversalDispatchRegistry {
     fn clause_is_viable(&self, clause: &ClauseInfo, _argument_types: &[Type]) -> bool {
         for guard in &clause.guards {
             match guard {
-                Guard::TypeCompatible { target_type, implementing_type, .. } => {
+                Guard::TypeCompatible {
+                    target_type,
+                    implementing_type,
+                    ..
+                } => {
                     // Very simple check: if types are obviously incompatible, eliminate
                     if !self.types_could_be_compatible(target_type, implementing_type) {
                         return false;
@@ -374,8 +402,6 @@ impl UniversalDispatchRegistry {
             _ => true,
         }
     }
-
-
 }
 
 impl Default for UniversalDispatchRegistry {
@@ -383,7 +409,6 @@ impl Default for UniversalDispatchRegistry {
         Self::new()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -399,7 +424,7 @@ mod tests {
     #[test]
     fn test_clause_registration() {
         let mut registry = UniversalDispatchRegistry::new();
-        
+
         let clause = ClauseInfo {
             clause_id: ClauseId::new(),
             function_signature: FunctionSignature::simple("test_function".to_string()),
@@ -409,12 +434,13 @@ mod tests {
             priority: 0,
             span: None,
         };
-        
+
         let clause_id = clause.clause_id;
         registry.register_clause(clause);
-        
+
         assert!(registry.get_clause(clause_id).is_some());
-        let clauses = registry.get_clauses_for_function(&FunctionSignature::simple("test_function".to_string()));
+        let clauses = registry
+            .get_clauses_for_function(&FunctionSignature::simple("test_function".to_string()));
         assert_eq!(clauses.len(), 1);
         assert_eq!(clauses[0], clause_id);
     }
@@ -422,23 +448,21 @@ mod tests {
     #[test]
     fn test_type_pattern_extraction() {
         let registry = UniversalDispatchRegistry::new();
-        
+
         let clause = ClauseInfo {
             clause_id: ClauseId::new(),
             function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![
-                Guard::TypeCompatible {
-                    target_type: Type::concrete("String"),
-                    implementing_type: Type::concrete("String"),
-                    constraint_context: ConstraintContext::new(),
-                }
-            ],
+            guards: vec![Guard::TypeCompatible {
+                target_type: Type::concrete("String"),
+                implementing_type: Type::concrete("String"),
+                constraint_context: ConstraintContext::new(),
+            }],
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,
             span: None,
         };
-        
+
         let pattern = registry.extract_type_pattern(&clause);
         assert_eq!(pattern, Some(TypePattern::Concrete("String".to_string())));
     }
@@ -446,32 +470,30 @@ mod tests {
     #[test]
     fn test_simple_clause_elimination() {
         let registry = UniversalDispatchRegistry::new();
-        
+
         // Create a clause that should match String types
         let string_clause = ClauseInfo {
             clause_id: ClauseId::new(),
             function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![
-                Guard::TypeCompatible {
-                    target_type: Type::concrete("String"),
-                    implementing_type: Type::concrete("String"),
-                    constraint_context: ConstraintContext::new(),
-                }
-            ],
+            guards: vec![Guard::TypeCompatible {
+                target_type: Type::concrete("String"),
+                implementing_type: Type::concrete("String"),
+                constraint_context: ConstraintContext::new(),
+            }],
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,
             span: None,
         };
-        
+
         // Test with String argument type - should match
         let string_args = vec![Type::concrete("String")];
         assert!(registry.clause_could_match(string_clause.clause_id, &string_args));
-        
+
         // Test with Integer argument type - should not match (but we're conservative, so it returns true)
         let integer_args = vec![Type::concrete("Integer")];
         assert!(registry.clause_could_match(string_clause.clause_id, &integer_args));
-        
+
         // Test clause viability directly
         assert!(registry.clause_is_viable(&string_clause, &string_args));
     }
@@ -479,7 +501,7 @@ mod tests {
     #[test]
     fn test_always_true_guard() {
         let registry = UniversalDispatchRegistry::new();
-        
+
         // Create a clause with AlwaysTrue guard
         let always_clause = ClauseInfo {
             clause_id: ClauseId::new(),
@@ -490,11 +512,11 @@ mod tests {
             priority: 0,
             span: None,
         };
-        
+
         // Should match any argument types
         let string_args = vec![Type::concrete("String")];
         let integer_args = vec![Type::concrete("Integer")];
-        
+
         assert!(registry.clause_is_viable(&always_clause, &string_args));
         assert!(registry.clause_is_viable(&always_clause, &integer_args));
     }

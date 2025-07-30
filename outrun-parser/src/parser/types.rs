@@ -487,7 +487,7 @@ impl OutrunParser {
                 let right = Self::parse_constraint_primary(next_pair)?;
 
                 // Create a new span covering the current left and right
-                let new_span = Self::span_from_range(left.span().start, right.span().end);
+                let new_span = Self::span_from_spans(&left.span(), &right.span());
 
                 left = ConstraintExpression::And {
                     left: Box::new(left),

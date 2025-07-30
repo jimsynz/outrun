@@ -54,9 +54,9 @@ def login(usename: String, password: String): Result<User, LoginError> {
 }"#;
 
     let named_source = NamedSource::new("login.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -84,9 +84,9 @@ def format_message(text: String, count: Integer64): String {
 "#;
 
     let named_source = NamedSource::new("format.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::UnificationError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::UnificationError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -115,9 +115,9 @@ let sum = p1 + p2  // Missing BinaryAddition implementation
 "#;
 
     let named_source = NamedSource::new("point.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::DispatchError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::DispatchError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -146,9 +146,9 @@ let mixed = [1, 2, "three", 4]  // Type mismatch in list
 "#;
 
     let named_source = NamedSource::new("collections.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -180,9 +180,9 @@ let area = calculate_area(width: "10.5", height: 20.0)  // Wrong type
 "#;
 
     let named_source = NamedSource::new("geometry.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -203,9 +203,9 @@ let empty_list = []  // Cannot infer element type
 "#;
 
     let named_source = NamedSource::new("empty.outrun", error_source);
-    let report = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        error,
-    ))))
+    let report = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(error),
+    )))
     .with_source_code(named_source);
 
     println!("{report:?}");
@@ -259,16 +259,16 @@ def handle_api_request(request: HttpRequest): HttpRespons {
     let named_source = NamedSource::new("api_handlers.outrun", error_source);
 
     println!("Variable error:");
-    let report1 = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        var_error,
-    ))))
+    let report1 = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(var_error),
+    )))
     .with_source_code(named_source.clone());
     println!("{report1:?}");
 
     println!("\nType error:");
-    let report2 = Report::new(CompilerError::Typecheck(Box::new(TypecheckError::InferenceError(
-        type_error,
-    ))))
+    let report2 = Report::new(CompilerError::Typecheck(Box::new(
+        TypecheckError::InferenceError(type_error),
+    )))
     .with_source_code(named_source);
     println!("{report2:?}");
     println!();

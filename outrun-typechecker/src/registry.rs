@@ -377,15 +377,22 @@ impl ProtocolRegistry {
             if let Some(existing_def) = self.protocol_definitions.get(protocol_id) {
                 // Protocol definitions must be identical to avoid conflicts
                 if existing_def != protocol_def {
-                    return Err(crate::error::ImplementationError::ConflictingProtocolDefinition {
-                        protocol_name: protocol_id.0.clone(),
-                        span: protocol_def.span.and_then(|s| crate::error::to_source_span(Some(s))),
-                        previous_span: existing_def.span.and_then(|s| crate::error::to_source_span(Some(s))),
-                    });
+                    return Err(
+                        crate::error::ImplementationError::ConflictingProtocolDefinition {
+                            protocol_name: protocol_id.0.clone(),
+                            span: protocol_def
+                                .span
+                                .and_then(|s| crate::error::to_source_span(Some(s))),
+                            previous_span: existing_def
+                                .span
+                                .and_then(|s| crate::error::to_source_span(Some(s))),
+                        },
+                    );
                 }
             } else {
                 // Add the protocol definition
-                self.protocol_definitions.insert(protocol_id.clone(), protocol_def.clone());
+                self.protocol_definitions
+                    .insert(protocol_id.clone(), protocol_def.clone());
             }
         }
 
@@ -395,16 +402,23 @@ impl ProtocolRegistry {
             if let Some(existing_impl) = self.implementations.get(impl_key) {
                 // Implementation must be identical to avoid conflicts
                 if existing_impl != impl_info {
-                    return Err(crate::error::ImplementationError::ConflictingImplementation {
-                        protocol_name: impl_key.protocol_id.0.clone(),
-                        type_name: impl_key.implementing_type.name().to_string(),
-                        span: impl_info.span.and_then(|s| crate::error::to_source_span(Some(s))),
-                        previous_span: existing_impl.span.and_then(|s| crate::error::to_source_span(Some(s))),
-                    });
+                    return Err(
+                        crate::error::ImplementationError::ConflictingImplementation {
+                            protocol_name: impl_key.protocol_id.0.clone(),
+                            type_name: impl_key.implementing_type.name().to_string(),
+                            span: impl_info
+                                .span
+                                .and_then(|s| crate::error::to_source_span(Some(s))),
+                            previous_span: existing_impl
+                                .span
+                                .and_then(|s| crate::error::to_source_span(Some(s))),
+                        },
+                    );
                 }
             } else {
                 // Add the implementation - orphan rule information is preserved in the ImplementationInfo
-                self.implementations.insert(impl_key.clone(), impl_info.clone());
+                self.implementations
+                    .insert(impl_key.clone(), impl_info.clone());
             }
         }
 
@@ -421,11 +435,11 @@ impl ProtocolRegistry {
         dependencies: &[&ProtocolRegistry],
     ) -> Result<ProtocolRegistry, crate::error::ImplementationError> {
         let mut merged = ProtocolRegistry::new();
-        
+
         for dependency in dependencies {
             merged.merge_from_dependency(dependency)?;
         }
-        
+
         Ok(merged)
     }
 }
@@ -1133,7 +1147,8 @@ impl TypeRegistry {
             // TODO: Replace with proper attribute system when macro system is implemented
             never_info: None,
         };
-        self.concrete_types.insert(type_name.to_string(), type_definition);
+        self.concrete_types
+            .insert(type_name.to_string(), type_definition);
     }
 
     /// WORKAROUND: Register a protocol as a never type (marked with @Never() attribute)
@@ -1172,12 +1187,18 @@ impl TypeRegistry {
 
     /// WORKAROUND: Process protocol definitions to identify never types (simplified hardcoded approach)
     /// TODO: Replace with proper attribute system when macro system is implemented
-    pub fn process_protocol_attributes(&mut self, protocol_def: &outrun_parser::ProtocolDefinition) {
+    pub fn process_protocol_attributes(
+        &mut self,
+        protocol_def: &outrun_parser::ProtocolDefinition,
+    ) {
         let protocol_name = protocol_def.name_as_string();
-        
+
         // Hardcode Panic as never type for now
         if protocol_name == "Panic" {
-            self.register_never_type(&protocol_name, "This function panics and never returns normally".to_string());
+            self.register_never_type(
+                &protocol_name,
+                "This function panics and never returns normally".to_string(),
+            );
         }
     }
 
@@ -1230,14 +1251,14 @@ impl TypeRegistry {
     /// Register all core types (Integer64, String, Float64, etc.)
     fn register_core_types(&mut self) {
         let core_module = ModuleId::new("Outrun.Core");
-        
+
         // Register core concrete types
         self.register_concrete_type("Outrun.Core.Integer64", core_module.clone(), false, None);
         self.register_concrete_type("Outrun.Core.String", core_module.clone(), false, None);
         self.register_concrete_type("Outrun.Core.Float64", core_module.clone(), false, None);
         self.register_concrete_type("Outrun.Core.Boolean", core_module.clone(), false, None);
         self.register_concrete_type("Outrun.Core.Atom", core_module.clone(), false, None);
-        
+
         // Register generic core types
         self.register_concrete_type("Outrun.Core.List", core_module.clone(), true, None);
         self.register_concrete_type("Outrun.Core.Map", core_module.clone(), true, None);

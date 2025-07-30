@@ -48,6 +48,9 @@ pub struct TypeInferenceEngine {
     /// Current module being processed
     current_module: ModuleId,
 
+    /// Current file being processed for error reporting
+    current_file: Option<String>,
+
     /// Counter for generating fresh type variables
     type_variable_counter: usize,
 
@@ -443,6 +446,7 @@ impl TypeInferenceEngine {
             function_registry,
             type_registry,
             current_module: ModuleId::new("main"),
+            current_file: None,
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
             universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(),
@@ -485,6 +489,35 @@ impl TypeInferenceEngine {
             new_type_registry.protocol_registry_mut().set_current_module(module);
             self.type_registry = Rc::new(new_type_registry);
         }
+    }
+
+    /// Set the current file being processed for error reporting
+    pub fn set_current_file(&mut self, file: String) {
+        self.current_file = Some(file);
+    }
+
+    /// Clear the current file context
+    pub fn clear_current_file(&mut self) {
+        self.current_file = None;
+    }
+
+    /// Get the current file context
+    pub fn get_current_file(&self) -> Option<&String> {
+        self.current_file.as_ref()
+    }
+
+    /// Create a FileSpan using current file context
+    pub fn create_file_span(&self, span: Option<outrun_parser::Span>) -> crate::error::FileSpan {
+        crate::error::FileSpan {
+            span: span.unwrap_or_else(|| outrun_parser::Span { start: 0, end: 0, start_line_col: None, end_line_col: None }),
+            source_file: self.current_file.clone().unwrap_or_else(|| "unknown".to_string()),
+        }
+    }
+
+    /// Register program expressions for source mapping (stub for now)
+    pub fn register_program_expressions(&mut self, _program: &outrun_parser::Program) {
+        // TODO: Implement expression-to-source mapping if needed
+        // For now, we're using file context tracking instead
     }
 
     /// Get a mutable reference to the protocol registry within the type registry
@@ -2872,44 +2905,108 @@ impl TypeInferenceEngine {
         task_id: TaskId,
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for scrutinee and guards
-        let task = &self.inference_tasks[&task_id];
-        let mut dependency_results = Vec::new();
-        
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                dependency_results.push(result.clone());
-            }
-        }
-        
         // Get the case expression
+        let task = &self.inference_tasks[&task_id];
         let expression = unsafe { &*task.expression };
         
         if let outrun_parser::ExpressionKind::CaseExpression(case_expr) = &expression.kind {
-            // Create modified case expression with processed types
-            let mut processed_case = case_expr.clone();
+            // Get scrutinee result from dependencies - clone to avoid borrow conflicts
+            let scrutinee_result = if let Some(dependency_id) = task.completed_dependencies.first() {
+                self.task_results.get(dependency_id)
+                    .ok_or_else(|| TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                        span: Some(self.create_file_span(None).to_source_span()),
+                        suggestions: vec!["Missing scrutinee result".to_string()],
+                    }))?.clone()
+            } else {
+                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: Some(self.create_file_span(None).to_source_span()),
+                    suggestions: vec!["Case expression missing scrutinee".to_string()],
+                }));
+            };
             
-            // First result should be the scrutinee
-            if let Some(scrutinee_result) = dependency_results.first() {
-                // TODO: Convert Type to ParsedTypeInfo when needed
-                let _ = scrutinee_result; // Suppress unused variable warning
+            let scrutinee_type = scrutinee_result.inferred_type;
+            let mut result_constraints = context.constraints.clone();
+            let result_substitution = context.substitution.clone();
+            let mut clause_result_types = Vec::new();
+            
+            // Process each case clause with proper scoping
+            for clause in &case_expr.clauses {
+                // Create a new context scope for this clause
+                let mut clause_context = context.clone();
+                
+                // Extract pattern bindings and add them to the bindings map
+                let pattern_bindings = self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
+                for (name, binding_type) in pattern_bindings {
+                    clause_context.bindings.insert(name, binding_type);
+                }
+                
+                // Process guard expression if present (with pattern bindings in scope)
+                if let Some(guard_expr) = &clause.guard {
+                    let guard_result = self.infer_expression_recursive(
+                        &mut guard_expr.clone(), 
+                        &mut clause_context
+                    )?;
+                    
+                    // Guard must be Boolean - simplified constraint for now
+                    let _boolean_type = Type::concrete("Boolean");
+                    let fresh_var = self.fresh_type_var();
+                    result_constraints.push(Constraint::Implements {
+                        type_var: match guard_result.inferred_type {
+                            Type::Variable { var_id, .. } => var_id,
+                            _ => fresh_var,
+                        },
+                        protocol: crate::types::ProtocolId::new("Boolean"),
+                        span: None,
+                    });
+                    
+                    // Merge constraints
+                    result_constraints.extend(guard_result.constraints);
+                    // Merge substitutions - simplified for now
+                    // TODO: Implement proper substitution merging
+                }
+                
+                // Process clause result expression (with pattern bindings in scope)
+                let clause_result_expr = match &clause.result {
+                    outrun_parser::CaseResult::Expression(expr) => expr.as_ref(),
+                    outrun_parser::CaseResult::Block(_) => {
+                        // For blocks, assign a fresh type variable for now
+                        let fresh_var = self.fresh_type_var();
+                        let fresh_type = Type::variable(fresh_var, Level(0));
+                        clause_result_types.push(fresh_type);
+                        continue;
+                    }
+                };
+                
+                let clause_result = self.infer_expression_recursive(
+                    &mut clause_result_expr.clone(),
+                    &mut clause_context
+                )?;
+                
+                clause_result_types.push(clause_result.inferred_type.clone());
+                result_constraints.extend(clause_result.constraints);
+                // Merge substitutions - simplified for now
+                // TODO: Implement proper substitution merging
             }
             
-            // Remaining results are guard expressions
-            let _ = dependency_results; // Use all dependency results
+            // All clause results must have the same type
+            let case_result_type = if clause_result_types.is_empty() {
+                let fresh_var = self.fresh_type_var();
+                Type::variable(fresh_var, Level(0))
+            } else {
+                let first_type = clause_result_types[0].clone();
+                // For now, just return the first type - proper unification would be needed
+                // to ensure all clause types are compatible
+                first_type
+            };
             
-            // Use existing recursive case expression inference
-            let mut mutable_context = context.clone();
-            // For now, assign a fresh type variable since case expression inference is not yet implemented
-            let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
             Ok(InferenceResult {
-                inferred_type,
-                constraints: mutable_context.constraints.clone(),
-                substitution: mutable_context.substitution.clone(),
+                inferred_type: case_result_type,
+                constraints: result_constraints,
+                substitution: result_substitution,
             })
         } else {
             Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: to_source_span(None),
+                span: Some(self.create_file_span(None).to_source_span()),
                 suggestions: vec!["Expected case expression".to_string()],
             }))
         }
@@ -2934,6 +3031,148 @@ impl TypeInferenceEngine {
         println!("✅ INFER_EXPRESSION COMPLETED (depth={})", self.inference_depth);
         
         result
+    }
+
+    /// Extract pattern bindings from a case pattern and their types
+    fn extract_pattern_bindings(
+        &mut self,
+        pattern: &outrun_parser::Pattern,
+        scrutinee_type: &Type,
+    ) -> Result<Vec<(String, Type)>, TypecheckError> {
+        let mut bindings = Vec::new();
+        
+        match pattern {
+            outrun_parser::Pattern::Identifier(identifier) => {
+                // Simple identifier pattern binds the entire scrutinee
+                bindings.push((identifier.name.clone(), scrutinee_type.clone()));
+            }
+            outrun_parser::Pattern::Literal(_) => {
+                // Literal patterns don't bind any variables
+            }
+            outrun_parser::Pattern::Struct(struct_pattern) => {
+                // For struct patterns, we need to extract field types
+                // This is a simplified implementation - full destructuring would need
+                // to resolve the struct type and match field names
+                for field in &struct_pattern.fields {
+                    if let Some(pattern) = &field.pattern {
+                        let field_type = Type::variable(self.fresh_type_var(), Level(0));
+                        let field_bindings = self.extract_pattern_bindings(pattern, &field_type)?;
+                        bindings.extend(field_bindings);
+                    }
+                }
+            }
+            outrun_parser::Pattern::List(list_pattern) => {
+                // For list patterns, extract element types
+                if let Type::Concrete { id, args, .. } = scrutinee_type {
+                    if id.name() == "List" && args.len() == 1 {
+                        let element_type = &args[0];
+                        for element_pattern in &list_pattern.elements {
+                            let element_bindings = self.extract_pattern_bindings(element_pattern, element_type)?;
+                            bindings.extend(element_bindings);
+                        }
+                    }
+                }
+            }
+            outrun_parser::Pattern::Tuple(_) => {
+                // Tuple patterns - simplified for now
+                // Would need to extract tuple element types
+            }
+        }
+        
+        Ok(bindings)
+    }
+    
+    /// Recursive inference method for processing expressions within case clauses
+    /// This is needed because the iterative system can't handle nested inference
+    fn infer_expression_recursive(
+        &mut self,
+        expression: &mut outrun_parser::Expression,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // For now, use a simplified recursive approach
+        // In a full implementation, this would need to handle all expression types
+        match &expression.kind {
+            outrun_parser::ExpressionKind::Identifier(name) => {
+                if let Some(var_type) = context.bindings.get(&name.name) {
+                    Ok(InferenceResult {
+                        inferred_type: var_type.clone(),
+                        constraints: vec![],
+                        substitution: Substitution::new(),
+                    })
+                } else {
+                    Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                        span: Some(self.create_file_span(None).to_source_span()),
+                        suggestions: vec![format!("Unknown variable: {}", name.name)],
+                    }))
+                }
+            }
+            outrun_parser::ExpressionKind::Boolean(_) => {
+                let boolean_type = Type::concrete("Boolean");
+                Ok(InferenceResult {
+                    inferred_type: boolean_type,
+                    constraints: vec![],
+                    substitution: Substitution::new(),
+                })
+            }
+            outrun_parser::ExpressionKind::FunctionCall(func_call) => {
+                // Handle function calls - this is where protocol dispatch happens
+                self.infer_function_call_recursive(func_call, context)
+            }
+            _ => {
+                // For other expression types, assign a fresh type variable
+                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
+                Ok(InferenceResult {
+                    inferred_type,
+                    constraints: vec![],
+                    substitution: Substitution::new(),
+                })
+            }
+        }
+    }
+    
+    /// Recursive function call inference for case clause processing
+    fn infer_function_call_recursive(
+        &mut self,
+        func_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // This is a simplified implementation for protocol calls like Option.some?
+        // Check if this is a guard function (ends with ?)
+        match &func_call.path {
+            outrun_parser::FunctionPath::Simple { name } => {
+                if name.name.ends_with('?') {
+                    // Guard function - must return Boolean
+                    let boolean_type = Type::concrete("Boolean");
+                    return Ok(InferenceResult {
+                        inferred_type: boolean_type,
+                        constraints: vec![],
+                        substitution: Substitution::new(),
+                    });
+                }
+            }
+            outrun_parser::FunctionPath::Qualified { name, .. } => {
+                if name.name.ends_with('?') {
+                    // Guard function - must return Boolean
+                    let boolean_type = Type::concrete("Boolean");
+                    return Ok(InferenceResult {
+                        inferred_type: boolean_type,
+                        constraints: vec![],
+                        substitution: Substitution::new(),
+                    });
+                }
+            }
+            outrun_parser::FunctionPath::Expression { .. } => {
+                // Expression-based function calls - not handled for now
+            }
+        }
+        
+        // For other function calls, assign a fresh type variable
+        let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
+        Ok(InferenceResult {
+            inferred_type,
+            constraints: vec![],
+            substitution: Substitution::new(),
+        })
     }
 
     /// Implementation of inference logic (separated for proper cleanup handling)
@@ -3181,27 +3420,20 @@ impl TypeInferenceEngine {
                     }
                 }
                 ExpressionKind::CaseExpression(case_expr) => {
-                    // Case expression depends on its scrutinee expression
+                    println!("  📋 Setting up case expression task dependencies (ONLY scrutinee)");
+                    // IMPORTANT: For case expressions, we only process the scrutinee upfront
+                    // Guard expressions and clause results will be processed later with pattern bindings in scope
+                    
                     let scrutinee_context = self.inference_tasks[&current_task_id].context.clone();
                     let scrutinee_task_id = self.create_task(case_expr.expression.as_mut() as *mut Expression, scrutinee_context);
                     
                     self.add_task_dependency(current_task_id, scrutinee_task_id);
                     work_stack.push(&mut case_expr.expression);
+                    println!("    ✅ Added scrutinee dependency: task {:?} depends on task {:?}", current_task_id, scrutinee_task_id);
                     
-                    // Process guard expressions in clauses
-                    for clause in &mut case_expr.clauses {
-                        if let Some(ref mut guard) = clause.guard {
-                            let guard_context = self.inference_tasks[&current_task_id].context.clone();
-                            let guard_task_id = self.create_task(guard as *mut Expression, guard_context);
-                            
-                            self.add_task_dependency(current_task_id, guard_task_id);
-                            work_stack.push(guard);
-                        }
-                        
-                        // Note: clause.result is CaseResult enum (Block or Expression)
-                        // For now, we don't process case results iteratively
-                        // TODO: Add case result processing when implementing full control flow
-                    }
+                    // NOTE: We deliberately DO NOT process guard expressions here
+                    // They will be processed in infer_case_expression_with_processed_clauses
+                    // with the proper pattern bindings in scope
                 }
                 // Simple literals and identifiers have no dependencies
                 ExpressionKind::Boolean(_) | ExpressionKind::Integer(_) | ExpressionKind::Float(_) 
@@ -4181,7 +4413,7 @@ impl TypeInferenceEngine {
                 return Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
                     protocol_name: "unknown".to_string(),
                     type_name: function_name.to_string(),
-                    span: crate::error::to_source_span(Some(function_call.span)),
+                    file_span: Some(self.create_file_span(Some(function_call.span))),
                     similar_implementations: Vec::new(),
                     suggestions: Vec::new(),
                 }));
@@ -4440,7 +4672,7 @@ impl TypeInferenceEngine {
                     Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
                         protocol_name: module_name.to_string(),
                         type_name: function_name.to_string(),
-                        span: crate::error::to_source_span(Some(function_call.span)),
+                        file_span: Some(self.create_file_span(Some(function_call.span))),
                         similar_implementations: Vec::new(),
                         suggestions: Vec::new(),
                     }))

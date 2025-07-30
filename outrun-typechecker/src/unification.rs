@@ -109,7 +109,6 @@ impl Unifier {
         right_context: Option<&str>,
         work_queue: &mut std::collections::VecDeque<UnifyTask>,
     ) -> Result<Substitution, UnificationError> {
-
         match (left, right) {
             // Variable unification
             (Type::Variable { var_id: var1, .. }, Type::Variable { var_id: var2, .. })

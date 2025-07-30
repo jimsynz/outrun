@@ -8,6 +8,7 @@ use std::fs;
 use std::path::Path;
 
 /// Recursively collect all .outrun files from a directory
+/// Files are processed in deterministic alphabetical order to ensure consistent compilation
 pub fn collect_outrun_files(
     dir: &Path,
     programs: &mut Vec<(String, String)>,
@@ -20,11 +21,15 @@ pub fn collect_outrun_files(
         ))
     })?;
 
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            TypecheckError::CoreLibraryError(format!("Failed to read directory entry: {}", e))
-        })?;
+    // Collect all entries and sort them for deterministic processing order
+    let mut sorted_entries: Vec<_> = entries.collect::<Result<Vec<_>, _>>().map_err(|e| {
+        TypecheckError::CoreLibraryError(format!("Failed to read directory entries: {}", e))
+    })?;
 
+    // Sort by path for deterministic order
+    sorted_entries.sort_by(|a, b| a.path().cmp(&b.path()));
+
+    for entry in sorted_entries {
         let path = entry.path();
 
         if path.is_dir() {

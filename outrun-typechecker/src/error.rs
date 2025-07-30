@@ -7,6 +7,40 @@ use miette::{Diagnostic, SourceSpan};
 use outrun_parser::{ParseError, Span};
 use thiserror::Error;
 
+/// File-relative span information for clean error reporting
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileSpan {
+    pub span: Span,          // File-relative span from parser
+    pub source_file: String, // Which file this span belongs to
+}
+
+impl FileSpan {
+    pub fn new(span: Span, source_file: String) -> Self {
+        Self { span, source_file }
+    }
+
+    /// Create a FileSpan from parser AST with source file information
+    pub fn from_debug_info(span: Span, debug_info: &outrun_parser::DebugInfo) -> Option<Self> {
+        debug_info
+            .source_file
+            .as_ref()
+            .map(|file| Self::new(span, file.clone()))
+    }
+
+    /// Convert to miette SourceSpan (file-relative, no global conversion needed)
+    pub fn to_source_span(&self) -> SourceSpan {
+        SourceSpan::new(self.span.start.into(), self.span.end - self.span.start)
+    }
+
+    /// Get the filename without the full path for display
+    pub fn filename(&self) -> &str {
+        std::path::Path::new(&self.source_file)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+    }
+}
+
 /// Main typechecker error type extending the existing parser error system
 #[derive(Error, Diagnostic, Debug)]
 pub enum TypecheckError {
@@ -397,7 +431,9 @@ pub enum InferenceError {
         span: Option<SourceSpan>,
     },
 
-    #[error("Invalid constraint variable: {variable_name} does not appear in impl type specifications")]
+    #[error(
+        "Invalid constraint variable: {variable_name} does not appear in impl type specifications"
+    )]
     #[diagnostic(
         code(outrun::typecheck::inference::invalid_constraint_variable),
         help("Constrained type variables must appear in either the protocol or implementing type specifications")
@@ -420,7 +456,9 @@ pub enum CompilerError {
     #[error(transparent)]
     Typecheck(Box<TypecheckError>),
 
-    #[error("Module redefinition: module '{module_name}' is already defined by a dependency package")]
+    #[error(
+        "Module redefinition: module '{module_name}' is already defined by a dependency package"
+    )]
     #[diagnostic(
         code(outrun::compiler::module_redefinition),
         help("Module names must be unique across all packages. Consider renaming this module or using a different package structure.")
@@ -495,8 +533,7 @@ pub enum DispatchError {
     NoImplementation {
         protocol_name: String,
         type_name: String,
-        #[label("type {type_name} does not implement {protocol_name}")]
-        span: Option<SourceSpan>,
+        file_span: Option<FileSpan>,
         similar_implementations: Vec<String>,
         suggestions: Vec<String>,
     },
@@ -553,6 +590,29 @@ pub enum DispatchError {
 /// Helper for creating source spans from optional spans  
 pub fn to_source_span(span: Option<Span>) -> Option<SourceSpan> {
     span.map(|s| SourceSpan::new(s.start.into(), s.end - s.start))
+}
+
+/// Helper for creating FileSpan from optional spans with unknown file
+pub fn to_file_span(span: Option<Span>) -> Option<FileSpan> {
+    span.map(|s| FileSpan::new(s, "unknown".to_string()))
+}
+
+/// Enhanced error information that includes source file context
+#[derive(Debug, Clone)]
+pub struct EnhancedErrorInfo {
+    pub source_span: Option<SourceSpan>,
+    pub source_file: Option<String>,
+    pub message: String,
+}
+
+impl EnhancedErrorInfo {
+    pub fn new(message: String, span: Option<Span>, source_file: Option<String>) -> Self {
+        Self {
+            source_span: to_source_span(span),
+            source_file,
+            message,
+        }
+    }
 }
 
 /// Error context builder for enhanced error reporting
@@ -891,7 +951,7 @@ impl DispatchError {
         Self::NoImplementation {
             protocol_name,
             type_name,
-            span: to_source_span(span),
+            file_span: span.map(|s| FileSpan::new(s, "unknown".to_string())),
             similar_implementations,
             suggestions,
         }

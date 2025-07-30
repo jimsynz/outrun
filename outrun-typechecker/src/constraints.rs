@@ -77,10 +77,10 @@ pub struct RecursivePatternInfo {
 pub struct CallStackContext {
     /// Stack of function call contexts leading to current constraint
     pub call_stack: Vec<CallContext>,
-    
+
     /// Additional type constraints discovered through backtracking  
     pub backtracked_constraints: Vec<BacktrackedConstraint>,
-    
+
     /// Call depth limit to prevent infinite backtracking
     pub max_depth: usize,
 }
@@ -90,19 +90,19 @@ pub struct CallStackContext {
 pub struct CallContext {
     /// Function signature being called
     pub function_signature: String,
-    
+
     /// Module path where the call originates
     pub module_path: Vec<String>,
-    
+
     /// Type constraints at this call site
     pub local_constraints: Vec<Type>,
-    
+
     /// Generic type substitutions active at this call site
     pub generic_substitutions: HashMap<String, Type>,
-    
+
     /// Source span of the function call
     pub span: Option<Span>,
-    
+
     /// Call depth in the stack
     pub depth: usize,
 }
@@ -112,13 +112,13 @@ pub struct CallContext {
 pub struct BacktrackedConstraint {
     /// The original constraint that triggered backtracking
     pub original_constraint: Constraint,
-    
+
     /// Additional type information found by backtracking
     pub discovered_types: Vec<Type>,
-    
+
     /// The call context where this information was found
     pub source_context: CallContext,
-    
+
     /// Confidence level in this constraint (0.0 to 1.0)
     pub confidence: f64,
 }
@@ -128,28 +128,28 @@ pub struct BacktrackedConstraint {
 pub struct PublicFunctionTemplate {
     /// Function signature for identification
     pub function_signature: crate::universal_dispatch::FunctionSignature,
-    
+
     /// Generic parameters in this function (e.g., T, U, Self)
     pub generic_parameters: Vec<GenericParameter>,
-    
+
     /// Parameter types with their names and constraints
     pub parameter_types: Vec<ParameterTemplate>,
-    
+
     /// Return type template
     pub return_type: TypeTemplate,
-    
+
     /// Protocol constraints that must be satisfied (e.g., T: Display)
     pub protocol_constraints: Vec<ProtocolConstraintTemplate>,
-    
+
     /// Function visibility (public/private)
     pub visibility: FunctionVisibility,
-    
+
     /// Source span for debugging
     pub span: Option<Span>,
-    
+
     /// Package name this template comes from
     pub source_package: String,
-    
+
     /// Template generation timestamp for cache management
     pub generated_at: std::time::SystemTime,
 }
@@ -159,13 +159,13 @@ pub struct PublicFunctionTemplate {
 pub struct GenericParameter {
     /// Parameter name (e.g., "T", "U", "Self")
     pub name: String,
-    
+
     /// Direct constraints on this parameter (e.g., T: Display)
     pub direct_constraints: Vec<crate::types::ProtocolId>,
-    
+
     /// Whether this parameter appears in multiple positions
     pub multiple_occurrences: bool,
-    
+
     /// Variance information for advanced constraint solving
     pub variance: ParameterVariance,
 }
@@ -175,10 +175,10 @@ pub struct GenericParameter {
 pub struct ParameterTemplate {
     /// Parameter name
     pub name: String,
-    
+
     /// Parameter type template
     pub type_template: TypeTemplate,
-    
+
     /// Whether this parameter is required or optional
     pub required: bool,
 }
@@ -191,24 +191,22 @@ pub enum TypeTemplate {
         type_name: String,
         generic_args: Vec<TypeTemplate>,
     },
-    
+
     /// Generic parameter that needs substitution
     Generic {
         parameter_name: String,
         constraints: Vec<crate::types::ProtocolId>,
     },
-    
+
     /// Protocol reference
     Protocol {
         protocol_name: String,
         generic_args: Vec<TypeTemplate>,
     },
-    
+
     /// Self type reference
-    SelfType {
-        context: SelfTypeContext,
-    },
-    
+    SelfType { context: SelfTypeContext },
+
     /// Function type template
     Function {
         parameter_templates: Vec<TypeTemplate>,
@@ -221,13 +219,13 @@ pub enum TypeTemplate {
 pub enum SelfTypeContext {
     /// Self in protocol definition
     ProtocolDefinition { protocol_name: String },
-    
+
     /// Self in impl block
-    ImplementationBlock { 
+    ImplementationBlock {
         protocol_name: String,
         implementing_type: String,
     },
-    
+
     /// Self in struct method
     StructMethod { struct_name: String },
 }
@@ -237,13 +235,13 @@ pub enum SelfTypeContext {
 pub struct ProtocolConstraintTemplate {
     /// Generic parameter being constrained
     pub parameter_name: String,
-    
+
     /// Protocol that must be implemented
     pub protocol_id: crate::types::ProtocolId,
-    
+
     /// Additional generic arguments to the protocol
     pub protocol_args: Vec<TypeTemplate>,
-    
+
     /// Whether this constraint is required or optional
     pub required: bool,
 }
@@ -253,7 +251,7 @@ pub struct ProtocolConstraintTemplate {
 pub enum FunctionVisibility {
     /// Public function - generate template
     Public,
-    
+
     /// Private function - don't generate template
     Private,
 }
@@ -263,13 +261,13 @@ pub enum FunctionVisibility {
 pub enum ParameterVariance {
     /// Parameter appears in covariant position (return types, read-only)
     Covariant,
-    
+
     /// Parameter appears in contravariant position (parameter types, write-only)
     Contravariant,
-    
+
     /// Parameter appears in both positions (invariant)
     Invariant,
-    
+
     /// Variance not yet determined
     Unknown,
 }
@@ -283,12 +281,12 @@ impl CallStackContext {
             max_depth,
         }
     }
-    
+
     /// Get the current call depth
     pub fn current_depth(&self) -> usize {
         self.call_stack.len()
     }
-    
+
     /// Check if we're at maximum backtracking depth
     pub fn at_max_depth(&self) -> bool {
         self.current_depth() >= self.max_depth
@@ -312,12 +310,12 @@ impl CallContext {
             depth,
         }
     }
-    
+
     /// Add a local type constraint to this call context
     pub fn add_local_constraint(&mut self, constraint: Type) {
         self.local_constraints.push(constraint);
     }
-    
+
     /// Add a generic type substitution to this call context
     pub fn add_generic_substitution(&mut self, param_name: String, concrete_type: Type) {
         self.generic_substitutions.insert(param_name, concrete_type);
@@ -340,7 +338,8 @@ pub struct ConstraintSolver {
     /// Maximum backtracking depth to prevent infinite recursion
     max_backtrack_depth: usize,
     /// Generated public function templates for dependent packages
-    public_function_templates: HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate>,
+    public_function_templates:
+        HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate>,
     /// Package name for template generation
     current_package_name: String,
 }
@@ -470,7 +469,13 @@ impl ConstraintSolver {
                 expected_name,
                 expected_args,
                 span,
-            } => self.solve_name_binding_constraint(*type_var, expected_name, expected_args, substitution, *span),
+            } => self.solve_name_binding_constraint(
+                *type_var,
+                expected_name,
+                expected_args,
+                substitution,
+                *span,
+            ),
         }
     }
 
@@ -776,7 +781,11 @@ impl ConstraintSolver {
                     Ok(())
                 } else {
                     Err(ConstraintError::Unsatisfiable {
-                        constraint: format!("type variable must resolve to {}, but got {}", expected_name, id.name()),
+                        constraint: format!(
+                            "type variable must resolve to {}, but got {}",
+                            expected_name,
+                            id.name()
+                        ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
@@ -788,7 +797,10 @@ impl ConstraintSolver {
                     Ok(())
                 } else {
                     Err(ConstraintError::Unsatisfiable {
-                        constraint: format!("type variable must resolve to {}, but got protocol {}", expected_name, id.0),
+                        constraint: format!(
+                            "type variable must resolve to {}, but got protocol {}",
+                            expected_name, id.0
+                        ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
@@ -797,7 +809,10 @@ impl ConstraintSolver {
             Type::SelfType { .. } => {
                 // Self types would need to be resolved first
                 Err(ConstraintError::Unsatisfiable {
-                    constraint: format!("type variable must resolve to {}, but got unresolved Self type", expected_name),
+                    constraint: format!(
+                        "type variable must resolve to {}, but got unresolved Self type",
+                        expected_name
+                    ),
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                 })
             }
@@ -805,7 +820,10 @@ impl ConstraintSolver {
             Type::Function { .. } => {
                 // Function types don't match simple names
                 Err(ConstraintError::Unsatisfiable {
-                    constraint: format!("type variable must resolve to {}, but got function type", expected_name),
+                    constraint: format!(
+                        "type variable must resolve to {}, but got function type",
+                        expected_name
+                    ),
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                 })
             }
@@ -822,20 +840,21 @@ impl ConstraintSolver {
     pub fn analyze_recursive_type_patterns(&mut self) {
         let mut recursive_patterns = HashMap::new();
         let mut patterns_to_warn = Vec::new();
-        
+
         // First pass: collect all recursive patterns (immutable borrow)
         for impl_info in self.protocol_registry.all_implementations() {
             if let Some(recursive_info) = self.detect_recursive_pattern(&impl_info) {
-                recursive_patterns.insert(recursive_info.pattern_key.clone(), recursive_info.clone());
+                recursive_patterns
+                    .insert(recursive_info.pattern_key.clone(), recursive_info.clone());
                 patterns_to_warn.push(recursive_info);
             }
         }
-        
+
         // Second pass: emit warnings (mutable borrow)
         for pattern in patterns_to_warn {
             self.emit_recursive_implementation_warning(&pattern);
         }
-        
+
         self.recursive_patterns = recursive_patterns;
     }
 
@@ -843,36 +862,44 @@ impl ConstraintSolver {
     /// Example: impl Empty for Option<T> when T: Empty
     /// Pattern: Option<T> implements Empty, constraint requires T: Empty
     /// This creates: Option<X> -> Option<Option<X>> -> Option<Option<Option<X>>> -> ...
-    fn detect_recursive_pattern(&self, impl_info: &crate::registry::ImplementationInfo) -> Option<RecursivePatternInfo> {
+    fn detect_recursive_pattern(
+        &self,
+        impl_info: &crate::registry::ImplementationInfo,
+    ) -> Option<RecursivePatternInfo> {
         // We need to check if this implementation has constraints that could create recursion
         // Since we don't have direct access to constraints in ImplementationInfo,
         // we'll need to infer recursion from the type structure
-        
+
         // For now, detect simple cases where a generic type implements a protocol
         // and the same generic type could appear in constraints
-        
+
         // Check if implementing type is generic and could recurse
         if !impl_info.implementing_args.is_empty() {
             // This is a generic implementation like Option<T>
             // Check if the protocol could be implemented by the same generic pattern
-            
+
             // Simple heuristic: if we have Option<T> implementing Protocol,
             // and Protocol could theoretically be implemented by Option<U>,
             // then this could create recursion
-            
-            let pattern_key = format!("{}:{}", impl_info.protocol_id.0, impl_info.implementing_type.name());
-            
+
+            let pattern_key = format!(
+                "{}:{}",
+                impl_info.protocol_id.0,
+                impl_info.implementing_type.name()
+            );
+
             // Check if this protocol has other implementations that could chain
             let mut could_recurse = false;
             for other_impl in self.protocol_registry.all_implementations() {
-                if other_impl.protocol_id == impl_info.protocol_id && 
-                   other_impl.implementing_type.name() != impl_info.implementing_type.name() {
+                if other_impl.protocol_id == impl_info.protocol_id
+                    && other_impl.implementing_type.name() != impl_info.implementing_type.name()
+                {
                     // Different type implementing same protocol - potential for chaining
                     could_recurse = true;
                     break;
                 }
             }
-            
+
             if could_recurse {
                 return Some(RecursivePatternInfo {
                     pattern_key,
@@ -888,7 +915,7 @@ impl ConstraintSolver {
                 });
             }
         }
-        
+
         None
     }
 
@@ -901,20 +928,21 @@ impl ConstraintSolver {
             self.expand_recursive_pattern(pattern, 1),
             self.expand_recursive_pattern(pattern, 2)
         );
-        
+
         let warning = CompilerWarning::RecursiveProtocolImplementation {
             implementation_span: pattern.implementation_span,
             protocol_name: pattern.protocol.0.clone(),
             implementing_type: type_name,
             explanation,
-            impact: "This may generate many concrete type combinations during clause generation".to_string(),
+            impact: "This may generate many concrete type combinations during clause generation"
+                .to_string(),
             suggestions: vec![
                 "Consider adding explicit depth bounds in constraints".to_string(),
                 "Consider using sealed trait pattern to limit recursion".to_string(),
                 "Monitor compilation warnings for excessive clause generation".to_string(),
             ],
         };
-        
+
         self.warnings.push(warning);
     }
 
@@ -923,7 +951,7 @@ impl ConstraintSolver {
         // Simple expansion for demonstration
         // In real implementation, this would be more sophisticated
         let base_name = self.get_type_name(&pattern.implementing_type);
-        
+
         let mut result = base_name.clone();
         for _ in 0..depth {
             result = format!("{}[{}]", base_name, result);
@@ -936,7 +964,9 @@ impl ConstraintSolver {
         match ty {
             Type::Concrete { id, .. } => id.name().to_string(),
             Type::Protocol { id, .. } => id.0.clone(),
-            Type::Variable { name: Some(name), .. } => name.clone(),
+            Type::Variable {
+                name: Some(name), ..
+            } => name.clone(),
             Type::Variable { var_id, .. } => format!("T{}", var_id.0),
             Type::SelfType { .. } => "Self".to_string(),
             Type::Function { .. } => "Function".to_string(),
@@ -985,19 +1015,23 @@ impl ConstraintSolver {
     }
 
     /// Perform call stack backtracking to find additional type constraints
-    pub fn backtrack_for_enhanced_context(&mut self, constraint: &Constraint) -> Vec<BacktrackedConstraint> {
+    pub fn backtrack_for_enhanced_context(
+        &mut self,
+        constraint: &Constraint,
+    ) -> Vec<BacktrackedConstraint> {
         let mut backtracked_constraints = Vec::new();
-        
+
         if let Some(stack_context) = &self.call_stack_context {
             // Walk backwards through the call stack to find additional constraints
             for (depth, call_context) in stack_context.call_stack.iter().rev().enumerate() {
                 if depth >= self.max_backtrack_depth {
                     break; // Prevent infinite backtracking
                 }
-                
+
                 // Analyze this call context for additional type information
-                let discovered_types = self.analyze_call_context_for_types(call_context, constraint);
-                
+                let discovered_types =
+                    self.analyze_call_context_for_types(call_context, constraint);
+
                 if !discovered_types.is_empty() {
                     let backtracked_constraint = BacktrackedConstraint {
                         original_constraint: constraint.clone(),
@@ -1005,65 +1039,81 @@ impl ConstraintSolver {
                         source_context: call_context.clone(),
                         confidence: self.calculate_constraint_confidence(call_context, depth),
                     };
-                    
+
                     backtracked_constraints.push(backtracked_constraint);
                 }
             }
         }
-        
+
         // Store the backtracked constraints for future use
         if let Some(ref mut stack_context) = self.call_stack_context {
-            stack_context.backtracked_constraints.extend(backtracked_constraints.clone());
+            stack_context
+                .backtracked_constraints
+                .extend(backtracked_constraints.clone());
         }
-        
+
         backtracked_constraints
     }
 
     /// Analyze a call context to extract additional type information
-    fn analyze_call_context_for_types(&self, call_context: &CallContext, constraint: &Constraint) -> Vec<Type> {
+    fn analyze_call_context_for_types(
+        &self,
+        call_context: &CallContext,
+        constraint: &Constraint,
+    ) -> Vec<Type> {
         let mut discovered_types = Vec::new();
-        
+
         // Extract type information from local constraints at this call site
         for local_constraint in &call_context.local_constraints {
             if self.constraint_is_relevant(constraint, local_constraint) {
                 discovered_types.push(local_constraint.clone());
             }
         }
-        
+
         // Apply generic substitutions to discover concrete types
         for (param_name, concrete_type) in &call_context.generic_substitutions {
             if self.generic_parameter_is_relevant(constraint, param_name) {
                 discovered_types.push(concrete_type.clone());
             }
         }
-        
+
         discovered_types
     }
 
     /// Check if a local constraint is relevant to the target constraint
-    fn constraint_is_relevant(&self, target_constraint: &Constraint, local_constraint: &Type) -> bool {
+    fn constraint_is_relevant(
+        &self,
+        target_constraint: &Constraint,
+        local_constraint: &Type,
+    ) -> bool {
         match target_constraint {
-            Constraint::Implements { type_var, protocol, .. } => {
+            Constraint::Implements {
+                type_var, protocol, ..
+            } => {
                 // Check if local constraint provides information about this type variable or protocol
-                self.type_involves_variable(local_constraint, *type_var) || 
-                self.type_involves_protocol(local_constraint, protocol)
+                self.type_involves_variable(local_constraint, *type_var)
+                    || self.type_involves_protocol(local_constraint, protocol)
             }
             Constraint::SelfImplements { protocol, .. } => {
                 // Check if local constraint provides information about Self or this protocol
-                self.type_involves_self(local_constraint) ||
-                self.type_involves_protocol(local_constraint, protocol)
+                self.type_involves_self(local_constraint)
+                    || self.type_involves_protocol(local_constraint, protocol)
             }
             Constraint::Equality { left, right, .. } => {
                 // Check if local constraint involves either side of the equality
-                self.types_overlap(local_constraint, left) ||
-                self.types_overlap(local_constraint, right)
+                self.types_overlap(local_constraint, left)
+                    || self.types_overlap(local_constraint, right)
             }
             _ => false, // Other constraint types don't benefit from backtracking yet
         }
     }
 
     /// Check if a generic parameter is relevant to the target constraint
-    fn generic_parameter_is_relevant(&self, target_constraint: &Constraint, _param_name: &str) -> bool {
+    fn generic_parameter_is_relevant(
+        &self,
+        target_constraint: &Constraint,
+        _param_name: &str,
+    ) -> bool {
         match target_constraint {
             Constraint::Implements { .. } => {
                 // Generic parameters could provide concrete type information
@@ -1077,13 +1127,17 @@ impl ConstraintSolver {
     fn calculate_constraint_confidence(&self, call_context: &CallContext, depth: usize) -> f64 {
         // Higher confidence for shallower call stack depths
         let depth_penalty = depth as f64 * 0.1;
-        
+
         // Higher confidence for contexts with more local constraints
         let constraint_bonus = (call_context.local_constraints.len() as f64 * 0.1).min(0.3);
-        
+
         // Higher confidence for contexts with generic substitutions
-        let substitution_bonus = if call_context.generic_substitutions.is_empty() { 0.0 } else { 0.2 };
-        
+        let substitution_bonus = if call_context.generic_substitutions.is_empty() {
+            0.0
+        } else {
+            0.2
+        };
+
         // Base confidence starts at 0.8, adjusted by factors
         (0.8 - depth_penalty + constraint_bonus + substitution_bonus).clamp(0.0, 1.0)
     }
@@ -1091,12 +1145,24 @@ impl ConstraintSolver {
     /// Helper methods for type analysis
     fn type_involves_variable(&self, ty: &Type, var_id: TypeVarId) -> bool {
         match ty {
-            Type::Variable { var_id: ty_var_id, .. } => *ty_var_id == var_id,
-            Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_variable(arg, var_id)),
-            Type::Protocol { args, .. } => args.iter().any(|arg| self.type_involves_variable(arg, var_id)),
-            Type::Function { params, return_type, .. } => {
-                params.iter().any(|(_, param_type)| self.type_involves_variable(param_type, var_id)) ||
-                self.type_involves_variable(return_type, var_id)
+            Type::Variable {
+                var_id: ty_var_id, ..
+            } => *ty_var_id == var_id,
+            Type::Concrete { args, .. } => args
+                .iter()
+                .any(|arg| self.type_involves_variable(arg, var_id)),
+            Type::Protocol { args, .. } => args
+                .iter()
+                .any(|arg| self.type_involves_variable(arg, var_id)),
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                params
+                    .iter()
+                    .any(|(_, param_type)| self.type_involves_variable(param_type, var_id))
+                    || self.type_involves_variable(return_type, var_id)
             }
             _ => false,
         }
@@ -1106,12 +1172,23 @@ impl ConstraintSolver {
         match ty {
             Type::Protocol { id, args, .. } => {
                 // Check both if this is the target protocol and if args contain the protocol
-                id == protocol_id || args.iter().any(|arg| self.type_involves_protocol(arg, protocol_id))
+                id == protocol_id
+                    || args
+                        .iter()
+                        .any(|arg| self.type_involves_protocol(arg, protocol_id))
             }
-            Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_protocol(arg, protocol_id)),
-            Type::Function { params, return_type, .. } => {
-                params.iter().any(|(_, param_type)| self.type_involves_protocol(param_type, protocol_id)) ||
-                self.type_involves_protocol(return_type, protocol_id)
+            Type::Concrete { args, .. } => args
+                .iter()
+                .any(|arg| self.type_involves_protocol(arg, protocol_id)),
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                params
+                    .iter()
+                    .any(|(_, param_type)| self.type_involves_protocol(param_type, protocol_id))
+                    || self.type_involves_protocol(return_type, protocol_id)
             }
             _ => false,
         }
@@ -1122,9 +1199,15 @@ impl ConstraintSolver {
             Type::SelfType { .. } => true,
             Type::Concrete { args, .. } => args.iter().any(|arg| self.type_involves_self(arg)),
             Type::Protocol { args, .. } => args.iter().any(|arg| self.type_involves_self(arg)),
-            Type::Function { params, return_type, .. } => {
-                params.iter().any(|(_, param_type)| self.type_involves_self(param_type)) ||
-                self.type_involves_self(return_type)
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                params
+                    .iter()
+                    .any(|(_, param_type)| self.type_involves_self(param_type))
+                    || self.type_involves_self(return_type)
             }
             _ => false,
         }
@@ -1154,17 +1237,20 @@ impl ConstraintSolver {
         available_generic_params: &[String], // Generic parameters from containing struct/protocol/impl
     ) -> Result<PublicFunctionTemplate, String> {
         // Extract generic parameters from the function definition using available generics
-        let generic_parameters = self.extract_generic_parameters_from_function(function_def, available_generic_params)?;
-        
+        let generic_parameters =
+            self.extract_generic_parameters_from_function(function_def, available_generic_params)?;
+
         // Convert parameter types to templates
-        let parameter_types = self.convert_parameters_to_templates(&function_def.parameters, available_generic_params)?;
-        
+        let parameter_types = self
+            .convert_parameters_to_templates(&function_def.parameters, available_generic_params)?;
+
         // Convert return type to template
-        let return_type = self.convert_type_to_template(&function_def.return_type, available_generic_params)?;
-        
+        let return_type =
+            self.convert_type_to_template(&function_def.return_type, available_generic_params)?;
+
         // Extract protocol constraints (simplified for now)
         let protocol_constraints = Vec::new(); // TODO: Extract protocol constraints from function_def
-        
+
         let template = PublicFunctionTemplate {
             function_signature: function_signature.clone(),
             generic_parameters,
@@ -1176,10 +1262,11 @@ impl ConstraintSolver {
             source_package: self.current_package_name.clone(),
             generated_at: std::time::SystemTime::now(),
         };
-        
+
         // Store the template
-        self.public_function_templates.insert(function_signature, template.clone());
-        
+        self.public_function_templates
+            .insert(function_signature, template.clone());
+
         Ok(template)
     }
 
@@ -1191,15 +1278,25 @@ impl ConstraintSolver {
     ) -> Result<Vec<GenericParameter>, String> {
         let mut parameters = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        
+
         // Collect generic parameters from parameter types
         for param in &function_def.parameters {
-            self.collect_generic_parameters_from_type(&param.type_annotation, &mut parameters, &mut seen_names, available_generic_params)?;
+            self.collect_generic_parameters_from_type(
+                &param.type_annotation,
+                &mut parameters,
+                &mut seen_names,
+                available_generic_params,
+            )?;
         }
-        
+
         // Collect generic parameters from return type
-        self.collect_generic_parameters_from_type(&function_def.return_type, &mut parameters, &mut seen_names, available_generic_params)?;
-        
+        self.collect_generic_parameters_from_type(
+            &function_def.return_type,
+            &mut parameters,
+            &mut seen_names,
+            available_generic_params,
+        )?;
+
         Ok(parameters)
     }
 
@@ -1212,7 +1309,9 @@ impl ConstraintSolver {
         available_generic_params: &[String],
     ) -> Result<(), String> {
         match type_annotation {
-            outrun_parser::TypeAnnotation::Simple { path, generic_args, .. } => {
+            outrun_parser::TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
                 // Check the last component of the path for generic parameter names
                 if let Some(last_component) = path.last() {
                     let name = &last_component.name;
@@ -1221,7 +1320,7 @@ impl ConstraintSolver {
                         parameters.push(GenericParameter {
                             name: name.clone(),
                             direct_constraints: Vec::new(), // Will be filled by constraint extraction
-                            multiple_occurrences: false,   // Will be updated if we see it again
+                            multiple_occurrences: false,    // Will be updated if we see it again
                             variance: ParameterVariance::Unknown,
                         });
                     } else if seen_names.contains(name) {
@@ -1234,33 +1333,56 @@ impl ConstraintSolver {
                         }
                     }
                 }
-                
+
                 // Recursively process generic arguments
                 if let Some(args) = generic_args {
                     for arg in &args.args {
-                        self.collect_generic_parameters_from_type(arg, parameters, seen_names, available_generic_params)?;
+                        self.collect_generic_parameters_from_type(
+                            arg,
+                            parameters,
+                            seen_names,
+                            available_generic_params,
+                        )?;
                     }
                 }
             }
-            outrun_parser::TypeAnnotation::Function { params, return_type, .. } => {
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
                 // Process function parameter types
                 for param in params {
-                    self.collect_generic_parameters_from_type(&param.type_annotation, parameters, seen_names, available_generic_params)?;
+                    self.collect_generic_parameters_from_type(
+                        &param.type_annotation,
+                        parameters,
+                        seen_names,
+                        available_generic_params,
+                    )?;
                 }
                 // Process return type
-                self.collect_generic_parameters_from_type(return_type, parameters, seen_names, available_generic_params)?;
+                self.collect_generic_parameters_from_type(
+                    return_type,
+                    parameters,
+                    seen_names,
+                    available_generic_params,
+                )?;
             }
             outrun_parser::TypeAnnotation::Tuple { types, .. } => {
                 // Process tuple element types
                 for element_type in types {
-                    self.collect_generic_parameters_from_type(element_type, parameters, seen_names, available_generic_params)?;
+                    self.collect_generic_parameters_from_type(
+                        element_type,
+                        parameters,
+                        seen_names,
+                        available_generic_params,
+                    )?;
                 }
             }
         }
-        
+
         Ok(())
     }
-
 
     /// Convert function parameters to parameter templates
     fn convert_parameters_to_templates(
@@ -1269,16 +1391,17 @@ impl ConstraintSolver {
         available_generic_params: &[String],
     ) -> Result<Vec<ParameterTemplate>, String> {
         let mut templates = Vec::new();
-        
+
         for param in params {
-            let type_template = self.convert_type_to_template(&param.type_annotation, available_generic_params)?;
+            let type_template =
+                self.convert_type_to_template(&param.type_annotation, available_generic_params)?;
             templates.push(ParameterTemplate {
                 name: param.name.name.clone(),
                 type_template,
                 required: true, // All parameters are required in Outrun
             });
         }
-        
+
         Ok(templates)
     }
 
@@ -1289,7 +1412,9 @@ impl ConstraintSolver {
         available_generic_params: &[String],
     ) -> Result<TypeTemplate, String> {
         match type_annotation {
-            outrun_parser::TypeAnnotation::Simple { path, generic_args, .. } => {
+            outrun_parser::TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
                 if let Some(last_component) = path.last() {
                     let name = &last_component.name;
                     if available_generic_params.contains(name) {
@@ -1302,19 +1427,22 @@ impl ConstraintSolver {
                         let generic_args = if let Some(args) = generic_args {
                             let mut templates = Vec::new();
                             for arg in &args.args {
-                                templates.push(self.convert_type_to_template(arg, available_generic_params)?);
+                                templates.push(
+                                    self.convert_type_to_template(arg, available_generic_params)?,
+                                );
                             }
                             templates
                         } else {
                             Vec::new()
                         };
-                        
+
                         // Use the full qualified path for concrete types
-                        let full_type_name = path.iter()
+                        let full_type_name = path
+                            .iter()
                             .map(|component| component.name.clone())
                             .collect::<Vec<_>>()
                             .join(".");
-                        
+
                         Ok(TypeTemplate::Concrete {
                             type_name: full_type_name,
                             generic_args,
@@ -1324,14 +1452,22 @@ impl ConstraintSolver {
                     Err("Empty type path".to_string())
                 }
             }
-            outrun_parser::TypeAnnotation::Function { params, return_type, .. } => {
+            outrun_parser::TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
                 let mut parameter_templates = Vec::new();
                 for param in params {
-                    parameter_templates.push(self.convert_type_to_template(&param.type_annotation, available_generic_params)?);
+                    parameter_templates.push(self.convert_type_to_template(
+                        &param.type_annotation,
+                        available_generic_params,
+                    )?);
                 }
-                
-                let return_template = Box::new(self.convert_type_to_template(return_type, available_generic_params)?);
-                
+
+                let return_template =
+                    Box::new(self.convert_type_to_template(return_type, available_generic_params)?);
+
                 Ok(TypeTemplate::Function {
                     parameter_templates,
                     return_template,
@@ -1340,9 +1476,11 @@ impl ConstraintSolver {
             outrun_parser::TypeAnnotation::Tuple { types, .. } => {
                 let mut element_templates = Vec::new();
                 for element_type in types {
-                    element_templates.push(self.convert_type_to_template(element_type, available_generic_params)?);
+                    element_templates.push(
+                        self.convert_type_to_template(element_type, available_generic_params)?,
+                    );
                 }
-                
+
                 Ok(TypeTemplate::Concrete {
                     type_name: "Tuple".to_string(),
                     generic_args: element_templates,
@@ -1357,19 +1495,21 @@ impl ConstraintSolver {
         _signature: &outrun_parser::FunctionSignature,
     ) -> Result<Vec<ProtocolConstraintTemplate>, String> {
         let constraints = Vec::new();
-        
+
         // For now, this is a simplified implementation
         // In a full implementation, this would parse constraint clauses
         // like "where T: Display + Clone"
-        
+
         // TODO: Parse constraint expressions from function signature
         // This would involve extending the parser to capture constraint clauses
-        
+
         Ok(constraints)
     }
 
     /// Get all generated public function templates
-    pub fn get_public_function_templates(&self) -> &HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate> {
+    pub fn get_public_function_templates(
+        &self,
+    ) -> &HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate> {
         &self.public_function_templates
     }
 
@@ -1384,28 +1524,32 @@ impl ConstraintSolver {
     /// Import public function templates from a dependency package
     pub fn import_dependency_templates(
         &mut self,
-        dependency_templates: &std::collections::HashMap<crate::universal_dispatch::FunctionSignature, PublicFunctionTemplate>,
+        dependency_templates: &std::collections::HashMap<
+            crate::universal_dispatch::FunctionSignature,
+            PublicFunctionTemplate,
+        >,
         dependency_package: &str,
     ) -> Result<usize, String> {
         let mut imported_count = 0;
-        
+
         for (signature, template) in dependency_templates {
             // CRITICAL: Only import PUBLIC function templates - private functions must not be accessible
             if template.visibility != FunctionVisibility::Public {
                 continue; // Skip private functions - they should never be accessible to dependent packages
             }
-            
+
             // Only import templates that we don't already have
             if !self.public_function_templates.contains_key(signature) {
                 // Create a copy of the template with dependency package info
                 let mut imported_template = template.clone();
                 imported_template.source_package = dependency_package.to_string();
-                
-                self.public_function_templates.insert(signature.clone(), imported_template);
+
+                self.public_function_templates
+                    .insert(signature.clone(), imported_template);
                 imported_count += 1;
             }
         }
-        
+
         Ok(imported_count)
     }
 
@@ -1420,12 +1564,12 @@ impl ConstraintSolver {
             &template.parameter_types,
             concrete_type_substitutions,
         )?;
-        
+
         let substituted_return_type = self.substitute_types_in_type_template(
             &template.return_type,
             concrete_type_substitutions,
         )?;
-        
+
         // Generate type compatibility guards for the substituted types
         let mut guards = Vec::new();
         for (i, param_template) in substituted_parameter_types.iter().enumerate() {
@@ -1437,25 +1581,26 @@ impl ConstraintSolver {
                 });
             }
         }
-        
+
         // If no specific guards were needed, add AlwaysTrue
         if guards.is_empty() {
             guards.push(crate::universal_dispatch::Guard::AlwaysTrue);
         }
-        
+
         // Create the clause with intrinsic function body (simplified for now)
         let clause = crate::universal_dispatch::ClauseInfo {
             clause_id: crate::universal_dispatch::ClauseId::new(),
             function_signature: template.function_signature.clone(),
             guards,
-            body: crate::universal_dispatch::FunctionBody::IntrinsicFunction(
-                format!("{}.{}", template.source_package, template.function_signature.function_name)
-            ),
+            body: crate::universal_dispatch::FunctionBody::IntrinsicFunction(format!(
+                "{}.{}",
+                template.source_package, template.function_signature.function_name
+            )),
             estimated_cost: 1,
             priority: 0,
             span: template.span,
         };
-        
+
         Ok(clause)
     }
 
@@ -1466,20 +1611,18 @@ impl ConstraintSolver {
         substitutions: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<ParameterTemplate>, String> {
         let mut substituted_params = Vec::new();
-        
+
         for param in parameters {
-            let substituted_type = self.substitute_types_in_type_template(
-                &param.type_template,
-                substitutions,
-            )?;
-            
+            let substituted_type =
+                self.substitute_types_in_type_template(&param.type_template, substitutions)?;
+
             substituted_params.push(ParameterTemplate {
                 name: param.name.clone(),
                 type_template: substituted_type,
                 required: param.required,
             });
         }
-        
+
         Ok(substituted_params)
     }
 
@@ -1497,28 +1640,39 @@ impl ConstraintSolver {
                         generic_args: Vec::new(),
                     })
                 } else {
-                    Err(format!("No concrete type provided for generic parameter '{}'", parameter_name))
+                    Err(format!(
+                        "No concrete type provided for generic parameter '{}'",
+                        parameter_name
+                    ))
                 }
             }
-            TypeTemplate::Concrete { type_name, generic_args } => {
+            TypeTemplate::Concrete {
+                type_name,
+                generic_args,
+            } => {
                 // Recursively substitute in generic arguments
                 let mut substituted_args = Vec::new();
                 for arg in generic_args {
-                    substituted_args.push(self.substitute_types_in_type_template(arg, substitutions)?);
+                    substituted_args
+                        .push(self.substitute_types_in_type_template(arg, substitutions)?);
                 }
-                
+
                 Ok(TypeTemplate::Concrete {
                     type_name: type_name.clone(),
                     generic_args: substituted_args,
                 })
             }
-            TypeTemplate::Protocol { protocol_name, generic_args } => {
+            TypeTemplate::Protocol {
+                protocol_name,
+                generic_args,
+            } => {
                 // Recursively substitute in generic arguments
                 let mut substituted_args = Vec::new();
                 for arg in generic_args {
-                    substituted_args.push(self.substitute_types_in_type_template(arg, substitutions)?);
+                    substituted_args
+                        .push(self.substitute_types_in_type_template(arg, substitutions)?);
                 }
-                
+
                 Ok(TypeTemplate::Protocol {
                     protocol_name: protocol_name.clone(),
                     generic_args: substituted_args,
@@ -1526,17 +1680,25 @@ impl ConstraintSolver {
             }
             TypeTemplate::SelfType { context } => {
                 // Self types need special handling - for now, keep as-is
-                Ok(TypeTemplate::SelfType { context: context.clone() })
+                Ok(TypeTemplate::SelfType {
+                    context: context.clone(),
+                })
             }
-            TypeTemplate::Function { parameter_templates, return_template } => {
+            TypeTemplate::Function {
+                parameter_templates,
+                return_template,
+            } => {
                 // Recursively substitute in function parameters and return type
                 let mut substituted_params = Vec::new();
                 for param in parameter_templates {
-                    substituted_params.push(self.substitute_types_in_type_template(param, substitutions)?);
+                    substituted_params
+                        .push(self.substitute_types_in_type_template(param, substitutions)?);
                 }
-                
-                let substituted_return = Box::new(self.substitute_types_in_type_template(return_template, substitutions)?);
-                
+
+                let substituted_return = Box::new(
+                    self.substitute_types_in_type_template(return_template, substitutions)?,
+                );
+
                 Ok(TypeTemplate::Function {
                     parameter_templates: substituted_params,
                     return_template: substituted_return,

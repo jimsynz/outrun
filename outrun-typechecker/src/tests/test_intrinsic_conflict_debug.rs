@@ -80,7 +80,7 @@ fn test_intrinsic_explicit_implementation_conflict() {
                         protocol_name,
                         type_name,
                         ..
-                    }
+                    },
                 ) => {
                     println!(
                         "  🚨 CONFLICT: {} for {} during Phase 3!",
@@ -115,15 +115,13 @@ fn test_intrinsic_explicit_implementation_conflict() {
                         protocol_name,
                         type_name,
                         ..
-                    }
+                    },
                 ) => {
                     println!(
                         "  🚨 CONFLICT: {} for {} during Phase 6!",
                         protocol_name, type_name
                     );
-                    println!(
-                        "  🔍 This suggests Phase 6 is trying to register implementations"
-                    );
+                    println!("  🔍 This suggests Phase 6 is trying to register implementations");
                 }
                 _ => {}
             }

@@ -4,7 +4,7 @@ use outrun_parser::parse_program;
 #[test]
 fn test_constraint_system_without_core_library() {
     // Test the constraint system redesign without loading the problematic core library
-    
+
     // Simple test code that doesn't require core library protocols
     let code = r#"
         protocol UnaryMinus<T> {
@@ -30,20 +30,23 @@ fn test_constraint_system_without_core_library() {
             -value
         }
     "#;
-    
+
     let program = parse_program(code).expect("Parse should succeed");
     let mut package = Package::new("test".to_string());
     package.add_program(program);
-    
+
     // Process through typechecker using CompilationResult
     let result = crate::CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_compilation_result) => {
             println!("✅ Constraint system works without core library!");
         }
         Err(e) => {
-            println!("❌ Even without core library, constraint system fails: {:?}", e);
+            println!(
+                "❌ Even without core library, constraint system fails: {:?}",
+                e
+            );
             // This will help us isolate if the issue is core library or constraint system
         }
     }

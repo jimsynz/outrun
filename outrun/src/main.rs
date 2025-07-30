@@ -260,12 +260,27 @@ fn typecheck_core_library() -> Result<()> {
             // Print compilation summary
             println!("\n📊 CORE LIBRARY COMPILATION SUMMARY:");
             println!("{}", "-".repeat(40));
-            
+
             // Access the compilation result details
-            println!("• Function Registry: {} entries", compilation_result.function_registry.function_count());
-            println!("• Protocol Registry: {} entries", compilation_result.protocol_registry.implementation_count());
-            println!("• Dispatch Table: {} entries", compilation_result.dispatch_table.len());
-            println!("• Universal Dispatch: {} entries", compilation_result.universal_dispatch.get_all_function_signatures().len());
+            println!(
+                "• Function Registry: {} entries",
+                compilation_result.function_registry.function_count()
+            );
+            println!(
+                "• Protocol Registry: {} entries",
+                compilation_result.protocol_registry.implementation_count()
+            );
+            println!(
+                "• Dispatch Table: {} entries",
+                compilation_result.dispatch_table.len()
+            );
+            println!(
+                "• Universal Dispatch: {} entries",
+                compilation_result
+                    .universal_dispatch
+                    .get_all_function_signatures()
+                    .len()
+            );
             println!("• Programs: {} compiled", compilation_result.programs.len());
 
             Ok(())
@@ -295,184 +310,401 @@ fn typecheck_core_library() -> Result<()> {
 #[diagnostic(code(outrun::cli::compilation_error))]
 struct OutrunDiagnostic {
     message: String,
-    
+
     #[source_code]
     src: NamedSource<String>,
-    
+
     #[label("error occurred here")]
     error_span: SourceSpan,
 }
 
 /// Extract span and message information from any CompilerError type generically
 fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&SourceSpan>, String) {
-    use outrun_typechecker::{CompilerError, TypecheckError, InferenceError, UnificationError, ConstraintError, DispatchError};
-    
+    use outrun_typechecker::{
+        CompilerError, ConstraintError, DispatchError, InferenceError, TypecheckError,
+        UnificationError,
+    };
+
     match error {
         CompilerError::Parse(parse_error) => {
             // Parse errors already have miette diagnostics, extract what we can
             (None, format!("Parse error: {}", parse_error))
         }
-        CompilerError::Typecheck(boxed_error) => {
-            match boxed_error.as_ref() {
-                TypecheckError::InferenceError(inference_error) => {
-                    match inference_error {
-                        InferenceError::AmbiguousType { span, suggestions } => {
-                            (span.as_ref(), format!("Type inference failed: ambiguous expression. Suggestions: {}", suggestions.join(", ")))
-                        }
-                        InferenceError::UndefinedVariable { span, variable_name, .. } => {
-                            (span.as_ref(), format!("Undefined variable: {}", variable_name))
-                        }
-                        InferenceError::UndefinedType { span, type_name, .. } => {
-                            (span.as_ref(), format!("Undefined type: {}", type_name))
-                        }
-                        InferenceError::FunctionCallError { span, message, .. } => {
-                            (span.as_ref(), format!("Function call error: {}", message))
-                        }
-                        InferenceError::CollectionMismatch { span, message, .. } => {
-                            (span.as_ref(), format!("Collection type error: {}", message))
-                        }
-                        InferenceError::EmptyCollectionNeedsAnnotation { span, collection_type, .. } => {
-                            (span.as_ref(), format!("Empty {} needs type annotation", collection_type))
-                        }
-                        InferenceError::InvalidConstraintVariable { span, variable_name, .. } => {
-                            (span.as_ref(), format!("Invalid constraint variable: {}", variable_name))
-                        }
-                        _ => {
-                            (None, "Type inference error".to_string())
-                        }
-                    }
+        CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
+            TypecheckError::InferenceError(inference_error) => match inference_error {
+                InferenceError::AmbiguousType { span, suggestions } => (
+                    span.as_ref(),
+                    format!(
+                        "Type inference failed: ambiguous expression. Suggestions: {}",
+                        suggestions.join(", ")
+                    ),
+                ),
+                InferenceError::UndefinedVariable {
+                    span,
+                    variable_name,
+                    ..
+                } => (
+                    span.as_ref(),
+                    format!("Undefined variable: {}", variable_name),
+                ),
+                InferenceError::UndefinedType {
+                    span, type_name, ..
+                } => (span.as_ref(), format!("Undefined type: {}", type_name)),
+                InferenceError::FunctionCallError { span, message, .. } => {
+                    (span.as_ref(), format!("Function call error: {}", message))
                 }
-                TypecheckError::DispatchError(dispatch_error) => {
-                    match dispatch_error {
-                        DispatchError::NoImplementation { span, protocol_name, type_name, suggestions, .. } => {
-                            let suggestion_text = if suggestions.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" Try: {}", suggestions.join(", "))
-                            };
-                            (span.as_ref(), format!("No implementation found: type {} does not implement protocol {}.{}", type_name, protocol_name, suggestion_text))
-                        }
-                        DispatchError::AmbiguousDispatch { span, protocol_name, candidates } => {
-                            (span.as_ref(), format!("Ambiguous dispatch: multiple implementations found for {}. Candidates: {}", protocol_name, candidates.join(", ")))
-                        }
-                        DispatchError::UnresolvedTypeVariable { span, protocol_name } => {
-                            (span.as_ref(), format!("Unresolved type variable: cannot dispatch on unknown type for protocol {}", protocol_name))
-                        }
-                        DispatchError::UnboundSelfType { span, protocol_name } => {
-                            (span.as_ref(), format!("Unbound Self type: cannot dispatch on unresolved Self for protocol {}", protocol_name))
-                        }
-                        DispatchError::InvalidTarget { span, protocol_name, target_description } => {
-                            (span.as_ref(), format!("Invalid dispatch target: {} cannot be called on {}", protocol_name, target_description))
-                        }
-                    }
+                InferenceError::CollectionMismatch { span, message, .. } => {
+                    (span.as_ref(), format!("Collection type error: {}", message))
                 }
-                TypecheckError::UnificationError(unification_error) => {
-                    match unification_error {
-                        UnificationError::TypeMismatch { span, expected, found, .. } => {
-                            (span.as_ref(), format!("Type mismatch: expected {}, found {}", expected, found))
-                        }
-                        UnificationError::OccursCheckViolation { span, var_name, containing_type, .. } => {
-                            (span.as_ref(), format!("Occurs check violation: variable {} occurs in {}", var_name, containing_type))
-                        }
-                        _ => {
-                            (None, "Type unification error".to_string())
-                        }
-                    }
+                InferenceError::EmptyCollectionNeedsAnnotation {
+                    span,
+                    collection_type,
+                    ..
+                } => (
+                    span.as_ref(),
+                    format!("Empty {} needs type annotation", collection_type),
+                ),
+                InferenceError::InvalidConstraintVariable {
+                    span,
+                    variable_name,
+                    ..
+                } => (
+                    span.as_ref(),
+                    format!("Invalid constraint variable: {}", variable_name),
+                ),
+                _ => (None, "Type inference error".to_string()),
+            },
+            TypecheckError::DispatchError(dispatch_error) => match dispatch_error {
+                DispatchError::NoImplementation {
+                    file_span,
+                    protocol_name,
+                    type_name,
+                    suggestions,
+                    ..
+                } => {
+                    let suggestion_text = if suggestions.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" Try: {}", suggestions.join(", "))
+                    };
+                    
+                    // Include filename in error message if available
+                    let filename_info = if let Some(file_span) = file_span {
+                        format!(" [File: {}]", file_span.filename())
+                    } else {
+                        String::new()
+                    };
+                    
+                    (
+                        None, // We'll let the old span-guessing logic handle the span for now
+                        format!(
+                            "No implementation found: type {} does not implement protocol {}.{}{}",
+                            type_name, protocol_name, suggestion_text, filename_info
+                        ),
+                    )
                 }
-                TypecheckError::ConstraintError(constraint_error) => {
-                    match constraint_error {
-                        ConstraintError::Unsatisfiable { span, constraint } => {
-                            (span.as_ref(), format!("Unsatisfiable constraint: {}", constraint))
-                        }
-                        ConstraintError::ConflictingConstraints { span1, constraint1, constraint2, .. } => {
-                            (span1.as_ref(), format!("Conflicting constraints: {} conflicts with {}", constraint1, constraint2))
-                        }
-                        _ => {
-                            (None, "Constraint solving error".to_string())
-                        }
-                    }
-                }
-                TypecheckError::ImplementationError(_) => {
-                    (None, "Protocol implementation error".to_string())
-                }
-                TypecheckError::ExhaustivenessError(_) => {
-                    (None, "Exhaustiveness check failed".to_string())
-                }
-                TypecheckError::CoreLibraryError(message) => {
-                    (None, format!("Core library error: {}", message))
-                }
-                TypecheckError::Generic { message, span } => {
-                    (span.as_ref(), format!("Type checking error: {}", message))
-                }
+                DispatchError::AmbiguousDispatch {
+                    span,
+                    protocol_name,
+                    candidates,
+                } => (
+                    span.as_ref(),
+                    format!(
+                        "Ambiguous dispatch: multiple implementations found for {}. Candidates: {}",
+                        protocol_name,
+                        candidates.join(", ")
+                    ),
+                ),
+                DispatchError::UnresolvedTypeVariable {
+                    span,
+                    protocol_name,
+                } => (
+                    span.as_ref(),
+                    format!(
+                        "Unresolved type variable: cannot dispatch on unknown type for protocol {}",
+                        protocol_name
+                    ),
+                ),
+                DispatchError::UnboundSelfType {
+                    span,
+                    protocol_name,
+                } => (
+                    span.as_ref(),
+                    format!(
+                        "Unbound Self type: cannot dispatch on unresolved Self for protocol {}",
+                        protocol_name
+                    ),
+                ),
+                DispatchError::InvalidTarget {
+                    span,
+                    protocol_name,
+                    target_description,
+                } => (
+                    span.as_ref(),
+                    format!(
+                        "Invalid dispatch target: {} cannot be called on {}",
+                        protocol_name, target_description
+                    ),
+                ),
+            },
+            TypecheckError::UnificationError(unification_error) => match unification_error {
+                UnificationError::TypeMismatch {
+                    span,
+                    expected,
+                    found,
+                    ..
+                } => (
+                    span.as_ref(),
+                    format!("Type mismatch: expected {}, found {}", expected, found),
+                ),
+                UnificationError::OccursCheckViolation {
+                    span,
+                    var_name,
+                    containing_type,
+                    ..
+                } => (
+                    span.as_ref(),
+                    format!(
+                        "Occurs check violation: variable {} occurs in {}",
+                        var_name, containing_type
+                    ),
+                ),
+                _ => (None, "Type unification error".to_string()),
+            },
+            TypecheckError::ConstraintError(constraint_error) => match constraint_error {
+                ConstraintError::Unsatisfiable { span, constraint } => (
+                    span.as_ref(),
+                    format!("Unsatisfiable constraint: {}", constraint),
+                ),
+                ConstraintError::ConflictingConstraints {
+                    span1,
+                    constraint1,
+                    constraint2,
+                    ..
+                } => (
+                    span1.as_ref(),
+                    format!(
+                        "Conflicting constraints: {} conflicts with {}",
+                        constraint1, constraint2
+                    ),
+                ),
+                _ => (None, "Constraint solving error".to_string()),
+            },
+            TypecheckError::ImplementationError(_) => {
+                (None, "Protocol implementation error".to_string())
             }
-        }
-        CompilerError::ModuleRedefinition { span, module_name } => {
-            (span.as_ref(), format!("Module redefinition: module '{}' is already defined by a dependency package", module_name))
-        }
+            TypecheckError::ExhaustivenessError(_) => {
+                (None, "Exhaustiveness check failed".to_string())
+            }
+            TypecheckError::CoreLibraryError(message) => {
+                (None, format!("Core library error: {}", message))
+            }
+            TypecheckError::Generic { message, span } => {
+                (span.as_ref(), format!("Type checking error: {}", message))
+            }
+        },
+        CompilerError::ModuleRedefinition { span, module_name } => (
+            span.as_ref(),
+            format!(
+                "Module redefinition: module '{}' is already defined by a dependency package",
+                module_name
+            ),
+        ),
     }
 }
 
-/// Create a beautiful miette report with source context for compilation errors
-fn create_miette_report_with_source_context(error: &outrun_typechecker::CompilerError) -> Result<()> {
-    // Extract span information from any error type using a generic approach
+/// Extract FileSpan from errors that support it (new approach)
+fn extract_file_span_from_error(error: &outrun_typechecker::CompilerError) -> Option<&outrun_typechecker::error::FileSpan> {
+    use outrun_typechecker::{CompilerError, DispatchError, TypecheckError};
+
+    match error {
+        CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
+            TypecheckError::DispatchError(dispatch_error) => match dispatch_error {
+                DispatchError::NoImplementation { file_span, .. } => file_span.as_ref(),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Extract error message from any error type
+fn extract_error_message(error: &outrun_typechecker::CompilerError) -> String {
+    use outrun_typechecker::{CompilerError, DispatchError, TypecheckError};
+
+    match error {
+        CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
+            TypecheckError::DispatchError(dispatch_error) => match dispatch_error {
+                DispatchError::NoImplementation {
+                    protocol_name,
+                    type_name,
+                    suggestions,
+                    ..
+                } => {
+                    let suggestion_text = if suggestions.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" Try: {}", suggestions.join(", "))
+                    };
+                    format!(
+                        "No implementation found: type {} does not implement protocol {}{}",
+                        type_name, protocol_name, suggestion_text
+                    )
+                }
+                _ => format!("Dispatch error: {}", dispatch_error),
+            },
+            _ => format!("Type checking error: {}", boxed_error),
+        },
+        _ => format!("Compiler error: {}", error),
+    }
+}
+
+/// Create a miette report directly from a FileSpan (bypasses the guessing logic)
+fn create_miette_report_with_file_span(file_span: &outrun_typechecker::error::FileSpan, message: &str) -> Result<()> {
+    // Try to read the source file
+    if let Ok(source_content) = std::fs::read_to_string(&file_span.source_file) {
+        let filename = std::path::Path::new(&file_span.source_file)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
+        let named_source = NamedSource::new(filename, source_content);
+        let diagnostic = OutrunDiagnostic {
+            message: message.to_string(),
+            src: named_source.clone(),
+            error_span: file_span.to_source_span(),
+        };
+
+        let report = miette::Report::new(diagnostic).with_source_code(named_source);
+        println!("\n💎 Beautiful miette error output:");
+        println!("{:?}", report);
+        Ok(())
+    } else {
+        Err(miette::miette!("Could not read source file: {}", file_span.source_file))
+    }
+}
+
+/// Create a beautiful miette report with source context for compilation errors using span-to-program mapping
+fn create_miette_report_with_source_context(
+    error: &outrun_typechecker::CompilerError,
+) -> Result<()> {
+    // Check if this error has FileSpan information (new approach)
+    if let Some(file_span) = extract_file_span_from_error(error) {
+        return create_miette_report_with_file_span(file_span, &extract_error_message(error));
+    }
+
+    // Fallback to old approach for errors without FileSpan
     let (span, error_message) = extract_error_info(error);
 
     // If we have span information, try to create a report with source context
     if let Some(source_span) = span {
         // First, try to load the core library package to get the programs with source file info
         if let Ok(Some(loaded_package)) = outrun_typechecker::package::load_core_library_package() {
-            // Look through all programs to find one that might contain this span
-            for program in &loaded_package.programs {
+            // CORRECT APPROACH: Use span semantics to find the correct program
+            // Each program corresponds to one source file, and spans within that program
+            // reference positions within that specific file
+
+            let span_offset = source_span.offset();
+            let span_len = source_span.len();
+
+            println!(
+                "🔍 Looking for span [{}..{}] in {} core library programs",
+                span_offset,
+                span_offset + span_len,
+                loaded_package.programs.len()
+            );
+
+            // The correct approach: for each program, check if this error could have originated
+            // from that program by looking at span bounds and validating against file content
+            for (i, program) in loaded_package.programs.iter().enumerate() {
                 if let Some(source_file) = &program.debug_info.source_file {
                     // Try to read the source file content
                     if let Ok(source_content) = std::fs::read_to_string(source_file) {
-                        // Check if this span could be in this file 
-                        if source_span.offset() < source_content.len() {
-                            let filename = std::path::Path::new(source_file)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown");
-                            
-                            println!("\n🔍 Found error in file: {}", filename);
-                            println!("📍 Error at offset {}: {:?}", source_span.offset(), &source_content[source_span.offset()..source_span.offset() + source_span.len()]);
-                            
-                            // Create a miette report the same way the parser does
-                            let named_source = NamedSource::new(filename, source_content);
-                            let diagnostic = OutrunDiagnostic {
-                                message: error_message,
-                                src: named_source.clone(),
-                                error_span: *source_span,
-                            };
-                            
-                            // Also try creating a Report directly
-                            let report = miette::Report::new(diagnostic).with_source_code(named_source);
-                            
-                            println!("\n💎 Beautiful miette error output:");
-                            eprintln!("{:?}", report);
-                            return Ok(());
+                        let filename = std::path::Path::new(source_file)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown");
+
+                        // Check if this span is valid within this file
+                        if span_offset < source_content.len()
+                            && (span_offset + span_len) <= source_content.len()
+                        {
+                            // Extract the error text to verify it's sensible
+                            let end_offset = (span_offset + span_len).min(source_content.len());
+                            let error_text = &source_content[span_offset..end_offset];
+
+                            // Only proceed if the error text looks reasonable
+                            if error_text.trim().len() > 0 {
+                                println!(
+                                    "✅ Program {}: Found valid span in {} [{}..{}] -> {:?}",
+                                    i, filename, span_offset, end_offset, error_text
+                                );
+
+                                // Create a miette report with the correct file context
+                                let named_source = NamedSource::new(filename, source_content);
+                                let diagnostic = OutrunDiagnostic {
+                                    message: error_message,
+                                    src: named_source.clone(),
+                                    error_span: *source_span,
+                                };
+
+                                let report =
+                                    miette::Report::new(diagnostic).with_source_code(named_source);
+
+                                println!("\n💎 Beautiful miette error output:");
+                                eprintln!("{:?}", report);
+                                return Ok(());
+                            } else {
+                                println!(
+                                    "❌ Program {}: {} contains span but points to whitespace: {:?}",
+                                    i, filename, error_text
+                                );
+                            }
+                        } else {
+                            // Don't spam logs for programs that are clearly too small
+                            if source_content.len() > span_offset {
+                                println!(
+                                    "⚠️  Program {}: {} has span bounds issue [{}..{}] vs file size {}",
+                                    i,
+                                    filename,
+                                    span_offset,
+                                    span_offset + span_len,
+                                    source_content.len()
+                                );
+                            }
                         }
                     }
                 }
             }
+
+            println!(
+                "❌ No program found containing valid span [{}..{}]",
+                span_offset,
+                span_offset + span_len
+            );
         }
-        
+
         // Fallback: try the old approach of scanning the directory
         if let Ok(core_library_path) = core_library::default_core_library_path() {
             for entry in std::fs::read_dir(&core_library_path).into_diagnostic()? {
                 let entry = entry.into_diagnostic()?;
                 let path = entry.path();
-                
+
                 if path.extension().and_then(|s| s.to_str()) == Some("outrun") {
                     let source_content = std::fs::read_to_string(&path).into_diagnostic()?;
-                    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
-                    
+                    let filename = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown");
+
                     if source_span.offset() < source_content.len() {
                         let diagnostic = OutrunDiagnostic {
                             message: error_message,
                             src: NamedSource::new(filename, source_content),
                             error_span: *source_span,
                         };
-                        
+
                         eprintln!("{diagnostic:?}");
                         return Ok(());
                     }
@@ -480,7 +712,7 @@ fn create_miette_report_with_source_context(error: &outrun_typechecker::Compiler
             }
         }
     }
-    
+
     // Fallback to basic error display
     eprintln!("{error:?}");
     Ok(())

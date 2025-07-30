@@ -37,7 +37,9 @@ fn test_case_expression_literal_patterns() {
             n -> "other"
         }
     "#;
-    harness.assert_evaluates_to_string(code, "forty-two").unwrap();
+    harness
+        .assert_evaluates_to_string(code, "forty-two")
+        .unwrap();
 
     // Test string literal patterns
     let code = r#"
@@ -47,7 +49,9 @@ fn test_case_expression_literal_patterns() {
             s -> "unknown"
         }
     "#;
-    harness.assert_evaluates_to_string(code, "greeting").unwrap();
+    harness
+        .assert_evaluates_to_string(code, "greeting")
+        .unwrap();
 
     // Test boolean literal patterns
     let code = r#"
@@ -105,7 +109,9 @@ fn test_case_expression_pattern_precedence() {
             n -> "general"
         }
     "#;
-    harness.assert_evaluates_to_string(code, "specific").unwrap();
+    harness
+        .assert_evaluates_to_string(code, "specific")
+        .unwrap();
 
     // Test multiple literal patterns
     let code = r#"
@@ -125,7 +131,7 @@ fn test_case_expression_with_variables() {
 
     // Set up variables for testing
     harness.evaluate("let x = 42").unwrap();
-    
+
     // Test case expression using variables
     let code = r#"
         case x {
@@ -134,7 +140,9 @@ fn test_case_expression_with_variables() {
             n -> "other"
         }
     "#;
-    harness.assert_evaluates_to_string(code, "forty-two").unwrap();
+    harness
+        .assert_evaluates_to_string(code, "forty-two")
+        .unwrap();
 }
 
 #[test]
@@ -143,7 +151,7 @@ fn test_pattern_binding_scope() {
 
     // Test that pattern bindings don't leak outside case expressions
     harness.evaluate("let x = \"original\"").unwrap();
-    
+
     let code = r#"
         case 42 {
             0 -> "zero"
@@ -151,7 +159,7 @@ fn test_pattern_binding_scope() {
         }
     "#;
     harness.assert_evaluates_to_string(code, "matched").unwrap();
-    
+
     // Verify original variable is unchanged
     harness.assert_evaluates_to_string("x", "original").unwrap();
 }

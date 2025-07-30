@@ -51,8 +51,7 @@ protocol Integer {
 }
 "#;
 
-    let protocol_program =
-        parse_program(integer_protocol).expect("Parse protocol should succeed");
+    let protocol_program = parse_program(integer_protocol).expect("Parse protocol should succeed");
     engine2
         .register_protocols_and_structs(&protocol_program)
         .expect("Should register Integer protocol");

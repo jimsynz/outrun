@@ -25,9 +25,7 @@ pub enum SimpleReplError {
     },
 
     #[error("Runtime error: {source}")]
-    Runtime {
-        source: BoxedTestHarnessError,
-    },
+    Runtime { source: BoxedTestHarnessError },
 
     #[error("IO error: {source}")]
     Io {
@@ -179,7 +177,6 @@ pub enum SimpleReplResult {
 
     /// Executed a REPL command
     Command { message: String },
-
 
     /// Empty line or comment
     Empty,
@@ -453,7 +450,6 @@ impl SimpleReplSession {
             SimpleReplResult::Command { message } => {
                 println!("{message}");
             }
-
 
             SimpleReplResult::Empty => {} // No output for empty lines
 

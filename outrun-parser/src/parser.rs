@@ -60,6 +60,18 @@ impl OutrunParser {
         Span::new(start, end)
     }
 
+    /// Create a composite span from two existing spans, preserving line/column information
+    fn span_from_spans(left_span: &Span, right_span: &Span) -> Span {
+        // Use the start position and line/col from the left span
+        // and the end position and line/col from the right span
+        Span::with_line_col(
+            left_span.start,
+            right_span.end,
+            left_span.start_line_col.unwrap_or((0, 0)),
+            right_span.end_line_col.unwrap_or((0, 0)),
+        )
+    }
+
     /// Extract span from a Pest pair (alias for extract_span for consistency)
     fn span_from_pair(pair: &pest::iterators::Pair<Rule>) -> Span {
         Self::extract_span(pair)

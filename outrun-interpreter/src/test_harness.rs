@@ -10,7 +10,7 @@
 use crate::{EvaluationError, ExpressionEvaluator, InterpreterContext, Value};
 use miette::Diagnostic;
 use outrun_parser::{ParseError, parse_program};
-use outrun_typechecker::{CompilerError, CompilationResult, Package};
+use outrun_typechecker::{CompilationResult, CompilerError, Package};
 use thiserror::Error;
 
 /// Errors that can occur during test harness operations
@@ -34,9 +34,7 @@ pub enum TestHarnessError {
     },
 
     #[error("Compiler error: {source}")]
-    Compiler {
-        source: Box<CompilerError>,
-    },
+    Compiler { source: Box<CompilerError> },
 
     #[error("Assertion failed: expected {expected}, but got {actual}")]
     AssertionFailed { expected: String, actual: String },
@@ -91,8 +89,8 @@ impl OutrunTestHarness {
         let context = InterpreterContext::new();
 
         // Pre-compile core library once for efficient REPL-like behavior
-        let core_compilation = CompilationResult::precompile_core_library()
-            .map_err(|e| TestHarnessError::Setup {
+        let core_compilation =
+            CompilationResult::precompile_core_library().map_err(|e| TestHarnessError::Setup {
                 message: format!("Failed to precompile core library: {}", e),
             })?;
 
@@ -109,17 +107,17 @@ impl OutrunTestHarness {
 
     /// Execute an Outrun expression and return the result using the full pipeline
     pub fn evaluate(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
-        let core_compilation = self.core_compilation.as_ref()
-            .ok_or_else(|| TestHarnessError::Setup {
-                message: "Core library not precompiled".to_string(),
-            })?;
+        let core_compilation =
+            self.core_compilation
+                .as_ref()
+                .ok_or_else(|| TestHarnessError::Setup {
+                    message: "Core library not precompiled".to_string(),
+                })?;
 
         // Try to compile the expression first. If it fails with an undefined variable error,
         // and we have that variable in our context, skip typechecking and evaluate directly
-        let compilation_result = CompilationResult::compile_repl_expression(
-            expression_code,
-            core_compilation,
-        );
+        let compilation_result =
+            CompilationResult::compile_repl_expression(expression_code, core_compilation);
 
         let (should_skip_typecheck, parsed_program) = match compilation_result {
             Ok(compilation) => {
@@ -130,16 +128,20 @@ impl OutrunTestHarness {
                     compilation.universal_dispatch,
                 ));
                 // Use the desugared program from the compilation result, not the raw parsed expression
-                let desugared_program = compilation.programs.first()
+                let desugared_program = compilation
+                    .programs
+                    .first()
                     .ok_or_else(|| TestHarnessError::Internal {
                         message: "No programs found in compilation result".to_string(),
-                    })?.clone();
+                    })?
+                    .clone();
                 (false, desugared_program)
             }
             Err(CompilerError::Typecheck(boxed_err)) => {
                 if let outrun_typechecker::TypecheckError::InferenceError(
-                    outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. }
-                ) = boxed_err.as_ref() {
+                    outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. },
+                ) = boxed_err.as_ref()
+                {
                     // Check if we have this variable in our interpreter context
                     if self.context.get_variable(variable_name).is_ok() {
                         // We have the variable! Skip typechecking and evaluate directly
@@ -152,23 +154,34 @@ impl OutrunTestHarness {
                         (true, parse_program(expression_code)?)
                     } else {
                         // We don't have the variable either - propagate the error
-                        return Err(TestHarnessError::Compiler { source: Box::new(CompilerError::Typecheck(Box::new(outrun_typechecker::TypecheckError::InferenceError(
-                            outrun_typechecker::InferenceError::UndefinedVariable { 
-                                variable_name: variable_name.clone(), 
-                                span: None, 
-                                similar_names: vec![], 
-                                context: Some("Variable not found in test harness context".to_string()) 
-                            }
-                        )))) });
+                        return Err(TestHarnessError::Compiler {
+                            source: Box::new(CompilerError::Typecheck(Box::new(
+                                outrun_typechecker::TypecheckError::InferenceError(
+                                    outrun_typechecker::InferenceError::UndefinedVariable {
+                                        variable_name: variable_name.clone(),
+                                        span: None,
+                                        similar_names: vec![],
+                                        context: Some(
+                                            "Variable not found in test harness context"
+                                                .to_string(),
+                                        ),
+                                    },
+                                ),
+                            ))),
+                        });
                     }
                 } else {
                     // Other typecheck error - propagate it
-                    return Err(TestHarnessError::Compiler { source: Box::new(CompilerError::Typecheck(boxed_err)) });
+                    return Err(TestHarnessError::Compiler {
+                        source: Box::new(CompilerError::Typecheck(boxed_err)),
+                    });
                 }
             }
             Err(e) => {
                 // Other compilation errors - propagate them
-                return Err(TestHarnessError::Compiler { source: Box::new(e) });
+                return Err(TestHarnessError::Compiler {
+                    source: Box::new(e),
+                });
             }
         };
 
@@ -185,19 +198,18 @@ impl OutrunTestHarness {
                     // Handle let bindings by evaluating them (only if not skipping typecheck)
                     if should_skip_typecheck {
                         return Err(TestHarnessError::Internal {
-                            message: "Cannot evaluate let bindings when skipping typecheck".to_string(),
+                            message: "Cannot evaluate let bindings when skipping typecheck"
+                                .to_string(),
                         });
                     }
                     self.evaluate_let_binding(let_binding)
                 }
-                _ => {
-                    Err(TestHarnessError::Internal {
-                        message: format!(
-                            "Unsupported item type in test harness: {:?}",
-                            first_item.kind
-                        ),
-                    })
-                }
+                _ => Err(TestHarnessError::Internal {
+                    message: format!(
+                        "Unsupported item type in test harness: {:?}",
+                        first_item.kind
+                    ),
+                }),
             }
         } else {
             Err(TestHarnessError::Internal {

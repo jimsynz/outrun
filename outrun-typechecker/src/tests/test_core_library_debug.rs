@@ -5,7 +5,7 @@ use crate::CompilationResult;
 #[test]
 fn test_core_library_precompilation() {
     println!("Testing core library precompilation...");
-    
+
     match CompilationResult::precompile_core_library() {
         Ok(result) => {
             println!("✅ Core library precompiled successfully!");

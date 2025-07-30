@@ -234,10 +234,7 @@ fn format_fields(fields: &HashMap<String, Value>) -> String {
 
 /// Format a tuple for display
 fn format_tuple(elements: &[Value]) -> String {
-    let formatted_elements: Vec<String> = elements
-        .iter()
-        .map(|v| v.display())
-        .collect();
+    let formatted_elements: Vec<String> = elements.iter().map(|v| v.display()).collect();
     format!("({})", formatted_elements.join(", "))
 }
 

@@ -68,7 +68,10 @@ fn test_function_dispatch_with_simple_calls() {
             }
         }
         Err(e) => {
-            println!("Arithmetic expression failed (this shows what's not working yet): {:?}", e);
+            println!(
+                "Arithmetic expression failed (this shows what's not working yet): {:?}",
+                e
+            );
         }
     }
 }

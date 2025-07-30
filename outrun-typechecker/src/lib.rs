@@ -36,8 +36,8 @@ pub mod inference;
 pub mod intrinsics;
 pub mod package;
 pub mod registry;
-pub mod types;
 pub mod typed_ast;
+pub mod types;
 pub mod unification;
 pub mod universal_dispatch;
 
@@ -46,17 +46,9 @@ pub use constraints::ConstraintSolver;
 pub use core_library::{collect_outrun_files, default_core_library_path};
 pub use desugaring::DesugaringEngine;
 pub use dispatch::{
-    build_dispatch_table,
-    DispatchResult,
-    DispatchTable,
-    FunctionContext,
-    FunctionDispatcher,
-    FunctionInfo,
-    FunctionRegistry,
-    FunctionVisibility,
-    MonomorphisationEntry,
-    MonomorphisationTable,
-    ResolvedFunction,
+    build_dispatch_table, DispatchResult, DispatchTable, FunctionContext, FunctionDispatcher,
+    FunctionInfo, FunctionRegistry, FunctionVisibility, MonomorphisationEntry,
+    MonomorphisationTable, ResolvedFunction,
 };
 pub use error::{
     CompilerError, ConstraintError, DispatchError, ErrorContext, InferenceError, TypecheckError,
@@ -64,16 +56,17 @@ pub use error::{
 };
 pub use inference::{InferenceContext, InferenceResult, TypeInferenceEngine};
 pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+pub use typed_ast::{TypedExpression, TypedExpressionKind, UniversalCallResolution};
 pub use types::{
     Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
 };
-pub use typed_ast::{TypedExpression, TypedExpressionKind, UniversalCallResolution};
-use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 pub use unification::Unifier;
 pub use universal_dispatch::{
-    ClauseId, ClauseInfo, ConstraintContext, FunctionBody, FunctionSignature, Guard, UniversalDispatchRegistry,
+    ClauseId, ClauseInfo, ConstraintContext, FunctionBody, FunctionSignature, Guard,
+    UniversalDispatchRegistry,
 };
 
 /// A collection of parsed programs representing a complete Outrun package
@@ -129,6 +122,8 @@ pub struct CompilationResult {
     pub defined_modules: HashSet<ModuleId>,
     /// Universal dispatch registry for clause-based function calls
     pub universal_dispatch: UniversalDispatchRegistry,
+    /// Current file being processed (for diagnostic context)
+    current_file: std::cell::RefCell<Option<String>>,
 }
 
 impl CompilationResult {
@@ -139,25 +134,28 @@ impl CompilationResult {
         if let Some(core_package) = package::load_core_library_package()? {
             let mut core_package_std = Package::from_loaded_package(core_package);
             core_package_std.package_name = "outrun-core".to_string();
-            
+
             println!("📦 Pre-compiling core library for REPL optimization...");
-            
+
             // Compile the core library without loading it again (it's already loaded)
             // Use compile_package_internal directly to avoid double-loading
             let engine = crate::inference::TypeInferenceEngine::new();
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
-            let core_result = Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine)?;
-            
-            println!("✅ Core library pre-compiled successfully with {} implementations", 
-                     core_result.protocol_registry.implementation_count());
-            
+            let core_result =
+                Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine)?;
+
+            println!(
+                "✅ Core library pre-compiled successfully with {} implementations",
+                core_result.protocol_registry.implementation_count()
+            );
+
             Ok(core_result)
         } else {
             Err(CompilerError::Typecheck(Box::new(
                 crate::error::TypecheckError::CoreLibraryError(
-                    "Could not load core library for pre-compilation".to_string())
-                )
-            ))
+                    "Could not load core library for pre-compilation".to_string(),
+                ),
+            )))
         }
     }
 
@@ -168,13 +166,13 @@ impl CompilationResult {
         precompiled_core: &CompilationResult,
     ) -> Result<CompilationResult, CompilerError> {
         // Parse the REPL expression as a program
-        let program = outrun_parser::parse_program(expression_source)
-            .map_err(CompilerError::Parse)?;
-        
+        let program =
+            outrun_parser::parse_program(expression_source).map_err(CompilerError::Parse)?;
+
         // Create a minimal package for the expression
         let mut expr_package = Package::new("repl_expression".to_string());
         expr_package.add_program(program);
-        
+
         // Compile with the pre-compiled core library as a dependency
         Self::compile_with_dependencies(&mut expr_package, vec![precompiled_core.clone()])
     }
@@ -192,28 +190,33 @@ impl CompilationResult {
                 // Same package - check for module redefinitions and warn only if content changed
                 let prev_module_digests = Self::extract_package_module_digests(&prev.programs);
                 let new_module_digests = Self::extract_package_module_digests(&package.programs);
-                
+
                 for (module_id, new_digest) in &new_module_digests {
                     if let Some(prev_digest) = prev_module_digests.get(module_id) {
                         // Module exists in both versions - check if content actually changed
                         if prev_digest != new_digest {
-                            println!("⚠️  package {} redefined module {}", package.package_name, module_id.name());
+                            println!(
+                                "⚠️  package {} redefined module {}",
+                                package.package_name,
+                                module_id.name()
+                            );
                         }
                     }
                 }
             }
         }
-        
+
         // Use the standard compile_with_dependencies method
         // Package self-redefinition is allowed - conflicts only apply across different packages
         Self::compile_with_dependencies(package, dependencies)
     }
 
-
     /// Extract modules and their content digests for change detection during hot reloading
-    fn extract_package_module_digests(programs: &[outrun_parser::Program]) -> HashMap<ModuleId, u64> {
+    fn extract_package_module_digests(
+        programs: &[outrun_parser::Program],
+    ) -> HashMap<ModuleId, u64> {
         let mut module_digests = HashMap::new();
-        
+
         for program in programs {
             for item in &program.items {
                 let (module_id, content_digest) = match &item.kind {
@@ -229,35 +232,36 @@ impl CompilationResult {
                     }
                     _ => (None, 0),
                 };
-                
+
                 if let Some(module) = module_id {
                     module_digests.insert(module, content_digest);
                 }
             }
         }
-        
+
         module_digests
     }
 
     /// Compute a digest/hash of a struct definition's content
     fn compute_struct_digest(struct_def: &outrun_parser::StructDefinition) -> u64 {
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash the struct name (convert Vec<TypeIdentifier> to string)
-        let struct_name = struct_def.name
+        let struct_name = struct_def
+            .name
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
         struct_name.hash(&mut hasher);
-        
+
         // Hash the field count and field names
         struct_def.fields.len().hash(&mut hasher);
         for field in &struct_def.fields {
             field.name.name.hash(&mut hasher);
             field.type_annotation.to_string().hash(&mut hasher);
         }
-        
+
         // Hash the function count and function names
         struct_def.functions.len().hash(&mut hasher);
         for function in &struct_def.functions {
@@ -271,27 +275,28 @@ impl CompilationResult {
             // Hash return type
             function.return_type.to_string().hash(&mut hasher);
         }
-        
+
         hasher.finish()
     }
 
     /// Compute a digest/hash of a protocol definition's content
     fn compute_protocol_digest(protocol_def: &outrun_parser::ProtocolDefinition) -> u64 {
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash the protocol name (convert Vec<TypeIdentifier> to string)
-        let protocol_name = protocol_def.name
+        let protocol_name = protocol_def
+            .name
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
         protocol_name.hash(&mut hasher);
-        
+
         // Hash constraints (if any)
         if let Some(ref constraints) = protocol_def.constraints {
             constraints.to_string().hash(&mut hasher);
         }
-        
+
         // Hash the function count and function signatures
         protocol_def.functions.len().hash(&mut hasher);
         for function in &protocol_def.functions {
@@ -328,7 +333,7 @@ impl CompilationResult {
                 }
             }
         }
-        
+
         hasher.finish()
     }
 
@@ -344,7 +349,7 @@ impl CompilationResult {
         for dependency in &dependencies {
             // Check for module conflicts before merging
             Self::check_module_conflicts(&dependency.defined_modules, &HashSet::new())?;
-            
+
             // Import dependency's registries into our engine
             engine.import_dependency_registries(
                 dependency.protocol_registry.clone(),
@@ -358,25 +363,26 @@ impl CompilationResult {
             .iter()
             .flat_map(|dep| dep.programs.iter())
             .collect();
-        
+
         // Use enhanced conflict detection that handles struct vs protocol conflicts
         Self::check_detailed_module_conflicts(&all_dependency_programs, &package.programs)?;
 
         // Phase 1: Load core library only if not provided as dependency
-        let has_core_dependency = dependencies.iter()
+        let has_core_dependency = dependencies
+            .iter()
             .any(|dep| dep.package_name == "outrun-core");
-            
+
         if !has_core_dependency {
             if let Some(core_package) = package::load_core_library_package()? {
                 let core_package_std = Package::from_loaded_package(core_package);
-                
+
                 // Prepend core library programs to ensure they're processed first
                 let mut integrated_programs = core_package_std.programs;
                 integrated_programs.append(&mut package.programs);
                 package.programs = integrated_programs;
-                
+
                 println!(
-                    "📦 Integrated core library: {} total programs", 
+                    "📦 Integrated core library: {} total programs",
                     package.programs.len()
                 );
             } else {
@@ -423,7 +429,10 @@ impl CompilationResult {
     ) -> Result<CompilationResult, CompilerError> {
         // Phase 1: Desugar all operators into protocol function calls
         for (i, program) in package.programs.iter_mut().enumerate() {
-            eprintln!("🔧 PHASE 1: Desugaring program {} from package '{}'", i, package.package_name);
+            eprintln!(
+                "🔧 PHASE 1: Desugaring program {} from package '{}'",
+                i, package.package_name
+            );
             if let Some(file_path) = &program.debug_info.source_file {
                 eprintln!("🔧   File: {}", file_path);
             } else {
@@ -432,24 +441,49 @@ impl CompilationResult {
             desugaring_engine.desugar_program(program)?;
         }
 
+        // Phase 1.5: Register source mapping for all expressions to enable accurate error reporting
+        for program in &package.programs {
+            engine.register_program_expressions(program);
+        }
+
         // Phase 2: Register all protocols and structs (definitions only)
         for program in &package.programs {
-            engine.register_protocols_and_structs(program)?;
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.register_protocols_and_structs(program);
+            engine.clear_current_file();
+            result?;
         }
 
         // Phase 2.5: Register automatic implementations (Any, Inspect) for all struct types
         for program in &package.programs {
-            engine.register_automatic_implementations(program)?;
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.register_automatic_implementations(program);
+            engine.clear_current_file();
+            result?;
         }
 
         // Phase 3: Register all explicit protocol implementations
         for program in &package.programs {
-            engine.register_implementations(program)?;
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.register_implementations(program);
+            engine.clear_current_file();
+            result?;
         }
 
         // Phase 4: Register all functions (standalone + impl block functions)
         for program in &package.programs {
-            engine.register_functions(program)?;
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.register_functions(program);
+            engine.clear_current_file();
+            result?;
         }
 
         // Phase 5: Validate implementation completeness
@@ -457,7 +491,12 @@ impl CompilationResult {
 
         // Phase 6: Type check all function bodies with complete context
         for program in &mut package.programs {
-            engine.typecheck_function_bodies(program)?;
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.typecheck_function_bodies(program);
+            engine.clear_current_file();
+            result?;
         }
 
         // Phase 7: Create monomorphisation table for generic functions
@@ -483,11 +522,24 @@ impl CompilationResult {
             local_modules,
             defined_modules,
             universal_dispatch: engine.universal_dispatch_registry().clone(),
+            current_file: std::cell::RefCell::new(None),
         })
     }
 
+    /// Set the current file being processed for diagnostic context
+    pub fn set_current_file(&self, file_path: Option<String>) {
+        *self.current_file.borrow_mut() = file_path;
+    }
+
+    /// Get the current file being processed for diagnostic context
+    pub fn get_current_file(&self) -> Option<String> {
+        self.current_file.borrow().clone()
+    }
+
     /// Collect module information from programs for conflict detection and orphan rule checking
-    fn collect_module_info(programs: &[outrun_parser::Program]) -> (HashSet<ModuleId>, HashSet<ModuleId>) {
+    fn collect_module_info(
+        programs: &[outrun_parser::Program],
+    ) -> (HashSet<ModuleId>, HashSet<ModuleId>) {
         let mut defined_modules = HashSet::new();
 
         for program in programs {
@@ -510,10 +562,9 @@ impl CompilationResult {
 
         // For single package compilation, all defined modules are considered local
         let local_modules = defined_modules.clone();
-        
+
         (local_modules, defined_modules)
     }
-
 
     /// Check for module conflicts between dependency modules and user modules
     /// Prevents: struct vs struct, protocol vs protocol, struct vs protocol conflicts
@@ -568,21 +619,31 @@ impl CompilationResult {
         for program in user_programs {
             for item in &program.items {
                 let (user_module_name, user_module_type) = match &item.kind {
-                    outrun_parser::ItemKind::StructDefinition(struct_def) => {
-                        (ModuleId::from(&struct_def.name).name().to_string(), ModuleType::Struct)
-                    }
-                    outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
-                        (ModuleId::from(&protocol_def.name).name().to_string(), ModuleType::Protocol)
-                    }
+                    outrun_parser::ItemKind::StructDefinition(struct_def) => (
+                        ModuleId::from(&struct_def.name).name().to_string(),
+                        ModuleType::Struct,
+                    ),
+                    outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => (
+                        ModuleId::from(&protocol_def.name).name().to_string(),
+                        ModuleType::Protocol,
+                    ),
                     _ => continue,
                 };
 
                 if let Some(dependency_type) = dependency_registry.get(&user_module_name) {
                     let conflict_description = match (dependency_type, &user_module_type) {
-                        (ModuleType::Struct, ModuleType::Struct) => "struct conflicts with dependency struct",
-                        (ModuleType::Protocol, ModuleType::Protocol) => "protocol conflicts with dependency protocol", 
-                        (ModuleType::Struct, ModuleType::Protocol) => "protocol conflicts with dependency struct",
-                        (ModuleType::Protocol, ModuleType::Struct) => "struct conflicts with dependency protocol",
+                        (ModuleType::Struct, ModuleType::Struct) => {
+                            "struct conflicts with dependency struct"
+                        }
+                        (ModuleType::Protocol, ModuleType::Protocol) => {
+                            "protocol conflicts with dependency protocol"
+                        }
+                        (ModuleType::Struct, ModuleType::Protocol) => {
+                            "protocol conflicts with dependency struct"
+                        }
+                        (ModuleType::Protocol, ModuleType::Struct) => {
+                            "struct conflicts with dependency protocol"
+                        }
                     };
 
                     return Err(CompilerError::ModuleRedefinition {
@@ -601,7 +662,6 @@ impl CompilationResult {
 pub fn typecheck_package(package: &mut Package) -> Result<(), CompilerError> {
     CompilationResult::compile_package(package).map(|_| ())
 }
-
 
 /// Convenience function for single-file type checking (mainly for testing)
 pub fn typecheck_program(program: &mut outrun_parser::Program) -> Result<(), CompilerError> {
@@ -636,7 +696,7 @@ mod dependency_tests {
                 }
             }
         "#;
-        
+
         // User code tries to define struct User
         let user_code = r#"
             struct User {
@@ -673,7 +733,7 @@ mod dependency_tests {
                 }
             }
         "#;
-        
+
         // User code tries to define protocol Display
         let user_code = r#"
 protocol Display {
@@ -708,7 +768,7 @@ protocol Display {
                 }
             }
         "#;
-        
+
         // User code defines struct Customer - no conflict
         let user_code = r#"
             struct Customer {
@@ -763,7 +823,9 @@ protocol Display {
         let package2_program = parse_program(package2_code).expect("package2 should parse");
 
         // Register package1 in engine1
-        engine1.register_protocols_and_structs(&package1_program).expect("Should register package1");
+        engine1
+            .register_protocols_and_structs(&package1_program)
+            .expect("Should register package1");
 
         // Get the registries from engine1 as dependencies for engine2
         let protocol_registry1 = std::rc::Rc::new(engine1.protocol_registry().clone());
@@ -771,85 +833,114 @@ protocol Display {
 
         // Import package1 registries into engine2 as dependencies
         let result = engine2.import_dependency_registries(protocol_registry1, function_registry1);
-        assert!(result.is_ok(), "Should successfully import dependency registries");
+        assert!(
+            result.is_ok(),
+            "Should successfully import dependency registries"
+        );
 
         // Now try to register package2 in engine2 (which should work because User is now a dependency)
         let result2 = engine2.register_protocols_and_structs(&package2_program);
-        assert!(result2.is_ok(), "Should successfully register package2 with dependency User struct");
+        assert!(
+            result2.is_ok(),
+            "Should successfully register package2 with dependency User struct"
+        );
     }
 
     #[test]
     fn test_repl_optimization_precompiled_core() {
         // Test that pre-compiling core library works
         let precompiled_core = CompilationResult::precompile_core_library();
-        assert!(precompiled_core.is_ok(), "Should successfully pre-compile core library");
-        
+        assert!(
+            precompiled_core.is_ok(),
+            "Should successfully pre-compile core library"
+        );
+
         let core = precompiled_core.unwrap();
-        
+
         // Verify core library has expected implementations
-        assert!(core.protocol_registry.implementation_count() > 0, "Core library should have implementations");
-        assert_eq!(core.package_name, "outrun-core", "Core package should have correct name");
-        
+        assert!(
+            core.protocol_registry.implementation_count() > 0,
+            "Core library should have implementations"
+        );
+        assert_eq!(
+            core.package_name, "outrun-core",
+            "Core package should have correct name"
+        );
+
         // Test compiling REPL expressions using pre-compiled core
         let expressions = [
             "1 + 2",
-            "\"hello\"", 
+            "\"hello\"",
             "true",
             // TODO: Add more complex expressions once they're supported
         ];
-        
+
         for expr in &expressions {
             let result = CompilationResult::compile_repl_expression(expr, &core);
-            assert!(result.is_ok(), "Should successfully compile REPL expression: {}", expr);
-            
+            assert!(
+                result.is_ok(),
+                "Should successfully compile REPL expression: {}",
+                expr
+            );
+
             let expr_result = result.unwrap();
             assert_eq!(expr_result.package_name, "repl_expression");
-            
+
             // Verify that the expression result has access to core library functionality
             // by checking that protocol registries have been merged
-            assert!(expr_result.protocol_registry.implementation_count() >= core.protocol_registry.implementation_count(),
-                   "Expression result should include core library implementations");
+            assert!(
+                expr_result.protocol_registry.implementation_count()
+                    >= core.protocol_registry.implementation_count(),
+                "Expression result should include core library implementations"
+            );
         }
     }
 
-    #[test] 
+    #[test]
     fn test_repl_performance_comparison() {
         use std::time::Instant;
-        
+
         // Test traditional approach: compile each expression from scratch
         let traditional_expressions = ["1 + 2", "2 * 3", "1 + 2 * 3"];
         let start_traditional = Instant::now();
-        
+
         for expr in &traditional_expressions {
             let program = outrun_parser::parse_program(expr).expect("Should parse");
             let mut package = Package::new("test".to_string());
             package.add_program(program);
-            
+
             let _result = CompilationResult::compile_package(&mut package).expect("Should compile");
         }
-        
+
         let traditional_time = start_traditional.elapsed();
-        
+
         // Test optimized approach: pre-compile core library once, reuse for expressions
         let start_optimized = Instant::now();
-        
-        let precompiled_core = CompilationResult::precompile_core_library().expect("Should pre-compile core");
-        
+
+        let precompiled_core =
+            CompilationResult::precompile_core_library().expect("Should pre-compile core");
+
         for expr in &traditional_expressions {
             let _result = CompilationResult::compile_repl_expression(expr, &precompiled_core)
                 .expect("Should compile with pre-compiled core");
         }
-        
+
         let optimized_time = start_optimized.elapsed();
-        
+
         println!("📊 Performance comparison:");
         println!("   Traditional approach: {:?}", traditional_time);
         println!("   Optimized approach:   {:?}", optimized_time);
-        
+
         // Assert both approaches work (implicit - if we got here they succeeded)
-        assert!(traditional_time.as_nanos() > 0, "Traditional approach should take some time");
-        assert!(optimized_time.as_nanos() > 0, "Optimized approach should take some time");
-        
+        assert!(
+            traditional_time.as_nanos() > 0,
+            "Traditional approach should take some time"
+        );
+        assert!(
+            optimized_time.as_nanos() > 0,
+            "Optimized approach should take some time"
+        );
+
         // Note: The optimized approach may not always be faster in this simple test
         // because the core library compilation is included in the timing.
         // In a real REPL, the core library would be pre-compiled once at startup.
@@ -858,7 +949,7 @@ protocol Display {
     #[test]
     fn test_hot_reloading_package_redefinition() {
         // Test that a package can redefine its own modules (hot reloading scenario)
-        
+
         // Initial version of package - simple struct without type checking complexity
         let initial_code = r#"
             struct User {
@@ -867,7 +958,7 @@ protocol Display {
                 }
             }
         "#;
-        
+
         // Updated version of package with redefined User struct
         let updated_code = r#"
             struct User {
@@ -886,44 +977,59 @@ protocol Display {
                 }
             }
         "#;
-        
+
         let initial_program = parse_program(initial_code).expect("initial should parse");
         let updated_program = parse_program(updated_code).expect("updated should parse");
-        
+
         // Compile initial version
         let mut initial_package = Package::new("myapp".to_string());
         initial_package.add_program(initial_program);
-        
+
         let initial_result = CompilationResult::compile_package(&mut initial_package);
         if let Err(ref e) = initial_result {
             eprintln!("Initial compilation error: {:?}", e);
         }
         assert!(initial_result.is_ok(), "Initial compilation should succeed");
         let initial_compilation = initial_result.unwrap();
-        
+
         // Verify initial version has User module
-        assert!(initial_compilation.defined_modules.contains(&ModuleId::new("User")), 
-               "Initial version should define User module");
-        
+        assert!(
+            initial_compilation
+                .defined_modules
+                .contains(&ModuleId::new("User")),
+            "Initial version should define User module"
+        );
+
         // Hot reload: recompile with updated version
         let mut updated_package = Package::new("myapp".to_string());
         updated_package.add_program(updated_program);
-        
+
         let recompile_result = CompilationResult::recompile_package(
             &mut updated_package,
             Some(&initial_compilation),
-            vec![] // No dependencies for this test
+            vec![], // No dependencies for this test
         );
-        
-        assert!(recompile_result.is_ok(), "Recompilation should succeed for same package");
+
+        assert!(
+            recompile_result.is_ok(),
+            "Recompilation should succeed for same package"
+        );
         let updated_compilation = recompile_result.unwrap();
-        
+
         // Verify updated version has both User and Profile modules
-        assert!(updated_compilation.defined_modules.contains(&ModuleId::new("User")), 
-               "Updated version should define User module");
-        assert!(updated_compilation.defined_modules.contains(&ModuleId::new("Profile")), 
-               "Updated version should define Profile module");
-        
+        assert!(
+            updated_compilation
+                .defined_modules
+                .contains(&ModuleId::new("User")),
+            "Updated version should define User module"
+        );
+        assert!(
+            updated_compilation
+                .defined_modules
+                .contains(&ModuleId::new("Profile")),
+            "Updated version should define Profile module"
+        );
+
         // Test should pass - the warning will be printed to stdout during the test
         // In a real scenario, the warning "⚠️ package myapp redefined module User" would be shown
     }
@@ -931,7 +1037,7 @@ protocol Display {
     #[test]
     fn test_hot_reloading_no_warning_when_unchanged() {
         // Test that no warning is emitted when module content doesn't actually change
-        
+
         // Same content in both versions
         let code = r#"
             struct User {
@@ -940,39 +1046,36 @@ protocol Display {
                 }
             }
         "#;
-        
+
         let program1 = parse_program(code).expect("first should parse");
         let program2 = parse_program(code).expect("second should parse"); // Identical content
-        
+
         // Compile initial version
         let mut package1 = Package::new("myapp".to_string());
         package1.add_program(program1);
         let initial_result = CompilationResult::compile_package(&mut package1);
         assert!(initial_result.is_ok(), "Initial compilation should succeed");
         let initial_compilation = initial_result.unwrap();
-        
+
         // "Recompile" with identical content - should NOT warn
         let mut package2 = Package::new("myapp".to_string());
         package2.add_program(program2);
-        
+
         // Capture stdout to verify no warning is emitted
-        let recompile_result = CompilationResult::recompile_package(
-            &mut package2,
-            Some(&initial_compilation),
-            vec![]
-        );
-        
+        let recompile_result =
+            CompilationResult::recompile_package(&mut package2, Some(&initial_compilation), vec![]);
+
         // Compilation should succeed and no warning should be printed
         // (The warning would only appear if content actually changed)
         assert!(recompile_result.is_ok(), "Recompile should succeed");
-        
+
         // Test passes - no warning should be emitted since content is identical
     }
 
     #[test]
     fn test_cross_package_conflict_still_prevented() {
         // Test that cross-package conflicts are still prevented even with recompile_package
-        
+
         // Package A defines User
         let package_a_code = r#"
             struct User {
@@ -981,7 +1084,7 @@ protocol Display {
                 }
             }
         "#;
-        
+
         // Package B tries to define User (should be prevented)
         let package_b_code = r#"
             struct User {
@@ -990,31 +1093,37 @@ protocol Display {
                 }
             }
         "#;
-        
+
         let program_a = parse_program(package_a_code).expect("package A should parse");
         let program_b = parse_program(package_b_code).expect("package B should parse");
-        
+
         // Compile package A
         let mut package_a = Package::new("package_a".to_string());
         package_a.add_program(program_a);
-        let compilation_a = CompilationResult::compile_package(&mut package_a)
-            .expect("Package A should compile");
-        
+        let compilation_a =
+            CompilationResult::compile_package(&mut package_a).expect("Package A should compile");
+
         // Try to compile package B with package A as dependency
         let mut package_b = Package::new("package_b".to_string());
         package_b.add_program(program_b);
-        
+
         let result = CompilationResult::recompile_package(
             &mut package_b,
-            None, // No previous compilation for package B
-            vec![compilation_a] // Package A as dependency
+            None,                // No previous compilation for package B
+            vec![compilation_a], // Package A as dependency
         );
-        
+
         // Should fail due to cross-package module conflict
-        assert!(result.is_err(), "Cross-package User module conflict should be prevented");
-        
+        assert!(
+            result.is_err(),
+            "Cross-package User module conflict should be prevented"
+        );
+
         if let Err(CompilerError::ModuleRedefinition { module_name, .. }) = result {
-            assert!(module_name.contains("User"), "Error should mention User module conflict");
+            assert!(
+                module_name.contains("User"),
+                "Error should mention User module conflict"
+            );
         } else {
             panic!("Expected ModuleRedefinition error for cross-package conflict");
         }

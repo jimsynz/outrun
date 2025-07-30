@@ -694,7 +694,7 @@ impl OutrunParser {
             let parameter = Parameter {
                 name: identifier,
                 type_annotation,
-                span: Self::span_from_range(identifier_span.start, type_span.end),
+                span: Self::span_from_spans(&identifier_span, &type_span),
             };
 
             Ok(AnonymousParameters::Single {

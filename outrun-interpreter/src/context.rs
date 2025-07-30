@@ -13,7 +13,6 @@ pub enum InterpreterError {
     #[error("Variable '{name}' not found in current scope")]
     VariableNotFound { name: String },
 
-
     #[error("Type error: {message}")]
     TypeError { message: String },
 
@@ -22,7 +21,6 @@ pub enum InterpreterError {
 
     #[error("Cannot access variable from outer scope: {name}")]
     ScopeError { name: String },
-
 }
 
 /// Runtime context for the new Outrun interpreter
@@ -38,7 +36,6 @@ pub struct InterpreterContext {
 
     /// Maximum recursion depth to prevent stack overflow
     max_stack_depth: usize,
-
 }
 
 /// Variable environment managing lexical scoping
@@ -59,7 +56,6 @@ pub struct CallFrame {
     pub locals: HashMap<String, Value>,
 }
 
-
 impl InterpreterContext {
     /// Create a new interpreter context
     pub fn new() -> Self {
@@ -69,7 +65,6 @@ impl InterpreterContext {
             max_stack_depth: 1000, // Reasonable default
         }
     }
-
 
     /// Check if the context is empty (no variables or call stack)
     pub fn is_empty(&self) -> bool {
@@ -148,7 +143,6 @@ impl InterpreterContext {
     pub fn call_stack(&self) -> &[CallFrame] {
         &self.call_stack
     }
-
 }
 
 impl VariableEnvironment {
@@ -184,7 +178,9 @@ impl VariableEnvironment {
     /// Update an existing variable (searches all scopes)
     fn update(&mut self, name: String, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
-            if let std::collections::hash_map::Entry::Occupied(mut entry) = scope.entry(name.clone()) {
+            if let std::collections::hash_map::Entry::Occupied(mut entry) =
+                scope.entry(name.clone())
+            {
                 entry.insert(value);
                 return;
             }
@@ -195,7 +191,6 @@ impl VariableEnvironment {
     fn contains(&self, name: &str) -> bool {
         self.get(name).is_some()
     }
-
 
     /// Push a new scope
     fn push_scope(&mut self) {
@@ -333,7 +328,9 @@ mod tests {
             .define_variable("x".to_string(), Value::integer(1))
             .unwrap();
         // Rebinding should succeed
-        context.define_variable("x".to_string(), Value::integer(2)).unwrap();
+        context
+            .define_variable("x".to_string(), Value::integer(2))
+            .unwrap();
         // Value should be updated
         assert_eq!(context.get_variable("x").unwrap(), &Value::integer(2));
 

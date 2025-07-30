@@ -9,21 +9,21 @@ use crate::registry::{TypeKind, TypeRegistry};
 #[test]
 fn test_core_type_registration() {
     let type_registry = TypeRegistry::with_core_types();
-    
+
     // Test that core concrete types are registered
     assert!(type_registry.is_concrete_type("Outrun.Core.Integer64"));
     assert!(type_registry.is_concrete_type("Outrun.Core.String"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Boolean"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Float64"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Atom"));
-    
+
     // Test that generic core types are registered
     assert!(type_registry.is_concrete_type("Outrun.Core.List"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Map"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Tuple"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Option"));
     assert!(type_registry.is_concrete_type("Outrun.Core.Result"));
-    
+
     // Test that unknown types return None
     assert!(type_registry.get_type_kind("UnknownType").is_none());
     assert!(type_registry.get_type_kind("SomeRandomProtocol").is_none());
@@ -32,9 +32,10 @@ fn test_core_type_registration() {
 #[test]
 fn test_type_kind_resolution() {
     let mut type_registry = TypeRegistry::with_core_types();
-    
+
     // Register a test protocol
-    type_registry.protocol_registry_mut()
+    type_registry
+        .protocol_registry_mut()
         .register_protocol_definition(
             crate::types::ProtocolId::new("TestProtocol"),
             std::collections::HashSet::new(),
@@ -43,7 +44,7 @@ fn test_type_kind_resolution() {
             std::collections::HashSet::new(),
             None,
         );
-    
+
     // Test protocol resolution
     match type_registry.get_type_kind("TestProtocol") {
         Some(TypeKind::Protocol(_)) => {
@@ -51,7 +52,7 @@ fn test_type_kind_resolution() {
         }
         other => panic!("Expected protocol, got: {:?}", other),
     }
-    
+
     // Test concrete type resolution
     match type_registry.get_type_kind("Outrun.Core.Integer64") {
         Some(TypeKind::ConcreteType(def)) => {
@@ -61,7 +62,7 @@ fn test_type_kind_resolution() {
         }
         other => panic!("Expected concrete type, got: {:?}", other),
     }
-    
+
     // Test generic concrete type resolution
     match type_registry.get_type_kind("Outrun.Core.List") {
         Some(TypeKind::ConcreteType(def)) => {
@@ -73,11 +74,10 @@ fn test_type_kind_resolution() {
     }
 }
 
-
 #[test]
 fn test_boolean_no_longer_hardcoded() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Create a simple type annotation for Boolean
     let boolean_annotation = outrun_parser::TypeAnnotation::Simple {
         path: vec![outrun_parser::TypeIdentifier {
@@ -87,10 +87,10 @@ fn test_boolean_no_longer_hardcoded() {
         generic_args: None,
         span: outrun_parser::Span::new(0, 0),
     };
-    
+
     // Convert the type annotation
     let result = engine.convert_type_annotation(&boolean_annotation);
-    
+
     match result {
         Ok(crate::types::Type::Concrete { id, .. }) => {
             // This should now resolve to the registered Boolean concrete type
@@ -110,9 +110,11 @@ fn test_boolean_no_longer_hardcoded() {
 #[test]
 fn test_protocol_vs_concrete_distinction() {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Add Boolean as a protocol to the registry
-    engine.type_registry_mut().protocol_registry_mut()
+    engine
+        .type_registry_mut()
+        .protocol_registry_mut()
         .register_protocol_definition(
             crate::types::ProtocolId::new("Boolean"),
             std::collections::HashSet::new(),
@@ -121,7 +123,7 @@ fn test_protocol_vs_concrete_distinction() {
             std::collections::HashSet::new(),
             None,
         );
-    
+
     let boolean_annotation = outrun_parser::TypeAnnotation::Simple {
         path: vec![outrun_parser::TypeIdentifier {
             name: "Boolean".to_string(),
@@ -130,9 +132,9 @@ fn test_protocol_vs_concrete_distinction() {
         generic_args: None,
         span: outrun_parser::Span::new(0, 0),
     };
-    
+
     let result = engine.convert_type_annotation(&boolean_annotation);
-    
+
     match result {
         Ok(crate::types::Type::Protocol { id, .. }) => {
             println!("✅ Boolean correctly resolved as protocol: {}", id.0);

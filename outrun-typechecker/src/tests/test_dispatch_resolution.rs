@@ -193,7 +193,10 @@ fn test_protocol_function_call_resolution() {
 
     match result {
         DispatchResult::Resolved(resolved_func) => {
-            assert_eq!(resolved_func.qualified_name, "Equality.equal?:Outrun.Core.String");
+            assert_eq!(
+                resolved_func.qualified_name,
+                "Equality.equal?:Outrun.Core.String"
+            );
             assert_eq!(
                 resolved_func.implementing_type.as_ref().unwrap().name(),
                 "Outrun.Core.String"
@@ -240,8 +243,8 @@ fn test_local_call_in_protocol_context() {
         protocol_args: vec![],
     };
 
-    let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+        .with_context(context);
 
     // Local call: equal?(self, other) inside Equality.not_equal?
     // Should resolve to Equality.equal?
@@ -266,8 +269,8 @@ fn test_local_call_in_module_context() {
         module_args: vec![],
     };
 
-    let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+        .with_context(context);
 
     // Local call: validate_email?(email) inside User.create
     // Should resolve to User.validate_email?
@@ -345,8 +348,8 @@ fn test_private_protocol_function_access() {
         protocol_args: vec![],
     };
 
-    let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+        .with_context(context);
 
     // Private protocol function should be accessible within protocol context
     let result = dispatcher.resolve_local_call("helper?", None).unwrap();
@@ -407,8 +410,8 @@ fn test_protocol_default_implementation_with_private_helper() {
         protocol_args: vec![],
     };
 
-    let dispatcher =
-        FunctionDispatcher::new(&protocol_registry, &function_registry, None, None).with_context(context);
+    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+        .with_context(context);
 
     // Within the protocol context, the default implementation should be able to call:
     // 1. Other public protocol functions

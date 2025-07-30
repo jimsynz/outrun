@@ -108,9 +108,7 @@ impl OutrunParser {
                         _ => unreachable!("Unexpected binary operator: {:?}", op.as_rule()),
                     };
 
-                    let left_start = left.span.start;
-                    let right_end = right.span.end;
-                    let span = Self::span_from_range(left_start, right_end);
+                    let span = Self::span_from_spans(&left.span, &right.span);
 
                     Ok(expression(
                         ExpressionKind::BinaryOp(BinaryOperation {
@@ -230,9 +228,7 @@ impl OutrunParser {
                         let field_pair = op_inner.into_inner().next().unwrap();
                         let field = Self::parse_identifier(field_pair)?;
 
-                        let start = expr.span.start;
-                        let end = field.span.end;
-                        let span = Self::span_from_range(start, end);
+                        let span = Self::span_from_spans(&expr.span, &field.span);
 
                         expr = expression(
                             ExpressionKind::FieldAccess(FieldAccess {
@@ -244,9 +240,8 @@ impl OutrunParser {
                         );
                     }
                     Rule::function_call_postfix => {
-                        let start = expr.span.start;
-                        let end = op_inner.as_span().end();
-                        let span = Self::span_from_range(start, end);
+                        let end_span = Self::extract_span(&op_inner);
+                        let span = Self::span_from_spans(&expr.span, &end_span);
 
                         // Parse arguments if present
                         let mut arguments = Vec::new();

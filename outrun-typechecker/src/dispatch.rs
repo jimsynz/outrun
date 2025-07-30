@@ -142,7 +142,10 @@ impl FunctionRegistry {
         for ((module_name, function_name), function_info) in &dependency_registry.functions {
             // Add the function, potentially overriding local definitions
             // This allows dependencies to provide implementations that user code depends on
-            self.functions.insert((module_name.clone(), function_name.clone()), function_info.clone());
+            self.functions.insert(
+                (module_name.clone(), function_name.clone()),
+                function_info.clone(),
+            );
         }
     }
 
@@ -181,6 +184,8 @@ pub struct FunctionDispatcher<'a> {
     substitution: Option<&'a Substitution>,
     /// Current function context for local resolution
     context: FunctionContext,
+    /// Current file context for error reporting
+    current_file: Option<String>,
 }
 
 impl<'a> FunctionDispatcher<'a> {
@@ -197,6 +202,7 @@ impl<'a> FunctionDispatcher<'a> {
             monomorphisation_table,
             substitution,
             context: FunctionContext::TopLevel,
+            current_file: None,
         }
     }
 
@@ -204,6 +210,20 @@ impl<'a> FunctionDispatcher<'a> {
     pub fn with_context(mut self, context: FunctionContext) -> Self {
         self.context = context;
         self
+    }
+
+    /// Set the current file context for error reporting
+    pub fn with_file_context(mut self, file: Option<String>) -> Self {
+        self.current_file = file;
+        self
+    }
+
+    /// Create a FileSpan using current file context
+    fn create_file_span(&self, span: Option<Span>) -> crate::error::FileSpan {
+        crate::error::FileSpan {
+            span: span.unwrap_or_else(|| Span { start: 0, end: 0, start_line_col: None, end_line_col: None }),
+            source_file: self.current_file.clone().unwrap_or_else(|| "unknown".to_string()),
+        }
     }
 
     /// Resolve a fully qualified function call (e.g., Protocol.function(), Module.function())
@@ -271,7 +291,12 @@ impl<'a> FunctionDispatcher<'a> {
                 ) {
                     // Found in implementation
                     Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
-                        qualified_name: format!("{}.{}:{}", protocol_id.0, function_name, implementing_type.name()),
+                        qualified_name: format!(
+                            "{}.{}:{}",
+                            protocol_id.0,
+                            function_name,
+                            implementing_type.name()
+                        ),
                         implementing_type: Some(implementing_type.clone()),
                         function_info: func_info.clone(),
                     })))
@@ -285,7 +310,7 @@ impl<'a> FunctionDispatcher<'a> {
                 Err(DispatchError::NoImplementation {
                     protocol_name: "unknown".to_string(),
                     type_name: function_name.to_string(),
-                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    file_span: Some(self.create_file_span(span)),
                     similar_implementations: Vec::new(),
                     suggestions: Vec::new(),
                 })
@@ -313,20 +338,27 @@ impl<'a> FunctionDispatcher<'a> {
                 // Look up protocol implementation for this concrete type
                 // For generic types, we need to try both generic and non-generic protocol names
                 let protocol_id = ProtocolId::new(protocol_name);
-                
+
                 // First try exact match with current protocol name
-                let mut impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, args);
-                
+                let mut impl_info =
+                    self.protocol_registry
+                        .get_implementation(&protocol_id, &id, args);
+
                 // If not found and we have args, also try with empty args (for generic implementations registered without args)
                 if impl_info.is_none() && !args.is_empty() {
-                    impl_info = self.protocol_registry.get_implementation(&protocol_id, &id, &[]);
+                    impl_info = self
+                        .protocol_registry
+                        .get_implementation(&protocol_id, &id, &[]);
                 }
-                
+
                 // If not found and we have generic args, try constructing generic protocol name
                 if impl_info.is_none() && !args.is_empty() {
-                    let generic_args_str = args.iter()
+                    let generic_args_str = args
+                        .iter()
                         .map(|arg| match arg {
-                            Type::Variable { name: Some(name), .. } => name.clone(),
+                            Type::Variable {
+                                name: Some(name), ..
+                            } => name.clone(),
                             Type::Variable { var_id, .. } => format!("T{}", var_id.0),
                             other => format!("{}", other),
                         })
@@ -334,18 +366,19 @@ impl<'a> FunctionDispatcher<'a> {
                         .join(", ");
                     let generic_protocol_name = format!("{}<{}>", protocol_name, generic_args_str);
                     let generic_protocol_id = ProtocolId::new(&generic_protocol_name);
-                    
-                    
-                    // Debug: Show the exact key we're looking for with generic protocol name  
+
+                    // Debug: Show the exact key we're looking for with generic protocol name
                     let _generic_search_key = crate::registry::ImplementationKey::new(
                         generic_protocol_id.clone(),
                         id.clone(),
-                        args
+                        args,
                     );
-                    
-                    impl_info = self.protocol_registry.get_implementation(&generic_protocol_id, &id, args);
+
+                    impl_info =
+                        self.protocol_registry
+                            .get_implementation(&generic_protocol_id, &id, args);
                 }
-                
+
                 if let Some(_impl_info) = impl_info {
                     // Found implementation - look up the specific function using impl scope format
                     let impl_scope = format!("impl {} for {}", protocol_name, id.name());
@@ -354,7 +387,10 @@ impl<'a> FunctionDispatcher<'a> {
                         .get_function(&impl_scope, function_name)
                     {
                         Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
-                            qualified_name: format!("{protocol_name}.{function_name}:{}", id.name()),
+                            qualified_name: format!(
+                                "{protocol_name}.{function_name}:{}",
+                                id.name()
+                            ),
                             implementing_type: Some(id),
                             function_info: func_info.clone(),
                         })))
@@ -363,26 +399,23 @@ impl<'a> FunctionDispatcher<'a> {
                         self.resolve_static_call(protocol_name, function_name, span)
                     }
                 } else {
-                    
                     // Debug: List all available implementations
                     for impl_info in self.protocol_registry.all_implementations() {
-                        
                         // Show details for List implementations
-                        if impl_info.protocol_id.0.contains("List") {
-                        }
+                        if impl_info.protocol_id.0.contains("List") {}
                     }
-                    
+
                     // Debug: Show the exact key we're looking for
                     let _search_key = crate::registry::ImplementationKey::new(
                         crate::types::ProtocolId::new(protocol_name),
                         id.clone(),
-                        args
+                        args,
                     );
                     // Add debug info about what implementations are actually available
                     Err(DispatchError::NoImplementation {
                         protocol_name: protocol_name.to_string(),
                         type_name: id.name().to_string(),
-                        span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                        file_span: Some(self.create_file_span(span)),
                         similar_implementations: Vec::new(),
                         suggestions: Vec::new(),
                     })
@@ -397,7 +430,12 @@ impl<'a> FunctionDispatcher<'a> {
                 match resolved_type.resolve_self() {
                     Some(concrete_type) => {
                         // Self resolved to a concrete type - proceed with normal resolution
-                        self.resolve_protocol_call(protocol_name, function_name, &concrete_type, span)
+                        self.resolve_protocol_call(
+                            protocol_name,
+                            function_name,
+                            &concrete_type,
+                            span,
+                        )
                     }
                     None => {
                         // Self is unbound (protocol definition context) - this is valid for protocol functions
@@ -405,28 +443,38 @@ impl<'a> FunctionDispatcher<'a> {
                         self.resolve_static_call(protocol_name, function_name, span)
                     }
                 }
-            },
-            Type::Protocol { id: protocol_id, args: _, .. } => {
+            }
+            Type::Protocol {
+                id: protocol_id,
+                args: _,
+                ..
+            } => {
                 // Protocol type like Integer - check if it can call the target protocol
                 let target_protocol_id = ProtocolId::new(protocol_name);
-                
+
                 // Direct match: the protocol itself (e.g., Integer calling Integer.method)
                 if protocol_id.0 == protocol_name {
                     self.resolve_static_call(protocol_name, function_name, span)
                 }
                 // Protocol requirement match: Integer requires BinarySubtraction, so Integer can call BinarySubtraction.method
-                else if self.protocol_registry.protocol_requires(&protocol_id, &target_protocol_id) {
+                else if self
+                    .protocol_registry
+                    .protocol_requires(&protocol_id, &target_protocol_id)
+                {
                     // The protocol type satisfies the requirement for the target protocol
                     // Look for concrete implementations of the protocol type that implement the target protocol
                     self.resolve_static_call(protocol_name, function_name, span)
                 } else {
                     Err(DispatchError::InvalidTarget {
                         protocol_name: protocol_name.to_string(),
-                        target_description: format!("Protocol mismatch: {} does not require {}", protocol_id.0, protocol_name),
+                        target_description: format!(
+                            "Protocol mismatch: {} does not require {}",
+                            protocol_id.0, protocol_name
+                        ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
-            },
+            }
             _ => {
                 // Other type categories (Function) handled similarly
                 Err(DispatchError::InvalidTarget {
@@ -456,7 +504,7 @@ impl<'a> FunctionDispatcher<'a> {
                 return Err(DispatchError::NoImplementation {
                     protocol_name: module_name.to_string(),
                     type_name: function_name.to_string(),
-                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                    file_span: Some(self.create_file_span(span)),
                     similar_implementations: Vec::new(),
                     suggestions: Vec::new(),
                 });
@@ -471,7 +519,7 @@ impl<'a> FunctionDispatcher<'a> {
             Err(DispatchError::NoImplementation {
                 protocol_name: module_name.to_string(),
                 type_name: function_name.to_string(),
-                span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                file_span: Some(self.create_file_span(span)),
                 similar_implementations: Vec::new(),
                 suggestions: Vec::new(),
             })
@@ -489,8 +537,9 @@ impl<'a> FunctionDispatcher<'a> {
         // Check if we have a monomorphisation table available
         if let Some(mono_table) = self.monomorphisation_table {
             // Generate the monomorphised key for this function call
-            let mono_key = MonomorphisationTable::generate_key(module_name, function_name, type_args);
-            
+            let mono_key =
+                MonomorphisationTable::generate_key(module_name, function_name, type_args);
+
             // Try to find an existing monomorphisation
             if let Some(mono_entry) = mono_table.get_instantiation(&mono_key) {
                 // Found a monomorphised version - return it
@@ -501,10 +550,13 @@ impl<'a> FunctionDispatcher<'a> {
                 })));
             }
         }
-        
+
         // Fall back to generic function resolution if no monomorphisation found
         // First, try to find the generic function
-        if let Some(func_info) = self.function_registry.get_function(module_name, function_name) {
+        if let Some(func_info) = self
+            .function_registry
+            .get_function(module_name, function_name)
+        {
             if func_info.is_generic {
                 // This is a generic function but we don't have a monomorphised version
                 // This could happen during type inference when we haven't generated the instantiation yet
@@ -516,12 +568,12 @@ impl<'a> FunctionDispatcher<'a> {
                 })));
             }
         }
-        
+
         // If we get here, either the function doesn't exist or it's not generic
         // Fall back to standard static call resolution
         self.resolve_static_call(module_name, function_name, span)
     }
-    
+
     /// Resolve a qualified call with potential generic type arguments
     /// This is an enhanced version that can handle both generic and non-generic functions
     pub fn resolve_qualified_call_with_types(
@@ -603,11 +655,7 @@ impl DispatchTable {
     }
 
     /// Add a dispatch entry with monomorphised key format
-    pub fn add_entry(
-        &mut self,
-        key: String,
-        resolved_func: ResolvedFunction,
-    ) {
+    pub fn add_entry(&mut self, key: String, resolved_func: ResolvedFunction) {
         self.entries.insert(key, resolved_func);
     }
 
@@ -675,33 +723,40 @@ impl MonomorphisationTable {
             instantiations_by_function: HashMap::new(),
         }
     }
-    
+
     /// Add a monomorphisation entry for a generic function instantiation
-    pub fn add_instantiation(
-        &mut self,
-        entry: MonomorphisationEntry,
-    ) {
+    pub fn add_instantiation(&mut self, entry: MonomorphisationEntry) {
         let key = entry.monomorphised_key.clone();
-        let function_key = (entry.generic_function.defining_scope.clone(), entry.generic_function.function_name.clone());
-        
+        let function_key = (
+            entry.generic_function.defining_scope.clone(),
+            entry.generic_function.function_name.clone(),
+        );
+
         // Add to main entries table
         self.entries.insert(key.clone(), entry);
-        
+
         // Track instantiation by original function
         self.instantiations_by_function
             .entry(function_key)
             .or_default()
             .push(key);
     }
-    
+
     /// Look up a monomorphised function by key
     pub fn get_instantiation(&self, key: &str) -> Option<&MonomorphisationEntry> {
         self.entries.get(key)
     }
-    
+
     /// Get all instantiations for a specific function
-    pub fn get_function_instantiations(&self, module: &str, function: &str) -> Vec<&MonomorphisationEntry> {
-        if let Some(keys) = self.instantiations_by_function.get(&(module.to_string(), function.to_string())) {
+    pub fn get_function_instantiations(
+        &self,
+        module: &str,
+        function: &str,
+    ) -> Vec<&MonomorphisationEntry> {
+        if let Some(keys) = self
+            .instantiations_by_function
+            .get(&(module.to_string(), function.to_string()))
+        {
             keys.iter()
                 .filter_map(|key| self.entries.get(key))
                 .collect()
@@ -709,33 +764,29 @@ impl MonomorphisationTable {
             Vec::new()
         }
     }
-    
+
     /// Check if a specific instantiation exists
     pub fn has_instantiation(&self, key: &str) -> bool {
         self.entries.contains_key(key)
     }
-    
+
     /// Get total number of instantiations
     pub fn instantiation_count(&self) -> usize {
         self.entries.len()
     }
-    
+
     /// Check if table is empty
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
-    
+
     /// Get all entries (for debug and inspection)
     pub fn all_entries(&self) -> impl Iterator<Item = (&String, &MonomorphisationEntry)> {
         self.entries.iter()
     }
-    
+
     /// Generate monomorphised key for generic function call
-    pub fn generate_key(
-        module: &str,
-        function: &str,
-        type_args: &[&Type],
-    ) -> String {
+    pub fn generate_key(module: &str, function: &str, type_args: &[&Type]) -> String {
         if type_args.is_empty() {
             format!("{}.{}", module, function)
         } else {
@@ -746,7 +797,7 @@ impl MonomorphisationTable {
             format!("{}.{}:{}", module, function, type_names.join(":"))
         }
     }
-    
+
     /// Convert a type to a string component for monomorphised keys
     fn type_to_key_component(ty: &Type) -> String {
         match ty {
@@ -754,10 +805,8 @@ impl MonomorphisationTable {
                 if args.is_empty() {
                     id.name().to_string()
                 } else {
-                    let arg_names: Vec<String> = args
-                        .iter()
-                        .map(Self::type_to_key_component)
-                        .collect();
+                    let arg_names: Vec<String> =
+                        args.iter().map(Self::type_to_key_component).collect();
                     format!("{}_{}", id.name(), arg_names.join("_"))
                 }
             }
@@ -765,10 +814,8 @@ impl MonomorphisationTable {
                 if args.is_empty() {
                     id.0.clone()
                 } else {
-                    let arg_names: Vec<String> = args
-                        .iter()
-                        .map(Self::type_to_key_component)
-                        .collect();
+                    let arg_names: Vec<String> =
+                        args.iter().map(Self::type_to_key_component).collect();
                     format!("{}_{}", id.0, arg_names.join("_"))
                 }
             }
@@ -777,7 +824,7 @@ impl MonomorphisationTable {
             Type::Function { .. } => "Function".to_string(), // Function types in generic args
         }
     }
-    
+
     /// Create monomorphised function info by substituting generic parameters
     pub fn create_monomorphised_function(
         generic_function: &FunctionInfo,
@@ -790,13 +837,15 @@ impl MonomorphisationTable {
                 ty.substitute_type_parameters(type_substitutions, false)?,
             ));
         }
-        
+
         Ok(FunctionInfo {
             defining_scope: generic_function.defining_scope.clone(),
             function_name: generic_function.function_name.clone(),
             visibility: generic_function.visibility,
             parameters: substituted_parameters,
-            return_type: generic_function.return_type.substitute_type_parameters(type_substitutions, false)?,
+            return_type: generic_function
+                .return_type
+                .substitute_type_parameters(type_substitutions, false)?,
             body: generic_function.body.clone(),
             span: generic_function.span,
             generic_parameters: Vec::new(), // Monomorphised functions are not generic
@@ -811,7 +860,7 @@ impl MonomorphisationTable {
     ) -> Result<FunctionInfo, crate::error::TypecheckError> {
         let mut substitutions = HashMap::new();
         substitutions.insert("Self".to_string(), self_type.clone());
-        
+
         let mut substituted_parameters = Vec::new();
         for (name, ty) in &protocol_function.parameters {
             substituted_parameters.push((
@@ -819,20 +868,21 @@ impl MonomorphisationTable {
                 ty.substitute_type_parameters(&substitutions, true)?,
             ));
         }
-        
+
         Ok(FunctionInfo {
             defining_scope: protocol_function.defining_scope.clone(),
             function_name: protocol_function.function_name.clone(),
             visibility: protocol_function.visibility,
             parameters: substituted_parameters,
-            return_type: protocol_function.return_type.substitute_type_parameters(&substitutions, true)?,
+            return_type: protocol_function
+                .return_type
+                .substitute_type_parameters(&substitutions, true)?,
             body: protocol_function.body.clone(),
             span: protocol_function.span,
             generic_parameters: Vec::new(), // Monomorphised functions are not generic
             is_generic: false,
         })
     }
-    
 }
 
 impl Default for MonomorphisationTable {
@@ -897,13 +947,15 @@ pub fn build_dispatch_table(
     if let Some(mono_table) = monomorphisation_table {
         for (mono_key, mono_entry) in mono_table.all_entries() {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", 
-                    mono_entry.generic_function.defining_scope, 
-                    mono_entry.generic_function.function_name),
+                qualified_name: format!(
+                    "{}.{}",
+                    mono_entry.generic_function.defining_scope,
+                    mono_entry.generic_function.function_name
+                ),
                 implementing_type: None, // Monomorphised struct functions don't have implementing types
                 function_info: mono_entry.monomorphised_function.clone(),
             };
-            
+
             // Add the monomorphised function to the dispatch table
             table.add_entry(mono_key.clone(), resolved_func);
         }
@@ -913,4 +965,3 @@ pub fn build_dispatch_table(
     // println!("🔧 Final dispatch table has {} entries", table.entries().len());
     table
 }
-

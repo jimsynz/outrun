@@ -17,16 +17,16 @@ fn test_protocol_dispatch_binary_subtraction() {
             a - b
         }
     "#;
-    
+
     let mut package = Package::new("test-dispatch".to_string());
-    
+
     // Parse the program
     let parsed = outrun_parser::parse_program(source).expect("Should parse successfully");
     package.add_program(parsed);
-    
+
     // Try to compile - this should reproduce the error
     let result = CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_) => {
             println!("✅ Test passed - protocol dispatch worked correctly");
@@ -35,16 +35,20 @@ fn test_protocol_dispatch_binary_subtraction() {
         Err(err) => {
             println!("❌ Test failed with error: {}", err);
             println!("Error debug: {:?}", err);
-            
+
             // The protocol dispatch issue should be fixed now
             // If we still get protocol dispatch errors, the fix didn't work
             let error_string = format!("{}", err);
-            if error_string.contains("Invalid dispatch target") && 
-               error_string.contains("BinarySubtraction") &&
-               error_string.contains("does not require") {
+            if error_string.contains("Invalid dispatch target")
+                && error_string.contains("BinarySubtraction")
+                && error_string.contains("does not require")
+            {
                 panic!("❌ Protocol dispatch fix didn't work: {}", err);
             } else {
-                println!("ℹ️  Got different error (expected since core lib has other issues): {}", err);
+                println!(
+                    "ℹ️  Got different error (expected since core lib has other issues): {}",
+                    err
+                );
                 // Other errors are expected since the core library has other type issues
                 // The important thing is that protocol dispatch is working
             }
@@ -62,16 +66,16 @@ fn test_protocol_dispatch_with_concrete_types() {
             a - b
         }
     "#;
-    
+
     let mut package = Package::new("test-concrete".to_string());
-    
+
     // Parse the program
     let parsed = outrun_parser::parse_program(source).expect("Should parse successfully");
     package.add_program(parsed);
-    
+
     // This should work since we're using concrete types
     let result = CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_) => {
             println!("✅ Concrete type dispatch works correctly");

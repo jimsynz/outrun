@@ -99,8 +99,7 @@ impl Default for Outrun.Core.Boolean {
 "#;
 
     println!("=== Setting up dependencies ===");
-    let deps_program =
-        parse_program(boolean_protocol).expect("Parse dependencies should succeed");
+    let deps_program = parse_program(boolean_protocol).expect("Parse dependencies should succeed");
 
     // Process through all phases for dependencies
     engine

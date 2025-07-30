@@ -10,10 +10,10 @@ use std::collections::HashMap;
 
 fn create_test_engine() -> TypeInferenceEngine {
     let mut engine = TypeInferenceEngine::new();
-    
+
     // Set up basic types in registry
     engine.set_current_module(ModuleId::new("TestModule"));
-    
+
     engine
 }
 
@@ -22,13 +22,14 @@ fn create_generic_function_info() -> FunctionInfo {
         defining_scope: "Wrapper".to_string(),
         function_name: "wrap".to_string(),
         visibility: FunctionVisibility::Public,
-        parameters: vec![
-            ("value".to_string(), Type::Concrete {
+        parameters: vec![(
+            "value".to_string(),
+            Type::Concrete {
                 id: TypeId::new("T"),
                 args: vec![],
                 span: None,
-            })
-        ],
+            },
+        )],
         return_type: Type::Concrete {
             id: TypeId::new("Wrapper"),
             args: vec![Type::Concrete {
@@ -49,7 +50,7 @@ fn create_generic_function_info() -> FunctionInfo {
 fn test_constraint_generation_for_simple_generic_function() {
     let mut engine = create_test_engine();
     let function_info = create_generic_function_info();
-    
+
     // Call with Integer64 argument: Wrapper.wrap(value: 42)
     let integer_type = Type::Concrete {
         id: TypeId::new("Integer64"),
@@ -57,7 +58,7 @@ fn test_constraint_generation_for_simple_generic_function() {
         span: None,
     };
     let inferred_arguments = vec![integer_type.clone()];
-    
+
     let context = InferenceContext {
         substitution: Substitution::new(),
         constraints: Vec::new(),
@@ -68,24 +69,29 @@ fn test_constraint_generation_for_simple_generic_function() {
         },
         bindings: HashMap::new(),
     };
-    
+
     // Generate constraints for this generic function call
-    let constraints = engine.generate_generic_function_constraints(
-        &function_info,
-        &inferred_arguments,
-        &context,
-    ).expect("Constraint generation should succeed");
-    
+    let constraints = engine
+        .generate_generic_function_constraints(&function_info, &inferred_arguments, &context)
+        .expect("Constraint generation should succeed");
+
     // Should generate constraints that T = Integer64
-    assert!(!constraints.is_empty(), "Should generate at least one constraint");
-    
+    assert!(
+        !constraints.is_empty(),
+        "Should generate at least one constraint"
+    );
+
     // Check that we have equality constraints
-    let equality_constraints: Vec<_> = constraints.iter()
+    let equality_constraints: Vec<_> = constraints
+        .iter()
         .filter(|c| matches!(c, Constraint::Equality { .. }))
         .collect();
-    
-    assert!(!equality_constraints.is_empty(), "Should have equality constraints");
-    
+
+    assert!(
+        !equality_constraints.is_empty(),
+        "Should have equality constraints"
+    );
+
     // Verify constraint involves T and Integer64
     let has_t_integer_constraint = constraints.iter().any(|constraint| {
         match constraint {
@@ -98,15 +104,18 @@ fn test_constraint_generation_for_simple_generic_function() {
             _ => false
         }
     });
-    
-    assert!(has_t_integer_constraint, "Should have constraint linking T to Integer64");
+
+    assert!(
+        has_t_integer_constraint,
+        "Should have constraint linking T to Integer64"
+    );
 }
 
 #[test]
 fn test_return_type_instantiation_for_generic_function() {
     let engine = create_test_engine();
     let function_info = create_generic_function_info();
-    
+
     // Call with String argument: Wrapper.wrap(value: "hello")
     let string_type = Type::Concrete {
         id: TypeId::new("String"),
@@ -114,14 +123,16 @@ fn test_return_type_instantiation_for_generic_function() {
         span: None,
     };
     let inferred_arguments = vec![string_type.clone()];
-    
+
     // Test return type instantiation
-    let instantiated_return_type = engine.instantiate_generic_return_type(
-        &function_info.return_type,
-        &function_info,
-        &inferred_arguments,
-    ).expect("Return type instantiation should succeed");
-    
+    let instantiated_return_type = engine
+        .instantiate_generic_return_type(
+            &function_info.return_type,
+            &function_info,
+            &inferred_arguments,
+        )
+        .expect("Return type instantiation should succeed");
+
     // Should be Wrapper<String>
     match &instantiated_return_type {
         Type::Concrete { id, args, .. } => {
@@ -141,27 +152,33 @@ fn test_return_type_instantiation_for_generic_function() {
 #[test]
 fn test_multiple_type_parameters() {
     let mut engine = create_test_engine();
-    
+
     // Function with multiple type parameters: def convert<T, U>(from: T, to_type: Type<U>): U
     let function_info = FunctionInfo {
         defining_scope: "Converter".to_string(),
         function_name: "convert".to_string(),
         visibility: FunctionVisibility::Public,
         parameters: vec![
-            ("from".to_string(), Type::Concrete {
-                id: TypeId::new("T"),
-                args: vec![],
-                span: None,
-            }),
-            ("to_type".to_string(), Type::Concrete {
-                id: TypeId::new("Type"),
-                args: vec![Type::Concrete {
-                    id: TypeId::new("U"),
+            (
+                "from".to_string(),
+                Type::Concrete {
+                    id: TypeId::new("T"),
                     args: vec![],
                     span: None,
-                }],
-                span: None,
-            }),
+                },
+            ),
+            (
+                "to_type".to_string(),
+                Type::Concrete {
+                    id: TypeId::new("Type"),
+                    args: vec![Type::Concrete {
+                        id: TypeId::new("U"),
+                        args: vec![],
+                        span: None,
+                    }],
+                    span: None,
+                },
+            ),
         ],
         return_type: Type::Concrete {
             id: TypeId::new("U"),
@@ -173,7 +190,7 @@ fn test_multiple_type_parameters() {
         generic_parameters: vec!["T".to_string(), "U".to_string()],
         is_generic: true,
     };
-    
+
     // Call: Converter.convert(from: 42, to_type: Type<String>)
     let integer_type = Type::Concrete {
         id: TypeId::new("Integer64"),
@@ -190,7 +207,7 @@ fn test_multiple_type_parameters() {
         span: None,
     };
     let inferred_arguments = vec![integer_type, type_string];
-    
+
     let context = InferenceContext {
         substitution: Substitution::new(),
         constraints: Vec::new(),
@@ -201,25 +218,27 @@ fn test_multiple_type_parameters() {
         },
         bindings: HashMap::new(),
     };
-    
+
     // Generate constraints
-    let constraints = engine.generate_generic_function_constraints(
-        &function_info,
-        &inferred_arguments,
-        &context,
-    ).expect("Constraint generation should succeed");
-    
+    let constraints = engine
+        .generate_generic_function_constraints(&function_info, &inferred_arguments, &context)
+        .expect("Constraint generation should succeed");
+
     // Should have constraints for both T and U
-    assert!(!constraints.is_empty(), "Should generate constraints for multiple type parameters");
-    
+    assert!(
+        !constraints.is_empty(),
+        "Should generate constraints for multiple type parameters"
+    );
+
     // Test return type instantiation - should be String
-    let instantiated_return_type = engine.instantiate_generic_return_type(
-        &function_info.return_type,
-        &function_info,
-        &inferred_arguments,
-    ).expect("Return type instantiation should succeed");
-    
-    
+    let instantiated_return_type = engine
+        .instantiate_generic_return_type(
+            &function_info.return_type,
+            &function_info,
+            &inferred_arguments,
+        )
+        .expect("Return type instantiation should succeed");
+
     match &instantiated_return_type {
         Type::Concrete { id, .. } => {
             assert_eq!(id.name(), "String");
@@ -231,14 +250,15 @@ fn test_multiple_type_parameters() {
 #[test]
 fn test_nested_generic_types() {
     let engine = create_test_engine();
-    
+
     // Function: def unwrap<T>(wrapper: Wrapper<Option<T>>): T
     let function_info = FunctionInfo {
         defining_scope: "Unwrapper".to_string(),
         function_name: "unwrap".to_string(),
         visibility: FunctionVisibility::Public,
-        parameters: vec![
-            ("wrapper".to_string(), Type::Concrete {
+        parameters: vec![(
+            "wrapper".to_string(),
+            Type::Concrete {
                 id: TypeId::new("Wrapper"),
                 args: vec![Type::Concrete {
                     id: TypeId::new("Option"),
@@ -250,8 +270,8 @@ fn test_nested_generic_types() {
                     span: None,
                 }],
                 span: None,
-            })
-        ],
+            },
+        )],
         return_type: Type::Concrete {
             id: TypeId::new("T"),
             args: vec![],
@@ -262,7 +282,7 @@ fn test_nested_generic_types() {
         generic_parameters: vec!["T".to_string()],
         is_generic: true,
     };
-    
+
     // Call: Unwrapper.unwrap(wrapper: Wrapper<Option<Boolean>>)
     let wrapper_option_boolean = Type::Concrete {
         id: TypeId::new("Wrapper"),
@@ -278,14 +298,16 @@ fn test_nested_generic_types() {
         span: None,
     };
     let inferred_arguments = vec![wrapper_option_boolean];
-    
+
     // Test return type instantiation - should be Boolean
-    let instantiated_return_type = engine.instantiate_generic_return_type(
-        &function_info.return_type,
-        &function_info,
-        &inferred_arguments,
-    ).expect("Return type instantiation should succeed");
-    
+    let instantiated_return_type = engine
+        .instantiate_generic_return_type(
+            &function_info.return_type,
+            &function_info,
+            &inferred_arguments,
+        )
+        .expect("Return type instantiation should succeed");
+
     match &instantiated_return_type {
         Type::Concrete { id, .. } => {
             assert_eq!(id.name(), "Boolean");
@@ -297,23 +319,29 @@ fn test_nested_generic_types() {
 #[test]
 fn test_constraint_generation_with_non_generic_function() {
     let _engine = create_test_engine();
-    
+
     // Non-generic function: def add(a: Integer64, b: Integer64): Integer64
     let function_info = FunctionInfo {
         defining_scope: "Math".to_string(),
         function_name: "add".to_string(),
         visibility: FunctionVisibility::Public,
         parameters: vec![
-            ("a".to_string(), Type::Concrete {
-                id: TypeId::new("Integer64"),
-                args: vec![],
-                span: None,
-            }),
-            ("b".to_string(), Type::Concrete {
-                id: TypeId::new("Integer64"),
-                args: vec![],
-                span: None,
-            }),
+            (
+                "a".to_string(),
+                Type::Concrete {
+                    id: TypeId::new("Integer64"),
+                    args: vec![],
+                    span: None,
+                },
+            ),
+            (
+                "b".to_string(),
+                Type::Concrete {
+                    id: TypeId::new("Integer64"),
+                    args: vec![],
+                    span: None,
+                },
+            ),
         ],
         return_type: Type::Concrete {
             id: TypeId::new("Integer64"),
@@ -325,14 +353,14 @@ fn test_constraint_generation_with_non_generic_function() {
         generic_parameters: vec![],
         is_generic: false,
     };
-    
+
     let integer_type = Type::Concrete {
         id: TypeId::new("Integer64"),
         args: vec![],
         span: None,
     };
     let _inferred_arguments = vec![integer_type.clone(), integer_type];
-    
+
     let _context = InferenceContext {
         substitution: Substitution::new(),
         constraints: Vec::new(),
@@ -343,28 +371,31 @@ fn test_constraint_generation_with_non_generic_function() {
         },
         bindings: HashMap::new(),
     };
-    
+
     // Should not call constraint generation for non-generic functions
     // (This would be handled by the non-generic path in infer_resolved_function_call)
     // This test is mainly to ensure our is_generic flag handling works correctly
-    assert!(!function_info.is_generic, "Function should not be marked as generic");
+    assert!(
+        !function_info.is_generic,
+        "Function should not be marked as generic"
+    );
 }
 
 #[test]
 fn test_type_parameter_name_detection() {
     use crate::inference::is_type_parameter_name;
-    
+
     // Test single uppercase letters (common type parameters)
     assert!(is_type_parameter_name("T"));
     assert!(is_type_parameter_name("U"));
     assert!(is_type_parameter_name("K"));
     assert!(is_type_parameter_name("V"));
-    
+
     // Test T-prefixed names
     assert!(is_type_parameter_name("T1"));
     assert!(is_type_parameter_name("TKey"));
     assert!(is_type_parameter_name("TValue"));
-    
+
     // Test common type parameter names
     assert!(is_type_parameter_name("Key"));
     assert!(is_type_parameter_name("Value"));
@@ -372,7 +403,7 @@ fn test_type_parameter_name_detection() {
     assert!(is_type_parameter_name("Output"));
     assert!(is_type_parameter_name("Result"));
     assert!(is_type_parameter_name("Error"));
-    
+
     // Test concrete type names (should not be type parameters)
     assert!(!is_type_parameter_name("String"));
     assert!(!is_type_parameter_name("Integer64"));

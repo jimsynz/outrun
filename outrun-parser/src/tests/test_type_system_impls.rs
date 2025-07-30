@@ -52,7 +52,7 @@ fn test_impl_with_generics() {
             // Verify the generic args contain T
             let protocol_args = impl_block.protocol_spec.generic_args.as_ref().unwrap();
             assert_eq!(protocol_args.args.len(), 1);
-            
+
             let type_args = impl_block.type_spec.generic_args.as_ref().unwrap();
             assert_eq!(type_args.args.len(), 1);
         }
@@ -107,7 +107,7 @@ fn test_impl_with_complex_constraints() {
             // Verify T and U are used in the type specs
             let protocol_args = impl_block.protocol_spec.generic_args.as_ref().unwrap();
             assert_eq!(protocol_args.args.len(), 2);
-            
+
             let type_args = impl_block.type_spec.generic_args.as_ref().unwrap();
             assert_eq!(type_args.args.len(), 2);
 
