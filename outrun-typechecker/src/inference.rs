@@ -3862,13 +3862,46 @@ impl TypeInferenceEngine {
                     .collect::<Vec<_>>()
                     .join(".");
                 
-                // For now, return the concrete struct type
-                // TODO: Handle generic struct types and field validation
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete(&struct_name),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
+                // CRITICAL FIX: Use expected type for bidirectional inference of generic parameters
+                if let Some(expected_type) = &context.expected_type {
+                    // Check if the expected type matches this struct name
+                    let expected_name = match expected_type {
+                        Type::Concrete { id, .. } => Some(id.name()),
+                        Type::Protocol { id, .. } => Some(id.name()),
+                        _ => None,
+                    };
+                    
+                    if let Some(expected_name) = expected_name {
+                        if expected_name == struct_name {
+                            println!("🚨🚨🚨 STRUCT LITERAL BIDIRECTIONAL INFERENCE 🚨🚨🚨");
+                            println!("  Struct name: {}", struct_name);
+                            println!("  Expected type: {:?}", expected_type);
+                            println!("  Using expected type with generic parameters!");
+                            
+                            // Use the expected type which includes generic parameters
+                            return Ok(InferenceResult {
+                                inferred_type: expected_type.clone(),
+                                constraints: Vec::new(),
+                                substitution: Substitution::new(),
+                            });
+                        }
+                    }
+                    
+                    // Expected type doesn't match, fall back to concrete type
+                    println!("🔍 Struct literal: expected type {} doesn't match struct {}", expected_type, struct_name);
+                    Ok(InferenceResult {
+                        inferred_type: Type::concrete(&struct_name),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                } else {
+                    // No expected type, use concrete struct type
+                    Ok(InferenceResult {
+                        inferred_type: Type::concrete(&struct_name),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                }
             },
             
             ExpressionKind::FieldAccess(field_access) => {
@@ -4463,11 +4496,15 @@ impl TypeInferenceEngine {
     ) -> Result<(), TypecheckError> {
         eprintln!("🔍 FUNCTION TYPECHECK: Starting {}.{}", scope, function.name.name);
         eprintln!("  📋 Current self context: {:?}", self.current_self_context);
-        // Create a new inference context for this function
+        
+        // Convert the declared return type for bidirectional inference
+        let declared_return_type = self.convert_type_annotation(&function.return_type)?;
+        
+        // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
-            expected_type: None,
+            expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
                 protocol_id: ProtocolId::new(scope),
                 protocol_args: vec![],
@@ -4488,8 +4525,7 @@ impl TypeInferenceEngine {
         // Type check the function body using RefCell for mutability
         let body_type = self.typecheck_block_readonly(&function.body, &mut function_context)?;
 
-        // Convert the declared return type
-        let declared_return_type = self.convert_type_annotation(&function.return_type)?;
+        // declared_return_type was already converted above for bidirectional inference
 
         // CRITICAL DEBUG: Log detailed type information for any ceil function
         if function.name.name == "ceil" {
@@ -4539,11 +4575,14 @@ impl TypeInferenceEngine {
         scope: &str,
         static_def: &StaticFunctionDefinition,
     ) -> Result<(), TypecheckError> {
-        // Create a new inference context for this function
+        // Convert the declared return type for bidirectional inference
+        let declared_return_type = self.convert_type_annotation(&static_def.return_type)?;
+        
+        // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
-            expected_type: None,
+            expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
                 protocol_id: ProtocolId::new(scope),
                 protocol_args: vec![],
@@ -4564,8 +4603,7 @@ impl TypeInferenceEngine {
         // Type check the function body
         let body_type = self.typecheck_block_readonly(&static_def.body, &mut function_context)?;
 
-        // Convert the declared return type
-        let declared_return_type = self.convert_type_annotation(&static_def.return_type)?;
+        // declared_return_type was already converted above for bidirectional inference
 
         // Verify that the body type matches the declared return type
         // WORKAROUND: Use never type compatibility check
@@ -5178,6 +5216,7 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
+        println!("🔥🔥🔥 RESOLVE_SIMPLE_FUNCTION_CLAUSES: {} 🔥🔥🔥", function_name);
         // Use existing dispatcher logic but convert to universal result
         let function_context = self.create_function_context_from_inference_context(context);
         let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None)
@@ -5187,7 +5226,17 @@ impl TypeInferenceEngine {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 // Single resolved function - create single clause
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                let return_type = resolved_func.function_info.return_type.clone();
+                
+                // CRITICAL FIX: Apply generic parameter substitution for local function calls
+                // This resolves the issue where local functions returning Option<T> don't get
+                // their generic parameters substituted (e.g., Option<T> -> Option<Integer>)
+                let return_type = self.substitute_local_function_generics(
+                    &resolved_func.function_info.return_type,
+                    function_name,
+                    &resolved_func.function_info.parameters,
+                    function_call,
+                    context
+                )?;
                 
                 // Register this clause in the universal dispatch registry
                 self.register_function_clause(clause_id, &resolved_func);
@@ -5237,7 +5286,16 @@ impl TypeInferenceEngine {
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
         let qualified_start = std::time::Instant::now();
-        println!("              🔧 resolve_qualified_function_clauses_with_precomputed_args: {}.{} ({} arg types)", module_name, function_name, precomputed_arg_types.len());
+        println!("🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥", module_name, function_name, precomputed_arg_types.len());
+        
+        // Special debugging for Option.some? calls
+        if module_name == "Option" && function_name == "some?" {
+            println!("              🚨 CRITICAL: Option.some? call detected!");
+            println!("                Precomputed arg types: {:?}", precomputed_arg_types);
+            for (i, arg_type) in precomputed_arg_types.iter().enumerate() {
+                println!("                  Arg {}: {:?}", i, arg_type);
+            }
+        }
         
         // CRITICAL DEBUG: Log every Option.unwrap call
         if module_name == "Option" && function_name == "unwrap" {
@@ -5933,6 +5991,110 @@ impl TypeInferenceEngine {
                 Ok(target_type.clone())
             }
         }
+    }
+
+    /// Substitute generic parameters in local function return types
+    /// This fixes the issue where local functions returning generic types (like Option<T>)
+    /// don't get their generic parameters properly resolved based on argument types
+    #[allow(clippy::result_large_err)]
+    fn substitute_local_function_generics(
+        &mut self,
+        return_type: &Type,
+        function_name: &str,
+        function_parameters: &[(String, Type)],
+        function_call: &outrun_parser::FunctionCall,
+        context: &mut InferenceContext,
+    ) -> Result<Type, TypecheckError> {
+        println!("🚨🚨🚨 LOCAL FUNCTION GENERIC SUBSTITUTION for: {} 🚨🚨🚨", function_name);
+        println!("                Original return type: {:?}", return_type);
+        println!("                Function parameters: {:?}", function_parameters);
+        
+        // Get the argument types by inferring them from the function call
+        let mut argument_types = Vec::new();
+        for argument in &function_call.arguments {
+            // Infer the type of each argument based on the argument variant
+            let expression = match argument {
+                outrun_parser::Argument::Named { expression, .. } => expression,
+                outrun_parser::Argument::Spread { expression, .. } => expression,
+            };
+            
+            // Create a mutable copy for inference
+            let mut expr_copy = expression.clone();
+            let arg_result = self.infer_expression(&mut expr_copy, context)?;
+            argument_types.push(arg_result.inferred_type);
+        }
+        
+        println!("                Inferred argument types: {:?}", argument_types);
+        
+        // Build a map of generic parameter substitutions
+        let mut substitutions = std::collections::HashMap::new();
+        
+        // Match parameter types with argument types to find generic substitutions
+        for (i, (param_name, param_type)) in function_parameters.iter().enumerate() {
+            if let Some(arg_type) = argument_types.get(i) {
+                println!("                  Matching param {}: {} (type: {:?}) with arg type: {:?}", 
+                         i, param_name, param_type, arg_type);
+                
+                // Find generic parameter substitutions by matching param_type with arg_type
+                self.extract_generic_substitutions(param_type, arg_type, &mut substitutions)?;
+            }
+        }
+        
+        println!("                Found substitutions: {:?}", substitutions);
+        
+        // Apply all substitutions to the return type
+        let mut result_type = return_type.clone();
+        for (generic_param, concrete_type) in substitutions {
+            result_type = self.substitute_generic_parameter_in_type(&result_type, &generic_param, &concrete_type)?;
+        }
+        
+        println!("                ✅ Final substituted return type: {:?}", result_type);
+        Ok(result_type)
+    }
+    
+    /// Extract generic parameter substitutions by matching a parameter type with an argument type
+    /// For example, matching Option<T> with Option<Integer> would extract T -> Integer
+    #[allow(clippy::result_large_err)]
+    fn extract_generic_substitutions(
+        &self,
+        param_type: &Type,
+        arg_type: &Type,
+        substitutions: &mut std::collections::HashMap<String, Type>,
+    ) -> Result<(), TypecheckError> {
+        match (param_type, arg_type) {
+            // Match Protocol<T> with Protocol<ConcreteType>
+            (Type::Protocol { id: param_id, args: param_args, .. }, 
+             Type::Protocol { id: arg_id, args: arg_args, .. }) => {
+                if param_id.name() == arg_id.name() && param_args.len() == arg_args.len() {
+                    // Recursively match generic arguments
+                    for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
+                        self.extract_generic_substitutions(param_arg, arg_arg, substitutions)?;
+                    }
+                }
+            }
+            
+            // Match Concrete<T> with Concrete<ConcreteType>
+            (Type::Concrete { id: param_id, args: param_args, .. }, 
+             Type::Concrete { id: arg_id, args: arg_args, .. }) => {
+                if param_id.name() == arg_id.name() && param_args.len() == arg_args.len() {
+                    // Recursively match generic arguments
+                    for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
+                        self.extract_generic_substitutions(param_arg, arg_arg, substitutions)?;
+                    }
+                }
+            }
+            
+            // Match generic parameter T with concrete type
+            (Type::Protocol { id: param_id, args, .. }, concrete_type) if args.is_empty() => {
+                // This is a generic parameter (like T) - record the substitution
+                substitutions.insert(param_id.name().to_string(), concrete_type.clone());
+            }
+            
+            // Other cases don't contribute to generic substitutions
+            _ => {}
+        }
+        
+        Ok(())
     }
 
     /// Extract Self type from argument names (keyword arguments)

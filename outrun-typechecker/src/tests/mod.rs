@@ -31,6 +31,7 @@ pub mod test_function_inference_demo;
 pub mod test_function_inference_simple;
 pub mod test_function_integration_real;
 pub mod test_generic_function_constraints;
+pub mod test_generic_parameter_debug;
 pub mod test_generic_function_dispatch;
 pub mod test_generic_parameter_resolution;
 pub mod test_implementation_tracking;
