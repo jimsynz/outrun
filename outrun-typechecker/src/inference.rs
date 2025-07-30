@@ -130,6 +130,23 @@ pub struct InferenceTask {
     pub completed_dependencies: Vec<TaskId>,
 }
 
+/// Work item for stack-based continuation system
+#[derive(Debug)]
+enum WorkItem {
+    /// Evaluate an expression by first processing its dependencies
+    EvaluateExpression {
+        expression: *mut Expression,
+        context: InferenceContext,
+    },
+    
+    /// Continue processing an expression using results from its dependencies
+    ContinueWithResults {
+        expression: *mut Expression,
+        context: InferenceContext,
+        dependency_count: usize,
+    },
+}
+
 
 /// Context for type inference operations
 #[derive(Debug, Clone)]
@@ -3209,54 +3226,784 @@ impl TypeInferenceEngine {
         })
     }
 
-    /// Implementation of inference logic (separated for proper cleanup handling)
+    /// Implementation of inference logic using stack-based continuations
     fn infer_expression_impl(
         &mut self,
         expression: &mut Expression,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        // Reset state for new inference operation (only at top level)
-        self.reset_iterative_state();
+        use outrun_parser::ExpressionKind;
         
-        // Phase 1: Collect all tasks through non-recursive tree traversal
-        let root_task_id = self.collect_inference_tasks(expression, context.clone())?;
+        let mut work_stack: Vec<WorkItem> = vec![WorkItem::EvaluateExpression {
+            expression: expression as *mut Expression,
+            context: context.clone(),
+        }];
+        let mut result_stack: Vec<InferenceResult> = Vec::new();
         
-        // Phase 2: Mark initial ready tasks
-        self.mark_ready_tasks();
-        
-        // Phase 3: Process tasks iteratively
-        println!("🔍 Starting task processing with {} ready tasks", self.ready_task_queue.len());
-        let mut processed_count = 0;
-        let processing_start = std::time::Instant::now();
-        while let Some(task_id) = self.ready_task_queue.pop_front() {
-            processed_count += 1;
-            let task_start = std::time::Instant::now();
-            let result = self.process_single_task(task_id)?;
-            let task_duration = task_start.elapsed();
-            
-            if task_duration.as_millis() > 100 {
-                println!("🐌 Slow task {} took {:.2?}", processed_count, task_duration);
-            }
-            
-            if processed_count % 10 == 0 {
-                let avg_time = processing_start.elapsed().as_millis() / processed_count as u128;
-                println!("🔍 Processed {} tasks (avg {:.1}ms/task), {} remaining", 
-                    processed_count, avg_time, self.ready_task_queue.len());
-            }
-            
-            self.complete_task(task_id, result);
-        }
-        println!("🔍 Task processing complete: {} tasks in {:.2?}", processed_count, processing_start.elapsed());
-        
-        // Phase 4: Return result for root task
-        self.task_results.get(&root_task_id)
-            .cloned()
-            .ok_or_else(|| TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec!["Root task was not completed".to_string()],
+        while let Some(work_item) = work_stack.pop() {
+            match work_item {
+                WorkItem::EvaluateExpression { expression, context } => {
+                    let expr_ref = unsafe { &mut *expression };
+                    
+                    match &mut expr_ref.kind {
+                        // Leaf expressions - no dependencies, process immediately
+                        ExpressionKind::Boolean(_) | ExpressionKind::Integer(_) | 
+                        ExpressionKind::Float(_) | ExpressionKind::String(_) |
+                        ExpressionKind::Atom(_) | ExpressionKind::Sigil(_) |
+                        ExpressionKind::Identifier(_) | ExpressionKind::TypeIdentifier(_) |
+                        ExpressionKind::QualifiedIdentifier(_) | ExpressionKind::FunctionCapture(_) => {
+                            let result = self.infer_leaf_expression(expr_ref, &context)?;
+                            result_stack.push(result);
+                        },
+                        
+                        // Composite expressions - push continuation then dependencies
+                        ExpressionKind::FunctionCall(func_call) => {
+                            let arg_count = func_call.arguments.len();
+                            
+                            // Push continuation first (processed after dependencies)
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: arg_count,
+                            });
+                            
+                            // Push argument evaluations in reverse order
+                            for arg in func_call.arguments.iter_mut().rev() {
+                                match arg {
+                                    outrun_parser::Argument::Named { expression: arg_expr, .. } => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: arg_expr as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::Argument::Spread { expression: arg_expr, .. } => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: arg_expr as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                }
+                            }
+                        },
+                        
+                        ExpressionKind::List(list_literal) => {
+                            let element_count = list_literal.elements.len();
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: element_count,
+                            });
+                            
+                            // Push element evaluations in reverse order
+                            for element in list_literal.elements.iter_mut().rev() {
+                                match element {
+                                    outrun_parser::ListElement::Expression(expr) => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: expr.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::ListElement::Spread(identifier) => {
+                                        // Create a temporary identifier expression for the spread
+                                        let identifier_expr = Expression {
+                                            kind: outrun_parser::ExpressionKind::Identifier(identifier.clone()),
+                                            span: identifier.span,
+                                            type_info: None,
+                                        };
+                                        // For now, skip spread elements - they need special handling
+                                        // TODO: Implement proper spread element type inference
+                                    },
+                                }
+                            }
+                        },
+                        
+                        ExpressionKind::Tuple(tuple_literal) => {
+                            let element_count = tuple_literal.elements.len();
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: element_count,
+                            });
+                            
+                            // Push element evaluations in reverse order
+                            for element in tuple_literal.elements.iter_mut().rev() {
+                                work_stack.push(WorkItem::EvaluateExpression {
+                                    expression: element as *mut Expression,
+                                    context: context.clone(),
+                                });
+                            }
+                        },
+                        
+                        ExpressionKind::Map(map_literal) => {
+                            let mut dep_count = 0;
+                            for entry in &map_literal.entries {
+                                match entry {
+                                    outrun_parser::MapEntry::Assignment { .. } => dep_count += 2, // key + value
+                                    outrun_parser::MapEntry::Shorthand { .. } => dep_count += 1, // value only (key is identifier)
+                                    outrun_parser::MapEntry::Spread(_) => dep_count += 0, // skip spreads for now
+                                }
+                            }
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: dep_count,
+                            });
+                            
+                            // Push entry evaluations in reverse order
+                            for entry in map_literal.entries.iter_mut().rev() {
+                                match entry {
+                                    outrun_parser::MapEntry::Assignment { key, value } => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: value.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: key.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::MapEntry::Shorthand { value, .. } => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: value.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::MapEntry::Spread(_) => {
+                                        // Skip spread elements for now
+                                        // TODO: Implement proper spread element type inference
+                                    },
+                                }
+                            }
+                        },
+                        
+                        ExpressionKind::Struct(struct_literal) => {
+                            // Count only fields that have expressions to evaluate
+                            let mut field_count = 0;
+                            for field in &struct_literal.fields {
+                                match field {
+                                    outrun_parser::StructLiteralField::Assignment { .. } => field_count += 1,
+                                    outrun_parser::StructLiteralField::Shorthand(_) => {}, // No expression to evaluate
+                                    outrun_parser::StructLiteralField::Spread(_) => {}, // Skip spreads for now
+                                }
+                            }
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: field_count,
+                            });
+                            
+                            // Push field value evaluations in reverse order
+                            for field in struct_literal.fields.iter_mut().rev() {
+                                match field {
+                                    outrun_parser::StructLiteralField::Assignment { value, .. } => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: value.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::StructLiteralField::Shorthand(_) => {
+                                        // Shorthand fields don't have expressions to evaluate
+                                        // The identifier itself is the value
+                                    },
+                                    outrun_parser::StructLiteralField::Spread(_) => {
+                                        // Skip spread elements for now
+                                        // TODO: Implement proper spread element type inference
+                                    },
+                                }
+                            }
+                        },
+                        
+                        ExpressionKind::BinaryOp(_) => {
+                            unreachable!("Binary operations should be desugared before type checking");
+                        },
+                        
+                        ExpressionKind::UnaryOp(_) => {
+                            unreachable!("Unary operations should be desugared before type checking");
+                        },
+                        
+                        ExpressionKind::FieldAccess(field_access) => {
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: 1, // object
+                            });
+                            
+                            work_stack.push(WorkItem::EvaluateExpression {
+                                expression: field_access.object.as_mut() as *mut Expression,
+                                context: context.clone(),
+                            });
+                        },
+                        
+                        ExpressionKind::Parenthesized(inner_expr) => {
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: 1, // inner expression
+                            });
+                            
+                            work_stack.push(WorkItem::EvaluateExpression {
+                                expression: inner_expr.as_mut() as *mut Expression,
+                                context: context.clone(),
+                            });
+                        },
+                        
+                        ExpressionKind::IfExpression(if_expr) => {
+                            let mut dep_count = 2; // condition + then
+                            if if_expr.else_block.is_some() {
+                                dep_count = 3; // condition + then + else
+                            }
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: dep_count,
+                            });
+                            
+                            // Push in reverse order: else, then, condition
+                            if let Some(else_block) = &mut if_expr.else_block {
+                                // For now, treat blocks as single expressions (simplified)
+                                // TODO: Handle full block processing
+                                if let Some(last_stmt) = else_block.statements.last_mut() {
+                                    if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: expr.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                            
+                            // Handle then block
+                            if let Some(last_stmt) = if_expr.then_block.statements.last_mut() {
+                                if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                    work_stack.push(WorkItem::EvaluateExpression {
+                                        expression: expr.as_mut() as *mut Expression,
+                                        context: context.clone(),
+                                    });
+                                }
+                            }
+                            
+                            work_stack.push(WorkItem::EvaluateExpression {
+                                expression: if_expr.condition.as_mut() as *mut Expression,
+                                context: context.clone(),
+                            });
+                        },
+                        
+                        ExpressionKind::CaseExpression(case_expr) => {
+                            // case_expr has: expression (scrutinee) + clauses
+                            let clause_count = case_expr.clauses.len();
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: 1 + clause_count, // scrutinee + clauses
+                            });
+                            
+                            // Push clause evaluations in reverse order
+                            for clause in case_expr.clauses.iter_mut().rev() {
+                                // For now, just evaluate the clause result
+                                // TODO: Handle pattern matching and guards properly
+                                match &mut clause.result {
+                                    outrun_parser::CaseResult::Expression(expr) => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: expr.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::CaseResult::Block(block) => {
+                                        // For now, treat blocks as single expressions (simplified)
+                                        if let Some(last_stmt) = block.statements.last_mut() {
+                                            if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                                work_stack.push(WorkItem::EvaluateExpression {
+                                                    expression: expr.as_mut() as *mut Expression,
+                                                    context: context.clone(),
+                                                });
+                                            }
+                                        }
+                                    },
+                                }
+                            }
+                            
+                            // Push scrutinee evaluation
+                            work_stack.push(WorkItem::EvaluateExpression {
+                                expression: case_expr.expression.as_mut() as *mut Expression,
+                                context: context.clone(),
+                            });
+                        },
+                        
+                        ExpressionKind::AnonymousFunction(anon_fn) => {
+                            // Anonymous functions have clauses with bodies
+                            let clause_count = anon_fn.clauses.len();
+                            
+                            work_stack.push(WorkItem::ContinueWithResults {
+                                expression,
+                                context: context.clone(),
+                                dependency_count: clause_count,
+                            });
+                            
+                            // Push clause body evaluations in reverse order
+                            for clause in anon_fn.clauses.iter_mut().rev() {
+                                match &mut clause.body {
+                                    outrun_parser::AnonymousBody::Expression(expr) => {
+                                        work_stack.push(WorkItem::EvaluateExpression {
+                                            expression: expr.as_mut() as *mut Expression,
+                                            context: context.clone(),
+                                        });
+                                    },
+                                    outrun_parser::AnonymousBody::Block(block) => {
+                                        // For now, treat blocks as single expressions (simplified)
+                                        if let Some(last_stmt) = block.statements.last_mut() {
+                                            if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                                work_stack.push(WorkItem::EvaluateExpression {
+                                                    expression: expr.as_mut() as *mut Expression,
+                                                    context: context.clone(),
+                                                });
+                                            }
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                        
+                        ExpressionKind::MacroInjection(_) => {
+                            // Macro injections should be expanded before type checking
+                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expr_ref.span)),
+                                suggestions: vec!["Macro injections should be expanded before type checking".to_string()],
+                            }));
+                        },
+                    }
+                },
+                
+                WorkItem::ContinueWithResults { expression, context, dependency_count } => {
+                    // Collect dependency results from result_stack
+                    let mut dependency_results = Vec::new();
+                    for _ in 0..dependency_count {
+                        if let Some(result) = result_stack.pop() {
+                            dependency_results.push(result);
+                        } else {
+                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                span: to_source_span(None),
+                                suggestions: vec!["Missing dependency result".to_string()],
+                            }));
+                        }
+                    }
+                    dependency_results.reverse(); // Restore correct order
+                    
+                    // Process expression with dependency results
+                    let expr_ref = unsafe { &mut *expression };
+                    let result = self.infer_expression_with_dependencies(expr_ref, &context, &dependency_results)?;
+                    result_stack.push(result);
                 }
-            ))
+            }
+        }
+        
+        // Return the final result
+        result_stack.pop().ok_or_else(|| TypecheckError::InferenceError(
+            InferenceError::AmbiguousType {
+                span: to_source_span(Some(expression.span)),
+                suggestions: vec!["No result produced".to_string()],
+            }
+        ))
+    }
+
+    /// Process leaf expressions that have no dependencies
+    fn infer_leaf_expression(
+        &mut self,
+        expression: &mut Expression,
+        context: &InferenceContext,
+    ) -> Result<InferenceResult, TypecheckError> {
+        use outrun_parser::ExpressionKind;
+        
+        match &expression.kind {
+            ExpressionKind::Boolean(_) => {
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Boolean"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::Integer(_) => {
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Integer64"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::Float(_) => {
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Float64"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::String(_) => {
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("String"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::Atom(_) => {
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Atom"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::Sigil(sigil_literal) => {
+                // Sigil literals need special handling - they're processed by sigil protocols
+                // For now, return a generic type - this should be enhanced later
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("String"), // Simplified - sigils often produce strings
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::Identifier(identifier) => {
+                // Look up identifier in context bindings or symbol table
+                if let Some(var_type) = context.bindings.get(&identifier.name) {
+                    Ok(InferenceResult {
+                        inferred_type: var_type.clone(),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                } else if let Some(var_type) = self.symbol_table.get(&identifier.name) {
+                    Ok(InferenceResult {
+                        inferred_type: var_type.clone(),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                } else {
+                    // Handle Self type
+                    if identifier.name == "Self" {
+                        let self_type = Type::SelfType {
+                            binding_context: context.self_binding.clone(),
+                            span: Some(expression.span),
+                        };
+                        
+                        // Try to resolve Self to concrete type
+                        if let Some(resolved_self) = self_type.resolve_self() {
+                            Ok(InferenceResult {
+                                inferred_type: resolved_self,
+                                constraints: Vec::new(),
+                                substitution: Substitution::new(),
+                            })
+                        } else {
+                            // Return unresolved Self type (will be resolved later)
+                            Ok(InferenceResult {
+                                inferred_type: self_type,
+                                constraints: Vec::new(),
+                                substitution: Substitution::new(),
+                            })
+                        }
+                    } else {
+                        Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![format!("Unknown identifier: {}", identifier.name)],
+                        }))
+                    }
+                }
+            },
+            ExpressionKind::TypeIdentifier(type_id) => {
+                // Type identifiers represent types themselves
+                // For now, treat them as concrete types
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete(&type_id.name),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            ExpressionKind::QualifiedIdentifier(qualified_id) => {
+                // Use existing qualified identifier inference
+                let mut mutable_context = context.clone();
+                self.infer_qualified_identifier(qualified_id, &mut mutable_context)
+            },
+            ExpressionKind::FunctionCapture(_) => {
+                // Function captures create function types
+                // For now, return a generic function type - this needs proper implementation
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Function"), // Simplified
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            _ => {
+                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec!["Expression type not supported as leaf".to_string()],
+                }))
+            }
+        }
+    }
+
+    /// Process composite expressions using results from their dependencies
+    fn infer_expression_with_dependencies(
+        &mut self,
+        expression: &mut Expression,
+        context: &InferenceContext,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        use outrun_parser::ExpressionKind;
+        
+        match &mut expression.kind {
+            ExpressionKind::FunctionCall(func_call) => {
+                // Convert dependency results to argument types
+                let arg_types: Vec<Option<Type>> = dependency_results
+                    .iter()
+                    .map(|result| Some(result.inferred_type.clone()))
+                    .collect();
+                
+                // Use existing function call inference with precomputed argument types
+                let mut mutable_context = context.clone();
+                self.infer_function_call_with_precomputed_args(func_call, &mut mutable_context, &arg_types)
+            },
+            
+            ExpressionKind::List(list_literal) => {
+                // All elements have been processed, infer list type from element types
+                if dependency_results.is_empty() {
+                    // Empty list - use generic List<T> with fresh type variable
+                    let element_type = Type::variable(self.fresh_type_var(), Level(0));
+                    Ok(InferenceResult {
+                        inferred_type: Type::generic_concrete("List", vec![element_type]),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                } else {
+                    // Non-empty list - all elements should have the same type
+                    let first_element_type = &dependency_results[0].inferred_type;
+                    
+                    // Check that all elements have compatible types
+                    for (i, result) in dependency_results.iter().enumerate().skip(1) {
+                        if !self.types_are_compatible(first_element_type, &result.inferred_type) {
+                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec![format!("List element {} has type {}, but expected {}", 
+                                    i, result.inferred_type, first_element_type)],
+                            }));
+                        }
+                    }
+                    
+                    Ok(InferenceResult {
+                        inferred_type: Type::generic_concrete("List", vec![first_element_type.clone()]),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                }
+            },
+            
+            ExpressionKind::Tuple(tuple_literal) => {
+                // Tuple type is the product of all element types
+                let element_types: Vec<Type> = dependency_results
+                    .iter()
+                    .map(|result| result.inferred_type.clone())
+                    .collect();
+                
+                Ok(InferenceResult {
+                    inferred_type: Type::generic_concrete("Tuple", element_types),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            
+            ExpressionKind::Map(map_literal) => {
+                // Map type is Map<K, V> where K and V are inferred from entries
+                if dependency_results.is_empty() {
+                    // Empty map - use generic Map<K, V> with fresh type variables
+                    let key_type = Type::variable(self.fresh_type_var(), Level(0));
+                    let value_type = Type::variable(self.fresh_type_var(), Level(0));
+                    Ok(InferenceResult {
+                        inferred_type: Type::generic_concrete("Map", vec![key_type, value_type]),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                } else {
+                    // Non-empty map - infer key and value types from first entry
+                    // dependency_results are in pairs: [key1, value1, key2, value2, ...]
+                    let first_key_type = &dependency_results[0].inferred_type;
+                    let first_value_type = &dependency_results[1].inferred_type;
+                    
+                    // Check that all keys and values have compatible types
+                    for chunk in dependency_results.chunks(2).skip(1) {
+                        if chunk.len() == 2 {
+                            if !self.types_are_compatible(first_key_type, &chunk[0].inferred_type) {
+                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!("Map key has type {}, but expected {}", 
+                                        chunk[0].inferred_type, first_key_type)],
+                                }));
+                            }
+                            if !self.types_are_compatible(first_value_type, &chunk[1].inferred_type) {
+                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!("Map value has type {}, but expected {}", 
+                                        chunk[1].inferred_type, first_value_type)],
+                                }));
+                            }
+                        }
+                    }
+                    
+                    Ok(InferenceResult {
+                        inferred_type: Type::generic_concrete("Map", vec![first_key_type.clone(), first_value_type.clone()]),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    })
+                }
+            },
+            
+            ExpressionKind::Struct(struct_literal) => {
+                // Struct type is determined by the struct name and field types
+                let struct_name = struct_literal.type_path.iter()
+                    .map(|segment| segment.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                
+                // For now, return the concrete struct type
+                // TODO: Handle generic struct types and field validation
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete(&struct_name),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            
+            ExpressionKind::FieldAccess(field_access) => {
+                // dependency_results[0] = object
+                let object_type = &dependency_results[0].inferred_type;
+                
+                // Use existing field access inference
+                let mut mutable_context = context.clone();
+                self.infer_field_access_type(object_type, &field_access.field.name, &mut mutable_context)
+            },
+            
+            ExpressionKind::Parenthesized(_) => {
+                // Parenthesized expressions just pass through the inner type
+                // dependency_results[0] = inner expression
+                Ok(InferenceResult {
+                    inferred_type: dependency_results[0].inferred_type.clone(),
+                    constraints: dependency_results[0].constraints.clone(),
+                    substitution: dependency_results[0].substitution.clone(),
+                })
+            },
+            
+            ExpressionKind::IfExpression(if_expr) => {
+                // dependency_results[0] = condition, [1] = then, [2] = else (if present)
+                let condition_type = &dependency_results[0].inferred_type;
+                let then_type = &dependency_results[1].inferred_type;
+                let else_type = if dependency_results.len() > 2 {
+                    Some(&dependency_results[2].inferred_type)
+                } else {
+                    None
+                };
+                
+                // Verify condition is Boolean
+                let boolean_type = Type::concrete("Boolean");
+                if !self.types_are_compatible(condition_type, &boolean_type) {
+                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                        span: to_source_span(Some(if_expr.condition.span)),
+                        suggestions: vec![format!("Expected Boolean, found {}", condition_type)],
+                    }));
+                }
+                
+                // Determine result type
+                let result_type = if let Some(else_type) = else_type {
+                    // Both branches present - they must be compatible
+                    if self.types_are_compatible(then_type, else_type) {
+                        then_type.clone()
+                    } else {
+                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![format!("If branches have incompatible types: {} vs {}", then_type, else_type)],
+                        }));
+                    }
+                } else {
+                    // No else branch - result is Option<then_type>
+                    Type::generic_concrete("Option", vec![then_type.clone()])
+                };
+                
+                Ok(InferenceResult {
+                    inferred_type: result_type,
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            
+            ExpressionKind::CaseExpression(case_expr) => {
+                // dependency_results[0] = scrutinee, [1..] = clause results
+                let scrutinee_type = &dependency_results[0].inferred_type;
+                
+                if dependency_results.len() < 2 {
+                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                        span: to_source_span(Some(expression.span)),
+                        suggestions: vec!["Case expression must have at least one clause".to_string()],
+                    }));
+                }
+                
+                // All clause results should have compatible types
+                let first_clause_type = &dependency_results[1].inferred_type;
+                for (i, result) in dependency_results.iter().enumerate().skip(2) {
+                    if !self.types_are_compatible(first_clause_type, &result.inferred_type) {
+                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![format!("Case clause {} has type {}, but expected {}", 
+                                i - 1, result.inferred_type, first_clause_type)],
+                        }));
+                    }
+                }
+                
+                // TODO: Add pattern matching validation against scrutinee_type
+                
+                Ok(InferenceResult {
+                    inferred_type: first_clause_type.clone(),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            
+            ExpressionKind::AnonymousFunction(anon_fn) => {
+                // Anonymous functions create function types
+                // For now, create a generic function type
+                // TODO: Infer proper parameter and return types from clauses
+                
+                if dependency_results.is_empty() {
+                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                        span: to_source_span(Some(expression.span)),
+                        suggestions: vec!["Anonymous function must have at least one clause".to_string()],
+                    }));
+                }
+                
+                // All clause bodies should have compatible return types
+                let first_return_type = &dependency_results[0].inferred_type;
+                for (i, result) in dependency_results.iter().enumerate().skip(1) {
+                    if !self.types_are_compatible(first_return_type, &result.inferred_type) {
+                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![format!("Function clause {} returns {}, but expected {}", 
+                                i, result.inferred_type, first_return_type)],
+                        }));
+                    }
+                }
+                
+                // Create a simplified function type
+                // TODO: Extract proper parameter types from clause parameters
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Function"), // Simplified
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            },
+            
+            _ => {
+                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                    span: to_source_span(Some(expression.span)),
+                    suggestions: vec!["Expression type not supported with dependencies".to_string()],
+                }))
+            }
+        }
     }
 
     /// Collect all inference tasks through non-recursive tree traversal
