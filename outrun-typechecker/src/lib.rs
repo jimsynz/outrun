@@ -61,7 +61,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 pub use typed_ast::{TypedExpression, TypedExpressionKind, UniversalCallResolution};
 pub use types::{
-    Constraint, ModuleId, ProtocolId, Substitution, Type, TypeId, TypeInfo, TypeVarId,
+    Constraint, ModuleName, Substitution, Type, TypeInfo, TypeVarId,
 };
 pub use unification::Unifier;
 pub use universal_dispatch::{
@@ -117,9 +117,9 @@ pub struct CompilationResult {
     /// Processed programs with type information attached
     pub programs: Vec<outrun_parser::Program>,
     /// Which modules in this result are considered "local" for orphan rule checking
-    pub local_modules: HashSet<ModuleId>,
+    pub local_modules: HashSet<ModuleName>,
     /// All modules defined by this compilation result (for redefinition prevention)
-    pub defined_modules: HashSet<ModuleId>,
+    pub defined_modules: HashSet<ModuleName>,
     /// Universal dispatch registry for clause-based function calls
     pub universal_dispatch: UniversalDispatchRegistry,
     /// Current file being processed (for diagnostic context)
@@ -198,7 +198,7 @@ impl CompilationResult {
                             println!(
                                 "⚠️  package {} redefined module {}",
                                 package.package_name,
-                                module_id.name()
+                                module_id.as_str()
                             );
                         }
                     }
@@ -214,19 +214,19 @@ impl CompilationResult {
     /// Extract modules and their content digests for change detection during hot reloading
     fn extract_package_module_digests(
         programs: &[outrun_parser::Program],
-    ) -> HashMap<ModuleId, u64> {
+    ) -> HashMap<ModuleName, u64> {
         let mut module_digests = HashMap::new();
 
         for program in programs {
             for item in &program.items {
                 let (module_id, content_digest) = match &item.kind {
                     outrun_parser::ItemKind::StructDefinition(struct_def) => {
-                        let module_id = ModuleId::from(&struct_def.name);
+                        let module_id = ModuleName::from(&struct_def.name);
                         let digest = Self::compute_struct_digest(struct_def);
                         (Some(module_id), digest)
                     }
                     outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
-                        let module_id = ModuleId::from(&protocol_def.name);
+                        let module_id = ModuleName::from(&protocol_def.name);
                         let digest = Self::compute_protocol_digest(protocol_def);
                         (Some(module_id), digest)
                     }
@@ -539,17 +539,17 @@ impl CompilationResult {
     /// Collect module information from programs for conflict detection and orphan rule checking
     fn collect_module_info(
         programs: &[outrun_parser::Program],
-    ) -> (HashSet<ModuleId>, HashSet<ModuleId>) {
+    ) -> (HashSet<ModuleName>, HashSet<ModuleName>) {
         let mut defined_modules = HashSet::new();
 
         for program in programs {
             for item in &program.items {
                 let module_id = match &item.kind {
                     outrun_parser::ItemKind::StructDefinition(struct_def) => {
-                        Some(ModuleId::from(&struct_def.name))
+                        Some(ModuleName::from(&struct_def.name))
                     }
                     outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
-                        Some(ModuleId::from(&protocol_def.name))
+                        Some(ModuleName::from(&protocol_def.name))
                     }
                     _ => None,
                 };
@@ -569,13 +569,13 @@ impl CompilationResult {
     /// Check for module conflicts between dependency modules and user modules
     /// Prevents: struct vs struct, protocol vs protocol, struct vs protocol conflicts
     fn check_module_conflicts(
-        dependency_modules: &HashSet<ModuleId>,
-        user_modules: &HashSet<ModuleId>,
+        dependency_modules: &HashSet<ModuleName>,
+        user_modules: &HashSet<ModuleName>,
     ) -> Result<(), CompilerError> {
         for user_module in user_modules {
             if dependency_modules.contains(user_module) {
                 return Err(CompilerError::ModuleRedefinition {
-                    module_name: user_module.name().to_string(),
+                    module_name: user_module.as_str().to_string(),
                     span: None, // We don't have span info at this level
                 });
             }
@@ -603,11 +603,11 @@ impl CompilationResult {
             for item in &program.items {
                 match &item.kind {
                     outrun_parser::ItemKind::StructDefinition(struct_def) => {
-                        let module_name = ModuleId::from(&struct_def.name).name().to_string();
+                        let module_name = ModuleName::from(&struct_def.name).as_str().to_string();
                         dependency_registry.insert(module_name, ModuleType::Struct);
                     }
                     outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
-                        let module_name = ModuleId::from(&protocol_def.name).name().to_string();
+                        let module_name = ModuleName::from(&protocol_def.name).as_str().to_string();
                         dependency_registry.insert(module_name, ModuleType::Protocol);
                     }
                     _ => {}
@@ -620,11 +620,11 @@ impl CompilationResult {
             for item in &program.items {
                 let (user_module_name, user_module_type) = match &item.kind {
                     outrun_parser::ItemKind::StructDefinition(struct_def) => (
-                        ModuleId::from(&struct_def.name).name().to_string(),
+                        ModuleName::from(&struct_def.name).as_str().to_string(),
                         ModuleType::Struct,
                     ),
                     outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => (
-                        ModuleId::from(&protocol_def.name).name().to_string(),
+                        ModuleName::from(&protocol_def.name).as_str().to_string(),
                         ModuleType::Protocol,
                     ),
                     _ => continue,
@@ -996,7 +996,7 @@ protocol Display {
         assert!(
             initial_compilation
                 .defined_modules
-                .contains(&ModuleId::new("User")),
+                .contains(&ModuleName::new("User")),
             "Initial version should define User module"
         );
 
@@ -1020,13 +1020,13 @@ protocol Display {
         assert!(
             updated_compilation
                 .defined_modules
-                .contains(&ModuleId::new("User")),
+                .contains(&ModuleName::new("User")),
             "Updated version should define User module"
         );
         assert!(
             updated_compilation
                 .defined_modules
-                .contains(&ModuleId::new("Profile")),
+                .contains(&ModuleName::new("Profile")),
             "Updated version should define Profile module"
         );
 

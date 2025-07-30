@@ -15,81 +15,65 @@ pub struct TypeVarId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Level(pub u32);
 
-/// Unique identifier for types to enable fast equality checks
+/// Unified module name for all types, protocols, and implementations
+/// In Outrun's unified module system, everything is a module:
+/// - Types: "List", "Http.Client.Connection"
+/// - Protocols: "Display", "BinaryAddition"
+/// - Implementations: "List:Display", "Map:Iterator"
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeId(pub String);
+pub struct ModuleName(String);
 
-impl TypeId {
+impl ModuleName {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
 
-    pub fn name(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Create implementation module name from type and protocol
+    /// e.g., "List" + "Display" -> "List:Display"
+    pub fn implementation(type_name: &str, protocol_name: &str) -> Self {
+        Self(format!("{}:{}", type_name, protocol_name))
+    }
+
+    /// Check if this is an implementation module name (contains colon)
+    pub fn is_implementation(&self) -> bool {
+        self.0.contains(':')
+    }
+
+    /// Split implementation module name into type and protocol parts
+    /// e.g., "List:Display" -> Some(("List", "Display"))
+    pub fn split_implementation(&self) -> Option<(&str, &str)> {
+        if let Some(colon_pos) = self.0.find(':') {
+            let (type_part, protocol_part) = self.0.split_at(colon_pos);
+            Some((type_part, &protocol_part[1..])) // Skip the colon
+        } else {
+            None
+        }
     }
 }
 
-/// Protocol identifier
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ProtocolId(pub String);
-
-impl ProtocolId {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
-    }
-
-    pub fn name(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Module identifier for tracking implementation sources (orphan rule enforcement)
-/// In Outrun, modules are defined by type names minus generic arguments
-/// e.g., Http.Client.Connection<T> -> module Http.Client.Connection, List<String> -> module List
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ModuleId(pub String);
-
-impl ModuleId {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
-    }
-
-    /// Create ModuleId from a TypeId (module is the type name itself)
-    /// e.g., "Http.Client.Connection" -> module "Http.Client.Connection"
-    pub fn from_type_id(type_id: &TypeId) -> Self {
-        Self(type_id.name().to_string())
-    }
-
-    /// Create ModuleId from a ProtocolId (module is the protocol name itself)
-    /// e.g., "Display" -> module "Display"
-    pub fn from_protocol_id(protocol_id: &ProtocolId) -> Self {
-        Self(protocol_id.0.clone())
-    }
-
-    pub fn name(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<Vec<outrun_parser::TypeIdentifier>> for ModuleId {
+impl From<Vec<outrun_parser::TypeIdentifier>> for ModuleName {
     fn from(type_identifiers: Vec<outrun_parser::TypeIdentifier>) -> Self {
         let qualified_name = type_identifiers
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        ModuleId::new(qualified_name)
+        ModuleName::new(qualified_name)
     }
 }
 
-impl From<&Vec<outrun_parser::TypeIdentifier>> for ModuleId {
+impl From<&Vec<outrun_parser::TypeIdentifier>> for ModuleName {
     fn from(type_identifiers: &Vec<outrun_parser::TypeIdentifier>) -> Self {
         let qualified_name = type_identifiers
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        ModuleId::new(qualified_name)
+        ModuleName::new(qualified_name)
     }
 }
 
@@ -98,14 +82,14 @@ impl From<&Vec<outrun_parser::TypeIdentifier>> for ModuleId {
 pub enum Type {
     /// Concrete types: Outrun.Core.Integer64, User, List<String>
     Concrete {
-        id: TypeId,
+        name: ModuleName,
         args: Vec<Type>,
         span: Option<Span>, // Preserve source location when available
     },
 
     /// Protocol constraints: Integer, Display, Result<T, E>
     Protocol {
-        id: ProtocolId,
+        name: ModuleName,
         args: Vec<Type>,
         span: Option<Span>,
     },
@@ -169,17 +153,17 @@ pub struct SelfPosition {
 pub enum SelfBindingContext {
     /// Self in protocol definition (unbound - could be any implementer)
     ProtocolDefinition {
-        protocol_id: ProtocolId,
+        protocol_name: ModuleName,
         /// Generic parameters of the protocol (e.g., Container<T> where Self is Container)
         protocol_args: Vec<Type>,
     },
     /// Self in implementation (bound to specific implementing type)
     Implementation {
-        implementing_type: TypeId,
+        implementing_type: ModuleName,
         /// Generic arguments of the implementing type (e.g., List<String> implementing Display)
         implementing_args: Vec<Type>,
         /// Protocol being implemented
-        protocol_id: ProtocolId,
+        protocol_name: ModuleName,
         /// Generic arguments for the protocol in this implementation
         protocol_args: Vec<Type>,
     },
@@ -196,7 +180,7 @@ impl Type {
     /// Create a concrete type with no generic arguments
     pub fn concrete(name: impl Into<String>) -> Self {
         Self::Concrete {
-            id: TypeId::new(name),
+            name: ModuleName::new(name),
             args: vec![],
             span: None,
         }
@@ -205,7 +189,7 @@ impl Type {
     /// Create a concrete type with span information
     pub fn concrete_with_span(name: impl Into<String>, span: Span) -> Self {
         Self::Concrete {
-            id: TypeId::new(name),
+            name: ModuleName::new(name),
             args: vec![],
             span: Some(span),
         }
@@ -214,7 +198,7 @@ impl Type {
     /// Create a protocol type without arguments
     pub fn protocol(name: impl Into<String>) -> Self {
         Self::Protocol {
-            id: ProtocolId::new(name),
+            name: ModuleName::new(name),
             args: vec![],
             span: None,
         }
@@ -223,7 +207,7 @@ impl Type {
     /// Create a protocol type with generic arguments
     pub fn protocol_with_args(name: impl Into<String>, args: Vec<Type>) -> Self {
         Self::Protocol {
-            id: ProtocolId::new(name),
+            name: ModuleName::new(name),
             args,
             span: None,
         }
@@ -232,7 +216,7 @@ impl Type {
     /// Create a protocol type with span information
     pub fn protocol_with_span(name: impl Into<String>, span: Span) -> Self {
         Self::Protocol {
-            id: ProtocolId::new(name),
+            name: ModuleName::new(name),
             args: vec![],
             span: Some(span),
         }
@@ -245,7 +229,7 @@ impl Type {
         span: Span,
     ) -> Self {
         Self::Protocol {
-            id: ProtocolId::new(name),
+            name: ModuleName::new(name),
             args,
             span: Some(span),
         }
@@ -254,7 +238,7 @@ impl Type {
     /// Create a generic concrete type (e.g., List<T>)
     pub fn generic_concrete(name: impl Into<String>, args: Vec<Type>) -> Self {
         Self::Concrete {
-            id: TypeId::new(name),
+            name: ModuleName::new(name),
             args,
             span: None,
         }
@@ -281,10 +265,10 @@ impl Type {
     }
 
     /// Create a Self type in protocol definition context
-    pub fn self_in_protocol(protocol_id: ProtocolId, protocol_args: Vec<Type>) -> Self {
+    pub fn self_in_protocol(protocol_name: ModuleName, protocol_args: Vec<Type>) -> Self {
         Self::SelfType {
             binding_context: SelfBindingContext::ProtocolDefinition {
-                protocol_id,
+                protocol_name,
                 protocol_args,
             },
             span: None,
@@ -293,16 +277,16 @@ impl Type {
 
     /// Create a Self type in implementation context
     pub fn self_in_implementation(
-        implementing_type: TypeId,
+        implementing_type: ModuleName,
         implementing_args: Vec<Type>,
-        protocol_id: ProtocolId,
+        protocol_name: ModuleName,
         protocol_args: Vec<Type>,
     ) -> Self {
         Self::SelfType {
             binding_context: SelfBindingContext::Implementation {
                 implementing_type,
                 implementing_args,
-                protocol_id,
+                protocol_name,
                 protocol_args,
             },
             span: None,
@@ -580,24 +564,24 @@ impl Type {
                 .get("Self")
                 .cloned()
                 .unwrap_or_else(|| self.clone()),
-            Self::Concrete { id, args, span } => {
+            Self::Concrete { name, args, span } => {
                 let substituted_args = args
                     .iter()
                     .map(|arg| arg.substitute_type_variables(substitutions))
                     .collect();
                 Self::Concrete {
-                    id: id.clone(),
+                    name: name.clone(),
                     args: substituted_args,
                     span: *span,
                 }
             }
-            Self::Protocol { id, args, span } => {
+            Self::Protocol { name, args, span } => {
                 let substituted_args = args
                     .iter()
                     .map(|arg| arg.substitute_type_variables(substitutions))
                     .collect();
                 Self::Protocol {
-                    id: id.clone(),
+                    name: name.clone(),
                     args: substituted_args,
                     span: *span,
                 }
@@ -642,7 +626,7 @@ impl Type {
                 span,
             } => {
                 let resolved = Type::Concrete {
-                    id: implementing_type.clone(),
+                    name: implementing_type.clone(),
                     args: implementing_args.clone(),
                     span: *span,
                 };
@@ -670,9 +654,9 @@ impl Type {
         allow_self_substitution: bool,
     ) -> Result<Type, crate::error::TypecheckError> {
         match self {
-            Type::Concrete { id, args, span } => {
+            Type::Concrete { name, args, span } => {
                 // Check if this is a generic parameter to substitute
-                if let Some(substitution) = substitutions.get(id.name()) {
+                if let Some(substitution) = substitutions.get(name.as_str()) {
                     Ok(substitution.clone())
                 } else {
                     // Recursively substitute in generic arguments
@@ -683,15 +667,15 @@ impl Type {
                         );
                     }
                     Ok(Type::Concrete {
-                        id: id.clone(),
+                        name: name.clone(),
                         args: substituted_args,
                         span: *span,
                     })
                 }
             }
-            Type::Protocol { id, args, span } => {
+            Type::Protocol { name, args, span } => {
                 // Check if this is a generic parameter to substitute
-                if let Some(substitution) = substitutions.get(&id.0) {
+                if let Some(substitution) = substitutions.get(name.as_str()) {
                     Ok(substitution.clone())
                 } else {
                     // Recursively substitute in generic arguments
@@ -702,7 +686,7 @@ impl Type {
                         );
                     }
                     Ok(Type::Protocol {
-                        id: id.clone(),
+                        name: name.clone(),
                         args: substituted_args,
                         span: *span,
                     })
@@ -756,14 +740,14 @@ pub enum Constraint {
     /// T: Display
     Implements {
         type_var: TypeVarId,
-        protocol: ProtocolId,
+        protocol: ModuleName,
         span: Option<Span>,
     },
 
     /// Self: Display (Self type constraint)
     SelfImplements {
         self_context: SelfBindingContext,
-        protocol: ProtocolId,
+        protocol: ModuleName,
         span: Option<Span>,
     },
 
@@ -881,13 +865,13 @@ impl Substitution {
                 // This should be handled by apply_iterative, but handle just in case
                 self.apply_iterative(ty)
             }
-            Type::Concrete { id, args, span } => Type::Concrete {
-                id: id.clone(),
+            Type::Concrete { name, args, span } => Type::Concrete {
+                name: name.clone(),
                 args: args.iter().map(|arg| self.apply(arg)).collect(),
                 span: *span,
             },
-            Type::Protocol { id, args, span } => Type::Protocol {
-                id: id.clone(),
+            Type::Protocol { name, args, span } => Type::Protocol {
+                name: name.clone(),
                 args: args.iter().map(|arg| self.apply(arg)).collect(),
                 span: *span,
             },
@@ -1001,12 +985,99 @@ impl Default for TypeVarGenerator {
     }
 }
 
+/// Complete unified module representation for Outrun's "everything is a module" philosophy
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeModule {
+    /// Protocol definition module (e.g., "Display", "BinaryAddition")
+    Protocol {
+        name: ModuleName,
+        definition: ProtocolDefinition,
+        source_location: Span,
+        generic_arity: usize,
+    },
+    /// Struct definition module (e.g., "List", "User", "Http.Client")
+    Struct {
+        name: ModuleName,
+        definition: ConcreteTypeDefinition,
+        source_location: Span,
+        generic_arity: usize,
+    },
+    /// Implementation module (e.g., "List:Display", "Map:Iterator")
+    Implementation {
+        name: ModuleName,                    // "List:Display"
+        implementing_type: ModuleName,       // "List"
+        protocol: ModuleName,                // "Display"
+        generic_bindings: Vec<Type>,         // T -> String for this impl
+        functions: Vec<FunctionDefinition>,  // The actual impl functions
+        source_location: Span,
+        defining_module: ModuleName,         // Where this impl lives
+    },
+    /// Forward binding for types referenced before definition
+    ForwardBinding {
+        name: ModuleName,
+        expected_arity: Option<usize>,
+        source_location: Span,
+        references: Vec<Span>,
+    },
+}
+
+/// Function definition within an implementation
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub parameters: Vec<(String, Type)>,
+    pub return_type: Type,
+    pub body: Option<outrun_parser::Expression>, // None for signatures only
+    pub is_static: bool,
+    pub span: Option<Span>,
+}
+
+/// Protocol definition information
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProtocolDefinition {
+    /// The protocol itself
+    pub protocol_name: ModuleName,
+    /// Protocols required by this protocol (e.g., Integer requires BinaryAddition)
+    pub required_protocols: std::collections::HashSet<ModuleName>,
+    /// Module where this protocol is defined
+    pub defining_module: ModuleName,
+    /// Functions that have default implementations (function_name -> true)
+    pub default_implementations: std::collections::HashSet<String>,
+    /// All function signatures required by this protocol (function_name -> signature info)
+    pub required_functions: std::collections::HashSet<String>,
+    /// Source location for error reporting
+    pub span: Option<Span>,
+}
+
+/// Information about a concrete type definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConcreteTypeDefinition {
+    /// The concrete type itself
+    pub type_name: ModuleName,
+    /// Module where this type is defined
+    pub defining_module: ModuleName,
+    /// Whether this type is generic (has type parameters)
+    pub is_generic: bool,
+    /// Source location for error reporting
+    pub span: Option<Span>,
+    /// WORKAROUND: Never type info for @Never() attribute support
+    /// TODO: Replace with proper attribute system when macro system is implemented
+    pub never_info: Option<NeverTypeInfo>,
+}
+
+/// WORKAROUND: Information about never types marked with @Never() attribute
+/// TODO: Replace with proper attribute system when macro system is implemented
+#[derive(Debug, Clone, PartialEq)]
+pub struct NeverTypeInfo {
+    pub message: String,
+}
+
 /// Display implementation for types (for error messages)
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Concrete { id, args, .. } => {
-                write!(f, "{}", id.name())?;
+            Self::Concrete { name, args, .. } => {
+                write!(f, "{}", name.as_str())?;
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, arg) in args.iter().enumerate() {
@@ -1019,8 +1090,8 @@ impl fmt::Display for Type {
                 }
                 Ok(())
             }
-            Self::Protocol { id, args, .. } => {
-                write!(f, "{}", id.0)?;
+            Self::Protocol { name, args, .. } => {
+                write!(f, "{}", name.as_str())?;
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, arg) in args.iter().enumerate() {
@@ -1062,10 +1133,10 @@ impl fmt::Display for Constraint {
             Self::Implements {
                 type_var, protocol, ..
             } => {
-                write!(f, "T{}: {}", type_var.0, protocol.0)
+                write!(f, "T{}: {}", type_var.0, protocol.as_str())
             }
             Self::SelfImplements { protocol, .. } => {
-                write!(f, "Self: {}", protocol.0)
+                write!(f, "Self: {}", protocol.as_str())
             }
             Self::LogicalOr { left, right, .. } => {
                 write!(f, "({left} || {right})")

@@ -41,9 +41,25 @@ impl FileSpan {
     }
 }
 
+/// Type system error for module registration and type operations
+#[derive(Error, Diagnostic, Debug)]
+pub enum TypeError {
+    #[error("Module '{module_name}' is already defined")]
+    #[diagnostic(code(outrun::type::module_redefinition))]
+    ModuleRedefinition {
+        module_name: String,
+        #[label("module redefined here")]
+        span: Option<SourceSpan>,
+    },
+}
+
 /// Main typechecker error type extending the existing parser error system
 #[derive(Error, Diagnostic, Debug)]
 pub enum TypecheckError {
+    #[error("Type system error")]
+    #[diagnostic(code(outrun::typecheck::type_error))]
+    TypeError(#[from] TypeError),
+
     #[error("Type unification failed")]
     #[diagnostic(code(outrun::typecheck::unification_failed))]
     UnificationError(#[from] UnificationError),
