@@ -466,7 +466,7 @@ impl TypeInferenceEngine {
             universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(),
             error_context: ErrorContext::new(),
             current_self_context: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ModuleName::new("Unknown"),
+                protocol_name: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             struct_registry: HashMap::new(),
@@ -519,11 +519,11 @@ impl TypeInferenceEngine {
         self.current_module = module.clone();
         // Update the protocol registry within the type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.protocol_registry_mut().set_current_module(module);
+            type_registry.set_current_module.set_current_module(module);
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.protocol_registry_mut().set_current_module(module);
+            new_type_registry.set_current_module.set_current_module(module);
             self.type_registry = Rc::new(new_type_registry);
         }
     }
@@ -564,7 +564,7 @@ impl TypeInferenceEngine {
         self.type_registry = Rc::new(new_registry);
         Rc::get_mut(&mut self.type_registry)
             .expect("Should be uniquely owned after replacement")
-            .protocol_registry_mut()
+            .set_current_module
     }
 
     /// Get mutable access to type registry for testing and configuration
@@ -596,6 +596,74 @@ impl TypeInferenceEngine {
     /// Get a cloned Rc to the type registry for compilation results
     pub fn type_registry_rc(&self) -> std::rc::Rc<TypeRegistry> {
         self.type_registry.clone()
+    }
+
+    /// Register a forward binding for a type referenced before definition
+    #[allow(clippy::result_large_err)]
+    fn register_forward_binding(
+        &mut self,
+        type_name: &str,
+        expected_arity: usize,
+        type_annotation: &outrun_parser::TypeAnnotation,
+    ) -> Result<(), TypecheckError> {
+        use outrun_parser::TypeAnnotation;
+        
+        let span = match type_annotation {
+            TypeAnnotation::Simple { span, .. } => *span,
+            TypeAnnotation::Tuple { span, .. } => *span,
+            TypeAnnotation::Function { span, .. } => *span,
+        };
+
+        let module_name = ModuleName::new(type_name);
+        
+        // Check if we already have this forward binding
+        if let Some(existing_module) = self.type_registry.get_module(type_name) {
+            match existing_module {
+                crate::types::TypeModule::ForwardBinding { expected_arity: existing_arity, references, .. } => {
+                    // Update existing forward binding with new reference
+                    let mut updated_references = references.clone();
+                    updated_references.push(span);
+                    
+                    // Check for arity conflicts
+                    if let Some(existing) = existing_arity {
+                        if *existing != expected_arity {
+                            return Err(TypecheckError::TypeError(crate::error::TypeError::ArityConflict {
+                                type_name: type_name.to_string(),
+                                expected_arity: *existing,
+                                found_arity: expected_arity,
+                                span: crate::error::to_source_span(Some(span)),
+                            }));
+                        }
+                    }
+                    
+                    // Update the forward binding with new reference
+                    let updated_forward_binding = crate::types::TypeModule::ForwardBinding {
+                        name: module_name.clone(),
+                        expected_arity: Some(expected_arity),
+                        source_location: span,
+                        references: updated_references,
+                    };
+                    
+                    self.type_registry_mut().register_module(updated_forward_binding)?;
+                }
+                _ => {
+                    // Type already exists as concrete type or protocol - no need for forward binding
+                    return Ok(());
+                }
+            }
+        } else {
+            // Create new forward binding
+            let forward_binding = crate::types::TypeModule::ForwardBinding {
+                name: module_name,
+                expected_arity: Some(expected_arity),
+                source_location: span,
+                references: vec![span],
+            };
+            
+            self.type_registry_mut().register_module(forward_binding)?;
+        }
+        
+        Ok(())
     }
 
     /// Analyze recursive type patterns and emit compiler warnings
@@ -8091,8 +8159,9 @@ impl TypeInferenceEngine {
                             span: None,
                         })
                     } else {
-                        // Unknown type - create a concrete type placeholder
-                        // Type registry will be populated during package processing
+                        // Unknown type - register as forward binding and create placeholder
+                        self.register_forward_binding(&type_name, type_args.len(), type_annotation)?;
+                        
                         Ok(Type::Concrete {
                             name: crate::types::ModuleName::new(type_name),
                             args: type_args,
@@ -8351,7 +8420,7 @@ impl InferenceContext {
             constraints: Vec::new(),
             expected_type: None,
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ModuleName::new("Unknown"),
+                protocol_name: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             bindings: HashMap::new(),
@@ -8365,7 +8434,7 @@ impl InferenceContext {
             constraints: Vec::new(),
             expected_type: Some(expected_type),
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ModuleName::new("Unknown"),
+                protocol_name: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             bindings: HashMap::new(),

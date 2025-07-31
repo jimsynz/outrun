@@ -51,6 +51,16 @@ pub enum TypeError {
         #[label("module redefined here")]
         span: Option<SourceSpan>,
     },
+
+    #[error("Type '{type_name}' has conflicting generic arity: expected {expected_arity}, found {found_arity}")]
+    #[diagnostic(code(outrun::types::arity_conflict))]
+    ArityConflict {
+        type_name: String,
+        expected_arity: usize,
+        found_arity: usize,
+        #[label("conflicting arity here")]
+        span: SourceSpan,
+    },
 }
 
 /// Main typechecker error type extending the existing parser error system
@@ -763,35 +773,35 @@ fn generate_type_conversion_suggestions(expected: &Type, found: &Type) -> Vec<St
 
     match (expected, found) {
         // String to Integer conversion
-        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. })
+        (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
             if exp.name() == "Integer64" && fnd.name() == "String" =>
         {
             suggestions.push("String.to_integer(value)".to_string());
         }
 
         // Integer to String conversion
-        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. })
+        (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
             if exp.name() == "String" && fnd.name() == "Integer64" =>
         {
             suggestions.push("Integer64.to_string(value)".to_string());
         }
 
         // Float to Integer conversion
-        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. })
+        (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
             if exp.name() == "Integer64" && fnd.name() == "Float64" =>
         {
             suggestions.push("Float64.to_integer(value)".to_string());
         }
 
         // Integer to Float conversion
-        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. })
+        (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
             if exp.name() == "Float64" && fnd.name() == "Integer64" =>
         {
             suggestions.push("Integer64.to_float(value)".to_string());
         }
 
         // Boolean to String conversion
-        (Type::Concrete { id: exp, .. }, Type::Concrete { id: fnd, .. })
+        (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
             if exp.name() == "String" && fnd.name() == "Boolean" =>
         {
             suggestions.push("Boolean.to_string(value)".to_string());
@@ -800,12 +810,12 @@ fn generate_type_conversion_suggestions(expected: &Type, found: &Type) -> Vec<St
         // Collection element type suggestions
         (
             Type::Concrete {
-                id: exp,
+                name: exp,
                 args: exp_args,
                 ..
             },
             Type::Concrete {
-                id: fnd,
+                name: fnd,
                 args: fnd_args,
                 ..
             },

@@ -237,7 +237,7 @@ pub struct ProtocolConstraintTemplate {
     pub parameter_name: String,
 
     /// Protocol that must be implemented
-    pub protocol_id: crate::types::ModuleName,
+    pub protocol_name: crate::types::ModuleName,
 
     /// Additional generic arguments to the protocol
     pub protocol_args: Vec<TypeTemplate>,
@@ -553,7 +553,7 @@ impl ConstraintSolver {
                 // For now, treat as missing implementation
                 Err(ConstraintError::MissingImplementation {
                     type_name: "function".to_string(),
-                    protocol_name: protocol.0.clone(),
+                    protocol_name: protocol.as_str().to_string(),
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                 })
             }
@@ -640,12 +640,12 @@ impl ConstraintSolver {
                     implementing_args,
                 ) {
                     let type_name = if implementing_args.is_empty() {
-                        implementing_type.name().to_string()
+                        implementing_type.as_str().to_string()
                     } else {
                         // For generic implementations like impl Display for List<T>
                         format!(
                             "{}[{}]",
-                            implementing_type.name(),
+                            implementing_type.as_str(),
                             implementing_args
                                 .iter()
                                 .map(Self::type_to_string)
@@ -710,7 +710,7 @@ impl ConstraintSolver {
                 } => {
                     // Self is already bound to the implementing type - check consistency
                     let expected_self = Type::Concrete {
-                        id: implementing_type.clone(),
+                        name: implementing_type.as_str().to_string(),
                         args: implementing_args.clone(),
                         span: None,
                     };
@@ -891,8 +891,8 @@ impl ConstraintSolver {
             // Check if this protocol has other implementations that could chain
             let mut could_recurse = false;
             for other_impl in self.type_registry.all_implementations() {
-                if other_impl.protocol_id == impl_info.protocol_id
-                    && other_impl.implementing_type.name() != impl_info.implementing_type.name()
+                if other_impl.protocol_name == impl_info.protocol_name
+                    && other_impl.implementing_type.as_str() != impl_info.implementing_type.as_str()
                 {
                     // Different type implementing same protocol - potential for chaining
                     could_recurse = true;
@@ -908,7 +908,7 @@ impl ConstraintSolver {
                         args: impl_info.implementing_args.clone(),
                         span: impl_info.span,
                     },
-                    protocol: impl_info.protocol_id.clone(),
+                    protocol: impl_info.protocol_name.clone(),
                     recursion_depth: None, // Will be calculated during resolution
                     warning_emitted: false,
                     implementation_span: impl_info.span,
@@ -1168,18 +1168,18 @@ impl ConstraintSolver {
         }
     }
 
-    fn type_involves_protocol(&self, ty: &Type, protocol_id: &crate::types::ModuleName) -> bool {
+    fn type_involves_protocol(&self, ty: &Type, protocol_name: &crate::types::ModuleName) -> bool {
         match ty {
             Type::Protocol { name, args, .. } => {
                 // Check both if this is the target protocol and if args contain the protocol
-                name == protocol_id
+                name == protocol_name
                     || args
                         .iter()
-                        .any(|arg| self.type_involves_protocol(arg, protocol_id))
+                        .any(|arg| self.type_involves_protocol(arg, protocol_name))
             }
             Type::Concrete { args, .. } => args
                 .iter()
-                .any(|arg| self.type_involves_protocol(arg, protocol_id)),
+                .any(|arg| self.type_involves_protocol(arg, protocol_name)),
             Type::Function {
                 params,
                 return_type,
@@ -1187,8 +1187,8 @@ impl ConstraintSolver {
             } => {
                 params
                     .iter()
-                    .any(|(_, param_type)| self.type_involves_protocol(param_type, protocol_id))
-                    || self.type_involves_protocol(return_type, protocol_id)
+                    .any(|(_, param_type)| self.type_involves_protocol(param_type, protocol_name))
+                    || self.type_involves_protocol(return_type, protocol_name)
             }
             _ => false,
         }
@@ -1746,7 +1746,7 @@ mod tests {
         // Register some basic implementations for testing
         registry
             .register_implementation(
-                TypeId::new("Integer"),
+                ModuleName::new("Integer"),
                 vec![],
                 ModuleName::new("Display"),
                 vec![],
@@ -1757,7 +1757,7 @@ mod tests {
 
         registry
             .register_implementation(
-                TypeId::new("String"),
+                ModuleName::new("String"),
                 vec![],
                 ModuleName::new("Display"),
                 vec![],
@@ -1768,7 +1768,7 @@ mod tests {
 
         registry
             .register_implementation(
-                TypeId::new("Integer"),
+                ModuleName::new("Integer"),
                 vec![],
                 ModuleName::new("Debug"),
                 vec![],
@@ -1779,7 +1779,7 @@ mod tests {
 
         registry
             .register_implementation(
-                TypeId::new("String"),
+                ModuleName::new("String"),
                 vec![],
                 ModuleName::new("Debug"),
                 vec![],
@@ -1790,7 +1790,7 @@ mod tests {
 
         registry
             .register_implementation(
-                TypeId::new("String"),
+                ModuleName::new("String"),
                 vec![],
                 ModuleName::new("Clone"),
                 vec![],
@@ -2048,14 +2048,14 @@ mod tests {
 
     #[test]
     fn test_protocol_registry_integration() {
-        let mut registry = ProtocolRegistry::new();
+        let mut registry = TypeRegistry::new();
         registry.add_local_module(crate::types::ModuleId::new("TestModule"));
         registry.add_local_module(crate::types::ModuleId::new("TestType"));
         registry.add_local_module(crate::types::ModuleId::new("TestProtocol"));
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
 
         let protocol = ModuleName::new("TestProtocol");
-        let type_id = TypeId::new("TestType");
+        let type_id = ModuleName::new("TestType");
 
         // Initially no implementation
         assert!(!registry.has_implementation(&protocol, &type_id));
@@ -2145,9 +2145,9 @@ mod tests {
 
         // Create Self: Display constraint in implementation context
         let self_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("String"),
+            implementing_type: ModuleName::new("String"),
             implementing_args: vec![],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
@@ -2168,9 +2168,9 @@ mod tests {
 
         // Create Self: NonExistentProtocol constraint
         let self_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("String"),
+            implementing_type: ModuleName::new("String"),
             implementing_args: vec![],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
@@ -2197,7 +2197,7 @@ mod tests {
 
         // Create Self: Display constraint in Display protocol definition
         let self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
@@ -2218,7 +2218,7 @@ mod tests {
 
         // Create Self: Debug constraint in Display protocol definition
         let self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
@@ -2245,9 +2245,9 @@ mod tests {
 
         // Create Self = String constraint in String implementation context
         let self_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("String"),
+            implementing_type: ModuleName::new("String"),
             implementing_args: vec![],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfBinding {
@@ -2268,9 +2268,9 @@ mod tests {
 
         // Create Self = Integer constraint in String implementation context
         let self_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("String"),
+            implementing_type: ModuleName::new("String"),
             implementing_args: vec![],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfBinding {
@@ -2293,14 +2293,14 @@ mod tests {
 
     #[test]
     fn test_self_with_generic_types() {
-        let mut registry = ProtocolRegistry::new();
+        let mut registry = TypeRegistry::new();
         registry.add_local_module(crate::types::ModuleId::new("List"));
         registry.add_local_module(crate::types::ModuleId::new("Display"));
         registry.add_local_module(crate::types::ModuleId::new("TestModule"));
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
         registry
             .register_implementation(
-                TypeId::new("List"),
+                ModuleName::new("List"),
                 vec![Type::concrete("String")],
                 ModuleName::new("Display"),
                 vec![],
@@ -2312,9 +2312,9 @@ mod tests {
 
         // Create Self: Display constraint in List<String> implementation context
         let self_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("List"),
+            implementing_type: ModuleName::new("List"),
             implementing_args: vec![Type::concrete("String")],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
@@ -2335,9 +2335,9 @@ mod tests {
 
         // Create Self: Display constraint in function context within String implementation
         let parent_context = SelfBindingContext::Implementation {
-            implementing_type: TypeId::new("String"),
+            implementing_type: ModuleName::new("String"),
             implementing_args: vec![],
-            protocol_id: ModuleName::new("Display"),
+            protocol_name: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let self_context = SelfBindingContext::FunctionContext {

@@ -46,3 +46,4 @@ pub mod test_protocol_return_types;
 pub mod test_self_type_resolution;
 pub mod test_unified_package_processing;
 pub mod test_unified_type_registry;
+pub mod test_phase32_forward_bindings;

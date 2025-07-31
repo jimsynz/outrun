@@ -75,7 +75,26 @@ impl TypeRegistry {
         // Check for conflicts
         if let Some(existing) = self.modules.get(&module_name) {
             // Allow forward bindings to be replaced by actual definitions
-            if matches!(existing, TypeModule::ForwardBinding { .. }) {
+            if let TypeModule::ForwardBinding { expected_arity, .. } = existing {
+                // Check arity compatibility when replacing forward binding
+                let actual_arity = match &module {
+                    TypeModule::Protocol { generic_arity, .. } => *generic_arity,
+                    TypeModule::Struct { generic_arity, .. } => *generic_arity,
+                    TypeModule::Implementation { .. } => 0, // Implementations don't have their own arity
+                    TypeModule::ForwardBinding { .. } => 0, // Shouldn't happen
+                };
+                
+                if let Some(expected) = expected_arity {
+                    if *expected != actual_arity {
+                        return Err(crate::error::TypeError::ArityConflict {
+                            type_name: module_name.as_str().to_string(),
+                            expected_arity: *expected,
+                            found_arity: actual_arity,
+                            span: crate::error::to_source_span(None),
+                        });
+                    }
+                }
+                
                 // Replace forward binding with actual definition
                 self.modules.insert(module_name, module);
                 return Ok(());
@@ -245,25 +264,25 @@ impl TypeRegistry {
     fn register_core_types(&mut self) {
         let core_module = ModuleName::new("Outrun.Core");
 
-        // Register core concrete types
+        // Register core concrete types with proper arity
         let core_types = [
-            ("Outrun.Core.Integer64", false),
-            ("Outrun.Core.String", false),
-            ("Outrun.Core.Float64", false),
-            ("Outrun.Core.Boolean", false),
-            ("Outrun.Core.Atom", false),
-            ("Outrun.Core.List", true),
-            ("Outrun.Core.Map", true),
-            ("Outrun.Core.Tuple", true),
-            ("Outrun.Core.Option", true),
-            ("Outrun.Core.Result", true),
+            ("Outrun.Core.Integer64", 0),
+            ("Outrun.Core.String", 0),
+            ("Outrun.Core.Float64", 0),
+            ("Outrun.Core.Boolean", 0),
+            ("Outrun.Core.Atom", 0),
+            ("Outrun.Core.List", 1),      // List<T>
+            ("Outrun.Core.Map", 2),       // Map<K, V>
+            ("Outrun.Core.Tuple", 0),     // Tuple is variadic, but we'll treat as 0 for now
+            ("Outrun.Core.Option", 1),    // Option<T>
+            ("Outrun.Core.Result", 2),    // Result<T, E>
         ];
 
-        for (type_name, is_generic) in &core_types {
+        for (type_name, arity) in &core_types {
             let type_def = ConcreteTypeDefinition {
                 type_name: ModuleName::new(*type_name),
                 defining_module: core_module.clone(),
-                is_generic: *is_generic,
+                is_generic: *arity > 0,
                 span: None,
                 never_info: None,
             };
@@ -272,7 +291,7 @@ impl TypeRegistry {
                 name: ModuleName::new(*type_name),
                 definition: type_def,
                 source_location: Span::new(0, 0),
-                generic_arity: if *is_generic { 1 } else { 0 },
+                generic_arity: *arity,
             };
 
             let _ = self.register_module(module);
