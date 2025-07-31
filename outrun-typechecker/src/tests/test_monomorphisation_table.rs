@@ -6,7 +6,7 @@
 use crate::dispatch::{
     FunctionInfo, FunctionVisibility, MonomorphisationEntry, MonomorphisationTable,
 };
-use crate::types::{Type, TypeId};
+use crate::types::{Type};
 use std::collections::HashMap;
 
 #[test]
@@ -25,7 +25,7 @@ fn test_monomorphised_key_generation() {
 
     // Test function with single type argument
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -34,7 +34,7 @@ fn test_monomorphised_key_generation() {
 
     // Test function with multiple type arguments
     let string_type = Type::Concrete {
-        id: TypeId::new("String"),
+        id: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
@@ -46,12 +46,12 @@ fn test_monomorphised_key_generation() {
 fn test_monomorphised_key_with_generic_types() {
     // Test List<Integer64>
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
     let list_integer_type = Type::Concrete {
-        id: TypeId::new("List"),
+        id: ModuleName::new("List"),
         args: vec![integer_type.clone()],
         span: None,
     };
@@ -60,12 +60,12 @@ fn test_monomorphised_key_with_generic_types() {
 
     // Test Map<String, Integer64>
     let string_type = Type::Concrete {
-        id: TypeId::new("String"),
+        id: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
     let map_type = Type::Concrete {
-        id: TypeId::new("Map"),
+        id: ModuleName::new("Map"),
         args: vec![string_type.clone(), integer_type.clone()],
         span: None,
     };
@@ -85,15 +85,15 @@ fn test_add_and_lookup_instantiation() {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: TypeId::new("Wrapper"),
+            id: ModuleName::new("Wrapper"),
             args: vec![Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -108,7 +108,7 @@ fn test_add_and_lookup_instantiation() {
     // Create type substitutions for T = Integer64
     let mut type_substitutions = HashMap::new();
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -183,15 +183,15 @@ fn test_multiple_instantiations_same_function() {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: TypeId::new("Container"),
+            id: ModuleName::new("Container"),
             args: vec![Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -208,7 +208,7 @@ fn test_multiple_instantiations_same_function() {
     int_substitutions.insert(
         "T".to_string(),
         Type::Concrete {
-            id: TypeId::new("Integer64"),
+            id: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
@@ -223,7 +223,7 @@ fn test_multiple_instantiations_same_function() {
             &HashMap::from([(
                 "T".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("Integer64"),
+                    id: ModuleName::new("Integer64"),
                     args: vec![],
                     span: None,
                 },
@@ -239,7 +239,7 @@ fn test_multiple_instantiations_same_function() {
     string_substitutions.insert(
         "T".to_string(),
         Type::Concrete {
-            id: TypeId::new("String"),
+            id: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -254,7 +254,7 @@ fn test_multiple_instantiations_same_function() {
             &HashMap::from([(
                 "T".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("String"),
+                    id: ModuleName::new("String"),
                     args: vec![],
                     span: None,
                 },
@@ -293,7 +293,7 @@ fn test_type_substitution_in_complex_types() {
             (
                 "key".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("K"),
+                    id: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
@@ -301,9 +301,9 @@ fn test_type_substitution_in_complex_types() {
             (
                 "values".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("List"),
+                    id: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("V"),
+                        id: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -312,17 +312,17 @@ fn test_type_substitution_in_complex_types() {
             ),
         ],
         return_type: Type::Concrete {
-            id: TypeId::new("Map"),
+            id: ModuleName::new("Map"),
             args: vec![
                 Type::Concrete {
-                    id: TypeId::new("K"),
+                    id: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
                 Type::Concrete {
-                    id: TypeId::new("List"),
+                    id: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("V"),
+                        id: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -342,7 +342,7 @@ fn test_type_substitution_in_complex_types() {
     substitutions.insert(
         "K".to_string(),
         Type::Concrete {
-            id: TypeId::new("String"),
+            id: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -350,7 +350,7 @@ fn test_type_substitution_in_complex_types() {
     substitutions.insert(
         "V".to_string(),
         Type::Concrete {
-            id: TypeId::new("Integer64"),
+            id: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
@@ -422,7 +422,7 @@ fn test_all_entries_iteration() {
         visibility: FunctionVisibility::Public,
         parameters: vec![],
         return_type: Type::Concrete {
-            id: TypeId::new("T"),
+            id: ModuleName::new("T"),
             args: vec![],
             span: None,
         },
@@ -437,7 +437,7 @@ fn test_all_entries_iteration() {
         substitutions.insert(
             "T".to_string(),
             Type::Concrete {
-                id: TypeId::new(*type_name),
+                id: ModuleName::new(*type_name),
                 args: vec![],
                 span: None,
             },
@@ -452,7 +452,7 @@ fn test_all_entries_iteration() {
                 &HashMap::from([(
                     "T".to_string(),
                     Type::Concrete {
-                        id: TypeId::new(*type_name),
+                        id: ModuleName::new(*type_name),
                         args: vec![],
                         span: None,
                     },

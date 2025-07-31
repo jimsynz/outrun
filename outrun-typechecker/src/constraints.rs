@@ -495,7 +495,7 @@ impl ConstraintSolver {
                 // Check if this concrete type implements the protocol using the type registry
                 if !self
                     .type_registry
-                    .has_implementation_with_args(protocol, name, &args)
+                    .has_implementation_with_args(protocol, &name, &args)
                 {
                     let type_name = if args.is_empty() {
                         name.as_str().to_string()
@@ -529,7 +529,7 @@ impl ConstraintSolver {
 
             Type::Protocol { name, .. } => {
                 // Protocol types automatically implement themselves
-                if name == protocol {
+                if name == *protocol {
                     Ok(())
                 } else {
                     // Check if there's a relationship between protocols
@@ -1729,19 +1729,19 @@ impl Default for ConstraintSolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Level, TypeId, TypeVarGenerator};
+    use crate::types::{Level, ModuleName, TypeVarGenerator};
 
-    fn create_test_registry() -> ProtocolRegistry {
-        let mut registry = ProtocolRegistry::new();
+    fn create_test_registry() -> TypeRegistry {
+        let mut registry = TypeRegistry::new();
 
         // Set up local modules for testing
-        registry.add_local_module(crate::types::ModuleId::new("Integer"));
-        registry.add_local_module(crate::types::ModuleId::new("String"));
-        registry.add_local_module(crate::types::ModuleId::new("Display"));
-        registry.add_local_module(crate::types::ModuleId::new("Debug"));
-        registry.add_local_module(crate::types::ModuleId::new("Clone"));
-        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
-        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
+        registry.add_local_module(ModuleName::new("Integer"));
+        registry.add_local_module(ModuleName::new("String"));
+        registry.add_local_module(ModuleName::new("Display"));
+        registry.add_local_module(ModuleName::new("Debug"));
+        registry.add_local_module(ModuleName::new("Clone"));
+        registry.add_local_module(ModuleName::new("TestModule"));
+        registry.set_current_module(ModuleName::new("TestModule"));
 
         // Register some basic implementations for testing
         registry

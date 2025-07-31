@@ -4,27 +4,27 @@ use crate::dispatch::{
     build_dispatch_table, DispatchResult, FunctionContext, FunctionDispatcher, FunctionInfo,
     FunctionRegistry, FunctionVisibility,
 };
-use crate::registry::ProtocolRegistry;
-use crate::types::{ModuleId, ProtocolId, Type, TypeId};
+use crate::registry::TypeRegistry;
+use crate::types::{ModuleName, Type};
 
-fn create_test_protocol_registry() -> ProtocolRegistry {
-    let mut registry = ProtocolRegistry::new();
+fn create_test_type_registry() -> TypeRegistry {
+    let mut registry = TypeRegistry::new();
 
     // Set up local modules (simulating current package)
     // Include Outrun.Core modules as local for testing
-    registry.add_local_module(ModuleId::new("String"));
-    registry.add_local_module(ModuleId::new("Integer"));
-    registry.add_local_module(ModuleId::new("List"));
-    registry.add_local_module(ModuleId::new("User"));
-    registry.add_local_module(ModuleId::new("Equality"));
-    registry.add_local_module(ModuleId::new("Display"));
-    registry.add_local_module(ModuleId::new("Debug"));
+    registry.add_local_module(ModuleName::new("String"));
+    registry.add_local_module(ModuleName::new("Integer"));
+    registry.add_local_module(ModuleName::new("List"));
+    registry.add_local_module(ModuleName::new("User"));
+    registry.add_local_module(ModuleName::new("Equality"));
+    registry.add_local_module(ModuleName::new("Display"));
+    registry.add_local_module(ModuleName::new("Debug"));
 
     // Add Outrun.Core modules as local to avoid orphan rule violations
-    registry.add_local_module(ModuleId::new("Outrun.Core.String"));
-    registry.add_local_module(ModuleId::new("Outrun.Core.Integer64"));
+    registry.add_local_module(ModuleName::new("Outrun.Core.String"));
+    registry.add_local_module(ModuleName::new("Outrun.Core.Integer64"));
 
-    registry.set_current_module(ModuleId::new("TestModule"));
+    registry.set_current_module(ModuleName::new("TestModule"));
 
     registry
 }
@@ -151,27 +151,27 @@ fn create_test_function_registry() -> FunctionRegistry {
     registry
 }
 
-fn register_basic_implementations(protocol_registry: &mut ProtocolRegistry) {
+fn register_basic_implementations(type_registry: &mut TypeRegistry) {
     // String implements Equality
-    protocol_registry
+    type_registry
         .register_implementation(
-            TypeId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             vec![],
-            ProtocolId::new("Equality"),
+            ModuleName::new("Equality"),
             vec![],
-            ModuleId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             None,
         )
         .unwrap();
 
     // Integer implements Equality
-    protocol_registry
+    type_registry
         .register_implementation(
-            TypeId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             vec![],
-            ProtocolId::new("Equality"),
+            ModuleName::new("Equality"),
             vec![],
-            ModuleId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             None,
         )
         .unwrap();
@@ -179,11 +179,11 @@ fn register_basic_implementations(protocol_registry: &mut ProtocolRegistry) {
 
 #[test]
 fn test_protocol_function_call_resolution() {
-    let mut protocol_registry = create_test_protocol_registry();
+    let mut type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
-    register_basic_implementations(&mut protocol_registry);
+    register_basic_implementations(&mut type_registry);
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None);
 
     // Test Equality.equal?(value: "hello", other: "world")
     let string_type = Type::concrete("Outrun.Core.String");
@@ -209,10 +209,10 @@ fn test_protocol_function_call_resolution() {
 
 #[test]
 fn test_static_module_call_resolution() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None);
 
     // Test User.create(name: "john", email: "john@example.com")
     let result = dispatcher
@@ -235,15 +235,15 @@ fn test_static_module_call_resolution() {
 
 #[test]
 fn test_local_call_in_protocol_context() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Protocol {
-        protocol_id: ProtocolId::new("Equality"),
+        protocol_id: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None)
         .with_context(context);
 
     // Local call: equal?(self, other) inside Equality.not_equal?
@@ -261,15 +261,15 @@ fn test_local_call_in_protocol_context() {
 
 #[test]
 fn test_local_call_in_module_context() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Module {
-        module_id: TypeId::new("User"),
+        module_id: ModuleName::new("User"),
         module_args: vec![],
     };
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None)
         .with_context(context);
 
     // Local call: validate_email?(email) inside User.create
@@ -293,10 +293,10 @@ fn test_local_call_in_module_context() {
 
 #[test]
 fn test_no_implementation_error() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None);
 
     // Try to call a non-existent protocol function
     let string_type = Type::concrete("Outrun.Core.String");
@@ -308,11 +308,11 @@ fn test_no_implementation_error() {
 
 #[test]
 fn test_dispatch_table_creation() {
-    let mut protocol_registry = create_test_protocol_registry();
+    let mut type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
-    register_basic_implementations(&mut protocol_registry);
+    register_basic_implementations(&mut type_registry);
 
-    let table = build_dispatch_table(&protocol_registry, &function_registry, None);
+    let table = build_dispatch_table(&type_registry, &function_registry, None);
 
     // Table should contain implementation entries using monomorphised key format
     let entry = table.lookup("Equality.equal?:Outrun.Core.String");
@@ -324,10 +324,10 @@ fn test_dispatch_table_creation() {
 
 #[test]
 fn test_malformed_qualified_name_error() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None);
 
     // Test malformed qualified name (no dot)
     let result = dispatcher.resolve_qualified_call("NotQualified", None, None);
@@ -340,15 +340,15 @@ fn test_malformed_qualified_name_error() {
 
 #[test]
 fn test_private_protocol_function_access() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Protocol {
-        protocol_id: ProtocolId::new("Equality"),
+        protocol_id: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None)
         .with_context(context);
 
     // Private protocol function should be accessible within protocol context
@@ -369,11 +369,11 @@ fn test_private_protocol_function_access() {
 
 #[test]
 fn test_private_protocol_function_blocked_externally() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let function_registry = create_test_function_registry();
 
     // Top-level context - no local access to private protocol functions
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None);
 
     // Private protocol function should NOT be accessible from external context
     let result = dispatcher.resolve_qualified_call("Equality.helper?", None, None);
@@ -382,7 +382,7 @@ fn test_private_protocol_function_blocked_externally() {
 
 #[test]
 fn test_protocol_default_implementation_with_private_helper() {
-    let protocol_registry = create_test_protocol_registry();
+    let type_registry = create_test_type_registry();
     let mut function_registry = create_test_function_registry();
 
     // Register a protocol default implementation that calls a private helper
@@ -406,11 +406,11 @@ fn test_protocol_default_implementation_with_private_helper() {
     );
 
     let context = FunctionContext::Protocol {
-        protocol_id: ProtocolId::new("Equality"),
+        protocol_id: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 
-    let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None)
+    let dispatcher = FunctionDispatcher::new(&type_registry, &function_registry, None, None)
         .with_context(context);
 
     // Within the protocol context, the default implementation should be able to call:

@@ -43,8 +43,8 @@ impl TestProtocol for TestType {
 
             // Verify the implementation was registered
             let registry = engine.get_protocol_registry();
-            let type_id = crate::types::TypeId::new("TestType");
-            let protocol_id = crate::types::ProtocolId::new("TestProtocol");
+            let type_id = crate::types::ModuleName::new("TestType");
+            let protocol_id = crate::types::ModuleName::new("TestProtocol");
 
             let has_impl = registry.has_implementation(&protocol_id, &type_id);
             println!("Implementation registered: {}", has_impl);

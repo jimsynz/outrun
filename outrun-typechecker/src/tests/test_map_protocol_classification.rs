@@ -31,17 +31,13 @@ fn test_map_protocol_registration_step_by_step() {
             println!("🔍 After registration - Map protocol exists: {}", 
                 type_registry.is_protocol("Map"));
             
-            // Check what get_type_kind returns for Map
-            match type_registry.get_type_kind("Map") {
-                Some(crate::registry::TypeKind::Protocol(protocol_def)) => {
-                    println!("✅ Map correctly identified as protocol: {:?}", protocol_def.protocol_id);
-                }
-                Some(crate::registry::TypeKind::ConcreteType(concrete_def)) => {
-                    println!("❌ Map incorrectly identified as concrete type: {:?}", concrete_def.type_id);
-                }
-                None => {
-                    println!("❌ Map not found in type registry at all");
-                }
+            // Check what type Map is registered as
+            if type_registry.is_protocol("Map") {
+                println!("✅ Map correctly identified as protocol");
+            } else if type_registry.is_struct("Map") {
+                println!("❌ Map incorrectly identified as struct");
+            } else {
+                println!("❌ Map not found in type registry at all");
             }
         }
         Err(e) => {

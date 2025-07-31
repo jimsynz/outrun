@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod automatic_any_inspect_tests {
     use crate::inference::TypeInferenceEngine;
-    use crate::types::{ProtocolId, TypeId};
+    use crate::types::ModuleName;
     use outrun_parser::parse_program;
 
     #[test]
@@ -31,8 +31,8 @@ mod automatic_any_inspect_tests {
             .expect("Phase 3 should succeed");
 
         // Check if Any implementation was automatically registered
-        let user_type = TypeId::new("User");
-        let any_protocol = ProtocolId::new("Any");
+        let user_type = ModuleName::new("User");
+        let any_protocol = ModuleName::new("Any");
 
         assert!(
             engine
@@ -67,8 +67,8 @@ mod automatic_any_inspect_tests {
             .expect("Phase 3 should succeed");
 
         // Check if Inspect implementation was automatically registered
-        let product_type = TypeId::new("Product");
-        let inspect_protocol = ProtocolId::new("Inspect");
+        let product_type = ModuleName::new("Product");
+        let inspect_protocol = ModuleName::new("Inspect");
 
         assert!(
             engine
@@ -104,12 +104,12 @@ mod automatic_any_inspect_tests {
             .register_implementations(&program)
             .expect("Phase 3 should succeed");
 
-        let any_protocol = ProtocolId::new("Any");
-        let inspect_protocol = ProtocolId::new("Inspect");
+        let any_protocol = ModuleName::new("Any");
+        let inspect_protocol = ModuleName::new("Inspect");
 
         // Check all three types have automatic implementations
         for type_name in ["User", "Product", "Order"] {
-            let type_id = TypeId::new(type_name);
+            let type_id = ModuleName::new(type_name);
 
             assert!(
                 engine
@@ -154,9 +154,9 @@ mod automatic_any_inspect_tests {
             .expect("Phase 3 should succeed");
 
         // Check nested type has automatic implementations
-        let connection_type = TypeId::new("Http.Client.Connection");
-        let any_protocol = ProtocolId::new("Any");
-        let inspect_protocol = ProtocolId::new("Inspect");
+        let connection_type = ModuleName::new("Http.Client.Connection");
+        let any_protocol = ModuleName::new("Any");
+        let inspect_protocol = ModuleName::new("Inspect");
 
         assert!(
             engine
@@ -222,9 +222,9 @@ mod automatic_any_inspect_tests {
         }
 
         // Verify the implementations are registered regardless of type checking result
-        let user_type = TypeId::new("User");
-        let any_protocol = ProtocolId::new("Any");
-        let inspect_protocol = ProtocolId::new("Inspect");
+        let user_type = ModuleName::new("User");
+        let any_protocol = ModuleName::new("Any");
+        let inspect_protocol = ModuleName::new("Inspect");
 
         assert!(
             engine

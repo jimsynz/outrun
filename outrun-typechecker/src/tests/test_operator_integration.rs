@@ -5,7 +5,7 @@ use outrun_parser::{parse_program, BinaryOperator, ExpressionKind};
 
 #[test]
 fn test_operator_desugaring_with_typechecking() {
-    use crate::types::{ModuleId, ProtocolId};
+    use crate::types::{ModuleName};
     use crate::{DesugaringEngine, TypeInferenceEngine};
 
     // Create a simple program with binary operations
@@ -21,18 +21,18 @@ fn test_operator_desugaring_with_typechecking() {
 
     // Register necessary protocols for arithmetic operations
     engine.protocol_registry_mut().register_protocol_definition(
-        ProtocolId::new("BinaryAddition"),
+        ModuleName::new("BinaryAddition"),
         std::collections::HashSet::new(),
-        ModuleId::new("TestModule"),
+        ModuleName::new("TestModule"),
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
         None,
     );
 
     engine.protocol_registry_mut().register_protocol_definition(
-        ProtocolId::new("BinaryMultiplication"),
+        ModuleName::new("BinaryMultiplication"),
         std::collections::HashSet::new(),
-        ModuleId::new("TestModule"),
+        ModuleName::new("TestModule"),
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
         None,

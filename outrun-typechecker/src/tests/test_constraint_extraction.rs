@@ -4,13 +4,13 @@
 //! in impl blocks using our semantic approach.
 
 use crate::inference::TypeInferenceEngine;
-use crate::types::ModuleId;
+use crate::types::ModuleName;
 use outrun_parser::parse_program;
 
 #[test]
 fn test_constraint_expression_extraction_simple() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<T> for Wrapper<U> when T: Debug - both T and U should be extracted
     let program_text = r#"
@@ -59,7 +59,7 @@ fn test_constraint_expression_extraction_simple() {
 #[test]
 fn test_constraint_expression_extraction_complex() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Converter<A, B> for Adapter<C, D> when A: Debug && B: Display && C: Clone
     // Should extract A, B, C, D
@@ -122,7 +122,7 @@ fn test_constraint_expression_extraction_complex() {
 #[test]
 fn test_constraint_expression_extraction_nested() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Transform<Option<T>> for Container<U> when (T: Debug && U: Display)
     // Should extract T and U from constraints, plus the ones from type specs
@@ -177,7 +177,7 @@ fn test_constraint_expression_extraction_nested() {
 #[test]
 fn test_constraint_expression_no_duplicates() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<T> for Wrapper<T> when T: Debug
     // T appears in both type specs and constraint - should only appear once in generic_parameters

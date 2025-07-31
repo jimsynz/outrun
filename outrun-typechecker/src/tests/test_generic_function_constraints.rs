@@ -5,14 +5,14 @@
 
 use crate::dispatch::{FunctionInfo, FunctionVisibility};
 use crate::inference::{InferenceContext, TypeInferenceEngine};
-use crate::types::{Constraint, ModuleId, SelfBindingContext, Substitution, Type, TypeId};
+use crate::types::{Constraint, SelfBindingContext, Substitution, Type};
 use std::collections::HashMap;
 
 fn create_test_engine() -> TypeInferenceEngine {
     let mut engine = TypeInferenceEngine::new();
 
     // Set up basic types in registry
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
 
     engine
 }
@@ -25,15 +25,15 @@ fn create_generic_function_info() -> FunctionInfo {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: TypeId::new("Wrapper"),
+            id: ModuleName::new("Wrapper"),
             args: vec![Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -53,7 +53,7 @@ fn test_constraint_generation_for_simple_generic_function() {
 
     // Call with Integer64 argument: Wrapper.wrap(value: 42)
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -64,7 +64,7 @@ fn test_constraint_generation_for_simple_generic_function() {
         constraints: Vec::new(),
         expected_type: None,
         self_binding: SelfBindingContext::ProtocolDefinition {
-            protocol_id: crate::types::ProtocolId::new("TestProtocol"),
+            protocol_id: crate::types::ModuleName::new("TestProtocol"),
             protocol_args: vec![],
         },
         bindings: HashMap::new(),
@@ -118,7 +118,7 @@ fn test_return_type_instantiation_for_generic_function() {
 
     // Call with String argument: Wrapper.wrap(value: "hello")
     let string_type = Type::Concrete {
-        id: TypeId::new("String"),
+        id: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
@@ -162,7 +162,7 @@ fn test_multiple_type_parameters() {
             (
                 "from".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("T"),
+                    id: ModuleName::new("T"),
                     args: vec![],
                     span: None,
                 },
@@ -170,9 +170,9 @@ fn test_multiple_type_parameters() {
             (
                 "to_type".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("Type"),
+                    id: ModuleName::new("Type"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("U"),
+                        id: ModuleName::new("U"),
                         args: vec![],
                         span: None,
                     }],
@@ -181,7 +181,7 @@ fn test_multiple_type_parameters() {
             ),
         ],
         return_type: Type::Concrete {
-            id: TypeId::new("U"),
+            id: ModuleName::new("U"),
             args: vec![],
             span: None,
         },
@@ -193,14 +193,14 @@ fn test_multiple_type_parameters() {
 
     // Call: Converter.convert(from: 42, to_type: Type<String>)
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
     let type_string = Type::Concrete {
-        id: TypeId::new("Type"),
+        id: ModuleName::new("Type"),
         args: vec![Type::Concrete {
-            id: TypeId::new("String"),
+            id: ModuleName::new("String"),
             args: vec![],
             span: None,
         }],
@@ -213,7 +213,7 @@ fn test_multiple_type_parameters() {
         constraints: Vec::new(),
         expected_type: None,
         self_binding: SelfBindingContext::ProtocolDefinition {
-            protocol_id: crate::types::ProtocolId::new("TestProtocol"),
+            protocol_id: crate::types::ModuleName::new("TestProtocol"),
             protocol_args: vec![],
         },
         bindings: HashMap::new(),
@@ -259,11 +259,11 @@ fn test_nested_generic_types() {
         parameters: vec![(
             "wrapper".to_string(),
             Type::Concrete {
-                id: TypeId::new("Wrapper"),
+                id: ModuleName::new("Wrapper"),
                 args: vec![Type::Concrete {
-                    id: TypeId::new("Option"),
+                    id: ModuleName::new("Option"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("T"),
+                        id: ModuleName::new("T"),
                         args: vec![],
                         span: None,
                     }],
@@ -273,7 +273,7 @@ fn test_nested_generic_types() {
             },
         )],
         return_type: Type::Concrete {
-            id: TypeId::new("T"),
+            id: ModuleName::new("T"),
             args: vec![],
             span: None,
         },
@@ -285,11 +285,11 @@ fn test_nested_generic_types() {
 
     // Call: Unwrapper.unwrap(wrapper: Wrapper<Option<Boolean>>)
     let wrapper_option_boolean = Type::Concrete {
-        id: TypeId::new("Wrapper"),
+        id: ModuleName::new("Wrapper"),
         args: vec![Type::Concrete {
-            id: TypeId::new("Option"),
+            id: ModuleName::new("Option"),
             args: vec![Type::Concrete {
-                id: TypeId::new("Boolean"),
+                id: ModuleName::new("Boolean"),
                 args: vec![],
                 span: None,
             }],
@@ -329,7 +329,7 @@ fn test_constraint_generation_with_non_generic_function() {
             (
                 "a".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("Integer64"),
+                    id: ModuleName::new("Integer64"),
                     args: vec![],
                     span: None,
                 },
@@ -337,14 +337,14 @@ fn test_constraint_generation_with_non_generic_function() {
             (
                 "b".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("Integer64"),
+                    id: ModuleName::new("Integer64"),
                     args: vec![],
                     span: None,
                 },
             ),
         ],
         return_type: Type::Concrete {
-            id: TypeId::new("Integer64"),
+            id: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
@@ -355,7 +355,7 @@ fn test_constraint_generation_with_non_generic_function() {
     };
 
     let integer_type = Type::Concrete {
-        id: TypeId::new("Integer64"),
+        id: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -366,7 +366,7 @@ fn test_constraint_generation_with_non_generic_function() {
         constraints: Vec::new(),
         expected_type: None,
         self_binding: SelfBindingContext::ProtocolDefinition {
-            protocol_id: crate::types::ProtocolId::new("TestProtocol"),
+            protocol_id: crate::types::ModuleName::new("TestProtocol"),
             protocol_args: vec![],
         },
         bindings: HashMap::new(),

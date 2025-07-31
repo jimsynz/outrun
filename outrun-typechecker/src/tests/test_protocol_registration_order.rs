@@ -33,7 +33,7 @@ protocol Option<T> {
         .expect("Boolean protocol registration should succeed");
 
     // Check if Boolean is now recognized as a protocol
-    let boolean_protocol_id = crate::types::ProtocolId::new("Boolean");
+    let boolean_protocol_id = crate::types::ModuleName::new("Boolean");
     let has_boolean_protocol = engine
         .get_protocol_registry()
         .has_protocol(&boolean_protocol_id);

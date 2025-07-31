@@ -4,7 +4,7 @@
 //! the Option protocol are generic over all types that implement the Integer protocol"
 
 use crate::inference::TypeInferenceEngine;
-use crate::types::{ProtocolId, Type, TypeId};
+use crate::types::{ModuleName, Type};
 
 #[test]
 fn test_option_integer_constraint_compatibility() {
@@ -31,25 +31,25 @@ fn test_option_integer_constraint_compatibility() {
     // This requires that Outrun.Core.Integer64 implements Integer
 
     // First, register that Outrun.Core.Integer64 implements Integer
-    let integer64_type = TypeId::new("Outrun.Core.Integer64");
-    let integer_protocol = ProtocolId::new("Integer");
+    let integer64_type = ModuleName::new("Outrun.Core.Integer64");
+    let integer_protocol = ModuleName::new("Integer");
 
     // Add modules as local to avoid orphan rule violations
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Integer64"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Integer64"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Integer"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Integer"));
 
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
             integer64_type.clone(),
             vec![], // no generic args
             integer_protocol.clone(),
             vec![], // no protocol args
-            crate::types::ModuleId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             None,
         )
         .expect("Should register Integer implementation");
@@ -117,45 +117,45 @@ fn test_nested_constraint_resolution() {
     );
 
     // Register implementations
-    let integer64_type = TypeId::new("Outrun.Core.Integer64");
-    let string_type = TypeId::new("Outrun.Core.String");
-    let integer_protocol = ProtocolId::new("Integer");
-    let string_protocol = ProtocolId::new("String");
+    let integer64_type = ModuleName::new("Outrun.Core.Integer64");
+    let string_type = ModuleName::new("Outrun.Core.String");
+    let integer_protocol = ModuleName::new("Integer");
+    let string_protocol = ModuleName::new("String");
 
     // Add modules as local to avoid orphan rule violations
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Integer64"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Integer64"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.String"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Integer"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Integer"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("String"));
 
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
             integer64_type,
             vec![],
             integer_protocol,
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             None,
         )
         .expect("Should register Integer implementation");
 
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
             string_type,
             vec![],
             string_protocol,
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             None,
         )
         .expect("Should register String implementation");

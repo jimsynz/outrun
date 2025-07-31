@@ -373,11 +373,8 @@ impl<'a> FunctionDispatcher<'a> {
                     let generic_protocol_id = ModuleName::new(&generic_protocol_name);
 
                     // Debug: Show the exact key we're looking for with generic protocol name
-                    let _generic_search_key = crate::registry::ImplementationKey::new(
-                        generic_protocol_id.clone(),
-                        name.clone(),
-                        args,
-                    );
+                    // Implementation lookup: protocol="{}", type="{}", args={:?}
+                    let _debug_info = (generic_protocol_id.clone(), name.clone(), args);
 
                     impl_info =
                         self.type_registry
@@ -411,11 +408,8 @@ impl<'a> FunctionDispatcher<'a> {
                     }
 
                     // Debug: Show the exact key we're looking for
-                    let _search_key = crate::registry::ImplementationKey::new(
-                        crate::types::ModuleName::new(protocol_name),
-                        name.clone(),
-                        args,
-                    );
+                    // Implementation lookup: protocol="{}", type="{}", args={:?}
+                    let _debug_info = (protocol_name, name.clone(), args);
                     // Add debug info about what implementations are actually available
                     Err(DispatchError::NoImplementation {
                         protocol_name: protocol_name.to_string(),

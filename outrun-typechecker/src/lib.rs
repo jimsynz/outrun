@@ -55,7 +55,7 @@ pub use error::{
     UnificationError,
 };
 pub use inference::{InferenceContext, InferenceResult, TypeInferenceEngine};
-pub use registry::{ImplementationInfo, ImplementationKey, ProtocolRegistry};
+pub use registry::{ImplementationInfo, TypeRegistry};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -104,8 +104,8 @@ impl Package {
 /// Complete result of typechecking a package - reusable and composable
 #[derive(Debug, Clone)]
 pub struct CompilationResult {
-    /// Complete protocol registry with implementations and definitions
-    pub protocol_registry: std::rc::Rc<ProtocolRegistry>,
+    /// Complete type registry with protocols, structs, and implementations
+    pub type_registry: std::rc::Rc<TypeRegistry>,
     /// Complete function registry with all function definitions  
     pub function_registry: std::rc::Rc<FunctionRegistry>,
     /// Runtime dispatch table for function resolution (LEGACY)
@@ -146,7 +146,7 @@ impl CompilationResult {
 
             println!(
                 "✅ Core library pre-compiled successfully with {} implementations",
-                core_result.protocol_registry.implementation_count()
+                core_result.type_registry.implementation_count()
             );
 
             Ok(core_result)
@@ -352,7 +352,7 @@ impl CompilationResult {
 
             // Import dependency's registries into our engine
             engine.import_dependency_registries(
-                dependency.protocol_registry.clone(),
+                dependency.type_registry.clone(),
                 dependency.function_registry.clone(),
             )?;
         }
@@ -513,7 +513,7 @@ impl CompilationResult {
         let (local_modules, defined_modules) = Self::collect_module_info(&package.programs);
 
         Ok(CompilationResult {
-            protocol_registry: std::rc::Rc::new(engine.protocol_registry().clone()),
+            type_registry: engine.type_registry_rc(),
             function_registry: engine.function_registry_rc(),
             dispatch_table,
             monomorphisation_table,
@@ -828,11 +828,11 @@ protocol Display {
             .expect("Should register package1");
 
         // Get the registries from engine1 as dependencies for engine2
-        let protocol_registry1 = std::rc::Rc::new(engine1.protocol_registry().clone());
+        let type_registry1 = engine1.type_registry_rc();
         let function_registry1 = engine1.function_registry_rc();
 
         // Import package1 registries into engine2 as dependencies
-        let result = engine2.import_dependency_registries(protocol_registry1, function_registry1);
+        let result = engine2.import_dependency_registries(type_registry1, function_registry1);
         assert!(
             result.is_ok(),
             "Should successfully import dependency registries"
@@ -859,7 +859,7 @@ protocol Display {
 
         // Verify core library has expected implementations
         assert!(
-            core.protocol_registry.implementation_count() > 0,
+            core.type_registry.implementation_count() > 0,
             "Core library should have implementations"
         );
         assert_eq!(
@@ -889,8 +889,8 @@ protocol Display {
             // Verify that the expression result has access to core library functionality
             // by checking that protocol registries have been merged
             assert!(
-                expr_result.protocol_registry.implementation_count()
-                    >= core.protocol_registry.implementation_count(),
+                expr_result.type_registry.implementation_count()
+                    >= core.type_registry.implementation_count(),
                 "Expression result should include core library implementations"
             );
         }

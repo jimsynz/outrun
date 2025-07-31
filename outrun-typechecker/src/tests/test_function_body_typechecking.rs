@@ -11,41 +11,41 @@ mod function_body_typechecking_tests {
 
         // Set up basic protocol requirements for testing
         // This simulates what would happen during real protocol definition collection
-        use crate::types::{ModuleId, ProtocolId, TypeId};
+        use crate::types::ModuleName;
         use std::collections::HashSet;
 
-        let registry = engine.protocol_registry_mut();
+        let registry = engine.type_registry_mut();
 
         // Add local modules for orphan rule compliance
-        registry.add_local_module(ModuleId::new("Integer"));
-        registry.add_local_module(ModuleId::new("BinaryAddition"));
-        registry.add_local_module(ModuleId::new("Equality"));
-        registry.add_local_module(ModuleId::new("Outrun.Core.Integer64"));
+        registry.add_local_module(ModuleName::new("Integer"));
+        registry.add_local_module(ModuleName::new("BinaryAddition"));
+        registry.add_local_module(ModuleName::new("Equality"));
+        registry.add_local_module(ModuleName::new("Outrun.Core.Integer64"));
 
         // Register Integer protocol with BinaryAddition requirement
         let mut integer_requirements = HashSet::new();
-        integer_requirements.insert(ProtocolId::new("BinaryAddition"));
-        integer_requirements.insert(ProtocolId::new("Equality"));
+        integer_requirements.insert(ModuleName::new("BinaryAddition"));
+        integer_requirements.insert(ModuleName::new("Equality"));
 
         registry.register_protocol_definition(
-            ProtocolId::new("Integer"),
+            ModuleName::new("Integer"),
             integer_requirements,
-            ModuleId::new("Integer"),
+            ModuleName::new("Integer"),
             HashSet::new(), // default_implementations
             HashSet::new(), // required_functions
             None,
         );
 
         // Register a concrete type that implements Integer and its requirements
-        let integer64_type = TypeId::new("Outrun.Core.Integer64");
+        let integer64_type = ModuleName::new("Outrun.Core.Integer64");
 
         registry
             .register_implementation(
                 integer64_type.clone(),
                 vec![],
-                ProtocolId::new("Integer"),
+                ModuleName::new("Integer"),
                 vec![],
-                ModuleId::new("Integer"),
+                ModuleName::new("Integer"),
                 None,
             )
             .ok(); // Ignore errors for test setup
@@ -54,9 +54,9 @@ mod function_body_typechecking_tests {
             .register_implementation(
                 integer64_type.clone(),
                 vec![],
-                ProtocolId::new("BinaryAddition"),
+                ModuleName::new("BinaryAddition"),
                 vec![],
-                ModuleId::new("BinaryAddition"),
+                ModuleName::new("BinaryAddition"),
                 None,
             )
             .ok();
@@ -65,9 +65,9 @@ mod function_body_typechecking_tests {
             .register_implementation(
                 integer64_type,
                 vec![],
-                ProtocolId::new("Equality"),
+                ModuleName::new("Equality"),
                 vec![],
-                ModuleId::new("Equality"),
+                ModuleName::new("Equality"),
                 None,
             )
             .ok();

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod generic_parameter_resolution_tests {
     use crate::inference::TypeInferenceEngine;
-    use crate::types::{Level, ModuleId, ProtocolId, Type, TypeVarId};
+    use crate::types::{Level, Type, TypeVarId};
     use outrun_parser::parse_program;
 
     #[test]
@@ -152,11 +152,11 @@ mod generic_parameter_resolution_tests {
         let mut engine = TypeInferenceEngine::new();
 
         // Register the Option protocol so it's recognized as a protocol, not concrete type
-        let option_protocol_id = ProtocolId::new("Option");
+        let option_protocol_id = ModuleName::new("Option");
         engine.protocol_registry_mut().register_protocol_definition(
             option_protocol_id.clone(),
             std::collections::HashSet::new(), // No required protocols
-            ModuleId::new("TestModule"),
+            ModuleName::new("TestModule"),
             std::collections::HashSet::new(), // No default implementations
             std::collections::HashSet::new(), // No required functions
             None,                             // No span
@@ -169,7 +169,7 @@ mod generic_parameter_resolution_tests {
             .register_protocol_definition(
                 option_protocol_id,
                 std::collections::HashSet::new(), // No required protocols
-                ModuleId::new("TestModule"),
+                ModuleName::new("TestModule"),
                 std::collections::HashSet::new(), // No default implementations
                 std::collections::HashSet::new(), // No required functions
                 None,                             // No span

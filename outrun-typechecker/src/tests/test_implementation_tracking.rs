@@ -45,8 +45,8 @@ fn test_implementation_registration_tracking() {
 
     // Check that Display for TestStruct is registered once
     let registry = engine.get_protocol_registry();
-    let display_protocol = crate::types::ProtocolId::new("Display");
-    let test_struct_type = crate::types::TypeId::new("TestStruct");
+    let display_protocol = crate::types::ModuleName::new("Display");
+    let test_struct_type = crate::types::ModuleName::new("TestStruct");
 
     let has_impl = registry.has_implementation(&display_protocol, &test_struct_type);
     println!(

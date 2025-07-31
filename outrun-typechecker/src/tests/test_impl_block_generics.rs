@@ -5,13 +5,13 @@
 
 use crate::dispatch::FunctionRegistry;
 use crate::inference::TypeInferenceEngine;
-use crate::types::ModuleId;
+use crate::types::ModuleName;
 use outrun_parser::parse_program;
 
 #[test]
 fn test_impl_block_with_same_type_variables() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<T> for Wrapper<T> - T should be shared generic parameter
     let program_text = r#"
@@ -54,7 +54,7 @@ fn test_impl_block_with_same_type_variables() {
 #[test]
 fn test_impl_block_with_different_type_variables() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<A> for Wrapper<B> - A and B should be separate generic parameters
     let program_text = r#"
@@ -99,7 +99,7 @@ fn test_impl_block_with_different_type_variables() {
 #[test]
 fn test_impl_block_with_concrete_types() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<String> for Wrapper<Integer64> - no generic parameters
     let program_text = r#"
@@ -141,7 +141,7 @@ fn test_impl_block_with_concrete_types() {
 #[test]
 fn test_impl_block_nested_generics() {
     let mut engine = TypeInferenceEngine::new();
-    engine.set_current_module(ModuleId::new("TestModule"));
+    engine.set_current_module(ModuleName::new("TestModule"));
     
     // Test: impl Display<Option<T>> for Wrapper<List<T>> - nested generics with shared T
     let program_text = r#"

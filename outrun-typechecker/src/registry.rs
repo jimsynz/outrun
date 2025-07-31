@@ -25,41 +25,7 @@ pub struct ImplementationInfo {
     pub span: Option<Span>,
 }
 
-/// Registry key uniquely identifying a protocol implementation (legacy compatibility)
-/// Maps (Protocol, ConcreteType) -> Implementation
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ImplementationKey {
-    pub protocol_name: ModuleName,
-    pub implementing_type: ModuleName,
-    /// Canonical string representation of generic args for hashing
-    /// e.g., List<String> -> "String", Map<K,V> -> "K,V"
-    pub type_args_signature: String,
-}
 
-impl ImplementationKey {
-    /// Create a new implementation key
-    pub fn new(
-        protocol_name: ModuleName,
-        implementing_type: ModuleName,
-        implementing_args: &[Type],
-    ) -> Self {
-        let type_args_signature = if implementing_args.is_empty() {
-            String::new()
-        } else {
-            implementing_args
-                .iter()
-                .map(|arg| format!("{arg}"))
-                .collect::<Vec<_>>()
-                .join(",")
-        };
-
-        Self {
-            protocol_name,
-            implementing_type,
-            type_args_signature,
-        }
-    }
-}
 
 /// Unified type registry for all modules in Outrun's system
 #[derive(Debug, Clone)]

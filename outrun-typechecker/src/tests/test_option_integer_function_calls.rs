@@ -4,7 +4,7 @@
 //! is in function call inference rather than basic type compatibility
 
 use crate::inference::TypeInferenceEngine;
-use crate::types::{ProtocolId, TypeId};
+use crate::types::{ModuleName};
 use outrun_parser::parse_program;
 
 #[test]
@@ -13,32 +13,32 @@ fn test_function_with_option_integer_parameter() {
 
     // Set up local modules
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Integer64"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Integer64"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Boolean"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Boolean"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Integer"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Integer"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Boolean"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Boolean"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Option"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Option"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("TestModule"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("TestModule"));
 
     // Register protocol definitions in the type registry
     engine
         .type_registry_mut()
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_protocol_definition(
-            ProtocolId::new("Integer"),
+            ModuleName::new("Integer"),
             std::collections::HashSet::new(),
-            crate::types::ModuleId::new("Integer"),
+            ModuleName::new("Integer"),
             std::collections::HashSet::new(),
             std::collections::HashSet::new(),
             None,
@@ -46,11 +46,11 @@ fn test_function_with_option_integer_parameter() {
 
     engine
         .type_registry_mut()
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_protocol_definition(
-            ProtocolId::new("Boolean"),
+            ModuleName::new("Boolean"),
             std::collections::HashSet::new(),
-            crate::types::ModuleId::new("Boolean"),
+            ModuleName::new("Boolean"),
             std::collections::HashSet::new(),
             std::collections::HashSet::new(),
             None,
@@ -58,11 +58,11 @@ fn test_function_with_option_integer_parameter() {
 
     engine
         .type_registry_mut()
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_protocol_definition(
-            ProtocolId::new("Option"),
+            ModuleName::new("Option"),
             std::collections::HashSet::new(),
-            crate::types::ModuleId::new("Option"),
+            ModuleName::new("Option"),
             std::collections::HashSet::new(),
             std::collections::HashSet::new(),
             None,
@@ -70,26 +70,26 @@ fn test_function_with_option_integer_parameter() {
 
     // Register Integer implementation
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             vec![],
-            ProtocolId::new("Integer"),
+            ModuleName::new("Integer"),
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             None,
         )
         .expect("Should register Integer implementation");
 
     // Register Boolean implementation
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.Boolean"),
+            ModuleName::new("Outrun.Core.Boolean"),
             vec![],
-            ProtocolId::new("Boolean"),
+            ModuleName::new("Boolean"),
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.Boolean"),
+            ModuleName::new("Outrun.Core.Boolean"),
             None,
         )
         .expect("Should register Boolean implementation");
@@ -123,48 +123,48 @@ fn test_function_call_with_protocol_constraint_in_generics() {
 
     // Set up local modules
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Integer64"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Integer64"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.String"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Integer"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Integer"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("String"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Option"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Option"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Result"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Result"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("TestModule"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("TestModule"));
 
     // Register implementations
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             vec![],
-            ProtocolId::new("Integer"),
+            ModuleName::new("Integer"),
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.Integer64"),
+            ModuleName::new("Outrun.Core.Integer64"),
             None,
         )
         .expect("Should register Integer implementation");
 
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             vec![],
-            ProtocolId::new("String"),
+            ModuleName::new("String"),
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             None,
         )
         .expect("Should register String implementation");
@@ -204,33 +204,33 @@ fn test_protocol_constraint_mismatch_detection() {
 
     // Set up local modules
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.Integer64"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.Integer64"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Outrun.Core.String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Outrun.Core.String"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Integer"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Integer"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("String"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("String"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("Option"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("Option"));
     engine
-        .protocol_registry_mut()
-        .add_local_module(crate::types::ModuleId::new("TestModule"));
+        .type_registry_mut()
+        .add_local_module(ModuleName::new("TestModule"));
 
     // Only register String implementation, NOT Integer
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             vec![],
-            ProtocolId::new("String"),
+            ModuleName::new("String"),
             vec![],
-            crate::types::ModuleId::new("Outrun.Core.String"),
+            ModuleName::new("Outrun.Core.String"),
             None,
         )
         .expect("Should register String implementation");

@@ -1,7 +1,7 @@
 //! Test protocol-to-concrete type compatibility
 
 use crate::{
-    types::{ModuleId, ProtocolId, Type, TypeId},
+    types::{Type},
     TypeInferenceEngine,
 };
 
@@ -11,18 +11,18 @@ fn test_boolean_protocol_concrete_compatibility() {
 
     // Add modules as local to avoid orphan rule violations
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("Boolean"));
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("Outrun.Core.Boolean"));
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("TestModule"));
 
     // Register Boolean protocol
-    engine.protocol_registry_mut().register_protocol_definition(
-        ProtocolId::new("Boolean"),
+    engine.type_registry_mut().register_protocol_definition(
+        ModuleName::new("Boolean"),
         std::collections::HashSet::new(),
         ModuleId::new("TestModule"),
         std::collections::HashSet::new(),
@@ -32,11 +32,11 @@ fn test_boolean_protocol_concrete_compatibility() {
 
     // Register the implementation: Outrun.Core.Boolean implements Boolean
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.Boolean"),
+            ModuleName::new("Outrun.Core.Boolean"),
             vec![],
-            ProtocolId::new("Boolean"),
+            ModuleName::new("Boolean"),
             vec![],
             ModuleId::new("Outrun.Core.Boolean"),
             None,
@@ -68,21 +68,21 @@ fn test_string_contains_scenario() {
 
     // Add modules as local to avoid orphan rule violations
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("Boolean"));
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("Option"));
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("Outrun.Core.Boolean"));
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .add_local_module(ModuleId::new("TestModule"));
 
     // 1. Register Boolean protocol
-    engine.protocol_registry_mut().register_protocol_definition(
-        ProtocolId::new("Boolean"),
+    engine.type_registry_mut().register_protocol_definition(
+        ModuleName::new("Boolean"),
         std::collections::HashSet::new(),
         ModuleId::new("TestModule"),
         std::collections::HashSet::new(),
@@ -91,8 +91,8 @@ fn test_string_contains_scenario() {
     );
 
     // 2. Register Option protocol
-    engine.protocol_registry_mut().register_protocol_definition(
-        ProtocolId::new("Option"),
+    engine.type_registry_mut().register_protocol_definition(
+        ModuleName::new("Option"),
         std::collections::HashSet::new(),
         ModuleId::new("TestModule"),
         std::collections::HashSet::new(),
@@ -102,11 +102,11 @@ fn test_string_contains_scenario() {
 
     // 3. Register the implementation: Outrun.Core.Boolean implements Boolean
     engine
-        .protocol_registry_mut()
+        .type_registry_mut()
         .register_implementation(
-            TypeId::new("Outrun.Core.Boolean"),
+            ModuleName::new("Outrun.Core.Boolean"),
             vec![],
-            ProtocolId::new("Boolean"),
+            ModuleName::new("Boolean"),
             vec![],
             ModuleId::new("Outrun.Core.Boolean"),
             None,

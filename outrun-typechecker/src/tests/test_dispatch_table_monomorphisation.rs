@@ -8,7 +8,7 @@ use crate::dispatch::{
     MonomorphisationEntry, MonomorphisationTable,
 };
 use crate::registry::ProtocolRegistry;
-use crate::types::{Type, TypeId};
+use crate::types::{Type};
 use std::collections::HashMap;
 
 fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationTable) {
@@ -24,15 +24,15 @@ fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationT
         parameters: vec![(
             "item".to_string(),
             Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: TypeId::new("Container"),
+            id: ModuleName::new("Container"),
             args: vec![Type::Concrete {
-                id: TypeId::new("T"),
+                id: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -53,7 +53,7 @@ fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationT
     // Add monomorphisations for Integer64 and String
     for type_name in &["Integer64", "String"] {
         let concrete_type = Type::Concrete {
-            id: TypeId::new(*type_name),
+            id: ModuleName::new(*type_name),
             args: vec![],
             span: None,
         };
@@ -216,7 +216,7 @@ fn test_complex_generic_types_in_dispatch_table() {
             (
                 "key".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("K"),
+                    id: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
@@ -224,9 +224,9 @@ fn test_complex_generic_types_in_dispatch_table() {
             (
                 "values".to_string(),
                 Type::Concrete {
-                    id: TypeId::new("List"),
+                    id: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("V"),
+                        id: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -235,17 +235,17 @@ fn test_complex_generic_types_in_dispatch_table() {
             ),
         ],
         return_type: Type::Concrete {
-            id: TypeId::new("Map"),
+            id: ModuleName::new("Map"),
             args: vec![
                 Type::Concrete {
-                    id: TypeId::new("K"),
+                    id: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
                 Type::Concrete {
-                    id: TypeId::new("List"),
+                    id: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: TypeId::new("V"),
+                        id: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -271,7 +271,7 @@ fn test_complex_generic_types_in_dispatch_table() {
     substitutions.insert(
         "K".to_string(),
         Type::Concrete {
-            id: TypeId::new("String"),
+            id: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -279,7 +279,7 @@ fn test_complex_generic_types_in_dispatch_table() {
     substitutions.insert(
         "V".to_string(),
         Type::Concrete {
-            id: TypeId::new("Integer64"),
+            id: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
