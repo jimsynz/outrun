@@ -312,6 +312,53 @@ impl TypeRegistry {
             let _ = self.register_module(module);
         }
     }
+
+    /// Legacy compatibility: Check if implementation exists with specific type arguments
+    pub fn has_implementation_with_args(
+        &self,
+        protocol_name: &ModuleName,
+        implementing_type: &ModuleName,
+        _type_args: &[Type],
+    ) -> bool {
+        // For now, ignore type arguments and just check basic implementation existence
+        // TODO: Add proper generic type argument matching when needed
+        self.has_implementation(protocol_name, implementing_type)
+    }
+
+    /// Legacy compatibility: Get all implementations as an iterator
+    pub fn all_implementations(&self) -> impl Iterator<Item = ImplementationInfo> + '_ {
+        self.modules.values().filter_map(|module| {
+            if let TypeModule::Implementation {
+                implementing_type,
+                protocol,
+                generic_bindings,
+                defining_module,
+                source_location,
+                ..
+            } = module
+            {
+                Some(ImplementationInfo {
+                    implementing_type: implementing_type.clone(),
+                    implementing_args: generic_bindings.clone(),
+                    protocol_name: protocol.clone(),
+                    protocol_args: Vec::new(), // TODO: Extract from generic bindings if needed
+                    defining_module: defining_module.clone(),
+                    span: Some(*source_location),
+                })
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Legacy compatibility: Check if a protocol requires another protocol
+    pub fn protocol_requires(&self, protocol_name: &ModuleName, required_protocol: &ModuleName) -> bool {
+        if let Some(TypeModule::Protocol { definition, .. }) = self.modules.get(protocol_name) {
+            definition.required_protocols.contains(required_protocol)
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for TypeRegistry {

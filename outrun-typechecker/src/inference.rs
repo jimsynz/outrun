@@ -1024,7 +1024,15 @@ impl TypeInferenceEngine {
 
         // Mark struct's module as local (for orphan rule)
         let struct_module = ModuleName::new(&struct_name);
-        self.protocol_registry_mut().add_local_module(struct_module);
+        
+        // Add to unified type registry as local module
+        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
+            type_registry.add_local_module(struct_module.clone());
+        } else {
+            let mut new_type_registry = (*self.type_registry).clone();
+            new_type_registry.add_local_module(struct_module.clone());
+            self.type_registry = Rc::new(new_type_registry);
+        }
 
         // Set up generic parameter context
         let old_generic_context = self.generic_parameter_context.clone();
@@ -1032,9 +1040,37 @@ impl TypeInferenceEngine {
         let generic_context = self.create_generic_context_from_names(&generic_params);
         self.set_generic_parameter_context(generic_context);
 
-        // Store struct definition in registry for field access resolution
+        // Store struct definition in legacy registry for field access resolution (temporary)
         self.struct_registry
             .insert(struct_name.clone(), struct_def.clone());
+
+        // Create concrete type definition for unified registry
+        let concrete_type_definition = crate::types::ConcreteTypeDefinition {
+            type_name: struct_module.clone(),
+            defining_module: struct_module.clone(), // Struct defines itself
+            is_generic: !generic_params.is_empty(),
+            span: Some(struct_def.span),
+            is_never_type: false, // TODO: Extract from attributes when macro system is ready
+        };
+
+        // Create struct module for unified registry
+        let struct_type_module = crate::types::TypeModule::Struct {
+            name: struct_module.clone(),
+            definition: concrete_type_definition,
+            source_location: struct_def.span,
+            generic_arity: generic_params.len(),
+        };
+
+        // Register struct in unified type registry
+        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
+            type_registry.register_module(struct_type_module)
+                .map_err(|e| TypecheckError::TypeError(e))?;
+        } else {
+            let mut new_type_registry = (*self.type_registry).clone();
+            new_type_registry.register_module(struct_type_module)
+                .map_err(|e| TypecheckError::TypeError(e))?;
+            self.type_registry = Rc::new(new_type_registry);
+        }
 
         // Collect struct associated functions (functions defined in the struct block)
         for function in &struct_def.functions {
@@ -1151,12 +1187,15 @@ impl TypeInferenceEngine {
 
         // Mark protocol's module as local (for orphan rule)
         let protocol_module = ModuleName::new(&protocol_name);
-        self.protocol_registry_mut()
-            .add_local_module(protocol_module);
-
-        // WORKAROUND: Identify never types during protocol processing
-        // TODO: Replace with proper attribute system when macro system is implemented
-        // Never type identification is now handled in registry.is_never_type()
+        
+        // Add to unified type registry as local module
+        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
+            type_registry.add_local_module(protocol_module.clone());
+        } else {
+            let mut new_type_registry = (*self.type_registry).clone();
+            new_type_registry.add_local_module(protocol_module.clone());
+            self.type_registry = Rc::new(new_type_registry);
+        }
 
         // Set up generic parameter context
         let old_generic_context = self.generic_parameter_context.clone();
@@ -1185,10 +1224,6 @@ impl TypeInferenceEngine {
             }
         }
 
-        // Register protocol in protocol registry
-        let protocol_id = ModuleName::new(&protocol_name);
-        let module_id = ModuleName::new(&protocol_name); // Protocol name as module
-
         // Extract required protocols from constraint expressions  
         let required_protocols = if let Some(constraints) = &protocol_def.constraints {
             self.extract_protocol_requirements(constraints)?
@@ -1196,42 +1231,32 @@ impl TypeInferenceEngine {
             HashSet::new()
         };
 
-        // Clone data for dual registration  
-        let required_protocols_clone = required_protocols.clone();
-        let default_implementations_clone = default_implementations.clone();
-        let required_functions_clone = required_functions.clone();
-
-        self.protocol_registry_mut().register_protocol_definition(
-            protocol_id.clone(),
+        // Create protocol definition for unified registry
+        let protocol_definition = crate::types::ProtocolDefinition {
+            protocol_name: protocol_module.clone(),
             required_protocols,
-            module_id.clone(),
+            defining_module: protocol_module.clone(), // Protocol defines itself
             default_implementations,
             required_functions,
-            Some(protocol_def.span),
-        );
+            span: Some(protocol_def.span),
+        };
 
-        // Also register the protocol in the type registry so that convert_type_annotation
-        // can distinguish protocols from concrete types - WITH SAME REQUIREMENTS
+        // Create protocol module for unified registry
+        let protocol_type_module = crate::types::TypeModule::Protocol {
+            name: protocol_module.clone(),
+            definition: protocol_definition,
+            source_location: protocol_def.span,
+            generic_arity: generic_params.len(),
+        };
+
+        // Register protocol in unified type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.protocol_registry_mut().register_protocol_definition(
-                protocol_id,
-                required_protocols_clone, // Include the same requirements for consistency
-                module_id,
-                default_implementations_clone, // Include same implementations for consistency  
-                required_functions_clone, // Include same functions for consistency
-                Some(protocol_def.span),
-            );
+            type_registry.register_module(protocol_type_module)
+                .map_err(|e| TypecheckError::TypeError(e))?;
         } else {
-            // If there are multiple references, we need to clone and replace
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.protocol_registry_mut().register_protocol_definition(
-                protocol_id,
-                required_protocols_clone, // Include the same requirements for consistency
-                module_id,
-                default_implementations_clone, // Include same implementations for consistency  
-                required_functions_clone, // Include same functions for consistency
-                Some(protocol_def.span),
-            );
+            new_type_registry.register_module(protocol_type_module)
+                .map_err(|e| TypecheckError::TypeError(e))?;
             self.type_registry = Rc::new(new_type_registry);
         }
 
