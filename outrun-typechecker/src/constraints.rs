@@ -5,7 +5,7 @@
 
 use crate::error::ConstraintError;
 use crate::registry::ProtocolRegistry;
-use crate::types::{Constraint, ProtocolId, SelfBindingContext, Substitution, Type, TypeVarId};
+use crate::types::{Constraint, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
@@ -63,7 +63,7 @@ pub struct RecursivePatternInfo {
     /// Type implementing the protocol (e.g., Option<T>)
     pub implementing_type: Type,
     /// Protocol being implemented (e.g., Empty)
-    pub protocol: ProtocolId,
+    pub protocol: ModuleName,
     /// Detected recursion depth (None = unbounded)
     pub recursion_depth: Option<usize>,
     /// Whether warning has been emitted for this pattern
@@ -161,7 +161,7 @@ pub struct GenericParameter {
     pub name: String,
 
     /// Direct constraints on this parameter (e.g., T: Display)
-    pub direct_constraints: Vec<crate::types::ProtocolId>,
+    pub direct_constraints: Vec<crate::types::ModuleName>,
 
     /// Whether this parameter appears in multiple positions
     pub multiple_occurrences: bool,
@@ -195,7 +195,7 @@ pub enum TypeTemplate {
     /// Generic parameter that needs substitution
     Generic {
         parameter_name: String,
-        constraints: Vec<crate::types::ProtocolId>,
+        constraints: Vec<crate::types::ModuleName>,
     },
 
     /// Protocol reference
@@ -237,7 +237,7 @@ pub struct ProtocolConstraintTemplate {
     pub parameter_name: String,
 
     /// Protocol that must be implemented
-    pub protocol_id: crate::types::ProtocolId,
+    pub protocol_id: crate::types::ModuleName,
 
     /// Additional generic arguments to the protocol
     pub protocol_args: Vec<TypeTemplate>,
@@ -483,7 +483,7 @@ impl ConstraintSolver {
     fn solve_implements_constraint(
         &mut self,
         type_var: TypeVarId,
-        protocol: &ProtocolId,
+        protocol: &ModuleName,
         substitution: &Substitution,
         span: Option<outrun_parser::Span>,
     ) -> Result<(), ConstraintError> {
@@ -624,7 +624,7 @@ impl ConstraintSolver {
     fn solve_self_implements_constraint(
         &mut self,
         self_context: &SelfBindingContext,
-        protocol: &ProtocolId,
+        protocol: &ModuleName,
         span: Option<outrun_parser::Span>,
     ) -> Result<(), ConstraintError> {
         match self_context {
@@ -1168,7 +1168,7 @@ impl ConstraintSolver {
         }
     }
 
-    fn type_involves_protocol(&self, ty: &Type, protocol_id: &crate::types::ProtocolId) -> bool {
+    fn type_involves_protocol(&self, ty: &Type, protocol_id: &crate::types::ModuleName) -> bool {
         match ty {
             Type::Protocol { id, args, .. } => {
                 // Check both if this is the target protocol and if args contain the protocol
@@ -1748,7 +1748,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("Integer"),
                 vec![],
-                ProtocolId::new("Display"),
+                ModuleName::new("Display"),
                 vec![],
                 crate::types::ModuleId::new("Integer"),
                 None,
@@ -1759,7 +1759,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("String"),
                 vec![],
-                ProtocolId::new("Display"),
+                ModuleName::new("Display"),
                 vec![],
                 crate::types::ModuleId::new("String"),
                 None,
@@ -1770,7 +1770,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("Integer"),
                 vec![],
-                ProtocolId::new("Debug"),
+                ModuleName::new("Debug"),
                 vec![],
                 crate::types::ModuleId::new("Integer"),
                 None,
@@ -1781,7 +1781,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("String"),
                 vec![],
-                ProtocolId::new("Debug"),
+                ModuleName::new("Debug"),
                 vec![],
                 crate::types::ModuleId::new("String"),
                 None,
@@ -1792,7 +1792,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("String"),
                 vec![],
-                ProtocolId::new("Clone"),
+                ModuleName::new("Clone"),
                 vec![],
                 crate::types::ModuleId::new("String"),
                 None,
@@ -1812,7 +1812,7 @@ mod tests {
             // Create constraint T: Display
             let constraint = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
 
@@ -1835,7 +1835,7 @@ mod tests {
             // Create constraint T: NonExistentProtocol
             let constraint = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("NonExistentProtocol"),
+                protocol: ModuleName::new("NonExistentProtocol"),
                 span: None,
             };
 
@@ -1864,12 +1864,12 @@ mod tests {
             // Create constraint T: Display || T: NonExistentProtocol
             let left = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
             let right = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("NonExistentProtocol"),
+                protocol: ModuleName::new("NonExistentProtocol"),
                 span: None,
             };
             let constraint = Constraint::LogicalOr {
@@ -1897,12 +1897,12 @@ mod tests {
             // Create constraint T: NonExistent1 || T: NonExistent2
             let left = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("NonExistent1"),
+                protocol: ModuleName::new("NonExistent1"),
                 span: None,
             };
             let right = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("NonExistent2"),
+                protocol: ModuleName::new("NonExistent2"),
                 span: None,
             };
             let constraint = Constraint::LogicalOr {
@@ -1936,12 +1936,12 @@ mod tests {
             // Create constraint T: Display && T: Debug
             let left = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
             let right = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Debug"),
+                protocol: ModuleName::new("Debug"),
                 span: None,
             };
             let constraint = Constraint::LogicalAnd {
@@ -1969,12 +1969,12 @@ mod tests {
             // Create constraint T: Display && T: NonExistent
             let left = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
             let right = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("NonExistent"),
+                protocol: ModuleName::new("NonExistent"),
                 span: None,
             };
             let constraint = Constraint::LogicalAnd {
@@ -2008,7 +2008,7 @@ mod tests {
             // Create constraint T: Display
             let constraint = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
 
@@ -2031,7 +2031,7 @@ mod tests {
             // Create constraint T: Display
             let constraint = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
 
@@ -2054,7 +2054,7 @@ mod tests {
         registry.add_local_module(crate::types::ModuleId::new("TestProtocol"));
         registry.set_current_module(crate::types::ModuleId::new("TestModule"));
 
-        let protocol = ProtocolId::new("TestProtocol");
+        let protocol = ModuleName::new("TestProtocol");
         let type_id = TypeId::new("TestType");
 
         // Initially no implementation
@@ -2095,12 +2095,12 @@ mod tests {
             // In practice, conflicts would be more complex
             let constraint1 = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("TestProtocol"),
+                protocol: ModuleName::new("TestProtocol"),
                 span: None,
             };
             let constraint2 = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("TestProtocol"),
+                protocol: ModuleName::new("TestProtocol"),
                 span: None,
             };
 
@@ -2120,13 +2120,13 @@ mod tests {
             // Create constraint T: Display
             let constraint = Constraint::Implements {
                 type_var: var_id,
-                protocol: ProtocolId::new("Display"),
+                protocol: ModuleName::new("Display"),
                 span: None,
             };
 
             // Create substitution T -> Display protocol type
             let protocol_type = Type::Protocol {
-                id: ProtocolId::new("Display"),
+                id: ModuleName::new("Display"),
                 args: vec![],
                 span: None,
             };
@@ -2147,12 +2147,12 @@ mod tests {
         let self_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("String"),
             implementing_args: vec![],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("Display"),
+            protocol: ModuleName::new("Display"),
             span: None,
         };
 
@@ -2170,12 +2170,12 @@ mod tests {
         let self_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("String"),
             implementing_args: vec![],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("NonExistentProtocol"),
+            protocol: ModuleName::new("NonExistentProtocol"),
             span: None,
         };
 
@@ -2197,12 +2197,12 @@ mod tests {
 
         // Create Self: Display constraint in Display protocol definition
         let self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("Display"),
+            protocol: ModuleName::new("Display"),
             span: None,
         };
 
@@ -2218,12 +2218,12 @@ mod tests {
 
         // Create Self: Debug constraint in Display protocol definition
         let self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("Debug"),
+            protocol: ModuleName::new("Debug"),
             span: None,
         };
 
@@ -2247,7 +2247,7 @@ mod tests {
         let self_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("String"),
             implementing_args: vec![],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfBinding {
@@ -2270,7 +2270,7 @@ mod tests {
         let self_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("String"),
             implementing_args: vec![],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfBinding {
@@ -2302,7 +2302,7 @@ mod tests {
             .register_implementation(
                 TypeId::new("List"),
                 vec![Type::concrete("String")],
-                ProtocolId::new("Display"),
+                ModuleName::new("Display"),
                 vec![],
                 crate::types::ModuleId::new("List"),
                 None,
@@ -2314,12 +2314,12 @@ mod tests {
         let self_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("List"),
             implementing_args: vec![Type::concrete("String")],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("Display"),
+            protocol: ModuleName::new("Display"),
             span: None,
         };
 
@@ -2337,7 +2337,7 @@ mod tests {
         let parent_context = SelfBindingContext::Implementation {
             implementing_type: TypeId::new("String"),
             implementing_args: vec![],
-            protocol_id: ProtocolId::new("Display"),
+            protocol_id: ModuleName::new("Display"),
             protocol_args: vec![],
         };
         let self_context = SelfBindingContext::FunctionContext {
@@ -2346,7 +2346,7 @@ mod tests {
         };
         let constraint = Constraint::SelfImplements {
             self_context,
-            protocol: ProtocolId::new("Display"),
+            protocol: ModuleName::new("Display"),
             span: None,
         };
 

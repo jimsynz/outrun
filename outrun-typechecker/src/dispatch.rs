@@ -7,7 +7,7 @@
 
 use crate::error::DispatchError;
 use crate::registry::ProtocolRegistry;
-use crate::types::{ProtocolId, Substitution, Type, TypeId};
+use crate::types::{ModuleName, Substitution, Type};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
@@ -25,19 +25,19 @@ pub enum FunctionVisibility {
 pub enum FunctionContext {
     /// Inside a protocol definition
     Protocol {
-        protocol_id: ProtocolId,
+        protocol_name: ModuleName,
         protocol_args: Vec<Type>,
     },
     /// Inside a struct/module definition
     Module {
-        module_id: TypeId,
+        module_name: ModuleName,
         module_args: Vec<Type>,
     },
     /// Inside a protocol implementation
     Implementation {
-        implementing_type: TypeId,
+        implementing_type: ModuleName,
         implementing_args: Vec<Type>,
-        protocol_id: ProtocolId,
+        protocol_name: ModuleName,
         protocol_args: Vec<Type>,
     },
     /// Top-level context (no local scope)
@@ -73,7 +73,7 @@ pub struct ResolvedFunction {
     /// Fully qualified function name (e.g., "Equality.equal?", "User.validate_email?")
     pub qualified_name: String,
     /// Concrete implementing type for protocol calls
-    pub implementing_type: Option<TypeId>,
+    pub implementing_type: Option<ModuleName>,
     /// Function information
     pub function_info: FunctionInfo,
 }
@@ -342,7 +342,7 @@ impl<'a> FunctionDispatcher<'a> {
             Type::Concrete { id, ref args, .. } => {
                 // Look up protocol implementation for this concrete type
                 // For generic types, we need to try both generic and non-generic protocol names
-                let protocol_id = ProtocolId::new(protocol_name);
+                let protocol_id = ModuleName::new(protocol_name);
 
                 // First try exact match with current protocol name
                 let mut impl_info =
@@ -370,7 +370,7 @@ impl<'a> FunctionDispatcher<'a> {
                         .collect::<Vec<_>>()
                         .join(", ");
                     let generic_protocol_name = format!("{}<{}>", protocol_name, generic_args_str);
-                    let generic_protocol_id = ProtocolId::new(&generic_protocol_name);
+                    let generic_protocol_id = ModuleName::new(&generic_protocol_name);
 
                     // Debug: Show the exact key we're looking for with generic protocol name
                     let _generic_search_key = crate::registry::ImplementationKey::new(
@@ -412,7 +412,7 @@ impl<'a> FunctionDispatcher<'a> {
 
                     // Debug: Show the exact key we're looking for
                     let _search_key = crate::registry::ImplementationKey::new(
-                        crate::types::ProtocolId::new(protocol_name),
+                        crate::types::ModuleName::new(protocol_name),
                         id.clone(),
                         args,
                     );
@@ -455,7 +455,7 @@ impl<'a> FunctionDispatcher<'a> {
                 ..
             } => {
                 // Protocol type like Integer - check if it can call the target protocol
-                let target_protocol_id = ProtocolId::new(protocol_name);
+                let target_protocol_id = ModuleName::new(protocol_name);
 
                 // Direct match: the protocol itself (e.g., Integer calling Integer.method)
                 if protocol_id.0 == protocol_name {

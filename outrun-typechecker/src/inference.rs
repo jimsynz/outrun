@@ -14,7 +14,7 @@ use crate::{
     },
     registry::{ProtocolRegistry, TypeRegistry},
     types::{
-        Constraint, Level, ModuleId, ProtocolId, SelfBindingContext, Substitution, Type, TypeVarId,
+        Constraint, Level, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId,
     },
 };
 use outrun_parser::{
@@ -46,7 +46,7 @@ pub struct TypeInferenceEngine {
     type_registry: Rc<TypeRegistry>,
 
     /// Current module being processed
-    current_module: ModuleId,
+    current_module: ModuleName,
 
     /// Current file being processed for error reporting
     current_file: Option<String>,
@@ -197,7 +197,7 @@ pub struct SignatureAnalysis {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProtocolConstraint {
     /// The protocol being constrained
-    pub protocol_id: ProtocolId,
+    pub protocol_id: ModuleName,
     /// The type that must implement the protocol
     pub constraining_type: Type,
     /// Position in signature where this constraint appears
@@ -325,13 +325,13 @@ impl FunctionSignatureAnalyzer {
         // Collect protocol constraints
         if typ.is_protocol_constraint() {
             match typ {
-                Type::Protocol { id, args, .. } => {
+                Type::Protocol { name, args, .. } => {
                     for (i, arg) in args.iter().enumerate() {
                         self.current_analysis.protocol_constraints.push(ProtocolConstraint {
-                            protocol_id: id.clone(),
+                            protocol_id: name.clone(),
                             constraining_type: arg.clone(),
                             position: crate::types::TypePosition::GenericArgument {
-                                container: id.0.clone(),
+                                container: name.as_str().to_string(),
                                 arg_index: i,
                                 path: vec![],
                             },
@@ -459,14 +459,14 @@ impl TypeInferenceEngine {
         Self {
             function_registry,
             type_registry,
-            current_module: ModuleId::new("main"),
+            current_module: ModuleName::new("main"),
             current_file: None,
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
             universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(),
             error_context: ErrorContext::new(),
             current_self_context: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new("Unknown"),
+                protocol_id: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             struct_registry: HashMap::new(),
@@ -515,7 +515,7 @@ impl TypeInferenceEngine {
     }
 
     /// Set the current module being processed
-    pub fn set_current_module(&mut self, module: ModuleId) {
+    pub fn set_current_module(&mut self, module: ModuleName) {
         self.current_module = module.clone();
         // Update the protocol registry within the type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
@@ -775,7 +775,7 @@ impl TypeInferenceEngine {
         ];
 
         // Set current module context
-        self.error_context.current_module = Some(self.current_module.name().to_string());
+        self.error_context.current_module = Some(self.current_module.as_str().to_string());
     }
 
     /// Bind a variable in the current scope (used for testing and debugging)
@@ -873,7 +873,7 @@ impl TypeInferenceEngine {
     fn extract_protocol_requirements(
         &self,
         constraint_expr: &outrun_parser::ConstraintExpression,
-    ) -> Result<HashSet<ProtocolId>, TypecheckError> {
+    ) -> Result<HashSet<ModuleName>, TypecheckError> {
         let mut required_protocols = HashSet::new();
         self.collect_protocol_requirements_recursive(constraint_expr, &mut required_protocols)?;
         Ok(required_protocols)
@@ -883,7 +883,7 @@ impl TypeInferenceEngine {
     fn collect_protocol_requirements_recursive(
         &self,
         constraint_expr: &outrun_parser::ConstraintExpression,
-        required_protocols: &mut HashSet<ProtocolId>,
+        required_protocols: &mut HashSet<ModuleName>,
     ) -> Result<(), TypecheckError> {
         use outrun_parser::ConstraintExpression;
 
@@ -902,7 +902,7 @@ impl TypeInferenceEngine {
                         .map(|segment| segment.name.as_str())
                         .collect::<Vec<_>>()
                         .join(".");
-                    required_protocols.insert(ProtocolId::new(&protocol_name));
+                    required_protocols.insert(ModuleName::new(&protocol_name));
                 }
                 // Note: We only handle Self constraints for protocol requirements
                 // Other type parameter constraints would be handled differently
@@ -1023,7 +1023,7 @@ impl TypeInferenceEngine {
             .join(".");
 
         // Mark struct's module as local (for orphan rule)
-        let struct_module = ModuleId::new(&struct_name);
+        let struct_module = ModuleName::new(&struct_name);
         self.protocol_registry_mut().add_local_module(struct_module);
 
         // Set up generic parameter context
@@ -1150,7 +1150,7 @@ impl TypeInferenceEngine {
             .join(".");
 
         // Mark protocol's module as local (for orphan rule)
-        let protocol_module = ModuleId::new(&protocol_name);
+        let protocol_module = ModuleName::new(&protocol_name);
         self.protocol_registry_mut()
             .add_local_module(protocol_module);
 
@@ -1186,8 +1186,8 @@ impl TypeInferenceEngine {
         }
 
         // Register protocol in protocol registry
-        let protocol_id = ProtocolId::new(&protocol_name);
-        let module_id = ModuleId::new(&protocol_name); // Protocol name as module
+        let protocol_id = ModuleName::new(&protocol_name);
+        let module_id = ModuleName::new(&protocol_name); // Protocol name as module
 
         // Extract required protocols from constraint expressions  
         let required_protocols = if let Some(constraints) = &protocol_def.constraints {
@@ -1497,9 +1497,9 @@ impl TypeInferenceEngine {
         // Set Self binding context for impl block
         let old_self_context = self.current_self_context.clone();
         let new_context = SelfBindingContext::Implementation {
-            implementing_type: crate::types::TypeId::new(&type_name),
+            implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
-            protocol_id: ProtocolId::new(&protocol_name),
+            protocol_id: ModuleName::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
         eprintln!("🔄 CONTEXT CHANGE: Entering impl block");
@@ -2003,11 +2003,11 @@ impl TypeInferenceEngine {
             .collect::<Vec<_>>()
             .join(".");
 
-        let implementing_type = crate::types::TypeId::new(&struct_name);
-        let module_id = crate::types::ModuleId::new(&struct_name);
+        let implementing_type = crate::types::ModuleName::new(&struct_name);
+        let module_id = crate::types::ModuleName::new(&struct_name);
 
         // Register Any implementation
-        let any_protocol = crate::types::ProtocolId::new("Any");
+        let any_protocol = crate::types::ModuleName::new("Any");
         self.protocol_registry_mut().register_implementation(
             implementing_type.clone(),
             vec![], // No generic args for concrete types
@@ -2018,7 +2018,7 @@ impl TypeInferenceEngine {
         )?;
 
         // Register Inspect implementation
-        let inspect_protocol = crate::types::ProtocolId::new("Inspect");
+        let inspect_protocol = crate::types::ModuleName::new("Inspect");
         self.protocol_registry_mut().register_implementation(
             implementing_type,
             vec![], // No generic args for concrete types
@@ -2042,7 +2042,7 @@ impl TypeInferenceEngine {
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let protocol_id = ProtocolId::new(&protocol_name);
+        let protocol_id = ModuleName::new(&protocol_name);
 
         let implementing_type_name = impl_block
             .type_spec
@@ -2051,10 +2051,10 @@ impl TypeInferenceEngine {
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let implementing_type_id = crate::types::TypeId::new(&implementing_type_name);
+        let implementing_type_id = crate::types::ModuleName::new(&implementing_type_name);
 
         // Create module ID from implementing type name
-        let module_id = ModuleId::new(implementing_type_id.name());
+        let module_id = ModuleName::new(implementing_type_name.as_str());
 
         // Mark the defining module as local (for orphan rule)
         self.protocol_registry_mut()
@@ -2146,7 +2146,7 @@ impl TypeInferenceEngine {
         // Set Self binding context for protocol function type checking
         let old_self_context = self.current_self_context.clone();
         self.current_self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ProtocolId::new(&protocol_name),
+            protocol_id: ModuleName::new(&protocol_name),
             protocol_args: vec![],
         };
 
@@ -2211,9 +2211,9 @@ impl TypeInferenceEngine {
         // Set Self binding context for impl block type checking
         let old_self_context = self.current_self_context.clone();
         self.current_self_context = SelfBindingContext::Implementation {
-            implementing_type: crate::types::TypeId::new(&type_name),
+            implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
-            protocol_id: ProtocolId::new(&protocol_name),
+            protocol_id: ModuleName::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
 
@@ -2886,17 +2886,16 @@ impl TypeInferenceEngine {
                             println!("  🔧 No else branch - checking Default protocol requirement");
                             
                             // Check if the then block type implements Default protocol
-                            let default_protocol_id = crate::types::ProtocolId::new("Default");
+                            let default_protocol_id = crate::types::ModuleName::new("Default");
                             
                             // Extract the type ID from the then_result type
                             let type_implements_default = match &then_result {
-                                Type::Concrete { id, .. } => {
-                                    self.protocol_registry().type_satisfies_protocol(id, &default_protocol_id)
+                                Type::Concrete { name, .. } => {
+                                    self.protocol_registry().type_satisfies_protocol(name, &default_protocol_id)
                                 }
-                                Type::Protocol { id, .. } => {
+                                Type::Protocol { name, .. } => {
                                     // For protocol types, check if the protocol itself satisfies Default
-                                    let type_id = crate::types::TypeId::new(id.name());
-                                    self.protocol_registry().type_satisfies_protocol(&type_id, &default_protocol_id)
+                                    self.protocol_registry().type_satisfies_protocol(name, &default_protocol_id)
                                 }
                                 Type::SelfType { binding_context, .. } => {
                                     // For Self types, check if the implementing type satisfies Default
@@ -3010,7 +3009,7 @@ impl TypeInferenceEngine {
                             Type::Variable { var_id, .. } => var_id,
                             _ => fresh_var,
                         },
-                        protocol: crate::types::ProtocolId::new("Boolean"),
+                        protocol: crate::types::ModuleName::new("Boolean"),
                         span: None,
                     });
                     
@@ -3118,8 +3117,8 @@ impl TypeInferenceEngine {
             }
             outrun_parser::Pattern::List(list_pattern) => {
                 // For list patterns, extract element types
-                if let Type::Concrete { id, args, .. } = scrutinee_type {
-                    if id.name() == "List" && args.len() == 1 {
+                if let Type::Concrete { name, args, .. } = scrutinee_type {
+                    if name.as_str() == "List" && args.len() == 1 {
                         let element_type = &args[0];
                         for element_pattern in &list_pattern.elements {
                             let element_bindings = self.extract_pattern_bindings(element_pattern, element_type)?;
@@ -3872,8 +3871,8 @@ impl TypeInferenceEngine {
                 if let Some(expected_type) = &context.expected_type {
                     // Check if the expected type matches this struct name
                     let expected_name = match expected_type {
-                        Type::Concrete { id, .. } => Some(id.name()),
-                        Type::Protocol { id, .. } => Some(id.name()),
+                        Type::Concrete { name, .. } => Some(name.as_str()),
+                        Type::Protocol { name, .. } => Some(name.as_str()),
                         _ => None,
                     };
                     
@@ -4512,7 +4511,7 @@ impl TypeInferenceEngine {
             constraints: Vec::new(),
             expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new(scope),
+                protocol_id: ModuleName::new(scope),
                 protocol_args: vec![],
             },
             bindings: HashMap::new(),
@@ -4590,7 +4589,7 @@ impl TypeInferenceEngine {
             constraints: Vec::new(),
             expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new(scope),
+                protocol_id: ModuleName::new(scope),
                 protocol_args: vec![],
             },
             bindings: HashMap::new(),
@@ -5310,7 +5309,7 @@ impl TypeInferenceEngine {
         }
         
         let qualified_name = format!("{}.{}", module_name, function_name);
-        let protocol_id = crate::types::ProtocolId::new(module_name);
+        let protocol_id = crate::types::ModuleName::new(module_name);
         
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
@@ -5440,7 +5439,7 @@ impl TypeInferenceEngine {
         }
         
         let qualified_name = format!("{}.{}", module_name, function_name);
-        let protocol_id = crate::types::ProtocolId::new(module_name);
+        let protocol_id = crate::types::ModuleName::new(module_name);
         
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
@@ -5590,8 +5589,8 @@ impl TypeInferenceEngine {
         // Add type compatibility guard if there's an implementing type
         if let Some(implementing_type) = &resolved_func.implementing_type {
             guards.push(Guard::TypeCompatible {
-                target_type: Type::concrete(implementing_type.name()),
-                implementing_type: Type::concrete(implementing_type.name()),
+                target_type: Type::concrete(implementing_type.as_str()),
+                implementing_type: Type::concrete(implementing_type.as_str()),
                 constraint_context: ConstraintContext::new(),
             });
         }
@@ -5652,7 +5651,7 @@ impl TypeInferenceEngine {
         // Set the universal clause IDs for universal dispatch system
         function_call.universal_clause_ids = Some(
             universal_resolution.possible_clauses.iter()
-                .map(|clause_id| clause_id.0)
+                .map(|clause_id| clause_id.as_str())
                 .collect()
         );
         
@@ -5697,7 +5696,7 @@ impl TypeInferenceEngine {
         // Set the universal clause IDs for universal dispatch system
         function_call.universal_clause_ids = Some(
             universal_resolution.possible_clauses.iter()
-                .map(|clause_id| clause_id.0)
+                .map(|clause_id| clause_id.as_str())
                 .collect()
         );
         
@@ -5745,7 +5744,7 @@ impl TypeInferenceEngine {
                 // Qualified function call - resolve to module/protocol clauses
                 let _qualified_name = format!("{}.{}", module.name, name.name);
                 let module_name = &module.name;
-                let protocol_id = crate::types::ProtocolId::new(module_name);
+                let protocol_id = crate::types::ModuleName::new(module_name);
                 
                 // Check if this is a protocol call - pass precomputed args to avoid recursion!
                 
@@ -5780,7 +5779,7 @@ impl TypeInferenceEngine {
                 // Qualified function call - resolve to module/protocol clauses
                 let _qualified_name = format!("{}.{}", module.name, name.name);
                 let module_name = &module.name;
-                let protocol_id = crate::types::ProtocolId::new(module_name);
+                let protocol_id = crate::types::ModuleName::new(module_name);
                 
                 // Check if this is a protocol call - log it but proceed normally
                 if self.protocol_registry().has_protocol(&protocol_id) {
@@ -5923,8 +5922,8 @@ impl TypeInferenceEngine {
                     if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
                         println!("                    Found argument type: {:?}", arg_type);
                         // Extract T from Option<T>
-                        if let Type::Protocol { id, args, .. } = arg_type {
-                            if id.name() == "Option" && !args.is_empty() {
+                        if let Type::Protocol { name, args, .. } = arg_type {
+                            if name.as_str() == "Option" && !args.is_empty() {
                                 // The first argument of Option<T> is T
                                 let inner_type = &args[0];
                                 println!("                    ✅ Substituting T with: {:?}", inner_type);
@@ -5955,9 +5954,9 @@ impl TypeInferenceEngine {
         replacement: &Type,
     ) -> Result<Type, TypecheckError> {
         match target_type {
-            Type::Protocol { id, args, span } => {
+            Type::Protocol { name, args, span } => {
                 // Check if this protocol ID matches the parameter name
-                if id.name() == param_name {
+                if name.as_str() == param_name {
                     return Ok(replacement.clone());
                 }
                 
@@ -5967,19 +5966,19 @@ impl TypeInferenceEngine {
                     .collect();
                 
                 Ok(Type::Protocol {
-                    id: id.clone(),
+                    name: name.clone(),
                     args: substituted_args?,
                     span: *span,
                 })
             }
-            Type::Concrete { id, args, span } => {
+            Type::Concrete { name, args, span } => {
                 // Recursively substitute in generic arguments
                 let substituted_args: Result<Vec<_>, _> = args.iter()
                     .map(|arg| self.substitute_generic_parameter_in_type(arg, param_name, replacement))
                     .collect();
                 
                 Ok(Type::Concrete {
-                    id: id.clone(),
+                    name: name.clone(),
                     args: substituted_args?,
                     span: *span,
                 })
@@ -6069,9 +6068,9 @@ impl TypeInferenceEngine {
     ) -> Result<(), TypecheckError> {
         match (param_type, arg_type) {
             // Match Protocol<T> with Protocol<ConcreteType>
-            (Type::Protocol { id: param_id, args: param_args, .. }, 
-             Type::Protocol { id: arg_id, args: arg_args, .. }) => {
-                if param_id.name() == arg_id.name() && param_args.len() == arg_args.len() {
+            (Type::Protocol { name: param_id, args: param_args, .. }, 
+             Type::Protocol { name: arg_id, args: arg_args, .. }) => {
+                if param_id.as_str() == arg_id.as_str() && param_args.len() == arg_args.len() {
                     // Recursively match generic arguments
                     for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
                         self.extract_generic_substitutions(param_arg, arg_arg, substitutions)?;
@@ -6080,9 +6079,9 @@ impl TypeInferenceEngine {
             }
             
             // Match Concrete<T> with Concrete<ConcreteType>
-            (Type::Concrete { id: param_id, args: param_args, .. }, 
-             Type::Concrete { id: arg_id, args: arg_args, .. }) => {
-                if param_id.name() == arg_id.name() && param_args.len() == arg_args.len() {
+            (Type::Concrete { name: param_id, args: param_args, .. }, 
+             Type::Concrete { name: arg_id, args: arg_args, .. }) => {
+                if param_id.as_str() == arg_id.as_str() && param_args.len() == arg_args.len() {
                     // Recursively match generic arguments
                     for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
                         self.extract_generic_substitutions(param_arg, arg_arg, substitutions)?;
@@ -6091,9 +6090,9 @@ impl TypeInferenceEngine {
             }
             
             // Match generic parameter T with concrete type
-            (Type::Protocol { id: param_id, args, .. }, concrete_type) if args.is_empty() => {
+            (Type::Protocol { name: param_id, args, .. }, concrete_type) if args.is_empty() => {
                 // This is a generic parameter (like T) - record the substitution
-                substitutions.insert(param_id.name().to_string(), concrete_type.clone());
+                substitutions.insert(param_id.as_str().to_string(), concrete_type.clone());
             }
             
             // Other cases don't contribute to generic substitutions
@@ -7104,11 +7103,11 @@ impl TypeInferenceEngine {
         let mut constraints = Vec::new();
         
         match param_type {
-            Type::Concrete { id, args, .. } => {
+            Type::Concrete { name, args, .. } => {
                 // Check if this is actually a generic parameter from the function signature
-                if generic_parameters.contains(&id.name().to_string()) {
+                if generic_parameters.contains(&name.as_str().to_string()) {
                     // This is a type parameter - record the mapping
-                    if let Some(existing_type) = type_param_mappings.get(id.name()) {
+                    if let Some(existing_type) = type_param_mappings.get(name.as_str()) {
                         // Type parameter already mapped - create equality constraint
                         constraints.push(Constraint::Equality {
                             left: Box::new(existing_type.clone()),
@@ -7117,14 +7116,14 @@ impl TypeInferenceEngine {
                         });
                     } else {
                         // First occurrence - record the mapping
-                        type_param_mappings.insert(id.name().to_string(), arg_type.clone());
+                        type_param_mappings.insert(name.as_str().to_string(), arg_type.clone());
                     }
                 } else {
                     // Concrete type with possible generic arguments
                     match arg_type {
-                        Type::Concrete { id: arg_id, args: arg_args, .. } => {
+                        Type::Concrete { name: arg_id, args: arg_args, .. } => {
                             // Check that concrete types match
-                            if id.name() != arg_id.name() {
+                            if name.as_str() != arg_id.as_str() {
                                 constraints.push(Constraint::Equality {
                                     left: Box::new(param_type.clone()),
                                     right: Box::new(arg_type.clone()),
@@ -7179,8 +7178,8 @@ impl TypeInferenceEngine {
         let mut constraints = Vec::new();
         
         match typ {
-            Type::Concrete { id, args, .. } => {
-                if id.name() == type_param {
+            Type::Concrete { name, args, .. } => {
+                if name.as_str() == type_param {
                     // This is an occurrence of our type parameter
                     constraints.push(Constraint::Equality {
                         left: Box::new(typ.clone()),
@@ -7242,15 +7241,15 @@ impl TypeInferenceEngine {
         generic_parameters: &[String],
     ) -> Result<(), TypecheckError> {
         match param_type {
-            Type::Concrete { id, args, .. } => {
+            Type::Concrete { name, args, .. } => {
                 // Check if this is actually a generic parameter from the function signature
-                if generic_parameters.contains(&id.name().to_string()) {
-                    substitutions.insert(id.name().to_string(), arg_type.clone());
+                if generic_parameters.contains(&name.as_str().to_string()) {
+                    substitutions.insert(name.as_str().to_string(), arg_type.clone());
                 } else {
                     // Recursively process generic arguments - both param and arg must be concrete with matching base types
-                    if let Type::Concrete { id: arg_id, args: arg_args, .. } = arg_type {
+                    if let Type::Concrete { name: arg_id, args: arg_args, .. } = arg_type {
                         // Base types should match (e.g., both "Type")
-                        if id.name() == arg_id.name() {
+                        if name.as_str() == arg_id.as_str() {
                             // Recursively match type arguments
                             for (param_arg, arg_arg) in args.iter().zip(arg_args.iter()) {
                                 Self::collect_type_parameter_substitutions(param_arg, arg_arg, substitutions, generic_parameters)?;
@@ -7354,7 +7353,7 @@ impl TypeInferenceEngine {
                 // Empty list without type hint gets fresh type variable
                 let element_type = Type::variable(self.fresh_type_var(), Level(0));
                 let list_type = Type::Concrete {
-                    id: crate::types::TypeId::new("Outrun.Core.List"),
+                    name: crate::types::ModuleName::new("Outrun.Core.List"),
                     args: vec![element_type],
                     span: None,
                 };
@@ -7392,7 +7391,7 @@ impl TypeInferenceEngine {
                 // This shouldn't happen given our check above, but handle it defensively
                 let element_type = Type::variable(self.fresh_type_var(), Level(0));
                 let list_type = Type::Concrete {
-                    id: crate::types::TypeId::new("Outrun.Core.List"),
+                    name: crate::types::ModuleName::new("Outrun.Core.List"),
                     args: vec![element_type],
                     span: None,
                 };
@@ -7418,7 +7417,7 @@ impl TypeInferenceEngine {
 
             // Create the List<ElementType> type
             let list_type = Type::Concrete {
-                id: crate::types::TypeId::new("Outrun.Core.List"),
+                name: crate::types::ModuleName::new("Outrun.Core.List"),
                 args: vec![first_element_type],
                 span: None,
             };
@@ -7441,7 +7440,7 @@ impl TypeInferenceEngine {
         // Handle empty tuple
         if tuple_literal.elements.is_empty() {
             let tuple_type = Type::Concrete {
-                id: crate::types::TypeId::new("Outrun.Core.Tuple"),
+                name: crate::types::ModuleName::new("Outrun.Core.Tuple"),
                 args: vec![], // Empty tuple has no type arguments
                 span: None,
             };
@@ -7464,7 +7463,7 @@ impl TypeInferenceEngine {
 
         // Create Tuple<T1, T2, ..., Tn> type
         let tuple_type = Type::Concrete {
-            id: crate::types::TypeId::new("Outrun.Core.Tuple"),
+            name: crate::types::ModuleName::new("Outrun.Core.Tuple"),
             args: element_types,
             span: None,
         };
@@ -7499,7 +7498,7 @@ impl TypeInferenceEngine {
                 let key_type = Type::variable(self.fresh_type_var(), Level(0));
                 let value_type = Type::variable(self.fresh_type_var(), Level(0));
                 let map_type = Type::Concrete {
-                    id: crate::types::TypeId::new("Outrun.Core.Map"),
+                    name: crate::types::ModuleName::new("Outrun.Core.Map"),
                     args: vec![key_type, value_type],
                     span: None,
                 };
@@ -7556,7 +7555,7 @@ impl TypeInferenceEngine {
                 let key_type = Type::variable(self.fresh_type_var(), Level(0));
                 let value_type = Type::variable(self.fresh_type_var(), Level(0));
                 let map_type = Type::Concrete {
-                    id: crate::types::TypeId::new("Outrun.Core.Map"),
+                    name: crate::types::ModuleName::new("Outrun.Core.Map"),
                     args: vec![key_type, value_type],
                     span: None,
                 };
@@ -7593,7 +7592,7 @@ impl TypeInferenceEngine {
 
             // Create Map<KeyType, ValueType> type
             let map_type = Type::Concrete {
-                id: crate::types::TypeId::new("Outrun.Core.Map"),
+                name: crate::types::ModuleName::new("Outrun.Core.Map"),
                 args: vec![first_key_type, first_value_type],
                 span: None,
             };
@@ -7936,32 +7935,28 @@ impl TypeInferenceEngine {
                     }
 
                     // Use unified TypeRegistry for consistent type resolution
-                    match self.type_registry.get_type_kind(&type_name) {
-                        Some(crate::registry::TypeKind::Protocol(_protocol_def)) => {
-                            // Known protocol type
-                            Ok(Type::Protocol {
-                                id: ProtocolId::new(type_name),
-                                args: type_args,
-                                span: None,
-                            })
-                        }
-                        Some(crate::registry::TypeKind::ConcreteType(concrete_def)) => {
-                            // Known concrete type
-                            Ok(Type::Concrete {
-                                id: concrete_def.type_id.clone(),
-                                args: type_args,
-                                span: None,
-                            })
-                        }
-                        None => {
-                            // Unknown type - create concrete type for now
-                            // Type registry will be populated during package processing
-                            Ok(Type::Concrete {
-                                id: crate::types::TypeId::new(type_name),
-                                args: type_args,
-                                span: None,
-                            })
-                        }
+                    if self.type_registry.is_protocol(&type_name) {
+                        // Known protocol type
+                        Ok(Type::Protocol {
+                            name: ModuleName::new(type_name),
+                            args: type_args,
+                            span: None,
+                        })
+                    } else if self.type_registry.is_struct(&type_name) {
+                        // Known concrete type
+                        Ok(Type::Concrete {
+                            name: ModuleName::new(type_name),
+                            args: type_args,
+                            span: None,
+                        })
+                    } else {
+                        // Unknown type - create a concrete type placeholder
+                        // Type registry will be populated during package processing
+                        Ok(Type::Concrete {
+                            name: crate::types::ModuleName::new(type_name),
+                            args: type_args,
+                            span: None,
+                        })
                     }
                 }
             }
@@ -7997,8 +7992,8 @@ impl TypeInferenceEngine {
     /// Check if two type IDs represent the same type
     fn type_ids_are_equivalent(
         &self,
-        id1: &crate::types::TypeId,
-        id2: &crate::types::TypeId,
+        id1: &crate::types::ModuleName,
+        id2: &crate::types::ModuleName,
     ) -> bool {
         id1 == id2
     }
@@ -8019,9 +8014,9 @@ impl TypeInferenceEngine {
         };
 
         match &resolved_object_type {
-            Type::Concrete { id, args, .. } => {
+            Type::Concrete { name, args, .. } => {
                 // Look up the struct definition to find the field type
-                self.infer_struct_field_type(id, args, field_name, context)
+                self.infer_struct_field_type(name, args, field_name, context)
             }
             Type::Variable { .. } => {
                 // For type variables, we can't determine the field type yet
@@ -8052,13 +8047,13 @@ impl TypeInferenceEngine {
     #[allow(clippy::result_large_err)]
     fn infer_struct_field_type(
         &mut self,
-        struct_type_id: &crate::types::TypeId,
+        struct_type_id: &crate::types::ModuleName,
         struct_args: &[Type],
         field_name: &str,
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         // Look up the actual struct definition from the registry
-        let struct_name = struct_type_id.name();
+        let struct_name = struct_type_id.as_str();
 
         if let Some(struct_def) = self.struct_registry.get(struct_name).cloned() {
             // Find the field in the struct definition
@@ -8164,9 +8159,9 @@ impl TypeInferenceEngine {
         substitution: &HashMap<String, Type>,
     ) -> Result<Type, TypecheckError> {
         match ty {
-            Type::Concrete { id, args, span } => {
+            Type::Concrete { name, args, span } => {
                 // If this is a generic parameter, substitute it
-                if let Some(substituted_type) = substitution.get(id.name()) {
+                if let Some(substituted_type) = substitution.get(name.as_str()) {
                     Ok(substituted_type.clone())
                 } else {
                     // Apply substitution to generic arguments
@@ -8176,13 +8171,13 @@ impl TypeInferenceEngine {
                         .collect();
 
                     Ok(Type::Concrete {
-                        id,
+                        name: name.clone(),
                         args: substituted_args?,
-                        span,
+                        span: *span,
                     })
                 }
             }
-            Type::Protocol { id, args, span } => {
+            Type::Protocol { name, args, span } => {
                 // Apply substitution to protocol arguments
                 let substituted_args: Result<Vec<Type>, TypecheckError> = args
                     .into_iter()
@@ -8190,9 +8185,9 @@ impl TypeInferenceEngine {
                     .collect();
 
                 Ok(Type::Protocol {
-                    id,
+                    name: name.clone(),
                     args: substituted_args?,
-                    span,
+                    span: *span,
                 })
             }
             // Other types don't need substitution
@@ -8215,7 +8210,7 @@ impl InferenceContext {
             constraints: Vec::new(),
             expected_type: None,
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new("Unknown"),
+                protocol_id: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             bindings: HashMap::new(),
@@ -8229,7 +8224,7 @@ impl InferenceContext {
             constraints: Vec::new(),
             expected_type: Some(expected_type),
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ProtocolId::new("Unknown"),
+                protocol_id: ModuleName::new("Unknown"),
                 protocol_args: Vec::new(),
             },
             bindings: HashMap::new(),
@@ -8323,7 +8318,7 @@ mod tests {
 
         assert_eq!(engine.current_module.0, "main");
 
-        engine.set_current_module(ModuleId::new("Http::Client"));
+        engine.set_current_module(ModuleName::new("Http::Client"));
         assert_eq!(engine.current_module.0, "Http::Client");
     }
 
@@ -8414,12 +8409,12 @@ mod tests {
 
         // Should infer List<Outrun.Core.Integer64>
         match &result.inferred_type {
-            Type::Concrete { id, args, .. } => {
-                assert_eq!(id.0, "Outrun.Core.List");
+            Type::Concrete { name, args, .. } => {
+                assert_eq!(name.as_str(), "Outrun.Core.List");
                 assert_eq!(args.len(), 1);
                 match &args[0] {
-                    Type::Concrete { id, .. } => {
-                        assert_eq!(id.0, "Outrun.Core.Integer64");
+                    Type::Concrete { name, .. } => {
+                        assert_eq!(name.as_str(), "Outrun.Core.Integer64");
                     }
                     _ => panic!("Expected Integer64 element type"),
                 }
@@ -8447,8 +8442,8 @@ mod tests {
 
         // Should infer List<T> where T is a type variable
         match &result.inferred_type {
-            Type::Concrete { id, args, .. } => {
-                assert_eq!(id.0, "Outrun.Core.List");
+            Type::Concrete { name, args, .. } => {
+                assert_eq!(name.as_str(), "Outrun.Core.List");
                 assert_eq!(args.len(), 1);
                 match &args[0] {
                     Type::Variable { .. } => {
@@ -8514,25 +8509,25 @@ mod tests {
 
         // Should infer Tuple<Outrun.Core.Integer64, Outrun.Core.String, Outrun.Core.Boolean>
         match &result.inferred_type {
-            Type::Concrete { id, args, .. } => {
-                assert_eq!(id.0, "Outrun.Core.Tuple");
+            Type::Concrete { name, args, .. } => {
+                assert_eq!(name.as_str(), "Outrun.Core.Tuple");
                 assert_eq!(args.len(), 3);
 
                 // Check first element is Integer64
                 match &args[0] {
-                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Integer64"),
+                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Integer64"),
                     _ => panic!("Expected Integer64 first element"),
                 }
 
                 // Check second element is String
                 match &args[1] {
-                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.String"),
+                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.String"),
                     _ => panic!("Expected String second element"),
                 }
 
                 // Check third element is Boolean
                 match &args[2] {
-                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Boolean"),
+                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Boolean"),
                     _ => panic!("Expected Boolean third element"),
                 }
             }
@@ -8611,19 +8606,19 @@ mod tests {
 
         // Should infer Map<Outrun.Core.String, Outrun.Core.Integer64>
         match &result.inferred_type {
-            Type::Concrete { id, args, .. } => {
-                assert_eq!(id.0, "Outrun.Core.Map");
+            Type::Concrete { name, args, .. } => {
+                assert_eq!(name.as_str(), "Outrun.Core.Map");
                 assert_eq!(args.len(), 2);
 
                 // Check key type is String
                 match &args[0] {
-                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.String"),
+                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.String"),
                     _ => panic!("Expected String key type"),
                 }
 
                 // Check value type is Integer64
                 match &args[1] {
-                    Type::Concrete { id, .. } => assert_eq!(id.0, "Outrun.Core.Integer64"),
+                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Integer64"),
                     _ => panic!("Expected Integer64 value type"),
                 }
             }

@@ -45,7 +45,7 @@ impl FileSpan {
 #[derive(Error, Diagnostic, Debug)]
 pub enum TypeError {
     #[error("Module '{module_name}' is already defined")]
-    #[diagnostic(code(outrun::type::module_redefinition))]
+    #[diagnostic(code(outrun::types::module_redefinition))]
     ModuleRedefinition {
         module_name: String,
         #[label("module redefined here")]

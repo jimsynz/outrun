@@ -5,7 +5,7 @@
 //! level but need type signatures for static type checking.
 
 use crate::dispatch::{FunctionInfo, FunctionRegistry, FunctionVisibility};
-use crate::types::{ProtocolId, Type};
+use crate::types::{ModuleName, Type};
 
 /// Register all intrinsic functions in the function registry
 pub fn register_intrinsics(registry: &mut FunctionRegistry) {
@@ -37,22 +37,22 @@ pub fn register_intrinsics(registry: &mut FunctionRegistry) {
 /// Register Integer64 intrinsic functions
 fn register_integer64_intrinsics(registry: &mut FunctionRegistry) {
     let integer64_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Integer64"),
+        name: crate::types::ModuleName::new("Outrun.Core.Integer64"),
         args: vec![],
         span: None,
     };
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
     let option_integer64_type = Type::Protocol {
-        id: ProtocolId::new("Option"),
+        name: ModuleName::new("Option"),
         args: vec![integer64_type.clone()],
         span: None,
     };
@@ -279,7 +279,7 @@ fn register_integer64_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "radix",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -292,22 +292,22 @@ fn register_integer64_intrinsics(registry: &mut FunctionRegistry) {
 /// Register Float64 intrinsic functions
 fn register_float64_intrinsics(registry: &mut FunctionRegistry) {
     let float64_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Float64"),
+        name: crate::types::ModuleName::new("Outrun.Core.Float64"),
         args: vec![],
         span: None,
     };
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
     let option_float64_type = Type::Protocol {
-        id: ProtocolId::new("Option"),
+        name: ModuleName::new("Option"),
         args: vec![float64_type.clone()],
         span: None,
     };
@@ -470,7 +470,7 @@ fn register_float64_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "precision",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -496,7 +496,7 @@ fn register_float64_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "precision",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -522,7 +522,7 @@ fn register_float64_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "precision",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -552,12 +552,12 @@ fn register_float64_intrinsics(registry: &mut FunctionRegistry) {
 /// Register Boolean intrinsic functions
 fn register_boolean_intrinsics(registry: &mut FunctionRegistry) {
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
@@ -607,12 +607,12 @@ fn register_boolean_intrinsics(registry: &mut FunctionRegistry) {
 /// Register String intrinsic functions
 fn register_string_intrinsics(registry: &mut FunctionRegistry) {
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
@@ -642,9 +642,9 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
             ("search", string_type.clone()),
         ],
         Type::Protocol {
-            id: ProtocolId::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![Type::Protocol {
-                id: ProtocolId::new("Integer"),
+                name: ModuleName::new("Integer"),
                 args: vec![],
                 span: None,
             }],
@@ -658,7 +658,7 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
         "string_length",
         vec![("value", string_type.clone())],
         Type::Protocol {
-            id: ProtocolId::new("Integer"),
+            name: ModuleName::new("Integer"),
             args: vec![],
             span: None,
         },
@@ -673,14 +673,14 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "index",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
             ),
         ],
         Type::Protocol {
-            id: ProtocolId::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![string_type.clone()],
             span: None,
         },
@@ -695,7 +695,7 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "start",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -703,7 +703,7 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
             (
                 "end",
                 Type::Protocol {
-                    id: ProtocolId::new("Integer"),
+                    name: ModuleName::new("Integer"),
                     args: vec![],
                     span: None,
                 },
@@ -765,19 +765,19 @@ fn register_string_intrinsics(registry: &mut FunctionRegistry) {
 fn register_list_intrinsics(registry: &mut FunctionRegistry) {
     // Note: These are simplified - real implementations would be generic
     let any_type = Type::Protocol {
-        id: ProtocolId::new("Any"),
+        name: ModuleName::new("Any"),
         args: vec![],
         span: None,
     };
     let integer_type = Type::Protocol {
-        id: ProtocolId::new("Integer"),
+        name: ModuleName::new("Integer"),
         args: vec![],
         span: None,
     };
 
     // List intrinsics with proper return types
     let option_any_type = Type::Protocol {
-        id: ProtocolId::new("Option"),
+        name: ModuleName::new("Option"),
         args: vec![any_type.clone()],
         span: None,
     };
@@ -835,18 +835,18 @@ fn register_list_intrinsics(registry: &mut FunctionRegistry) {
 fn register_map_intrinsics(registry: &mut FunctionRegistry) {
     // Note: These are simplified
     let any_type = Type::Protocol {
-        id: ProtocolId::new("Any"),
+        name: ModuleName::new("Any"),
         args: vec![],
         span: None,
     };
 
     let integer_type = Type::Protocol {
-        id: ProtocolId::new("Integer"),
+        name: ModuleName::new("Integer"),
         args: vec![],
         span: None,
     };
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
@@ -857,7 +857,7 @@ fn register_map_intrinsics(registry: &mut FunctionRegistry) {
         "map_get",
         vec![("map", any_type.clone()), ("key", any_type.clone())],
         Type::Protocol {
-            id: ProtocolId::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![any_type.clone()],
             span: None,
         },
@@ -903,17 +903,17 @@ fn register_map_intrinsics(registry: &mut FunctionRegistry) {
 /// Register Atom intrinsic functions
 fn register_atom_intrinsics(registry: &mut FunctionRegistry) {
     let atom_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Atom"),
+        name: crate::types::ModuleName::new("Outrun.Core.Atom"),
         args: vec![],
         span: None,
     };
     let boolean_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.Boolean"),
+        name: crate::types::ModuleName::new("Outrun.Core.Boolean"),
         args: vec![],
         span: None,
     };
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
@@ -938,12 +938,12 @@ fn register_atom_intrinsics(registry: &mut FunctionRegistry) {
 /// Register general intrinsic functions
 fn register_general_intrinsics(registry: &mut FunctionRegistry) {
     let any_type = Type::Protocol {
-        id: ProtocolId::new("Any"),
+        name: ModuleName::new("Any"),
         args: vec![],
         span: None,
     };
     let string_type = Type::Concrete {
-        id: crate::types::TypeId::new("Outrun.Core.String"),
+        name: crate::types::ModuleName::new("Outrun.Core.String"),
         args: vec![],
         span: None,
     };
@@ -958,12 +958,12 @@ fn register_general_intrinsics(registry: &mut FunctionRegistry) {
 
     // Binary operations (these work on String which implements Binary protocol)
     let integer_type = Type::Protocol {
-        id: ProtocolId::new("Integer"),
+        name: ModuleName::new("Integer"),
         args: vec![],
         span: None,
     };
     let option_integer_type = Type::Protocol {
-        id: ProtocolId::new("Option"),
+        name: ModuleName::new("Option"),
         args: vec![integer_type.clone()],
         span: None,
     };
@@ -1016,7 +1016,7 @@ fn register_general_intrinsics(registry: &mut FunctionRegistry) {
             ("search", string_type.clone()),
         ],
         Type::Protocol {
-            id: ProtocolId::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![integer_type.clone()],
             span: None,
         },
@@ -1036,7 +1036,7 @@ fn register_general_intrinsics(registry: &mut FunctionRegistry) {
         "binary_from_hex",
         vec![("value", string_type.clone())],
         Type::Protocol {
-            id: ProtocolId::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![string_type.clone()],
             span: None,
         },
@@ -1049,7 +1049,7 @@ fn register_general_intrinsics(registry: &mut FunctionRegistry) {
         "panic",
         vec![("message", string_type.clone())],
         Type::Protocol {
-            id: ProtocolId::new("Panic"),
+            name: ModuleName::new("Panic"),
             args: vec![],
             span: None,
         },
