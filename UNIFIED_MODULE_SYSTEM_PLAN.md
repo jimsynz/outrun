@@ -154,18 +154,22 @@ impl TypeRegistry {
 - ✅ **UPDATED** `build_dispatch_table()` to use unified registry
 - ✅ **FIXED** `FunctionContext` field access patterns
 
-#### 2.4 Update Constraints and Unification Systems 🔄 **NEXT**
+#### 2.4 Update Constraints and Unification Systems ✅ **COMPLETE**
 
-**TODO:**
-- Update `Type` enum field references (`id` → `name`)
-- Fix constraint solver to use unified registry
-- Update unification logic for new type structure
+**COMPLETED:**
+- ✅ **UPDATED** `ConstraintSolver` to use unified `TypeRegistry` instead of `ProtocolRegistry`
+- ✅ **FIXED** all `Type` enum field references (`id` → `name`) throughout constraints system
+- ✅ **UPDATED** registry accessor methods (`protocol_registry()` → `type_registry()`)
+- ✅ **FIXED** ModuleName field access patterns (`.0` → `.as_str()`)
+- ✅ **UPDATED** constraint solver methods to use unified registry
+- ✅ **FIXED** `SelfBindingContext` field references (`protocol_id` → `protocol_name`)
+- ✅ **VERIFIED** unification system already uses proper Type constructors
 
 **Files Modified:**
 - ✅ `src/inference.rs` - Major rewrite of compilation phases **COMPLETE**
 - ✅ `src/dispatch.rs` - Rewrite for unified modules **COMPLETE**
-- 🔄 `src/constraints.rs` - Update type resolution **PENDING**
-- 🔄 `src/unification.rs` - Update type references **PENDING**
+- ✅ `src/constraints.rs` - Update type resolution **COMPLETE**
+- ✅ `src/unification.rs` - Verified already using unified approach **COMPLETE**
 
 ### Phase 3: Advanced Features & Test Migration (2-3 days)
 
@@ -274,10 +278,11 @@ registry.get_implementation("List", "Display");
 - **Day 4**: Phase 2.1 (Type References Migration) ✅ **COMPLETE** 
 - **Day 5**: Phase 2.2 (Core Compilation Logic) ✅ **COMPLETE**
 - **Day 6**: Phase 2.3 (Dispatch System) ✅ **COMPLETE**
-- **Days 7-8**: Phase 2.4 & 3.1 (Constraints, Implementations) 📋 **PLANNED**
+- **Day 7**: Phase 2.4 (Constraints & Unification) ✅ **COMPLETE**
+- **Days 8-9**: Phase 3.1-3.2 (Implementation Modules, Forward Bindings) 📋 **PLANNED**
 - **Days 9-10**: Phase 3.2-3.3 (Forward Bindings, Tests) 📋 **PLANNED**
 
-**Status**: **Ahead of schedule** - Core architecture and compilation logic complete
+**Status**: **Significantly ahead of schedule** - All core Phase 2 systems complete
 
 ## Progress Tracking
 
@@ -288,14 +293,14 @@ registry.get_implementation("List", "Display");
 - [x] **Phase 2.1**: Update all type references throughout codebase ✅ **COMPLETE**
 - [x] **Phase 2.2**: Rewrite compilation phases ✅ **COMPLETE**
 - [x] **Phase 2.3**: Rewrite dispatch system ✅ **COMPLETE**
-- [ ] **Phase 2.4**: Update constraints and unification systems 🔄 **NEXT**
-- [ ] **Phase 3.1**: Add implementation module support
+- [x] **Phase 2.4**: Update constraints and unification systems ✅ **COMPLETE**
+- [ ] **Phase 3.1**: Add implementation module support 🔄 **NEXT**
 - [ ] **Phase 3.2**: Add forward bindings & arity detection
 - [ ] **Phase 3.3**: Migrate all tests and cleanup
 
-## Current Status: Phase 2.3 Complete ✅
+## Current Status: Phase 2.4 Complete ✅
 
-### ✅ **Major Accomplishments (Phases 1 & 2.1-2.3)**
+### ✅ **Major Accomplishments (Phases 1 & 2.1-2.4)**
 
 #### **Phase 1 - Core Architecture (Complete)**
 - **✅ Replaced dual-registry system** with unified `TypeRegistry` 
@@ -326,14 +331,23 @@ registry.get_implementation("List", "Display");
 - **✅ Updated implementation tracking** to use unified data structures
 - **✅ Maintained dispatch resolution logic** while using unified backend
 
-### 🔄 **Current Work: Phase 2.4**
-**Next**: Updating constraints and unification systems to use unified registry and new Type enum structure
+#### **Phase 2.4 - Constraints & Unification Systems (Complete)**
+- **✅ Migrated `ConstraintSolver`** to use unified `TypeRegistry` instead of `ProtocolRegistry`
+- **✅ Fixed all `Type` enum field references** (`id` → `name`) throughout constraints system
+- **✅ Updated registry accessor methods** (`protocol_registry()` → `type_registry()`)
+- **✅ Fixed ModuleName field access patterns** (`.0` → `.as_str()`)
+- **✅ Updated constraint solver methods** to use unified registry API
+- **✅ Fixed `SelfBindingContext` field references** (`protocol_id` → `protocol_name`)
+- **✅ Verified unification system** already uses proper Type constructors
+
+### 🔄 **Current Work: Phase 3.1**
+**Next**: Adding implementation module support and cleaning up legacy systems
 
 ### 📊 **Key Metrics**
-- **Files Modified**: 17+ core files completely migrated
+- **Files Modified**: 19+ core files completely migrated
 - **Lines Deleted**: ~400 lines of legacy dual-registry code
 - **Tests Updated**: 100+ test references corrected
-- **Compilation Status**: Core compilation and dispatch systems fully unified ✅
+- **Compilation Status**: All core systems fully unified ✅ (compilation, dispatch, constraints, unification)
 
 ### 🏗️ **Architecture Status**
 - **✅ Single namespace** for all module types (protocols, structs, implementations)
@@ -349,6 +363,8 @@ registry.get_implementation("List", "Display");
 - **Reduced memory usage** - eliminated duplicate data structures
 - **Streamlined dispatch** - function resolution uses unified module system
 - **Consistent field access** - all Type enum variants use `name` field uniformly
+- **Unified constraint solving** - all type checking uses single registry
+- **Consistent ModuleName access** - all field access uses `.as_str()` uniformly
 
 ---
 

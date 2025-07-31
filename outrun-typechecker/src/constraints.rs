@@ -4,7 +4,7 @@
 //! Handles protocol implementation verification, logical operators, and orphan rules.
 
 use crate::error::ConstraintError;
-use crate::registry::ProtocolRegistry;
+use crate::registry::TypeRegistry;
 use crate::types::{Constraint, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId};
 use outrun_parser::Span;
 use std::collections::HashMap;
@@ -325,8 +325,8 @@ impl CallContext {
 /// Constraint solver implementing logical constraint satisfaction
 #[derive(Debug)]
 pub struct ConstraintSolver {
-    /// Protocol implementation registry
-    protocol_registry: ProtocolRegistry,
+    /// Unified type registry (protocols, structs, implementations)
+    type_registry: TypeRegistry,
     /// Cache of solved constraint results
     solution_cache: HashMap<String, bool>,
     /// Detected recursive patterns in protocol implementations
@@ -347,7 +347,7 @@ pub struct ConstraintSolver {
 impl ConstraintSolver {
     pub fn new() -> Self {
         Self {
-            protocol_registry: ProtocolRegistry::new(),
+            type_registry: TypeRegistry::new(),
             solution_cache: HashMap::new(),
             recursive_patterns: HashMap::new(),
             warnings: Vec::new(),
@@ -358,10 +358,10 @@ impl ConstraintSolver {
         }
     }
 
-    /// Create solver with existing protocol registry
-    pub fn with_registry(registry: ProtocolRegistry) -> Self {
+    /// Create solver with existing type registry
+    pub fn with_registry(registry: TypeRegistry) -> Self {
         Self {
-            protocol_registry: registry,
+            type_registry: registry,
             solution_cache: HashMap::new(),
             recursive_patterns: HashMap::new(),
             warnings: Vec::new(),
@@ -373,13 +373,13 @@ impl ConstraintSolver {
     }
 
     /// Get mutable access to protocol registry
-    pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
-        &mut self.protocol_registry
+    pub fn type_registry_mut(&mut self) -> &mut TypeRegistry {
+        &mut self.type_registry
     }
 
-    /// Get immutable access to protocol registry
-    pub fn protocol_registry(&self) -> &ProtocolRegistry {
-        &self.protocol_registry
+    /// Get immutable access to type registry
+    pub fn type_registry(&self) -> &TypeRegistry {
+        &self.type_registry
     }
 
     /// Get all collected warnings
@@ -491,19 +491,19 @@ impl ConstraintSolver {
         let resolved_type = self.resolve_type_var(type_var, substitution)?;
 
         match resolved_type {
-            Type::Concrete { id, args, .. } => {
-                // Check if this concrete type implements the protocol using the protocol registry
+            Type::Concrete { name, args, .. } => {
+                // Check if this concrete type implements the protocol using the type registry
                 if !self
-                    .protocol_registry
-                    .has_implementation_with_args(protocol, &id, &args)
+                    .type_registry
+                    .has_implementation_with_args(protocol, name, &args)
                 {
                     let type_name = if args.is_empty() {
-                        id.name().to_string()
+                        name.as_str().to_string()
                     } else {
                         // For generic types like List<String>, create a canonical representation
                         format!(
                             "{}[{}]",
-                            id.name(),
+                            name.as_str(),
                             args.iter()
                                 .map(Self::type_to_string)
                                 .collect::<Vec<_>>()
@@ -513,7 +513,7 @@ impl ConstraintSolver {
 
                     return Err(ConstraintError::MissingImplementation {
                         type_name,
-                        protocol_name: protocol.0.clone(),
+                        protocol_name: protocol.as_str().to_string(),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     });
                 }
@@ -527,15 +527,15 @@ impl ConstraintSolver {
                 Ok(())
             }
 
-            Type::Protocol { id, .. } => {
+            Type::Protocol { name, .. } => {
                 // Protocol types automatically implement themselves
-                if id == *protocol {
+                if name == protocol {
                     Ok(())
                 } else {
                     // Check if there's a relationship between protocols
                     Err(ConstraintError::MissingImplementation {
-                        type_name: format!("protocol {}", id.0),
-                        protocol_name: protocol.0.clone(),
+                        type_name: format!("protocol {}", name.as_str()),
+                        protocol_name: protocol.as_str().to_string(),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
@@ -599,13 +599,13 @@ impl ConstraintSolver {
     /// Convert a type to a canonical string representation
     fn type_to_string(ty: &Type) -> String {
         match ty {
-            Type::Concrete { id, args, .. } => {
+            Type::Concrete { name, args, .. } => {
                 if args.is_empty() {
-                    id.name().to_string()
+                    name.as_str().to_string()
                 } else {
                     format!(
                         "{}[{}]",
-                        id.name(),
+                        name.as_str(),
                         args.iter()
                             .map(Self::type_to_string)
                             .collect::<Vec<_>>()
@@ -614,7 +614,7 @@ impl ConstraintSolver {
                 }
             }
             Type::Variable { var_id, .. } => format!("T{}", var_id.0),
-            Type::Protocol { id, .. } => format!("protocol {}", id.0),
+            Type::Protocol { name, .. } => format!("protocol {}", name.as_str()),
             Type::SelfType { .. } => "Self".to_string(),
             Type::Function { .. } => "function".to_string(),
         }
@@ -634,7 +634,7 @@ impl ConstraintSolver {
                 ..
             } => {
                 // In implementation context, Self is bound to the concrete implementing type
-                if !self.protocol_registry.has_implementation_with_args(
+                if !self.type_registry.has_implementation_with_args(
                     protocol,
                     implementing_type,
                     implementing_args,
@@ -656,7 +656,7 @@ impl ConstraintSolver {
 
                     return Err(ConstraintError::MissingImplementation {
                         type_name,
-                        protocol_name: protocol.0.clone(),
+                        protocol_name: protocol.as_str().to_string(),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     });
                 }
@@ -664,11 +664,11 @@ impl ConstraintSolver {
                 Ok(())
             }
 
-            SelfBindingContext::ProtocolDefinition { protocol_id, .. } => {
+            SelfBindingContext::ProtocolDefinition { protocol_name, .. } => {
                 // In protocol definition context, Self: Protocol is valid if:
                 // 1. The protocol is the same as the defining protocol (trivially true)
                 // 2. The protocol is a super-protocol of the defining protocol
-                if protocol_id == protocol {
+                if protocol_name == protocol {
                     // Self: SameProtocol is trivially satisfied
                     Ok(())
                 } else {
@@ -676,7 +676,7 @@ impl ConstraintSolver {
                     // For now, assume no super-protocols (this would be extended in a full implementation)
                     Err(ConstraintError::MissingImplementation {
                         type_name: "Self".to_string(),
-                        protocol_name: protocol.0.clone(),
+                        protocol_name: protocol.as_str().to_string(),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
@@ -775,31 +775,31 @@ impl ConstraintSolver {
                 Ok(())
             }
 
-            Type::Concrete { id, .. } => {
+            Type::Concrete { name, .. } => {
                 // Check if the concrete type name matches the expected name
-                if id.name() == expected_name {
+                if name.as_str() == expected_name {
                     Ok(())
                 } else {
                     Err(ConstraintError::Unsatisfiable {
                         constraint: format!(
                             "type variable must resolve to {}, but got {}",
                             expected_name,
-                            id.name()
+                            name.as_str()
                         ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
                 }
             }
 
-            Type::Protocol { id, .. } => {
+            Type::Protocol { name, .. } => {
                 // Check if the protocol name matches the expected name
-                if id.0 == expected_name {
+                if name.as_str() == expected_name {
                     Ok(())
                 } else {
                     Err(ConstraintError::Unsatisfiable {
                         constraint: format!(
                             "type variable must resolve to {}, but got protocol {}",
-                            expected_name, id.0
+                            expected_name, name.as_str()
                         ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
@@ -842,7 +842,7 @@ impl ConstraintSolver {
         let mut patterns_to_warn = Vec::new();
 
         // First pass: collect all recursive patterns (immutable borrow)
-        for impl_info in self.protocol_registry.all_implementations() {
+        for impl_info in self.type_registry.all_implementations() {
             if let Some(recursive_info) = self.detect_recursive_pattern(&impl_info) {
                 recursive_patterns
                     .insert(recursive_info.pattern_key.clone(), recursive_info.clone());
@@ -884,13 +884,13 @@ impl ConstraintSolver {
 
             let pattern_key = format!(
                 "{}:{}",
-                impl_info.protocol_id.0,
-                impl_info.implementing_type.name()
+                impl_info.protocol_name.as_str(),
+                impl_info.implementing_type.as_str()
             );
 
             // Check if this protocol has other implementations that could chain
             let mut could_recurse = false;
-            for other_impl in self.protocol_registry.all_implementations() {
+            for other_impl in self.type_registry.all_implementations() {
                 if other_impl.protocol_id == impl_info.protocol_id
                     && other_impl.implementing_type.name() != impl_info.implementing_type.name()
                 {
@@ -931,7 +931,7 @@ impl ConstraintSolver {
 
         let warning = CompilerWarning::RecursiveProtocolImplementation {
             implementation_span: pattern.implementation_span,
-            protocol_name: pattern.protocol.0.clone(),
+            protocol_name: pattern.protocol.as_str().to_string(),
             implementing_type: type_name,
             explanation,
             impact: "This may generate many concrete type combinations during clause generation"
@@ -962,8 +962,8 @@ impl ConstraintSolver {
     /// Extract a name from a Type for display purposes
     fn get_type_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Concrete { id, .. } => id.name().to_string(),
-            Type::Protocol { id, .. } => id.0.clone(),
+            Type::Concrete { name, .. } => name.as_str().to_string(),
+            Type::Protocol { name, .. } => name.as_str().to_string(),
             Type::Variable {
                 name: Some(name), ..
             } => name.clone(),
@@ -1170,9 +1170,9 @@ impl ConstraintSolver {
 
     fn type_involves_protocol(&self, ty: &Type, protocol_id: &crate::types::ModuleName) -> bool {
         match ty {
-            Type::Protocol { id, args, .. } => {
+            Type::Protocol { name, args, .. } => {
                 // Check both if this is the target protocol and if args contain the protocol
-                id == protocol_id
+                name == protocol_id
                     || args
                         .iter()
                         .any(|arg| self.type_involves_protocol(arg, protocol_id))
@@ -1216,8 +1216,8 @@ impl ConstraintSolver {
     fn types_overlap(&self, type1: &Type, type2: &Type) -> bool {
         // Simple overlap check - in a full implementation this would be more sophisticated
         match (type1, type2) {
-            (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => id1 == id2,
-            (Type::Protocol { id: id1, .. }, Type::Protocol { id: id2, .. }) => id1 == id2,
+            (Type::Concrete { name: name1, .. }, Type::Concrete { name: name2, .. }) => name1 == name2,
+            (Type::Protocol { name: name1, .. }, Type::Protocol { name: name2, .. }) => name1 == name2,
             (Type::Variable { var_id: id1, .. }, Type::Variable { var_id: id2, .. }) => id1 == id2,
             _ => false, // Conservative approach
         }
