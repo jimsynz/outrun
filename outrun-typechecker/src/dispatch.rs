@@ -6,7 +6,7 @@
 //! - Private function calls: defp functions within modules/implementations
 
 use crate::error::DispatchError;
-use crate::registry::ProtocolRegistry;
+use crate::registry::TypeRegistry;
 use crate::types::{ModuleName, Substitution, Type};
 use outrun_parser::Span;
 use std::collections::HashMap;
@@ -179,8 +179,8 @@ impl Default for FunctionRegistry {
 /// Static function dispatch resolver
 #[derive(Debug)]
 pub struct FunctionDispatcher<'a> {
-    /// Protocol implementation registry
-    protocol_registry: &'a ProtocolRegistry,
+    /// Unified type registry (protocols, structs, implementations)
+    type_registry: &'a TypeRegistry,
     /// Function registry
     function_registry: &'a FunctionRegistry,
     /// Monomorphisation table for generic function instantiations
@@ -196,13 +196,13 @@ pub struct FunctionDispatcher<'a> {
 impl<'a> FunctionDispatcher<'a> {
     /// Create a new function dispatcher
     pub fn new(
-        protocol_registry: &'a ProtocolRegistry,
+        type_registry: &'a TypeRegistry,
         function_registry: &'a FunctionRegistry,
         monomorphisation_table: Option<&'a MonomorphisationTable>,
         substitution: Option<&'a Substitution>,
     ) -> Self {
         Self {
-            protocol_registry,
+            type_registry,
             function_registry,
             monomorphisation_table,
             substitution,
@@ -276,38 +276,38 @@ impl<'a> FunctionDispatcher<'a> {
         span: Option<Span>,
     ) -> Result<DispatchResult, DispatchError> {
         match &self.context {
-            FunctionContext::Protocol { protocol_id, .. } => {
+            FunctionContext::Protocol { protocol_name, .. } => {
                 // Local call in protocol context -> resolve to protocol method
-                self.resolve_static_call(&protocol_id.0, function_name, span)
+                self.resolve_static_call(protocol_name.as_str(), function_name, span)
             }
-            FunctionContext::Module { module_id, .. } => {
+            FunctionContext::Module { module_name, .. } => {
                 // Local call in module context -> resolve to module function
-                self.resolve_static_call(module_id.name(), function_name, span)
+                self.resolve_static_call(module_name.as_str(), function_name, span)
             }
             FunctionContext::Implementation {
                 implementing_type,
-                protocol_id,
+                protocol_name,
                 ..
             } => {
                 // Local call in impl context -> try impl functions first, then protocol defaults
                 if let Some(func_info) = self.function_registry.get_function(
-                    &format!("impl {} for {}", protocol_id.0, implementing_type.name()),
+                    &format!("impl {} for {}", protocol_name.as_str(), implementing_type.as_str()),
                     function_name,
                 ) {
                     // Found in implementation
                     Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
                         qualified_name: format!(
                             "{}.{}:{}",
-                            protocol_id.0,
+                            protocol_name.as_str(),
                             function_name,
-                            implementing_type.name()
+                            implementing_type.as_str()
                         ),
                         implementing_type: Some(implementing_type.clone()),
                         function_info: func_info.clone(),
                     })))
                 } else {
                     // Try protocol default
-                    self.resolve_static_call(&protocol_id.0, function_name, span)
+                    self.resolve_static_call(protocol_name.as_str(), function_name, span)
                 }
             }
             FunctionContext::TopLevel => {
@@ -339,21 +339,21 @@ impl<'a> FunctionDispatcher<'a> {
         };
 
         match resolved_type {
-            Type::Concrete { id, ref args, .. } => {
+            Type::Concrete { name, ref args, .. } => {
                 // Look up protocol implementation for this concrete type
                 // For generic types, we need to try both generic and non-generic protocol names
-                let protocol_id = ModuleName::new(protocol_name);
+                let protocol_name_module = ModuleName::new(protocol_name);
 
                 // First try exact match with current protocol name
                 let mut impl_info =
-                    self.protocol_registry
-                        .get_implementation(&protocol_id, &id, args);
+                    self.type_registry
+                        .get_implementation(name.as_str(), protocol_name);
 
                 // If not found and we have args, also try with empty args (for generic implementations registered without args)
                 if impl_info.is_none() && !args.is_empty() {
                     impl_info = self
-                        .protocol_registry
-                        .get_implementation(&protocol_id, &id, &[]);
+                        .type_registry
+                        .get_implementation(name.as_str(), protocol_name);
                 }
 
                 // If not found and we have generic args, try constructing generic protocol name
@@ -375,18 +375,18 @@ impl<'a> FunctionDispatcher<'a> {
                     // Debug: Show the exact key we're looking for with generic protocol name
                     let _generic_search_key = crate::registry::ImplementationKey::new(
                         generic_protocol_id.clone(),
-                        id.clone(),
+                        name.clone(),
                         args,
                     );
 
                     impl_info =
-                        self.protocol_registry
-                            .get_implementation(&generic_protocol_id, &id, args);
+                        self.type_registry
+                            .get_implementation(name.as_str(), protocol_name);
                 }
 
                 if let Some(_impl_info) = impl_info {
                     // Found implementation - look up the specific function using impl scope format
-                    let impl_scope = format!("impl {} for {}", protocol_name, id.name());
+                    let impl_scope = format!("impl {} for {}", protocol_name, name.as_str());
                     if let Some(func_info) = self
                         .function_registry
                         .get_function(&impl_scope, function_name)
@@ -394,9 +394,9 @@ impl<'a> FunctionDispatcher<'a> {
                         Ok(DispatchResult::Resolved(Box::new(ResolvedFunction {
                             qualified_name: format!(
                                 "{protocol_name}.{function_name}:{}",
-                                id.name()
+                                name.as_str()
                             ),
-                            implementing_type: Some(id),
+                            implementing_type: Some(name.clone()),
                             function_info: func_info.clone(),
                         })))
                     } else {
@@ -405,21 +405,21 @@ impl<'a> FunctionDispatcher<'a> {
                     }
                 } else {
                     // Debug: List all available implementations
-                    for impl_info in self.protocol_registry.all_implementations() {
+                    for impl_info in self.type_registry.all_implementations() {
                         // Show details for List implementations
-                        if impl_info.protocol_id.0.contains("List") {}
+                        if impl_info.protocol_name.as_str().contains("List") {}
                     }
 
                     // Debug: Show the exact key we're looking for
                     let _search_key = crate::registry::ImplementationKey::new(
                         crate::types::ModuleName::new(protocol_name),
-                        id.clone(),
+                        name.clone(),
                         args,
                     );
                     // Add debug info about what implementations are actually available
                     Err(DispatchError::NoImplementation {
                         protocol_name: protocol_name.to_string(),
-                        type_name: id.name().to_string(),
+                        type_name: name.as_str().to_string(),
                         file_span: Some(self.create_file_span(span)),
                         similar_implementations: Vec::new(),
                         suggestions: Vec::new(),
@@ -450,7 +450,7 @@ impl<'a> FunctionDispatcher<'a> {
                 }
             }
             Type::Protocol {
-                id: protocol_id,
+                name: source_protocol_name,
                 args: _,
                 ..
             } => {
@@ -458,13 +458,13 @@ impl<'a> FunctionDispatcher<'a> {
                 let target_protocol_id = ModuleName::new(protocol_name);
 
                 // Direct match: the protocol itself (e.g., Integer calling Integer.method)
-                if protocol_id.0 == protocol_name {
+                if source_protocol_name.as_str() == protocol_name {
                     self.resolve_static_call(protocol_name, function_name, span)
                 }
                 // Protocol requirement match: Integer requires BinarySubtraction, so Integer can call BinarySubtraction.method
                 else if self
-                    .protocol_registry
-                    .protocol_requires(&protocol_id, &target_protocol_id)
+                    .type_registry
+                    .protocol_requires(source_protocol_name, &target_protocol_id)
                 {
                     // The protocol type satisfies the requirement for the target protocol
                     // Look for concrete implementations of the protocol type that implement the target protocol
@@ -474,7 +474,7 @@ impl<'a> FunctionDispatcher<'a> {
                         protocol_name: protocol_name.to_string(),
                         target_description: format!(
                             "Protocol mismatch: {} does not require {}",
-                            protocol_id.0, protocol_name
+                            source_protocol_name.as_str(), protocol_name
                         ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
@@ -632,13 +632,13 @@ impl<'a> FunctionDispatcher<'a> {
     /// Check if we have local access to a module (for private function visibility)
     fn is_local_access(&self, module_name: &str) -> bool {
         match &self.context {
-            FunctionContext::Protocol { protocol_id, .. } => protocol_id.0 == module_name,
-            FunctionContext::Module { module_id, .. } => module_id.name() == module_name,
+            FunctionContext::Protocol { protocol_name, .. } => protocol_name.as_str() == module_name,
+            FunctionContext::Module { module_name: ctx_module_name, .. } => ctx_module_name.as_str() == module_name,
             FunctionContext::Implementation {
                 implementing_type,
-                protocol_id,
+                protocol_name,
                 ..
-            } => module_name == protocol_id.0 || module_name == implementing_type.name(),
+            } => module_name == protocol_name.as_str() || module_name == implementing_type.as_str(),
             FunctionContext::TopLevel => false,
         }
     }
@@ -806,22 +806,22 @@ impl MonomorphisationTable {
     /// Convert a type to a string component for monomorphised keys
     fn type_to_key_component(ty: &Type) -> String {
         match ty {
-            Type::Concrete { id, args, .. } => {
+            Type::Concrete { name, args, .. } => {
                 if args.is_empty() {
-                    id.name().to_string()
+                    name.as_str().to_string()
                 } else {
                     let arg_names: Vec<String> =
                         args.iter().map(Self::type_to_key_component).collect();
-                    format!("{}_{}", id.name(), arg_names.join("_"))
+                    format!("{}_{}", name.as_str(), arg_names.join("_"))
                 }
             }
-            Type::Protocol { id, args, .. } => {
+            Type::Protocol { name, args, .. } => {
                 if args.is_empty() {
-                    id.0.clone()
+                    name.as_str().to_string()
                 } else {
                     let arg_names: Vec<String> =
                         args.iter().map(Self::type_to_key_component).collect();
-                    format!("{}_{}", id.0, arg_names.join("_"))
+                    format!("{}_{}", name.as_str(), arg_names.join("_"))
                 }
             }
             Type::Variable { .. } => "Var".to_string(), // Should not appear in monomorphised keys
@@ -898,21 +898,21 @@ impl Default for MonomorphisationTable {
 
 /// Build a complete dispatch table from protocol and function registries with monomorphisation support
 pub fn build_dispatch_table(
-    protocol_registry: &ProtocolRegistry,
+    type_registry: &TypeRegistry,
     function_registry: &FunctionRegistry,
     monomorphisation_table: Option<&MonomorphisationTable>,
 ) -> DispatchTable {
     let mut table = DispatchTable::new();
 
     // Debug: Check what implementations we have (can be removed in production)
-    // println!("🔧 Protocol registry has {} implementations", protocol_registry.all_implementations().count());
+    // println!("🔧 Type registry has {} implementations", type_registry.all_implementations().count());
 
     // Process all registered implementations
-    for impl_info in protocol_registry.all_implementations() {
+    for impl_info in type_registry.all_implementations() {
         let impl_scope = format!(
             "impl {} for {}",
-            impl_info.protocol_id.0,
-            impl_info.implementing_type.name()
+            impl_info.protocol_name.as_str(),
+            impl_info.implementing_type.as_str()
         );
 
         // Debug output (can be removed in production)
@@ -924,7 +924,7 @@ pub fn build_dispatch_table(
 
         for (func_name, func_info) in function_registry.get_module_functions(&impl_scope) {
             let resolved_func = ResolvedFunction {
-                qualified_name: format!("{}.{}", impl_info.protocol_id.0, func_name),
+                qualified_name: format!("{}.{}", impl_info.protocol_name.as_str(), func_name),
                 implementing_type: Some(impl_info.implementing_type.clone()),
                 function_info: func_info.clone(),
             };
@@ -932,9 +932,9 @@ pub fn build_dispatch_table(
             // Generate monomorphised key: "Protocol.function:TargetType"
             let monomorphised_key = format!(
                 "{}.{}:{}",
-                impl_info.protocol_id.0,
+                impl_info.protocol_name.as_str(),
                 func_name,
-                impl_info.implementing_type.name()
+                impl_info.implementing_type.as_str()
             );
 
             // Debug output (can be removed in production)

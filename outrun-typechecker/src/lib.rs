@@ -504,7 +504,7 @@ impl CompilationResult {
 
         // Phase 8: Build dispatch table for runtime function resolution
         let dispatch_table = build_dispatch_table(
-            engine.protocol_registry(),
+            &*engine.type_registry(),
             engine.function_registry(),
             Some(&monomorphisation_table),
         );
