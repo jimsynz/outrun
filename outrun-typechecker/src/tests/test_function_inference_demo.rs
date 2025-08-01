@@ -5,8 +5,8 @@ use outrun_parser::{parse_program, ExpressionKind};
 
 #[test]
 fn test_function_inference_success_cases() {
-    println!("\n🎯 DEMONSTRATING WORKING FUNCTION TYPE INFERENCE");
-    println!("================================================");
+    // println!("\n🎯 DEMONSTRATING WORKING FUNCTION TYPE INFERENCE");
+    // println!("================================================");
 
     // Test 1: Function type annotations work
     let function_type_program =
@@ -14,7 +14,7 @@ fn test_function_inference_success_cases() {
     match parse_program(function_type_program) {
         Ok(mut program) => match typecheck_program(&mut program) {
             Ok(()) => {
-                println!("✅ SUCCESS: Function<(x: Integer) -> String> type annotation");
+                // println!("✅ SUCCESS: Function<(x: Integer) -> String> type annotation");
                 println!("   Program: {}", function_type_program);
             }
             Err(e) => println!("❌ FAILED: Function type annotation: {:?}", e),
@@ -37,9 +37,9 @@ fn test_function_inference_success_cases() {
 
                         match typecheck_program(&mut program) {
                             Ok(()) => {
-                                println!("✅ SUCCESS: Anonymous function type inference");
+                                // println!("✅ SUCCESS: Anonymous function type inference");
                                 println!("   Function: {}", anon_function_program);
-                                println!("   Status: Full inference pipeline works!");
+                                // println!("   Status: Full inference pipeline works!");
                             }
                             Err(e) => println!("⚠️  TYPE ERROR: Anonymous function: {:?}", e),
                         }
@@ -55,7 +55,7 @@ fn test_function_inference_success_cases() {
     match parse_program(function_def_program) {
         Ok(mut program) => match typecheck_program(&mut program) {
             Ok(()) => {
-                println!("✅ SUCCESS: Function definition with parameter types");
+                // println!("✅ SUCCESS: Function definition with parameter types");
                 println!("   Function: {}", function_def_program);
             }
             Err(e) => println!("⚠️  TYPE ERROR: Function definition: {:?}", e),
@@ -68,7 +68,7 @@ fn test_function_inference_success_cases() {
     match parse_program(no_param_function) {
         Ok(mut program) => match typecheck_program(&mut program) {
             Ok(()) => {
-                println!("✅ SUCCESS: Function<() -> Integer> type (no parameters)");
+                // println!("✅ SUCCESS: Function<() -> Integer> type (no parameters)");
                 println!("   Function: {}", no_param_function);
             }
             Err(e) => println!("⚠️  TYPE ERROR: No-param function type: {:?}", e),
@@ -76,23 +76,23 @@ fn test_function_inference_success_cases() {
         Err(e) => println!("❌ PARSE ERROR: No-param function type: {:?}", e),
     }
 
-    println!("\n📊 IMPLEMENTATION STATUS SUMMARY");
-    println!("=================================");
-    println!("✅ Function type inference infrastructure: COMPLETE");
-    println!("✅ Function<(params) -> ReturnType> syntax: WORKING");
-    println!("✅ Anonymous function inference (single param): WORKING");
-    println!("✅ Function signature validation: IMPLEMENTED");
-    println!("✅ Multi-clause consistency checking: IMPLEMENTED");
-    println!("✅ Integration with Hindley-Milner system: COMPLETE");
-    println!("✅ Error reporting with suggestions: COMPLETE");
-    println!("⚠️  Anonymous function parser support: PARTIAL (needs parser work)");
-    println!("\n🎉 TASK #1322 CORE IMPLEMENTATION: COMPLETE!");
+    // println!("\n📊 IMPLEMENTATION STATUS SUMMARY");
+    // println!("=================================");
+    // println!("✅ Function type inference infrastructure: COMPLETE");
+    // println!("✅ Function<(params) -> ReturnType> syntax: WORKING");
+    // println!("✅ Anonymous function inference (single param): WORKING");
+    // println!("✅ Function signature validation: IMPLEMENTED");
+    // println!("✅ Multi-clause consistency checking: IMPLEMENTED");
+    // println!("✅ Integration with Hindley-Milner system: COMPLETE");
+    // println!("✅ Error reporting with suggestions: COMPLETE");
+    // println!("⚠️  Anonymous function parser support: PARTIAL (needs parser work)");
+    // println!("\n🎉 TASK #1322 CORE IMPLEMENTATION: COMPLETE!");
 }
 
 #[test]
 fn test_function_type_display_and_structure() {
-    println!("\n🔍 TESTING FUNCTION TYPE STRUCTURE");
-    println!("==================================");
+    // println!("\n🔍 TESTING FUNCTION TYPE STRUCTURE");
+    // println!("==================================");
 
     use crate::types::Type;
 
@@ -145,8 +145,8 @@ fn test_function_type_display_and_structure() {
 
 #[test]
 fn test_function_inference_error_cases() {
-    println!("\n⚠️  TESTING FUNCTION INFERENCE ERROR HANDLING");
-    println!("==============================================");
+    // println!("\n⚠️  TESTING FUNCTION INFERENCE ERROR HANDLING");
+    // println!("==============================================");
 
     // These tests verify our error handling works correctly
     // (Note: Some might pass due to incomplete features, which is OK)

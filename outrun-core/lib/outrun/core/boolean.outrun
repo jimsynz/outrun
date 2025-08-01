@@ -34,13 +34,13 @@ impl Equality for Outrun.Core.Boolean {
 
 # Logical operator protocol implementations
 impl LogicalAnd for Outrun.Core.Boolean {
-    def and(lhs: Self, rhs: Self): Self {
+    def and?(lhs: Self, rhs: Self): Boolean {
         Outrun.Intrinsic.bool_and(lhs: lhs, rhs: rhs)
     }
 }
 
 impl LogicalOr for Outrun.Core.Boolean {
-    def or(lhs: Self, rhs: Self): Self {
+    def or?(lhs: Self, rhs: Self): Boolean {
         Outrun.Intrinsic.bool_or(lhs: lhs, rhs: rhs)
     }
 }

@@ -124,7 +124,7 @@ def process_optional_integer(value: Option<Integer>): Boolean {
 
     match result {
         Ok(_) => {
-            println!("✅ Option<Integer> function parameter constraint resolution works!");
+            // println!("✅ Option<Integer> function parameter constraint resolution works!");
         }
         Err(e) => {
             println!("❌ Option<Integer> function parameter failed: {:?}", e);
@@ -204,7 +204,7 @@ def test_complex_constraints(): Boolean {
 
     match result {
         Ok(_) => {
-            println!("✅ Complex nested protocol constraints work!");
+            // println!("✅ Complex nested protocol constraints work!");
         }
         Err(e) => {
             println!("❌ Complex protocol constraints failed: {:?}", e);

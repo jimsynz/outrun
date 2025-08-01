@@ -10,15 +10,15 @@ struct Test {
 }
 "#;
 
-    println!("🔍 Testing span tracking without core library");
-    println!("Source code:");
+    // println!("🔍 Testing span tracking without core library");
+    // println!("Source code:");
     println!("{}", source);
     println!();
 
     // Parse the program
     let program = match parse_program(source) {
         Ok(program) => {
-            println!("✅ Parsing successful");
+            // println!("✅ Parsing successful");
             println!("Program items: {}", program.items.len());
             for (i, item) in program.items.iter().enumerate() {
                 println!("  Item {}: {:?} at span {:?}", i, item.kind, item.span);
@@ -26,7 +26,7 @@ struct Test {
             program
         }
         Err(e) => {
-            println!("❌ Parsing failed: {e}");
+            // println!("❌ Parsing failed: {e}");
             return;
         }
     };
@@ -37,11 +37,11 @@ struct Test {
     // Try to register the struct
     match engine.register_protocols_and_structs(&program) {
         Ok(()) => {
-            println!("✅ Phase 2: Struct registration successful");
+            // println!("✅ Phase 2: Struct registration successful");
         }
         Err(e) => {
-            println!("❌ Phase 2: Struct registration failed: {e}");
-            println!("Error details: {e:#?}");
+            // println!("❌ Phase 2: Struct registration failed: {e}");
+            // println!("Error details: {e:#?}");
             return;
         }
     }
@@ -49,11 +49,11 @@ struct Test {
     // Try to register implementations
     match engine.register_implementations(&program) {
         Ok(()) => {
-            println!("✅ Phase 3: Implementation registration successful");
+            // println!("✅ Phase 3: Implementation registration successful");
         }
         Err(e) => {
-            println!("❌ Phase 3: Implementation registration failed: {e}");
-            println!("Error details: {e:#?}");
+            // println!("❌ Phase 3: Implementation registration failed: {e}");
+            // println!("Error details: {e:#?}");
             return;
         }
     }
@@ -62,11 +62,11 @@ struct Test {
     let mut program_mut = program;
     match engine.typecheck_program(&mut program_mut) {
         Ok(()) => {
-            println!("✅ Type checking successful without core library!");
+            // println!("✅ Type checking successful without core library!");
         }
         Err(e) => {
-            println!("❌ Type checking failed: {e}");
-            println!("Error details: {e:#?}");
+            // println!("❌ Type checking failed: {e}");
+            // println!("Error details: {e:#?}");
         }
     }
 }

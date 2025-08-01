@@ -19,6 +19,6 @@ user.admin? || user.moderator?  # LogicalOr.or(lhs: user.admin?, rhs: user.moder
 ```
 """)
 protocol LogicalOr {
-    @Doc(content: "Perform logical OR on two values")
-    def or(lhs: Self, rhs: Self): Self
+    @Doc(content: "Perform logical OR on two values - always returns Boolean")
+    def or?(lhs: Self, rhs: Self): Boolean
 }

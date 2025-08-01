@@ -134,7 +134,7 @@ impl CompilationResult {
             let mut core_package_std = Package::from_loaded_package(core_package);
             core_package_std.package_name = "outrun-core".to_string();
 
-            println!("📦 Pre-compiling core library for REPL optimization...");
+            // println!("📦 Pre-compiling core library for REPL optimization...");
 
             // Compile the core library without loading it again (it's already loaded)
             // Use compile_package_internal directly to avoid double-loading
@@ -380,15 +380,16 @@ impl CompilationResult {
                 integrated_programs.append(&mut package.programs);
                 package.programs = integrated_programs;
 
-                println!(
-                    "📦 Integrated core library: {} total programs",
-                    package.programs.len()
-                );
+                // DEBUG: Commented out for performance
+                // println!(
+                //     "📦 Integrated core library: {} total programs",
+                //     package.programs.len()
+                // );
             } else {
                 eprintln!("Warning: Could not find core library, proceeding without it");
             }
         } else {
-            println!("📦 Using pre-compiled core library from dependencies");
+            // println!("📦 Using pre-compiled core library from dependencies");
         }
 
         // Continue with standard compilation phases
@@ -409,10 +410,11 @@ impl CompilationResult {
             integrated_programs.append(&mut package.programs);
             package.programs = integrated_programs;
 
-            println!(
-                "📦 Integrated core library: {} total programs",
-                package.programs.len()
-            );
+            // DEBUG: Commented out for performance
+            // println!(
+            //     "📦 Integrated core library: {} total programs",
+            //     package.programs.len()
+            // );
         } else {
             eprintln!("Warning: Could not find core library, proceeding without it");
         }
@@ -851,7 +853,8 @@ protocol Display {
         let precompiled_core = CompilationResult::precompile_core_library();
         assert!(
             precompiled_core.is_ok(),
-            "Should successfully pre-compile core library"
+            "Should successfully pre-compile core library: {:?}",
+            precompiled_core.err()
         );
 
         let core = precompiled_core.unwrap();
@@ -926,7 +929,7 @@ protocol Display {
 
         let optimized_time = start_optimized.elapsed();
 
-        println!("📊 Performance comparison:");
+        // println!("📊 Performance comparison:");
         println!("   Traditional approach: {:?}", traditional_time);
         println!("   Optimized approach:   {:?}", optimized_time);
 

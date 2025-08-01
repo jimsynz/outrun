@@ -53,7 +53,7 @@ impl Boolean for Outrun.Core.Boolean {
 
     match result {
         Ok(()) => {
-            println!("✅ Type checking succeeded - Boolean bug is fixed!");
+            // println!("✅ Type checking succeeded - Boolean bug is fixed!");
         }
         Err(e) => {
             println!("❌ Type checking failed: {:?}", e);
@@ -61,11 +61,11 @@ impl Boolean for Outrun.Core.Boolean {
             if error_str.contains("expected: Protocol { id: ProtocolId(\"Boolean\")")
                 && error_str.contains("found: Concrete { id: TypeId(\"Boolean\")")
             {
-                println!("🐛 EXACT BUG REPRODUCED: Function call resolution treats Boolean as concrete type");
-                println!("The issue is in how Option.some?() return type is resolved during function call inference");
+                // println!("🐛 EXACT BUG REPRODUCED: Function call resolution treats Boolean as concrete type");
+                // println!("The issue is in how Option.some?() return type is resolved during function call inference");
             } else if error_str.contains("found: Concrete { id: TypeId(\"Outrun.Core.Boolean\")") {
-                println!("✅ Correct concrete type inferred, but compatibility check failed");
-                println!("This means the issue is in protocol-to-concrete compatibility, not type name resolution");
+                // println!("✅ Correct concrete type inferred, but compatibility check failed");
+                // println!("This means the issue is in protocol-to-concrete compatibility, not type name resolution");
             }
         }
     }
@@ -107,7 +107,7 @@ def test_function(): Boolean {
     let phase4_result = engine.register_functions(&program);
     match phase4_result {
         Ok(()) => {
-            println!("✅ Phase 4 succeeded - function signatures registered correctly");
+            // println!("✅ Phase 4 succeeded - function signatures registered correctly");
 
             // Now check Phase 6 type checking
             let phase6_result = engine.typecheck_function_bodies(&mut program);
@@ -128,8 +128,8 @@ def test_function(): Boolean {
             println!("❌ Phase 4 failed: {:?}", e);
             let error_str = format!("{:?}", e);
             if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
-                println!("🐛 Function signature registration treated Boolean as concrete type");
-                println!("This means convert_type_annotation incorrectly classified Boolean");
+                // println!("🐛 Function signature registration treated Boolean as concrete type");
+                // println!("This means convert_type_annotation incorrectly classified Boolean");
             }
         }
     }

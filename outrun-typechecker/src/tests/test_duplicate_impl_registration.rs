@@ -23,7 +23,7 @@ impl TestProtocol<T> for TestType { }
 
     match result {
         Ok(()) => {
-            println!("✅ Simple impl registration succeeded!");
+            // println!("✅ Simple impl registration succeeded!");
         }
         Err(e) => {
             println!("❌ Simple impl registration failed: {:?}", e);
@@ -57,7 +57,7 @@ impl Sigil.Input<T> for Sigil.Input.String { }
 
     match result {
         Ok(()) => {
-            println!("✅ Sigil pattern impl registration succeeded!");
+            // println!("✅ Sigil pattern impl registration succeeded!");
         }
         Err(e) => {
             println!("❌ Sigil pattern impl registration failed: {:?}", e);
@@ -65,7 +65,7 @@ impl Sigil.Input<T> for Sigil.Input.String { }
                 crate::error::ImplementationError::ConflictingImplementation { .. },
             ) = e
             {
-                println!("This reproduces the duplicate implementation registration bug!");
+                // println!("This reproduces the duplicate implementation registration bug!");
             }
         }
     }

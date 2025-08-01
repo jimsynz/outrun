@@ -4,7 +4,7 @@ use crate::{typecheck_package, Package};
 
 #[test]
 fn test_unified_core_library_processing() {
-    println!("🔍 Testing unified package processing with core library integration");
+    // println!("🔍 Testing unified package processing with core library integration");
 
     // Create a simple user package
     let mut package = Package::new("test-package".to_string());
@@ -12,7 +12,7 @@ fn test_unified_core_library_processing() {
     // Test the unified processing (should integrate core library automatically)
     match typecheck_package(&mut package) {
         Ok(()) => {
-            println!("✅ Unified package processing completed successfully");
+            // println!("✅ Unified package processing completed successfully");
             println!("📊 Total programs processed: {}", package.programs.len());
         }
         Err(e) => {
@@ -33,7 +33,7 @@ fn test_unified_core_library_processing() {
                                 "🚨 Still getting ConflictingImplementation: {} for {}",
                                 protocol_name, type_name
                             );
-                            println!("🚨 This means the unified approach didn't fix the issue yet");
+                            // println!("🚨 This means the unified approach didn't fix the issue yet");
                         }
                         _ => {
                             println!("🔍 Other implementation error: {:?}", impl_err);

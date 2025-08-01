@@ -21,7 +21,7 @@ fn test_forward_binding_basic() {
     // Verify it's registered
     assert!(registry.get_module("User").is_some());
 
-    println!("✅ Forward binding registration works");
+    // println!("✅ Forward binding registration works");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn test_arity_conflict_detection() {
     let result = registry.register_module(struct_module);
     assert!(result.is_err());
 
-    println!("✅ Arity conflict detection works");
+    // println!("✅ Arity conflict detection works");
 }
 
 #[test]
@@ -75,5 +75,5 @@ fn test_core_types_accurate_arity() {
     assert!(registry.get_module("Outrun.Core.List").is_some());
     assert!(registry.get_module("Outrun.Core.Map").is_some());
 
-    println!("✅ Core types with accurate arity work");
+    // println!("✅ Core types with accurate arity work");
 }

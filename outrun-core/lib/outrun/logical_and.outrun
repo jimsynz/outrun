@@ -19,6 +19,6 @@ user.active? && user.verified?  # LogicalAnd.and(lhs: user.active?, rhs: user.ve
 ```
 """)
 protocol LogicalAnd {
-    @Doc(content: "Perform logical AND on two values")
-    def and(lhs: Self, rhs: Self): Self
+    @Doc(content: "Perform logical AND on two values - always returns Boolean")
+    def and?(lhs: Self, rhs: Self): Boolean
 }

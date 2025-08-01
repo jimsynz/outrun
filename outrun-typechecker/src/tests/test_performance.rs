@@ -13,7 +13,7 @@ use std::time::Instant;
 
 #[test]
 fn test_many_variable_bindings_performance() {
-    println!("🚀 Testing performance with many variable bindings...");
+    // println!("🚀 Testing performance with many variable bindings...");
 
     // Generate program with many variable bindings
     let mut source = String::new();
@@ -50,7 +50,7 @@ fn test_many_variable_bindings_performance() {
 
 #[test]
 fn test_deep_expression_nesting_performance() {
-    println!("🚀 Testing performance with deep expression nesting...");
+    // println!("🚀 Testing performance with deep expression nesting...");
 
     // Generate deeply nested arithmetic expression: ((((1 + 1) + 1) + 1) + 1)...
     let mut expression = "1".to_string();
@@ -86,7 +86,7 @@ fn test_deep_expression_nesting_performance() {
 
 #[test]
 fn test_large_collection_performance() {
-    println!("🚀 Testing performance with large collections...");
+    // println!("🚀 Testing performance with large collections...");
 
     // Generate large list
     let mut elements = Vec::new();
@@ -122,7 +122,7 @@ fn test_large_collection_performance() {
 
 #[test]
 fn test_many_small_programs_performance() {
-    println!("🚀 Testing performance with many small programs in package...");
+    // println!("🚀 Testing performance with many small programs in package...");
 
     let mut package = Package::new("performance_test".to_string());
     let program_count = 50;
@@ -165,7 +165,7 @@ fn test_many_small_programs_performance() {
 
 #[test]
 fn test_complex_nested_collections_performance() {
-    println!("🚀 Testing performance with complex nested collections...");
+    // println!("🚀 Testing performance with complex nested collections...");
 
     // Generate nested data structure: list of maps of tuples
     let source = r#"
@@ -209,7 +209,7 @@ fn test_complex_nested_collections_performance() {
 
 #[test]
 fn test_repeated_similar_expressions_performance() {
-    println!("🚀 Testing performance with repeated similar expressions...");
+    // println!("🚀 Testing performance with repeated similar expressions...");
 
     // Generate many similar arithmetic expressions
     let mut source = String::new();
@@ -251,7 +251,7 @@ fn test_repeated_similar_expressions_performance() {
 
 #[test]
 fn test_type_inference_engine_fresh_variable_performance() {
-    println!("🚀 Testing TypeInferenceEngine fresh variable generation performance...");
+    // println!("🚀 Testing TypeInferenceEngine fresh variable generation performance...");
 
     let mut engine = TypeInferenceEngine::new();
     let var_count = 10000;
@@ -288,7 +288,7 @@ fn test_type_inference_engine_fresh_variable_performance() {
 #[test]
 #[ignore] // Disabled: takes over a minute to run
 fn test_memory_usage_large_program() {
-    println!("🚀 Testing memory usage with large program...");
+    // println!("🚀 Testing memory usage with large program...");
 
     // Get initial memory usage (this is approximate)
     let initial_memory = get_approximate_memory_usage();
@@ -322,7 +322,7 @@ fn test_memory_usage_large_program() {
     let result = typecheck_program(&mut program);
     let after_typecheck = get_approximate_memory_usage();
 
-    println!("📊 Memory usage:");
+    // println!("📊 Memory usage:");
     println!("  Initial: {} KB", initial_memory / 1024);
     println!("  Before typecheck: {} KB", before_typecheck / 1024);
     println!("  After typecheck: {} KB", after_typecheck / 1024);
@@ -346,7 +346,7 @@ fn test_memory_usage_large_program() {
 
 #[test]
 fn test_concurrent_typechecking_simulation() {
-    println!("🚀 Testing concurrent typechecking simulation...");
+    // println!("🚀 Testing concurrent typechecking simulation...");
 
     // Simulate multiple independent typechecking operations
     let program_sources = vec![

@@ -140,7 +140,7 @@ fn test_complex_nested_expressions() {
             let result = typecheck_program(&mut program);
             match result {
                 Ok(_) => {
-                    println!("✓ Complex expressions typechecked successfully");
+                    // println!("✓ Complex expressions typechecked successfully");
                 }
                 Err(e) => {
                     println!("! Complex expressions failed (may be expected): {:?}", e);
@@ -167,7 +167,7 @@ fn test_type_inference_with_variables() {
     // Should succeed - variable type inference
     match result {
         Ok(_) => {
-            println!("Variable type inference succeeded");
+            // println!("Variable type inference succeeded");
         }
         Err(e) => {
             // May fail due to undefined variable handling - that's okay for now
@@ -188,7 +188,7 @@ fn test_mixed_type_errors() {
 
             match result {
                 Ok(_) => {
-                    println!("! Mixed type list unexpectedly succeeded - may indicate incomplete type checking");
+                    // println!("! Mixed type list unexpectedly succeeded - may indicate incomplete type checking");
                 }
                 Err(e) => {
                     println!("✓ Mixed type list failed as expected: {:?}", e);
@@ -214,7 +214,7 @@ fn test_empty_collections_error() {
     // May fail due to inability to infer empty collection types
     match result {
         Ok(_) => {
-            println!("Empty collections handled successfully");
+            // println!("Empty collections handled successfully");
         }
         Err(e) => {
             println!("Empty collections failed as expected: {:?}", e);
@@ -249,7 +249,7 @@ fn test_package_level_processing() {
     // Package-level processing should work
     match result {
         Ok(_) => {
-            println!("Package-level typechecking succeeded");
+            // println!("Package-level typechecking succeeded");
             // After type checking, core library should be integrated
             println!(
                 "Total programs after core library integration: {}",
@@ -280,7 +280,7 @@ fn test_function_definition_basic() {
 
     match result {
         Ok(_) => {
-            println!("Basic function definition typechecked successfully");
+            // println!("Basic function definition typechecked successfully");
         }
         Err(e) => {
             println!("Function definition failed: {:?}", e);
@@ -307,7 +307,7 @@ fn test_large_program_performance() {
 
     match result {
         Ok(_) => {
-            println!("Large program typechecked successfully");
+            // println!("Large program typechecked successfully");
             // Should complete in reasonable time (< 1 second for 100 variables)
             assert!(
                 duration.as_secs() < 5,
@@ -337,7 +337,7 @@ fn test_deeply_nested_expressions() {
 
     match result {
         Ok(_) => {
-            println!("Deeply nested expressions typechecked successfully");
+            // println!("Deeply nested expressions typechecked successfully");
         }
         Err(e) => {
             println!("Deeply nested expressions failed: {:?}", e);
@@ -359,7 +359,7 @@ fn test_comprehensive_collection_nesting() {
             let result = typecheck_program(&mut program);
             match result {
                 Ok(_) => {
-                    println!("✓ Complex nested collections typechecked successfully");
+                    // println!("✓ Complex nested collections typechecked successfully");
                 }
                 Err(e) => {
                     println!("! Complex nested collections failed: {:?}", e);
@@ -392,7 +392,7 @@ fn test_error_propagation_consistency() {
             // We expect these to fail, but they should fail gracefully
             match result {
                 Ok(_) => {
-                    println!("  Unexpectedly succeeded");
+                    // println!("  Unexpectedly succeeded");
                 }
                 Err(e) => {
                     println!("  Failed as expected: {:?}", e);

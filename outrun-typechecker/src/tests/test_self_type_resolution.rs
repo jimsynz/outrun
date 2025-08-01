@@ -31,11 +31,11 @@ impl Display for MyType {
 
     match result {
         Ok(()) => {
-            println!("✅ Self type resolution succeeded!");
+            // println!("✅ Self type resolution succeeded!");
         }
         Err(e) => {
             println!("❌ Self type resolution failed: {:?}", e);
-            println!("This demonstrates the Self type resolution issue");
+            // println!("This demonstrates the Self type resolution issue");
 
             // This should fail with a type mismatch between Self and String
             // The error should show that Self is not being resolved to MyType
@@ -69,11 +69,11 @@ protocol Display {
 
     match result {
         Ok(()) => {
-            println!("✅ Self to concrete type resolution succeeded!");
+            // println!("✅ Self to concrete type resolution succeeded!");
         }
         Err(e) => {
             println!("❌ Self to concrete type resolution failed: {:?}", e);
-            println!("Expected: Self should resolve to MyType");
+            // println!("Expected: Self should resolve to MyType");
         }
     }
 }
@@ -104,7 +104,7 @@ impl String for Outrun.Core.String {
 
     match result {
         Ok(()) => {
-            println!("✅ Core String Self type resolution succeeded!");
+            // println!("✅ Core String Self type resolution succeeded!");
         }
         Err(e) => {
             println!("❌ Core String Self type resolution failed: {:?}", e);

@@ -39,7 +39,7 @@ impl TestProtocol for TestType {
 
     match result {
         Ok(()) => {
-            println!("✅ Phase 3 implementation registration succeeded!");
+            // println!("✅ Phase 3 implementation registration succeeded!");
 
             // Verify the implementation was registered
             let registry = engine.get_protocol_registry();

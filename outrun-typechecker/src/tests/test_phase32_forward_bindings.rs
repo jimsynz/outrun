@@ -70,5 +70,5 @@ fn test_core_type_arity_accuracy() {
     assert!(registry.get_module("Outrun.Core.List").is_some());
     assert!(registry.get_module("Outrun.Core.Map").is_some());
 
-    println!("✅ Core types registered with proper arity");
+    // println!("✅ Core types registered with proper arity");
 }

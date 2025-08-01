@@ -5,7 +5,7 @@ use outrun_parser::parse_program;
 
 #[test]
 fn test_map_protocol_registration_step_by_step() {
-    println!("=== Testing Map Protocol Registration Step by Step ===");
+    // println!("=== Testing Map Protocol Registration Step by Step ===");
 
     // Create a simple Map protocol definition to test registration
     let map_protocol_source = r#"
@@ -26,7 +26,7 @@ fn test_map_protocol_registration_step_by_step() {
     // Phase 2: Register protocols and structs
     match engine.register_protocols_and_structs(&mut program) {
         Ok(_) => {
-            println!("✅ Protocol registration succeeded");
+            // println!("✅ Protocol registration succeeded");
 
             // Check if Map is now registered
             let type_registry = engine.type_registry_rc();
@@ -37,11 +37,11 @@ fn test_map_protocol_registration_step_by_step() {
 
             // Check what type Map is registered as
             if type_registry.is_protocol("Map") {
-                println!("✅ Map correctly identified as protocol");
+                // println!("✅ Map correctly identified as protocol");
             } else if type_registry.is_struct("Map") {
-                println!("❌ Map incorrectly identified as struct");
+                // println!("❌ Map incorrectly identified as struct");
             } else {
-                println!("❌ Map not found in type registry at all");
+                // println!("❌ Map not found in type registry at all");
             }
         }
         Err(e) => {
@@ -52,7 +52,7 @@ fn test_map_protocol_registration_step_by_step() {
 
 #[test]
 fn test_map_protocol_reference_count_issue() {
-    println!("=== Testing Map Protocol Reference Count Issue ===");
+    // println!("=== Testing Map Protocol Reference Count Issue ===");
 
     // Test the specific scenario where Rc::get_mut might fail
     let source = r#"
@@ -80,7 +80,7 @@ fn test_map_protocol_reference_count_issue() {
     // Phase 2: Register protocols and structs (this should trigger the Rc::get_mut failure)
     match engine.register_protocols_and_structs(&mut program) {
         Ok(_) => {
-            println!("✅ Phase 2 succeeded");
+            // println!("✅ Phase 2 succeeded");
 
             // Check if Map is still registered after the Rc replacement
             let type_registry = engine.type_registry_rc();
@@ -108,7 +108,7 @@ fn test_map_protocol_reference_count_issue() {
 
 #[test]
 fn test_map_protocol_with_implementation() {
-    println!("=== Testing Map Protocol with Implementation ===");
+    // println!("=== Testing Map Protocol with Implementation ===");
 
     // Simulate the scenario from the core library: Map protocol + Default implementation
     let source = r#"
@@ -137,10 +137,10 @@ fn test_map_protocol_with_implementation() {
     let mut engine = TypeInferenceEngine::bootstrap();
 
     // Phase 2: Register protocols and structs
-    println!("=== Phase 2: Register protocols and structs ===");
+    // println!("=== Phase 2: Register protocols and structs ===");
     match engine.register_protocols_and_structs(&mut program) {
         Ok(_) => {
-            println!("✅ Phase 2 succeeded");
+            // println!("✅ Phase 2 succeeded");
 
             // Check if Map is registered as protocol
             let type_registry = engine.type_registry_rc();
@@ -160,10 +160,10 @@ fn test_map_protocol_with_implementation() {
     }
 
     // Phase 3: Register implementations
-    println!("=== Phase 3: Register implementations ===");
+    // println!("=== Phase 3: Register implementations ===");
     match engine.register_implementations(&mut program) {
         Ok(_) => {
-            println!("✅ Phase 3 succeeded");
+            // println!("✅ Phase 3 succeeded");
         }
         Err(e) => {
             println!("❌ Phase 3 failed: {}", e);
@@ -172,10 +172,10 @@ fn test_map_protocol_with_implementation() {
     }
 
     // Phase 4: Register functions (this is where convert_type_annotation is called)
-    println!("=== Phase 4: Register functions ===");
+    // println!("=== Phase 4: Register functions ===");
     match engine.register_functions(&mut program) {
         Ok(_) => {
-            println!("✅ Phase 4 succeeded");
+            // println!("✅ Phase 4 succeeded");
         }
         Err(e) => {
             println!("❌ Phase 4 failed: {}", e);
@@ -184,10 +184,10 @@ fn test_map_protocol_with_implementation() {
     }
 
     // Phase 6: Type check function bodies (this is where the error occurs)
-    println!("=== Phase 6: Type check function bodies ===");
+    // println!("=== Phase 6: Type check function bodies ===");
     match engine.typecheck_function_bodies(&mut program) {
         Ok(_) => {
-            println!("✅ Phase 6 succeeded");
+            // println!("✅ Phase 6 succeeded");
         }
         Err(e) => {
             println!("❌ Phase 6 failed: {}", e);

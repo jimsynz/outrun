@@ -34,16 +34,16 @@ mod core_library_loading_tests {
             let result = typecheck_package(&mut package);
             match result {
                 Ok(()) => {
-                    println!("✅ Core library loaded successfully via unified approach");
+                    // println!("✅ Core library loaded successfully via unified approach");
                     println!("📦 Total programs processed: {}", package.programs.len());
                 }
                 Err(e) => {
-                    println!("❌ Core library loading failed:");
+                    // println!("❌ Core library loading failed:");
                     println!("Error: {:?}", e);
                 }
             }
         } else {
-            println!("Skipping core library loading test - path not found");
+            // println!("Skipping core library loading test - path not found");
         }
     }
 
@@ -66,7 +66,7 @@ mod core_library_loading_tests {
             let result = typecheck_package(&mut package);
             match result {
                 Ok(()) => {
-                    println!("✅ Binary operation type checking succeeded with unified approach!");
+                    // println!("✅ Binary operation type checking succeeded with unified approach!");
                 }
                 Err(e) => {
                     println!("❌ Type checking failed: {:?}", e);
@@ -74,7 +74,7 @@ mod core_library_loading_tests {
                 }
             }
         } else {
-            println!("Core library path not found, skipping integration test");
+            // println!("Core library path not found, skipping integration test");
         }
     }
 
@@ -107,7 +107,7 @@ mod core_library_loading_tests {
                 }
             }
         } else {
-            println!("Core library path not found, skipping explicit protocol call test");
+            // println!("Core library path not found, skipping explicit protocol call test");
         }
     }
 
@@ -115,14 +115,14 @@ mod core_library_loading_tests {
     fn test_detailed_core_library_errors() {
         // Test the detailed behavior of the unified core library loading
         if let Ok(_core_path) = default_core_library_path() {
-            println!("🔍 Testing unified core library processing...");
+            // println!("🔍 Testing unified core library processing...");
 
             let mut package = Package::new("detailed-test".to_string());
 
             let result = typecheck_package(&mut package);
             match result {
                 Ok(()) => {
-                    println!("✅ Unified core library processing completed successfully");
+                    // println!("✅ Unified core library processing completed successfully");
                     println!("📊 Total programs processed: {}", package.programs.len());
                 }
                 Err(e) => {
@@ -136,7 +136,7 @@ mod core_library_loading_tests {
                                     match impl_err {
                                         crate::error::ImplementationError::ConflictingImplementation { protocol_name, type_name, .. } => {
                                             println!("🚨 Still getting ConflictingImplementation: {} for {}", protocol_name, type_name);
-                                            println!("🚨 This means there might still be a duplicate processing issue");
+                                            // println!("🚨 This means there might still be a duplicate processing issue");
                                         }
                                         _ => {
                                             println!("🔍 Other implementation error: {:?}", impl_err);
@@ -155,7 +155,7 @@ mod core_library_loading_tests {
                 }
             }
         } else {
-            println!("Core library path not found");
+            // println!("Core library path not found");
         }
     }
 }

@@ -338,10 +338,11 @@ impl DesugaringEngine {
                         // Transform this binary operation
                         match self.desugar_binary_operation(binary_op) {
                             Ok(desugared_call) => {
-                                println!(
-                                    "✅ Successfully desugared binary op {:?} at span {:?}",
-                                    binary_op.operator, current_expr.span
-                                );
+                                // DEBUG: Commented out for performance
+                                // println!(
+                                //     "✅ Successfully desugared binary op {:?} at span {:?}",
+                                //     binary_op.operator, current_expr.span
+                                // );
                                 current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
                             }
                             Err(e) => {
@@ -357,10 +358,11 @@ impl DesugaringEngine {
                         // Transform this unary operation
                         match self.desugar_unary_operation(unary_op) {
                             Ok(desugared_call) => {
-                                println!(
-                                    "✅ Successfully desugared unary op {:?} at span {:?}",
-                                    unary_op.operator, current_expr.span
-                                );
+                                // DEBUG: Commented out for performance
+                                // println!(
+                                //     "✅ Successfully desugared unary op {:?} at span {:?}",
+                                //     unary_op.operator, current_expr.span
+                                // );
                                 current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
                             }
                             Err(e) => {

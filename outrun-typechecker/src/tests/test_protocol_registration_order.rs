@@ -27,7 +27,7 @@ protocol Option<T> {
     let option_program = parse_program(option_protocol_code).expect("Parse Option should succeed");
 
     // Phase 2: Register protocols and structs - this should register Boolean protocol
-    println!("Phase 2: Registering Boolean protocol...");
+    // println!("Phase 2: Registering Boolean protocol...");
     engine
         .register_protocols_and_structs(&boolean_program)
         .expect("Boolean protocol registration should succeed");
@@ -40,24 +40,24 @@ protocol Option<T> {
     println!("Boolean protocol registered: {}", has_boolean_protocol);
 
     // Phase 2: Register Option protocol
-    println!("Phase 2: Registering Option protocol...");
+    // println!("Phase 2: Registering Option protocol...");
     engine
         .register_protocols_and_structs(&option_program)
         .expect("Option protocol registration should succeed");
 
     // Phase 4: Register functions - this is where the bug happens
-    println!("Phase 4: Registering Option functions...");
+    // println!("Phase 4: Registering Option functions...");
     let result = engine.register_functions(&option_program);
 
     match result {
         Ok(()) => {
-            println!("✅ Phase 4 succeeded - Boolean was correctly recognized as protocol");
+            // println!("✅ Phase 4 succeeded - Boolean was correctly recognized as protocol");
         }
         Err(e) => {
             println!("❌ Phase 4 failed: {:?}", e);
             let error_str = format!("{:?}", e);
             if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
-                println!("🐛 CONFIRMED: Boolean was treated as concrete type instead of protocol");
+                // println!("🐛 CONFIRMED: Boolean was treated as concrete type instead of protocol");
                 println!("This means is_protocol_type(\"Boolean\") returned false during convert_type_annotation");
             }
         }
@@ -72,11 +72,11 @@ def test_function(): Boolean {
 
     let test_program = parse_program(option_signature_code).expect("Parse test should succeed");
 
-    println!("Testing convert_type_annotation directly...");
+    // println!("Testing convert_type_annotation directly...");
     let result2 = engine.register_functions(&test_program);
     match result2 {
         Ok(()) => {
-            println!("✅ Direct test succeeded");
+            // println!("✅ Direct test succeeded");
         }
         Err(e) => {
             println!("❌ Direct test failed: {:?}", e);

@@ -40,7 +40,7 @@ fn test_constraint_system_without_core_library() {
 
     match result {
         Ok(_compilation_result) => {
-            println!("✅ Constraint system works without core library!");
+            // println!("✅ Constraint system works without core library!");
         }
         Err(e) => {
             println!(

@@ -55,7 +55,7 @@ impl Boolean for Outrun.Core.Boolean {
 
     let mut program = parse_program(test_code).expect("Parse should succeed");
 
-    println!("=== Processing exact string.outrun failure scenario ===");
+    // println!("=== Processing exact string.outrun failure scenario ===");
 
     // Process through all phases
     engine
@@ -76,7 +76,7 @@ impl Boolean for Outrun.Core.Boolean {
 
     match result {
         Ok(()) => {
-            println!("✅ Type checking succeeded - bug not reproduced");
+            // println!("✅ Type checking succeeded - bug not reproduced");
         }
         Err(e) => {
             println!("❌ Type checking failed: {:?}", e);
@@ -84,11 +84,11 @@ impl Boolean for Outrun.Core.Boolean {
             if error_str.contains("expected: Protocol { id: ProtocolId(\"Boolean\")")
                 && error_str.contains("found: Concrete { id: TypeId(\"Boolean\")")
             {
-                println!("🐛 EXACT BUG REPRODUCED!");
-                println!("The issue is in function call resolution during type checking");
-                println!("Option.some?() call is returning wrong type during expression inference");
+                // println!("🐛 EXACT BUG REPRODUCED!");
+                // println!("The issue is in function call resolution during type checking");
+                // println!("Option.some?() call is returning wrong type during expression inference");
             } else {
-                println!("Different error - may be related but not the exact bug");
+                // println!("Different error - may be related but not the exact bug");
             }
         }
     }

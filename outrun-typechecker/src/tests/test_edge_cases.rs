@@ -270,7 +270,7 @@ fn test_package_with_no_programs() {
             empty_package.programs.len()
         );
     } else {
-        println!("! No core library integration occurred");
+        // println!("! No core library integration occurred");
     }
 
     // The key test is that type checking succeeds, not that the package stays empty
@@ -379,7 +379,7 @@ fn test_stress_error_reporting() {
         "nested.deeply.undefined.access",
     ];
 
-    println!("🔍 Stress testing error reporting...");
+    // println!("🔍 Stress testing error reporting...");
 
     for (i, source) in problematic_programs.iter().enumerate() {
         println!("  Testing error case {}: {}", i + 1, source);
@@ -390,7 +390,7 @@ fn test_stress_error_reporting() {
                 match result {
                     Ok(_) => println!("    ! Unexpectedly succeeded"),
                     Err(e) => {
-                        println!("    ✓ Failed as expected");
+                        // println!("    ✓ Failed as expected");
                         // Verify error is properly formatted (doesn't panic when displaying)
                         let error_string = format!("{:?}", e);
                         assert!(
@@ -406,5 +406,5 @@ fn test_stress_error_reporting() {
         }
     }
 
-    println!("✓ Error reporting stress test completed");
+    // println!("✓ Error reporting stress test completed");
 }

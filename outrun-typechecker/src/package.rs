@@ -97,11 +97,12 @@ impl LoadedPackage {
             format!("{:?}", a).cmp(&format!("{:?}", b))
         });
 
-        println!(
-            "📦 Loaded package '{}' with {} source files",
-            manifest.package.name,
-            programs.len()
-        );
+        // DEBUG: Commented out for performance
+        // println!(
+        //     "📦 Loaded package '{}' with {} source files",
+        //     manifest.package.name,
+        //     programs.len()
+        // );
 
         Ok(LoadedPackage {
             manifest,

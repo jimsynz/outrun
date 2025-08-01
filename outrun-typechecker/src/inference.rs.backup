@@ -2605,84 +2605,6 @@ impl TypeInferenceEngine {
     }
 
     // ============================================================================
-    /// Direct case expression processing that bypasses the task system to handle pattern bindings correctly
-    fn infer_case_expression_direct(
-        &mut self,
-        case_expr: &outrun_parser::CaseExpression,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🎯 DIRECT CASE: Processing case expression with {} clauses", case_expr.clauses.len());
-        
-        // First, infer the scrutinee type
-        let mut scrutinee_expr = case_expr.expression.clone();
-        let scrutinee_result = self.infer_expression(&mut scrutinee_expr, context)?;
-        let scrutinee_type = scrutinee_result.inferred_type;
-        
-        eprintln!("🎯 DIRECT CASE: Scrutinee type = {:?}", scrutinee_type);
-        
-        let mut clause_result_types = Vec::new();
-        let mut all_constraints = context.constraints.clone();
-        
-        // Process each clause with pattern bindings
-        for clause in &case_expr.clauses {
-            eprintln!("🎯 DIRECT CASE: Processing clause with pattern");
-            
-            // Create a new context for this clause
-            let mut clause_context = context.clone();
-            
-            // Extract pattern bindings
-            let pattern_bindings = self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
-            eprintln!("🎯 DIRECT CASE: Pattern bindings = {:?}", pattern_bindings);
-            
-            // Add pattern bindings to clause context
-            for (name, binding_type) in pattern_bindings {
-                eprintln!("🎯 DIRECT CASE: Adding binding {} -> {}", name, binding_type);
-                clause_context.bindings.insert(name, binding_type);
-            }
-            
-            // Process guard if present
-            if let Some(guard_expr) = &clause.guard {
-                eprintln!("🎯 DIRECT CASE: Processing guard with bindings available");
-                let mut guard_expr_mut = guard_expr.clone();
-                let guard_result = self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
-                eprintln!("🎯 DIRECT CASE: Guard result type = {:?}", guard_result.inferred_type);
-            }
-            
-            // Process clause result
-            let mut clause_result_expr = match &clause.result {
-                outrun_parser::CaseResult::Expression(expr) => (**expr).clone(),
-                outrun_parser::CaseResult::Block(block) => {
-                    // For blocks, we need to create an expression from the block
-                    // For now, just return a fresh type variable
-                    outrun_parser::Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral { 
-                            value: true, 
-                            span: block.span 
-                        }),
-                        span: block.span,
-                        type_info: None,
-                    }
-                }
-            };
-            
-            let clause_result = self.infer_expression(&mut clause_result_expr, &mut clause_context)?;
-            clause_result_types.push(clause_result.inferred_type);
-            all_constraints.extend(clause_result.constraints);
-        }
-        
-        // The result type is the type of the first clause (they should all be compatible)
-        let result_type = clause_result_types.into_iter().next()
-            .unwrap_or_else(|| Type::variable(self.fresh_type_var(), Level(0)));
-        
-        eprintln!("🎯 DIRECT CASE: Final result type = {:?}", result_type);
-        
-        Ok(InferenceResult {
-            inferred_type: result_type,
-            constraints: all_constraints,
-            substitution: context.substitution.clone(),
-        })
-    }
-
     // ITERATIVE INFERENCE INFRASTRUCTURE
     // ============================================================================
 
@@ -2691,12 +2613,11 @@ impl TypeInferenceEngine {
     /// across nested inference calls within the same inference session
     fn reset_iterative_state(&mut self) {
         if self.inference_depth == 0 {
-            // DEBUG: Commented out for performance
-            // println!(
-            //     "🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})",
-            //     self.inference_tasks.len(),
-            //     self.inference_depth
-            // );
+            println!(
+                "🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})",
+                self.inference_tasks.len(),
+                self.inference_depth
+            );
             self.inference_tasks.clear();
             self.ready_task_queue.clear();
             self.task_results.clear();
@@ -2909,7 +2830,7 @@ impl TypeInferenceEngine {
                 stored_task.dependencies
             );
             if stored_task.dependencies != task.dependencies {
-                // println!("    ⚠️  MISMATCH: Retrieved task differs from stored task!");
+                println!("    ⚠️  MISMATCH: Retrieved task differs from stored task!");
             }
         } else {
             println!("    ❌ Task {} not found in inference_tasks map!", task_id);
@@ -3291,7 +3212,7 @@ impl TypeInferenceEngine {
                 let expression = unsafe { &*task.expression };
 
                 if let outrun_parser::ExpressionKind::IfExpression(if_expr) = &expression.kind {
-                    // println!("🔧 Implementing if expression type inference");
+                    println!("🔧 Implementing if expression type inference");
 
                     // CRITICAL FIX: Collect dependency results first to avoid borrowing conflicts
                     let mut dependency_results: Vec<Type> = Vec::new();
@@ -3317,7 +3238,7 @@ impl TypeInferenceEngine {
                         // Else block exists but no dependency result - use fresh type variable
                         Some(Type::variable(self.fresh_type_var(), Level(0)))
                     } else {
-                        // println!("  No else branch");
+                        println!("  No else branch");
                         None
                     };
 
@@ -3332,7 +3253,7 @@ impl TypeInferenceEngine {
                             if self.types_are_compatible(&then_result, &else_result) {
                                 then_result // Use then branch type as the unified type
                             } else {
-                                // println!("  ❌ Branch types are incompatible");
+                                println!("  ❌ Branch types are incompatible");
                                 return Err(TypecheckError::InferenceError(
                                     InferenceError::AmbiguousType {
                                         span: to_source_span(Some(expression.span)),
@@ -3346,7 +3267,7 @@ impl TypeInferenceEngine {
                         }
                         None => {
                             // No else branch - the then block type must implement Default
-                            // println!("  🔧 No else branch - checking Default protocol requirement");
+                            println!("  🔧 No else branch - checking Default protocol requirement");
 
                             // Check if the then block type implements Default protocol
                             let default_protocol_id = crate::types::ModuleName::new("Default");
@@ -3379,10 +3300,10 @@ impl TypeInferenceEngine {
                             };
 
                             if type_implements_default {
-                                // println!("  ✅ Type implements Default protocol");
+                                println!("  ✅ Type implements Default protocol");
                                 then_result
                             } else {
-                                // println!("  ❌ Type does not implement Default protocol");
+                                println!("  ❌ Type does not implement Default protocol");
                                 return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
                                     span: to_source_span(Some(expression.span)),
                                     suggestions: vec![format!(
@@ -3436,8 +3357,6 @@ impl TypeInferenceEngine {
         task_id: TaskId,
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🔥🔥🔥 CASE EXPRESSION PROCESSING STARTED for task {:?}", task_id);
-        eprintln!("🔥🔥🔥 CONTEXT BINDINGS: {:?}", context.bindings.keys().collect::<Vec<_>>());
         // Get the case expression
         let task = &self.inference_tasks[&task_id];
         let expression = unsafe { &*task.expression };
@@ -3477,20 +3396,14 @@ impl TypeInferenceEngine {
                 // Extract pattern bindings and add them to the bindings map
                 let pattern_bindings =
                     self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
-                eprintln!("🔍 Pattern bindings extracted: {:?}", pattern_bindings);
                 for (name, binding_type) in pattern_bindings {
-                    eprintln!("🔍 Adding pattern binding: {} -> {}", name, binding_type);
                     clause_context.bindings.insert(name, binding_type);
                 }
-                eprintln!("🔍 CLAUSE CONTEXT: Final bindings = {:?}", clause_context.bindings.keys().collect::<Vec<_>>());
 
                 // Process guard expression if present (with pattern bindings in scope)
                 if let Some(guard_expr) = &clause.guard {
-                    eprintln!("🔍 PROCESSING GUARD: Guard expression with pattern bindings available");
-                    eprintln!("🔍 GUARD CONTEXT: Available bindings = {:?}", clause_context.bindings.keys().collect::<Vec<_>>());
-                    
                     let guard_result = self
-                        .infer_expression_impl(&mut guard_expr.clone(), &mut clause_context)?;
+                        .infer_expression_recursive(&mut guard_expr.clone(), &mut clause_context)?;
 
                     // Guard must be Boolean - simplified constraint for now
                     let _boolean_type = Type::concrete("Outrun.Core.Boolean");
@@ -3567,12 +3480,10 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // CRITICAL FIX: Track inference depth for proper task state management
         self.inference_depth += 1;
-        // DEBUG: Temporarily re-enabled to trace case expression issue
         println!(
-            "🎯 INFER_EXPRESSION (depth={}) - Expression type: {:?} at span {:?}",
+            "🔥 INFER_EXPRESSION CALLED (depth={}) - Expression type: {:?}",
             self.inference_depth,
-            std::mem::discriminant(&expression.kind),
-            expression.span
+            std::mem::discriminant(&expression.kind)
         );
 
         // Execute main logic with proper cleanup
@@ -3580,11 +3491,10 @@ impl TypeInferenceEngine {
 
         // CRITICAL FIX: Always decrement depth on exit (both success and error paths)
         self.inference_depth -= 1;
-        // DEBUG: Commented out for performance
-        // println!(
-        //     "✅ INFER_EXPRESSION COMPLETED (depth={})",
-        //     self.inference_depth
-        // );
+        println!(
+            "✅ INFER_EXPRESSION COMPLETED (depth={})",
+            self.inference_depth
+        );
 
         result
     }
@@ -3630,46 +3540,9 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            outrun_parser::Pattern::Tuple(tuple_pattern) => {
-                // DEBUG: Add logging to understand tuple pattern matching
-                eprintln!("🔍 TUPLE PATTERN: Processing tuple pattern with {} elements", tuple_pattern.elements.len());
-                eprintln!("🔍 SCRUTINEE TYPE: {:?}", scrutinee_type);
-                
-                // For tuple patterns, extract element types from the tuple
-                if let Type::Concrete { name, args, .. } = scrutinee_type {
-                    eprintln!("🔍 CONCRETE TYPE: name='{}', args.len()={}", name.as_str(), args.len());
-                    eprintln!("🔍 TUPLE CHECK: contains_Tuple={}, lengths_match={}", 
-                        name.as_str().contains("Tuple"), 
-                        args.len() == tuple_pattern.elements.len());
-                    
-                    if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len() {
-                        // Match each tuple element pattern with its corresponding type
-                        for (i, element_pattern) in tuple_pattern.elements.iter().enumerate() {
-                            if let Some(element_type) = args.get(i) {
-                                let element_bindings =
-                                    self.extract_pattern_bindings(element_pattern, element_type)?;
-                                bindings.extend(element_bindings);
-                            }
-                        }
-                    } else {
-                        // If we can't match the tuple structure, assign fresh type variables
-                        // This handles cases where the scrutinee type isn't a concrete tuple
-                        for element_pattern in &tuple_pattern.elements {
-                            let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                            let element_bindings =
-                                self.extract_pattern_bindings(element_pattern, &element_type)?;
-                            bindings.extend(element_bindings);
-                        }
-                    }
-                } else {
-                    // For non-concrete types, assign fresh type variables to each element
-                    for element_pattern in &tuple_pattern.elements {
-                        let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                        let element_bindings =
-                            self.extract_pattern_bindings(element_pattern, &element_type)?;
-                        bindings.extend(element_bindings);
-                    }
-                }
+            outrun_parser::Pattern::Tuple(_) => {
+                // Tuple patterns - simplified for now
+                // Would need to extract tuple element types
             }
         }
 
@@ -3702,11 +3575,10 @@ impl TypeInferenceEngine {
                         "🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings",
                         name.name
                     );
-                    eprintln!("🔍 Available bindings: {:?}", context.bindings.keys().collect::<Vec<_>>());
                     Err(TypecheckError::InferenceError(
                         InferenceError::AmbiguousType {
                             span: Some(self.create_file_span(None).to_source_span()),
-                            suggestions: vec![format!("Unknown identifier: {}", name.name)],
+                            suggestions: vec![format!("Unknown variable: {}", name.name)],
                         },
                     ))
                 }
@@ -3741,9 +3613,8 @@ impl TypeInferenceEngine {
         func_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🔍 infer_function_call_recursive called with: {:?}", func_call.path);
-        
-        // For now, just handle common cases and fall back to a generic approach
+        // This is a simplified implementation for protocol calls like Option.some?
+        // Check if this is a guard function (ends with ?)
         match &func_call.path {
             outrun_parser::FunctionPath::Simple { name } => {
                 if name.name.ends_with('?') {
@@ -3756,28 +3627,12 @@ impl TypeInferenceEngine {
                     });
                 }
             }
-            outrun_parser::FunctionPath::Qualified { module, name } => {
-                eprintln!("🔍 Handling qualified function call: {:?}.{}", module, name.name);
-                
-                // Handle common protocol calls
+            outrun_parser::FunctionPath::Qualified { name, .. } => {
                 if name.name.ends_with('?') {
                     // Guard function - must return Boolean
                     let boolean_type = Type::concrete("Outrun.Core.Boolean");
                     return Ok(InferenceResult {
                         inferred_type: boolean_type,
-                        constraints: vec![],
-                        substitution: Substitution::new(),
-                    });
-                }
-                
-                // Handle Option.unwrap specifically
-                if module.name == "Option" && name.name == "unwrap" {
-                    eprintln!("🔍 Handling Option.unwrap call");
-                    // Option.unwrap takes Option<T> and returns T
-                    // For now, return a fresh type variable - this should be the inner type
-                    let inner_type = Type::variable(self.fresh_type_var(), Level(0));
-                    return Ok(InferenceResult {
-                        inferred_type: inner_type,
                         constraints: vec![],
                         substitution: Substitution::new(),
                     });
@@ -3789,7 +3644,6 @@ impl TypeInferenceEngine {
         }
 
         // For other function calls, assign a fresh type variable
-        eprintln!("🔍 Falling back to fresh type variable for function call");
         let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
         Ok(InferenceResult {
             inferred_type,
@@ -3805,12 +3659,6 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
-        // Special case: Handle case expressions directly to avoid task system issues with pattern bindings
-        if let ExpressionKind::CaseExpression(case_expr) = &expression.kind {
-            eprintln!("🎯 DIRECT CASE EXPRESSION PROCESSING: Bypassing task system for pattern binding support");
-            return self.infer_case_expression_direct(case_expr, context);
-        }
 
         let mut work_stack: Vec<WorkItem> = vec![WorkItem::EvaluateExpression {
             expression: expression as *mut Expression,
@@ -4518,10 +4366,10 @@ impl TypeInferenceEngine {
 
                     if let Some(expected_name) = expected_name {
                         if expected_name == struct_name {
-                            // println!("🚨🚨🚨 STRUCT LITERAL BIDIRECTIONAL INFERENCE 🚨🚨🚨");
+                            println!("🚨🚨🚨 STRUCT LITERAL BIDIRECTIONAL INFERENCE 🚨🚨🚨");
                             println!("  Struct name: {}", struct_name);
                             println!("  Expected type: {:?}", expected_type);
-                            // println!("  Using expected type with generic parameters!");
+                            println!("  Using expected type with generic parameters!");
 
                             // Use the expected type which includes generic parameters
                             return Ok(InferenceResult {
@@ -4968,8 +4816,7 @@ impl TypeInferenceEngine {
                     }
                 }
                 ExpressionKind::CaseExpression(case_expr) => {
-                    eprintln!("🔥 CASE EXPRESSION ENCOUNTERED during task collection");
-                    // println!("  📋 Setting up case expression task dependencies (ONLY scrutinee)");
+                    println!("  📋 Setting up case expression task dependencies (ONLY scrutinee)");
                     // IMPORTANT: For case expressions, we only process the scrutinee upfront
                     // Guard expressions and clause results will be processed later with pattern bindings in scope
 
@@ -5226,7 +5073,6 @@ impl TypeInferenceEngine {
             }
             ExpressionKind::CaseExpression(_) => {
                 // Case expressions - scrutinee and clause results should be processed by now
-                eprintln!("🔥 MAIN CASE EXPRESSION PROCESSING: Task {:?} reached case expression handler", task_id);
                 self.infer_case_expression_with_processed_clauses(task_id, &context)
             }
             ExpressionKind::MacroInjection(_) => {
@@ -6085,17 +5931,16 @@ impl TypeInferenceEngine {
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
         let qualified_start = std::time::Instant::now();
-        // DEBUG: Commented out for performance
-        // println!(
-        //     "🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥",
-        //     module_name,
-        //     function_name,
-        //     precomputed_arg_types.len()
-        // );
+        println!(
+            "🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥",
+            module_name,
+            function_name,
+            precomputed_arg_types.len()
+        );
 
         // Special debugging for Option.some? calls
         if module_name == "Option" && function_name == "some?" {
-            // println!("              🚨 CRITICAL: Option.some? call detected!");
+            println!("              🚨 CRITICAL: Option.some? call detected!");
             println!(
                 "                Precomputed arg types: {:?}",
                 precomputed_arg_types
@@ -6107,7 +5952,7 @@ impl TypeInferenceEngine {
 
         // CRITICAL DEBUG: Log every Option.unwrap call
         if module_name == "Option" && function_name == "unwrap" {
-            // println!("              🚨 CRITICAL: Option.unwrap call detected!");
+            println!("              🚨 CRITICAL: Option.unwrap call detected!");
             println!(
                 "                Precomputed arg types: {:?}",
                 precomputed_arg_types
@@ -6120,10 +5965,9 @@ impl TypeInferenceEngine {
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
         let target_type = if self.type_registry.has_protocol(&protocol_id) {
-            // DEBUG: Commented out for performance
-            // println!(
-            //     "                🎯 Protocol call - resolving target type with precomputed args"
-            // );
+            println!(
+                "                🎯 Protocol call - resolving target type with precomputed args"
+            );
             let resolved_target = self.resolve_protocol_call_target_type(
                 &qualified_name,
                 function_call,
@@ -6142,7 +5986,7 @@ impl TypeInferenceEngine {
                 }
             })
         } else {
-            // println!("                📦 Non-protocol call");
+            println!("                📦 Non-protocol call");
             None
         };
         let target_type_time = target_type_start.elapsed();
@@ -6279,7 +6123,7 @@ impl TypeInferenceEngine {
 
         // CRITICAL DEBUG: Log every Option.unwrap call
         if module_name == "Option" && function_name == "unwrap" {
-            // println!("              🚨 CRITICAL: Option.unwrap call detected (NON-PRECOMPUTED)!");
+            println!("              🚨 CRITICAL: Option.unwrap call detected (NON-PRECOMPUTED)!");
             println!(
                 "                Function call arguments: {:?}",
                 function_call.arguments.len()
@@ -6292,7 +6136,7 @@ impl TypeInferenceEngine {
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
         let target_type = if self.type_registry.has_protocol(&protocol_id) {
-            // println!("                🎯 Protocol call - resolving target type");
+            println!("                🎯 Protocol call - resolving target type");
             let resolved_target = self.resolve_protocol_call_target_type(
                 &qualified_name,
                 function_call,
@@ -6311,7 +6155,7 @@ impl TypeInferenceEngine {
                 }
             })
         } else {
-            // println!("                📦 Non-protocol call");
+            println!("                📦 Non-protocol call");
             None
         };
         let target_type_time = target_type_start.elapsed();
@@ -6568,7 +6412,7 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // DEBUG: Track function call operations
         let func_call_start = std::time::Instant::now();
-        // println!("          🔍 infer_function_call_skip_args (NO RECURSION)");
+        println!("          🔍 infer_function_call_skip_args (NO RECURSION)");
 
         // Phase 2: Universal Interpreter Simplification
         // ALL function calls now go through the universal dispatch system
@@ -6678,7 +6522,7 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        // println!("            🚀 resolve_universal_function_call (no recursion)");
+        println!("            🚀 resolve_universal_function_call (no recursion)");
 
         // Get initial clause resolution
         let initial_resolution = match &function_call.path {
@@ -6694,7 +6538,7 @@ impl TypeInferenceEngine {
 
                 // Check if this is a protocol call - log it but proceed normally
                 if self.type_registry.has_protocol(&protocol_id) {
-                    // println!("              ⚡ Protocol call detected - will skip recursive resolution inside resolve_qualified_function_clauses!");
+                    println!("              ⚡ Protocol call detected - will skip recursive resolution inside resolve_qualified_function_clauses!");
                 }
 
                 self.resolve_qualified_function_clauses(
@@ -6757,10 +6601,10 @@ impl TypeInferenceEngine {
 
         // Get argument types - use precomputed if available, otherwise infer recursively
         let inferred_argument_types = if let Some(precomputed) = precomputed_arg_types {
-            // println!("              ⚡ Using precomputed argument types - NO RECURSION!");
+            println!("              ⚡ Using precomputed argument types - NO RECURSION!");
             precomputed.to_vec()
         } else {
-            // println!("              🔄 Inferring argument types recursively");
+            println!("              🔄 Inferring argument types recursively");
             let mut types = Vec::new();
             for argument in &function_call.arguments {
                 match argument {
@@ -6829,7 +6673,7 @@ impl TypeInferenceEngine {
 
         // Handle the most common case: Option<T> where T needs substitution
         if module_name == "Option" {
-            // println!("              🔧 Option protocol detected - attempting generic substitution");
+            println!("              🔧 Option protocol detected - attempting generic substitution");
             println!("                Function: {}", function_name);
             println!(
                 "                Precomputed arg types count: {}",
@@ -6878,7 +6722,7 @@ impl TypeInferenceEngine {
                     break;
                 }
             }
-            // println!("              ❌ No 'value' parameter found or substitution failed");
+            println!("              ❌ No 'value' parameter found or substitution failed");
         }
 
         // For other protocols, implement generic substitution as needed

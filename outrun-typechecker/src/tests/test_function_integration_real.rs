@@ -86,7 +86,7 @@ fn test_anonymous_function_parsing_status() {
                 let typecheck_result = typecheck_program(&mut program);
                 match typecheck_result {
                     Ok(()) => {
-                        println!("  ✓ Successfully type-checked!");
+                        // println!("  ✓ Successfully type-checked!");
                     }
                     Err(e) => {
                         println!("  ✗ Type-check error: {:?}", e);
@@ -123,7 +123,7 @@ fn test_function_type_annotation_parsing() {
                 let typecheck_result = typecheck_program(&mut program);
                 match typecheck_result {
                     Ok(()) => {
-                        println!("  ✓ Successfully type-checked function type annotation!");
+                        // println!("  ✓ Successfully type-checked function type annotation!");
                     }
                     Err(e) => {
                         println!("  ✗ Type-check error: {:?}", e);
@@ -156,7 +156,7 @@ fn test_basic_type_inference_works() {
             let typecheck_result = typecheck_program(&mut program);
             match typecheck_result {
                 Ok(()) => {
-                    println!("✓ Successfully type-checked basic program with let bindings");
+                    // println!("✓ Successfully type-checked basic program with let bindings");
 
                     // Verify that expressions have type information
                     for item in &program.items {
@@ -189,7 +189,7 @@ fn test_basic_type_inference_works() {
 #[test]
 fn test_function_inference_feature_completeness() {
     // Test our function inference implementation status
-    println!("Testing function inference feature completeness:");
+    // println!("Testing function inference feature completeness:");
 
     // Test 1: Can we handle basic expressions?
     let basic_test = r#"42"#;
@@ -210,7 +210,7 @@ fn test_function_inference_feature_completeness() {
                     outrun_parser::ItemKind::Expression(expr) => {
                         match &expr.kind {
                             outrun_parser::ExpressionKind::AnonymousFunction(_) => {
-                                println!("✓ Anonymous function parsing: WORKING");
+                                // println!("✓ Anonymous function parsing: WORKING");
                             }
                             _ => println!("✗ Anonymous function parsing: NOT WORKING (parsed as different expression)"),
                         }
@@ -229,10 +229,10 @@ fn test_function_inference_feature_completeness() {
         Err(_) => println!("✗ Function type annotation parsing: NOT WORKING"),
     }
 
-    println!("Function inference implementation status: PARTIALLY COMPLETE");
-    println!("✓ Infrastructure in place");
-    println!("✓ Basic type inference working");
-    println!("✓ Function type structures defined");
-    println!("? Anonymous function integration needs parser support");
-    println!("? Full function type annotation support needs verification");
+    // println!("Function inference implementation status: PARTIALLY COMPLETE");
+    // println!("✓ Infrastructure in place");
+    // println!("✓ Basic type inference working");
+    // println!("✓ Function type structures defined");
+    // println!("? Anonymous function integration needs parser support");
+    // println!("? Full function type annotation support needs verification");
 }

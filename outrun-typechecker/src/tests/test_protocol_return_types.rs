@@ -26,7 +26,7 @@ fn test_protocol_function_return_type_mismatch() {
 
     match result {
         Ok(_) => {
-            println!("✅ Simple protocol function return type test passed");
+            // println!("✅ Simple protocol function return type test passed");
         }
         Err(err) => {
             println!(
@@ -35,7 +35,7 @@ fn test_protocol_function_return_type_mismatch() {
             );
             let error_string = format!("{}", err);
             if error_string.contains("Boolean") && error_string.contains("Self") {
-                println!("🎯 Reproduced the protocol return type issue!");
+                // println!("🎯 Reproduced the protocol return type issue!");
             }
         }
     }
@@ -63,7 +63,7 @@ fn test_concrete_return_type_vs_self() {
 
     match result {
         Ok(_) => {
-            println!("✅ Concrete return type test passed");
+            // println!("✅ Concrete return type test passed");
         }
         Err(err) => {
             println!("❌ Concrete return type test failed: {}", err);

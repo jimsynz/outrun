@@ -11,7 +11,7 @@ fn test_duplicate_file_paths_detection() {
     let mut programs = Vec::new();
     collect_outrun_files(&lib_path, &mut programs).expect("Should collect files");
 
-    println!("🔍 Checking for duplicate file paths in core library collection...");
+    // println!("🔍 Checking for duplicate file paths in core library collection...");
 
     let mut seen_paths = HashSet::new();
     let mut duplicates = Vec::new();
@@ -35,11 +35,11 @@ fn test_duplicate_file_paths_detection() {
             println!("  - {}", duplicate);
         }
     } else {
-        println!("✅ No duplicate file paths found");
+        // println!("✅ No duplicate file paths found");
     }
 
     // Also check for files with similar content that might have duplicate impl blocks
-    println!("\n🔍 Analyzing content for potential duplicate impl blocks...");
+    // println!("\n🔍 Analyzing content for potential duplicate impl blocks...");
 
     let mut impl_block_counts = std::collections::HashMap::new();
 
@@ -75,7 +75,7 @@ fn test_duplicate_file_paths_detection() {
         "impl Option for Outrun.Option.None",
     ];
 
-    println!("\n🎯 Checking for specific problematic impl blocks...");
+    // println!("\n🎯 Checking for specific problematic impl blocks...");
     for target_impl in &problematic_impls {
         let count = impl_block_counts.get(*target_impl).unwrap_or(&0);
         if *count > 1 {

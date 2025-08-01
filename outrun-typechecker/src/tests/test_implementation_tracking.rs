@@ -7,7 +7,7 @@ use outrun_parser::parse_program;
 fn test_implementation_registration_tracking() {
     let mut engine = TypeInferenceEngine::new();
 
-    println!("🔍 Testing implementation registration tracking");
+    // println!("🔍 Testing implementation registration tracking");
 
     // Simple test program with one impl block
     let source = r#"
@@ -23,22 +23,22 @@ fn test_implementation_registration_tracking() {
     let mut program = parse_program(source).expect("Parse should succeed");
 
     // Complete all phases properly
-    println!("📋 Phase 2: Register protocols and structs");
+    // println!("📋 Phase 2: Register protocols and structs");
     engine
         .register_protocols_and_structs(&program)
         .expect("Phase 2 should succeed");
 
-    println!("📋 Phase 2.5: Register automatic implementations");
+    // println!("📋 Phase 2.5: Register automatic implementations");
     engine
         .register_automatic_implementations(&program)
         .expect("Phase 2.5 should succeed");
 
-    println!("📋 Phase 3: Register explicit implementations");
+    // println!("📋 Phase 3: Register explicit implementations");
     engine
         .register_implementations(&program)
         .expect("Phase 3 should succeed");
 
-    println!("📋 Phase 4: Register functions");
+    // println!("📋 Phase 4: Register functions");
     engine
         .register_functions(&program)
         .expect("Phase 4 should succeed");
@@ -55,12 +55,12 @@ fn test_implementation_registration_tracking() {
     );
 
     // Now try Phase 6 - this should NOT register implementations, only type check
-    println!("📋 Phase 6: Type check function bodies (should not register implementations)");
+    // println!("📋 Phase 6: Type check function bodies (should not register implementations)");
 
     // The typecheck_function_bodies should NOT call register_implementations again
     match engine.typecheck_function_bodies(&mut program) {
         Ok(()) => {
-            println!("✅ Phase 6 completed successfully");
+            // println!("✅ Phase 6 completed successfully");
         }
         Err(e) => {
             println!("❌ Phase 6 failed: {}", e);
@@ -77,7 +77,7 @@ fn test_implementation_registration_tracking() {
                             "🚨 ConflictingImplementation: {} for {}",
                             protocol_name, type_name
                         );
-                        println!("🚨 This proves Phase 6 is trying to register implementations!");
+                        // println!("🚨 This proves Phase 6 is trying to register implementations!");
                     }
                     _ => {
                         println!("🔍 Other implementation error: {:?}", impl_err);

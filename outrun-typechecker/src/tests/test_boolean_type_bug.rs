@@ -43,7 +43,7 @@ def test_function(): Boolean {
 
     match result {
         Ok(()) => {
-            println!("✅ Boolean type bug test passed - this means the bug is fixed!");
+            // println!("✅ Boolean type bug test passed - this means the bug is fixed!");
         }
         Err(e) => {
             println!("❌ Boolean type bug reproduced: {:?}", e);
@@ -51,10 +51,10 @@ def test_function(): Boolean {
             // Check if we get the specific error about Boolean concrete type
             let error_str = format!("{:?}", e);
             if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
-                println!("🐛 CONFIRMED: Bug reproduced - typechecker thinks there's a concrete 'Boolean' type");
-                println!("The bug is in how we resolve function call return types");
+                // println!("🐛 CONFIRMED: Bug reproduced - typechecker thinks there's a concrete 'Boolean' type");
+                // println!("The bug is in how we resolve function call return types");
             } else {
-                println!("❓ Different error - this might be a different issue");
+                // println!("❓ Different error - this might be a different issue");
             }
         }
     }
@@ -76,13 +76,13 @@ def test_literal(): Boolean {
 
     match result {
         Ok(()) => {
-            println!("✅ Boolean literal test passed - literals infer correctly");
+            // println!("✅ Boolean literal test passed - literals infer correctly");
         }
         Err(e) => {
             println!("❌ Boolean literal test failed: {:?}", e);
             let error_str = format!("{:?}", e);
             if error_str.contains("Concrete { id: TypeId(\"Boolean\")") {
-                println!("🐛 CONFIRMED: Boolean literals are incorrectly inferring as 'Boolean' concrete type");
+                // println!("🐛 CONFIRMED: Boolean literals are incorrectly inferring as 'Boolean' concrete type");
             }
         }
     }

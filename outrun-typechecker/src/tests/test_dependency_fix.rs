@@ -29,7 +29,7 @@ mod test_dependency_fix {
                 if !error_string.contains("Task dependencies: []")
                     && !error_string.contains("no dependencies")
                 {
-                    println!("✅ Task dependency fix verified: failure is NOT due to missing dependencies");
+                    // println!("✅ Task dependency fix verified: failure is NOT due to missing dependencies");
                     println!(
                         "  Error type: {}",
                         error_string.lines().next().unwrap_or("Unknown")
@@ -68,7 +68,7 @@ mod test_dependency_fix {
                     "Task dependencies still being lost: {}",
                     error_string
                 );
-                println!("✅ Nested inference fix verified: no dependency loss detected");
+                // println!("✅ Nested inference fix verified: no dependency loss detected");
             }
         }
     }

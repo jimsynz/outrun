@@ -22,7 +22,7 @@ mod function_body_typechecking_tests {
         let result = typecheck_package(&mut package);
         match result {
             Ok(()) => {
-                println!("✅ Function body type checking succeeded!");
+                // println!("✅ Function body type checking succeeded!");
             }
             Err(e) => {
                 println!("❌ Type checking failed: {:?}", e);
@@ -51,7 +51,7 @@ mod function_body_typechecking_tests {
         let result = typecheck_package(&mut package);
         match result {
             Ok(()) => {
-                println!("✅ Struct function body type checking succeeded!");
+                // println!("✅ Struct function body type checking succeeded!");
             }
             Err(e) => {
                 println!("❌ Struct type checking failed: {:?}", e);
@@ -89,7 +89,7 @@ mod function_body_typechecking_tests {
         let result = typecheck_package(&mut package);
         match result {
             Ok(()) => {
-                println!("✅ Integration function body type checking succeeded!");
+                // println!("✅ Integration function body type checking succeeded!");
             }
             Err(e) => {
                 println!("❌ Integration type checking failed: {:?}", e);

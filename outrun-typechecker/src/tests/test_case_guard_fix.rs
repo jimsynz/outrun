@@ -21,7 +21,7 @@ def test_simple_case(input: Boolean): Boolean {
 
     match result {
         Ok(_) => {
-            println!("✅ Case expression with guard pattern binding compiled successfully");
+            // println!("✅ Case expression with guard pattern binding compiled successfully");
         }
         Err(e) => {
             println!("❌ Case expression compilation failed: {:?}", e);
@@ -89,14 +89,14 @@ def test_unknown_variable(): Boolean {
 
     match result {
         Ok(_) => {
-            println!("❌ Expected compilation to fail with unknown variable error");
+            // println!("❌ Expected compilation to fail with unknown variable error");
         }
         Err(e) => {
             let error_string = format!("{:?}", e);
             println!("✅ Got expected error: {}", error_string);
             // Check if the error contains file context (not just "unknown")
             if error_string.contains("test_file.outrun") {
-                println!("✅ File context is working correctly!");
+                // println!("✅ File context is working correctly!");
             } else {
                 println!("❌ File context is missing from error: {}", error_string);
             }
