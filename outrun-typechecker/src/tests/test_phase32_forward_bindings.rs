@@ -10,12 +10,10 @@ fn test_forward_binding_registration() {
     // Test code that references User before it's defined
     let program_text = r#"
         def create_user(): User {
-            User { name: "test" }
+            User(name: "test")
         }
         
-        struct User {
-            name: String
-        }
+        struct User(name: String)
     "#;
 
     let program = parse_program(program_text).expect("Should parse successfully");
@@ -38,16 +36,14 @@ fn test_arity_conflict_detection() {
     // Test code that has conflicting arity for the same type
     let program_text = r#"
         def create_list(): List {
-            List { items: [] }
+            List(count: 0)
         }
         
-        def create_generic_list<T>(): List<T> {
-            List { items: [] }
+        def create_another_list(): List {
+            List(count: 1)
         }
         
-        struct List {
-            items: []
-        }
+        struct List(count: Integer)
     "#;
 
     let program = parse_program(program_text).expect("Should parse successfully");

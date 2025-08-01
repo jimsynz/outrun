@@ -1166,16 +1166,22 @@ impl TypeInferenceEngine {
             generic_arity: generic_params.len(),
         };
 
-        // Register struct in unified type registry
+        // Register struct in unified type registry (skip if already exists for idempotent registration)
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry
-                .register_module(struct_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+            // Check if module already exists to avoid redefinition errors
+            if type_registry.get_module(&struct_name).is_none() {
+                type_registry
+                    .register_module(struct_type_module)
+                    .map_err(|e| TypecheckError::TypeError(e))?;
+            }
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry
-                .register_module(struct_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+            // Check if module already exists to avoid redefinition errors
+            if new_type_registry.get_module(&struct_name).is_none() {
+                new_type_registry
+                    .register_module(struct_type_module)
+                    .map_err(|e| TypecheckError::TypeError(e))?;
+            }
             self.type_registry = Rc::new(new_type_registry);
         }
 
@@ -2246,6 +2252,12 @@ impl TypeInferenceEngine {
         defining_module: &ModuleName,
         span: outrun_parser::Span,
     ) -> Result<(), TypecheckError> {
+        // Check if implementation already exists to avoid conflicts
+        if self.type_registry.has_implementation(protocol, implementing_type) {
+            // Implementation already exists, skip registration
+            return Ok(());
+        }
+
         // Create implementation module name using colon syntax
         let impl_module_name =
             ModuleName::implementation(implementing_type.as_str(), protocol.as_str());
@@ -2283,28 +2295,8 @@ impl TypeInferenceEngine {
             self.type_registry = Rc::new(new_type_registry);
         }
 
-        // Also register using the legacy compatibility method for existing code
-        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_implementation(
-                implementing_type.clone(),
-                vec![], // No generic parameters
-                protocol.clone(),
-                vec![], // No protocol generic parameters
-                defining_module.clone(),
-                Some(span),
-            )?;
-        } else {
-            let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_implementation(
-                implementing_type.clone(),
-                vec![], // No generic parameters
-                protocol.clone(),
-                vec![], // No protocol generic parameters
-                defining_module.clone(),
-                Some(span),
-            )?;
-            self.type_registry = Rc::new(new_type_registry);
-        }
+        // Note: No need for legacy register_implementation() call since register_module() 
+        // already handles implementation registration in the unified system
 
         Ok(())
     }
@@ -2395,28 +2387,8 @@ impl TypeInferenceEngine {
             self.type_registry = Rc::new(new_type_registry);
         }
 
-        // Also register using the legacy compatibility method for existing code
-        if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_implementation(
-                implementing_type_module,
-                vec![], // TODO: Handle generic parameters
-                protocol_module,
-                vec![], // TODO: Handle protocol generic parameters
-                defining_module,
-                Some(impl_block.span),
-            )?;
-        } else {
-            let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_implementation(
-                implementing_type_module,
-                vec![], // TODO: Handle generic parameters
-                protocol_module,
-                vec![], // TODO: Handle protocol generic parameters
-                defining_module,
-                Some(impl_block.span),
-            )?;
-            self.type_registry = Rc::new(new_type_registry);
-        }
+        // Note: No need for legacy register_implementation() call since register_module() 
+        // already handles implementation registration in the unified system
 
         Ok(())
     }

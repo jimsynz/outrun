@@ -5,7 +5,7 @@
 
 use crate::error::ImplementationError;
 use crate::types::{
-    ConcreteTypeDefinition, FunctionDefinition, ModuleName, ProtocolDefinition, Type, TypeModule,
+    ConcreteTypeDefinition, ModuleName, ProtocolDefinition, Type, TypeModule,
 };
 use outrun_parser::Span;
 use std::collections::{HashMap, HashSet};
@@ -291,8 +291,15 @@ impl TypeRegistry {
         ];
 
         for (type_name, arity) in &core_types {
+            let module_name = ModuleName::new(*type_name);
+            
+            // Skip registration if module already exists (idempotent registration)
+            if self.modules.contains_key(&module_name) {
+                continue;
+            }
+            
             let type_def = ConcreteTypeDefinition {
-                type_name: ModuleName::new(*type_name),
+                type_name: module_name.clone(),
                 defining_module: core_module.clone(),
                 is_generic: *arity > 0,
                 span: None,
@@ -300,7 +307,7 @@ impl TypeRegistry {
             };
 
             let module = TypeModule::Struct {
-                name: ModuleName::new(*type_name),
+                name: module_name,
                 definition: type_def,
                 source_location: Span::new(0, 0),
                 generic_arity: *arity,
