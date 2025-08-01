@@ -140,8 +140,8 @@ proptest! {
 
         // Should successfully create a concrete type
         match concrete_type {
-            Type::Concrete { id, args, .. } => {
-                prop_assert_eq!(id.name(), type_name);
+            Type::Concrete { name, args, .. } => {
+                prop_assert_eq!(name.as_str(), type_name);
                 prop_assert_eq!(args.len(), 0);
             }
             _ => prop_assert!(false, "Should create concrete type"),

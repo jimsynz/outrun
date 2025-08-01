@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod intrinsic_compatibility_tests {
     use crate::inference::TypeInferenceEngine;
-    use crate::types::{SelfBindingContext, Type};
+    use crate::types::{ModuleName, SelfBindingContext, Type};
     use outrun_parser::parse_program;
 
     #[test]
@@ -13,7 +13,7 @@ mod intrinsic_compatibility_tests {
             binding_context: SelfBindingContext::Implementation {
                 implementing_type: ModuleName::new("Outrun.Core.List"),
                 implementing_args: vec![],
-                protocol_id: ModuleName::new("List"),
+                protocol_name: ModuleName::new("List"),
                 protocol_args: vec![],
             },
             span: None,
@@ -28,9 +28,9 @@ mod intrinsic_compatibility_tests {
 
         let resolved_type = resolved.unwrap();
         match resolved_type {
-            Type::Concrete { id, .. } => {
+            Type::Concrete { name, .. } => {
                 assert_eq!(
-                    id.name(),
+                    name.as_str(),
                     "Outrun.Core.List",
                     "Should resolve to Outrun.Core.List"
                 );
@@ -64,12 +64,12 @@ mod intrinsic_compatibility_tests {
 
         // Create types for the compatibility test
         let concrete_type = Type::Concrete {
-            id: ModuleName::new("TestStruct"),
+            name: ModuleName::new("TestStruct"),
             args: vec![],
             span: None,
         };
         let any_protocol = Type::Protocol {
-            id: ModuleName::new("Any"),
+            name: ModuleName::new("Any"),
             args: vec![],
             span: None,
         };
@@ -110,14 +110,14 @@ mod intrinsic_compatibility_tests {
             binding_context: SelfBindingContext::Implementation {
                 implementing_type: ModuleName::new("Outrun.Core.List"),
                 implementing_args: vec![],
-                protocol_id: ModuleName::new("List"),
+                protocol_name: ModuleName::new("List"),
                 protocol_args: vec![],
             },
             span: None,
         };
 
         let any_protocol = Type::Protocol {
-            id: ModuleName::new("Any"),
+            name: ModuleName::new("Any"),
             args: vec![],
             span: None,
         };
@@ -152,10 +152,10 @@ mod intrinsic_compatibility_tests {
             );
 
             // Check if Outrun.Core.List implements Any
-            if let Type::Concrete { id, .. } = &resolved_self {
+            if let Type::Concrete { name, .. } = &resolved_self {
                 let implements_any = engine
                     .get_protocol_registry()
-                    .type_satisfies_protocol(id, &ModuleName::new("Any"));
+                    .has_implementation(&ModuleName::new("Any"), name);
                 println!("Outrun.Core.List implements Any: {}", implements_any);
             }
         }

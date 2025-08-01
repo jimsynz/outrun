@@ -4,7 +4,9 @@
 //! ensuring coherence and preventing conflicts.
 
 use crate::error::ImplementationError;
-use crate::types::{ModuleName, Type, TypeModule, ProtocolDefinition, ConcreteTypeDefinition, FunctionDefinition};
+use crate::types::{
+    ConcreteTypeDefinition, FunctionDefinition, ModuleName, ProtocolDefinition, Type, TypeModule,
+};
 use outrun_parser::Span;
 use std::collections::{HashMap, HashSet};
 
@@ -24,8 +26,6 @@ pub struct ImplementationInfo {
     /// Source location of the implementation for error reporting
     pub span: Option<Span>,
 }
-
-
 
 /// Unified type registry for all modules in Outrun's system
 #[derive(Debug, Clone)]
@@ -83,23 +83,24 @@ impl TypeRegistry {
                     TypeModule::Implementation { .. } => 0, // Implementations don't have their own arity
                     TypeModule::ForwardBinding { .. } => 0, // Shouldn't happen
                 };
-                
+
                 if let Some(expected) = expected_arity {
                     if *expected != actual_arity {
                         return Err(crate::error::TypeError::ArityConflict {
                             type_name: module_name.as_str().to_string(),
                             expected_arity: *expected,
                             found_arity: actual_arity,
-                            span: crate::error::to_source_span(None),
+                            span: crate::error::to_source_span(None)
+                                .unwrap_or_else(|| miette::SourceSpan::from(0..0)),
                         });
                     }
                 }
-                
+
                 // Replace forward binding with actual definition
                 self.modules.insert(module_name, module);
                 return Ok(());
             }
-            
+
             return Err(crate::error::TypeError::ModuleRedefinition {
                 module_name: module_name.as_str().to_string(),
                 span: None,
@@ -135,7 +136,10 @@ impl TypeRegistry {
     }
 
     /// Legacy compatibility: Get protocol definition
-    pub fn get_protocol_definition(&self, protocol_name: &ModuleName) -> Option<ProtocolDefinition> {
+    pub fn get_protocol_definition(
+        &self,
+        protocol_name: &ModuleName,
+    ) -> Option<ProtocolDefinition> {
         if let Some(TypeModule::Protocol { definition, .. }) = self.modules.get(protocol_name) {
             Some(definition.clone())
         } else {
@@ -145,7 +149,10 @@ impl TypeRegistry {
 
     /// Legacy compatibility: Check if protocol exists
     pub fn has_protocol(&self, protocol_name: &ModuleName) -> bool {
-        matches!(self.modules.get(protocol_name), Some(TypeModule::Protocol { .. }))
+        matches!(
+            self.modules.get(protocol_name),
+            Some(TypeModule::Protocol { .. })
+        )
     }
 
     /// Legacy compatibility: Register protocol implementation
@@ -158,8 +165,9 @@ impl TypeRegistry {
         defining_module: ModuleName,
         span: Option<Span>,
     ) -> Result<(), ImplementationError> {
-        let impl_name = ModuleName::implementation(implementing_type.as_str(), protocol_name.as_str());
-        
+        let impl_name =
+            ModuleName::implementation(implementing_type.as_str(), protocol_name.as_str());
+
         // Check for existing implementation
         if self.modules.contains_key(&impl_name) {
             return Err(ImplementationError::ConflictingImplementation {
@@ -176,8 +184,8 @@ impl TypeRegistry {
         // Create implementation module
         let impl_module = TypeModule::Implementation {
             name: impl_name,
-            implementing_type,
-            protocol: protocol_name,
+            implementing_type: implementing_type.clone(),
+            protocol: protocol_name.clone(),
             generic_bindings: implementing_args,
             functions: Vec::new(), // Will be populated later
             source_location: span.unwrap_or_else(|| Span::new(0, 0)),
@@ -233,12 +241,16 @@ impl TypeRegistry {
     /// Legacy compatibility: Check if implementation exists
     pub fn has_implementation(&self, protocol_name: &ModuleName, type_name: &ModuleName) -> bool {
         let impl_name = ModuleName::implementation(type_name.as_str(), protocol_name.as_str());
-        matches!(self.modules.get(&impl_name), Some(TypeModule::Implementation { .. }))
+        matches!(
+            self.modules.get(&impl_name),
+            Some(TypeModule::Implementation { .. })
+        )
     }
 
     /// Legacy compatibility: Get implementation count
     pub fn implementation_count(&self) -> usize {
-        self.modules.values()
+        self.modules
+            .values()
             .filter(|module| matches!(module, TypeModule::Implementation { .. }))
             .count()
     }
@@ -271,11 +283,11 @@ impl TypeRegistry {
             ("Outrun.Core.Float64", 0),
             ("Outrun.Core.Boolean", 0),
             ("Outrun.Core.Atom", 0),
-            ("Outrun.Core.List", 1),      // List<T>
-            ("Outrun.Core.Map", 2),       // Map<K, V>
-            ("Outrun.Core.Tuple", 0),     // Tuple is variadic, but we'll treat as 0 for now
-            ("Outrun.Core.Option", 1),    // Option<T>
-            ("Outrun.Core.Result", 2),    // Result<T, E>
+            ("Outrun.Core.List", 1),   // List<T>
+            ("Outrun.Core.Map", 2),    // Map<K, V>
+            ("Outrun.Core.Tuple", 0),  // Tuple is variadic, but we'll treat as 0 for now
+            ("Outrun.Core.Option", 1), // Option<T>
+            ("Outrun.Core.Result", 2), // Result<T, E>
         ];
 
         for (type_name, arity) in &core_types {
@@ -337,12 +349,33 @@ impl TypeRegistry {
     }
 
     /// Legacy compatibility: Check if a protocol requires another protocol
-    pub fn protocol_requires(&self, protocol_name: &ModuleName, required_protocol: &ModuleName) -> bool {
+    pub fn protocol_requires(
+        &self,
+        protocol_name: &ModuleName,
+        required_protocol: &ModuleName,
+    ) -> bool {
         if let Some(TypeModule::Protocol { definition, .. }) = self.modules.get(protocol_name) {
             definition.required_protocols.contains(required_protocol)
         } else {
             false
         }
+    }
+
+    /// Get all concrete type names (legacy compatibility)
+    pub fn get_concrete_type_names(&self) -> Vec<String> {
+        self.modules
+            .iter()
+            .filter_map(|(name, module)| match module {
+                TypeModule::Struct { .. } => Some(name.as_str().to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Check if a type is a never type (legacy compatibility)
+    pub fn is_never_type(&self, _type_name: &str) -> bool {
+        // TODO: Implement proper never type detection
+        false
     }
 }
 
@@ -511,7 +544,9 @@ mod tests {
         assert!(!registry.is_empty());
 
         // Test legacy has_implementation
-        assert!(registry.has_implementation(&ModuleName::new("Display"), &ModuleName::new("String")));
+        assert!(
+            registry.has_implementation(&ModuleName::new("Display"), &ModuleName::new("String"))
+        );
     }
 
     #[test]
@@ -529,5 +564,3 @@ mod tests {
         assert!(!registry.is_protocol("NonExistent"));
     }
 }
-
-

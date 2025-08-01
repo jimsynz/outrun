@@ -6,7 +6,7 @@
 use crate::dispatch::{
     FunctionInfo, FunctionVisibility, MonomorphisationEntry, MonomorphisationTable,
 };
-use crate::types::{Type};
+use crate::types::{ModuleName, Type};
 use std::collections::HashMap;
 
 #[test]
@@ -25,7 +25,7 @@ fn test_monomorphised_key_generation() {
 
     // Test function with single type argument
     let integer_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -34,7 +34,7 @@ fn test_monomorphised_key_generation() {
 
     // Test function with multiple type arguments
     let string_type = Type::Concrete {
-        id: ModuleName::new("String"),
+        name: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
@@ -46,12 +46,12 @@ fn test_monomorphised_key_generation() {
 fn test_monomorphised_key_with_generic_types() {
     // Test List<Integer64>
     let integer_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
     let list_integer_type = Type::Concrete {
-        id: ModuleName::new("List"),
+        name: ModuleName::new("List"),
         args: vec![integer_type.clone()],
         span: None,
     };
@@ -60,12 +60,12 @@ fn test_monomorphised_key_with_generic_types() {
 
     // Test Map<String, Integer64>
     let string_type = Type::Concrete {
-        id: ModuleName::new("String"),
+        name: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
     let map_type = Type::Concrete {
-        id: ModuleName::new("Map"),
+        name: ModuleName::new("Map"),
         args: vec![string_type.clone(), integer_type.clone()],
         span: None,
     };
@@ -85,15 +85,15 @@ fn test_add_and_lookup_instantiation() {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: ModuleName::new("Wrapper"),
+            name: ModuleName::new("Wrapper"),
             args: vec![Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -108,7 +108,7 @@ fn test_add_and_lookup_instantiation() {
     // Create type substitutions for T = Integer64
     let mut type_substitutions = HashMap::new();
     let integer_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -128,17 +128,17 @@ fn test_add_and_lookup_instantiation() {
     // Check parameter types were substituted
     assert_eq!(monomorphised_function.parameters.len(), 1);
     match &monomorphised_function.parameters[0].1 {
-        Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+        Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
         _ => panic!("Expected concrete Integer64 type for parameter"),
     }
 
     // Check return type was substituted
     match &monomorphised_function.return_type {
-        Type::Concrete { id, args, .. } => {
-            assert_eq!(id.name(), "Wrapper");
+        Type::Concrete { name, args, .. } => {
+            assert_eq!(name.as_str(), "Wrapper");
             assert_eq!(args.len(), 1);
             match &args[0] {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
                 _ => panic!("Expected concrete Integer64 type for return type argument"),
             }
         }
@@ -183,15 +183,15 @@ fn test_multiple_instantiations_same_function() {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: ModuleName::new("Container"),
+            name: ModuleName::new("Container"),
             args: vec![Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -208,7 +208,7 @@ fn test_multiple_instantiations_same_function() {
     int_substitutions.insert(
         "T".to_string(),
         Type::Concrete {
-            id: ModuleName::new("Integer64"),
+            name: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
@@ -223,7 +223,7 @@ fn test_multiple_instantiations_same_function() {
             &HashMap::from([(
                 "T".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("Integer64"),
+                    name: ModuleName::new("Integer64"),
                     args: vec![],
                     span: None,
                 },
@@ -239,7 +239,7 @@ fn test_multiple_instantiations_same_function() {
     string_substitutions.insert(
         "T".to_string(),
         Type::Concrete {
-            id: ModuleName::new("String"),
+            name: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -254,7 +254,7 @@ fn test_multiple_instantiations_same_function() {
             &HashMap::from([(
                 "T".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("String"),
+                    name: ModuleName::new("String"),
                     args: vec![],
                     span: None,
                 },
@@ -293,7 +293,7 @@ fn test_type_substitution_in_complex_types() {
             (
                 "key".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("K"),
+                    name: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
@@ -301,9 +301,9 @@ fn test_type_substitution_in_complex_types() {
             (
                 "values".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("List"),
+                    name: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: ModuleName::new("V"),
+                        name: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -312,17 +312,17 @@ fn test_type_substitution_in_complex_types() {
             ),
         ],
         return_type: Type::Concrete {
-            id: ModuleName::new("Map"),
+            name: ModuleName::new("Map"),
             args: vec![
                 Type::Concrete {
-                    id: ModuleName::new("K"),
+                    name: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
                 Type::Concrete {
-                    id: ModuleName::new("List"),
+                    name: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: ModuleName::new("V"),
+                        name: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -342,7 +342,7 @@ fn test_type_substitution_in_complex_types() {
     substitutions.insert(
         "K".to_string(),
         Type::Concrete {
-            id: ModuleName::new("String"),
+            name: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -350,7 +350,7 @@ fn test_type_substitution_in_complex_types() {
     substitutions.insert(
         "V".to_string(),
         Type::Concrete {
-            id: ModuleName::new("Integer64"),
+            name: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },
@@ -365,17 +365,17 @@ fn test_type_substitution_in_complex_types() {
 
     // Check key parameter: K -> String
     match &monomorphised.parameters[0].1 {
-        Type::Concrete { id, .. } => assert_eq!(id.name(), "String"),
+        Type::Concrete { name, .. } => assert_eq!(name.as_str(), "String"),
         _ => panic!("Expected String type for key parameter"),
     }
 
     // Check values parameter: List<V> -> List<Integer64>
     match &monomorphised.parameters[1].1 {
-        Type::Concrete { id, args, .. } => {
-            assert_eq!(id.name(), "List");
+        Type::Concrete { name, args, .. } => {
+            assert_eq!(name.as_str(), "List");
             assert_eq!(args.len(), 1);
             match &args[0] {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
                 _ => panic!("Expected Integer64 type for List element"),
             }
         }
@@ -384,23 +384,23 @@ fn test_type_substitution_in_complex_types() {
 
     // Check return type: Map<K, List<V>> -> Map<String, List<Integer64>>
     match &monomorphised.return_type {
-        Type::Concrete { id, args, .. } => {
-            assert_eq!(id.name(), "Map");
+        Type::Concrete { name, args, .. } => {
+            assert_eq!(name.as_str(), "Map");
             assert_eq!(args.len(), 2);
 
             // Check key type
             match &args[0] {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "String"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "String"),
                 _ => panic!("Expected String type for Map key"),
             }
 
             // Check value type List<Integer64>
             match &args[1] {
-                Type::Concrete { id, args, .. } => {
-                    assert_eq!(id.name(), "List");
+                Type::Concrete { name, args, .. } => {
+                    assert_eq!(name.as_str(), "List");
                     assert_eq!(args.len(), 1);
                     match &args[0] {
-                        Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+                        Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
                         _ => panic!("Expected Integer64 type for List element"),
                     }
                 }
@@ -422,7 +422,7 @@ fn test_all_entries_iteration() {
         visibility: FunctionVisibility::Public,
         parameters: vec![],
         return_type: Type::Concrete {
-            id: ModuleName::new("T"),
+            name: ModuleName::new("T"),
             args: vec![],
             span: None,
         },
@@ -437,7 +437,7 @@ fn test_all_entries_iteration() {
         substitutions.insert(
             "T".to_string(),
             Type::Concrete {
-                id: ModuleName::new(*type_name),
+                name: ModuleName::new(*type_name),
                 args: vec![],
                 span: None,
             },
@@ -452,7 +452,7 @@ fn test_all_entries_iteration() {
                 &HashMap::from([(
                     "T".to_string(),
                     Type::Concrete {
-                        id: ModuleName::new(*type_name),
+                        name: ModuleName::new(*type_name),
                         args: vec![],
                         span: None,
                     },

@@ -28,6 +28,7 @@
 
 pub mod constraints;
 pub mod core_library;
+pub mod debug_spans;
 pub mod desugaring;
 pub mod dispatch;
 pub mod error;
@@ -60,9 +61,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 pub use typed_ast::{TypedExpression, TypedExpressionKind, UniversalCallResolution};
-pub use types::{
-    Constraint, ModuleName, Substitution, Type, TypeInfo, TypeVarId,
-};
+pub use types::{Constraint, ModuleName, Substitution, Type, TypeInfo, TypeVarId};
 pub use unification::Unifier;
 pub use universal_dispatch::{
     ClauseId, ClauseInfo, ConstraintContext, FunctionBody, FunctionSignature, Guard,
@@ -504,7 +503,7 @@ impl CompilationResult {
 
         // Phase 8: Build dispatch table for runtime function resolution
         let dispatch_table = build_dispatch_table(
-            &*engine.type_registry(),
+            &*engine.type_registry_rc(),
             engine.function_registry(),
             Some(&monomorphisation_table),
         );

@@ -789,11 +789,17 @@ fn register_list_intrinsics(registry: &mut FunctionRegistry) {
         vec![("value", any_type.clone())],
         option_any_type.clone(),
     ); // Returns Option<Any>
-    eprintln!("🔍 Registered list_head intrinsic with return type: {}", option_any_type);
-    
+    eprintln!(
+        "🔍 Registered list_head intrinsic with return type: {}",
+        option_any_type
+    );
+
     // Debug: Check if the function was actually registered
     if let Some(func_info) = registry.get_function("Outrun.Intrinsic", "list_head") {
-        eprintln!("🔍 Verification: list_head found in registry with return type: {}", func_info.return_type);
+        eprintln!(
+            "🔍 Verification: list_head found in registry with return type: {}",
+            func_info.return_type
+        );
     } else {
         eprintln!("🔍 ERROR: list_head NOT found in registry after registration!");
     }

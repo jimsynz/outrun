@@ -281,8 +281,8 @@ impl UniversalDispatchRegistry {
             } = guard
             {
                 return Some(match implementing_type {
-                    Type::Concrete { id, .. } => TypePattern::Concrete(id.name().to_string()),
-                    Type::Protocol { id, .. } => TypePattern::Protocol(id.0.clone()),
+                    Type::Concrete { name, .. } => TypePattern::Concrete(name.as_str().to_string()),
+                    Type::Protocol { name, .. } => TypePattern::Protocol(name.as_str().to_string()),
                     Type::Variable { .. } => TypePattern::Generic("T".to_string()),
                     Type::SelfType { .. } => TypePattern::Generic("Self".to_string()),
                     Type::Function { .. } => TypePattern::Generic("Function".to_string()),
@@ -300,11 +300,11 @@ impl UniversalDispatchRegistry {
             } = guard
             {
                 return match (implementing_type, pattern) {
-                    (Type::Concrete { id, .. }, TypePattern::Concrete(pattern_name)) => {
-                        id.name() == pattern_name
+                    (Type::Concrete { name, .. }, TypePattern::Concrete(pattern_name)) => {
+                        name.as_str() == pattern_name
                     }
-                    (Type::Protocol { id, .. }, TypePattern::Protocol(pattern_name)) => {
-                        &id.0 == pattern_name
+                    (Type::Protocol { name, .. }, TypePattern::Protocol(pattern_name)) => {
+                        name.as_str() == pattern_name
                     }
                     (Type::Variable { .. }, TypePattern::Generic(_)) => true,
                     (Type::SelfType { .. }, TypePattern::Generic(_)) => true,
@@ -384,8 +384,8 @@ impl UniversalDispatchRegistry {
     fn types_could_be_compatible(&self, type1: &Type, type2: &Type) -> bool {
         match (type1, type2) {
             // Same concrete types are compatible
-            (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => {
-                id1.name() == id2.name()
+            (Type::Concrete { name: id1, .. }, Type::Concrete { name: id2, .. }) => {
+                id1.as_str() == id2.as_str()
             }
             // Type variables could unify with anything
             (Type::Variable { .. }, _) | (_, Type::Variable { .. }) => true,
@@ -395,7 +395,7 @@ impl UniversalDispatchRegistry {
             (Type::Protocol { .. }, Type::Concrete { .. }) => true,
             (Type::Concrete { .. }, Type::Protocol { .. }) => true,
             // Same protocol types are compatible
-            (Type::Protocol { id: id1, .. }, Type::Protocol { id: id2, .. }) => id1 == id2,
+            (Type::Protocol { name: id1, .. }, Type::Protocol { name: id2, .. }) => id1 == id2,
             // Function types - conservatively allow
             (Type::Function { .. }, Type::Function { .. }) => true,
             // If we can't determine, err on the side of keeping the clause

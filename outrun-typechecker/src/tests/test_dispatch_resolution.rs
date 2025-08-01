@@ -198,7 +198,7 @@ fn test_protocol_function_call_resolution() {
                 "Equality.equal?:Outrun.Core.String"
             );
             assert_eq!(
-                resolved_func.implementing_type.as_ref().unwrap().name(),
+                resolved_func.implementing_type.as_ref().unwrap().as_str(),
                 "Outrun.Core.String"
             );
             assert_eq!(resolved_func.function_info.function_name, "equal?");
@@ -239,7 +239,7 @@ fn test_local_call_in_protocol_context() {
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Protocol {
-        protocol_id: ModuleName::new("Equality"),
+        protocol_name: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 
@@ -265,7 +265,7 @@ fn test_local_call_in_module_context() {
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Module {
-        module_id: ModuleName::new("User"),
+        module_name: ModuleName::new("User"),
         module_args: vec![],
     };
 
@@ -344,7 +344,7 @@ fn test_private_protocol_function_access() {
     let function_registry = create_test_function_registry();
 
     let context = FunctionContext::Protocol {
-        protocol_id: ModuleName::new("Equality"),
+        protocol_name: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 
@@ -406,7 +406,7 @@ fn test_protocol_default_implementation_with_private_helper() {
     );
 
     let context = FunctionContext::Protocol {
-        protocol_id: ModuleName::new("Equality"),
+        protocol_name: ModuleName::new("Equality"),
         protocol_args: vec![],
     };
 

@@ -126,12 +126,12 @@ impl Unifier {
             // Concrete type unification
             (
                 Type::Concrete {
-                    id: id1,
+                    name: id1,
                     args: args1,
                     ..
                 },
                 Type::Concrete {
-                    id: id2,
+                    name: id2,
                     args: args2,
                     ..
                 },
@@ -148,7 +148,7 @@ impl Unifier {
 
                 if args1.len() != args2.len() {
                     return Err(UnificationError::ArityMismatch {
-                        type_name: id1.name().to_string(),
+                        type_name: id1.as_str().to_string(),
                         expected_arity: args1.len(),
                         found_arity: args2.len(),
                         span: to_source_span(self.get_span_for_error(left, right)),
@@ -170,27 +170,27 @@ impl Unifier {
             // Protocol type unification
             (
                 Type::Protocol {
-                    id: id1,
+                    name: id1,
                     args: args1,
                     ..
                 },
                 Type::Protocol {
-                    id: id2,
+                    name: id2,
                     args: args2,
                     ..
                 },
             ) => {
                 if id1 != id2 {
                     return Err(UnificationError::ProtocolMismatch {
-                        expected: id1.0.clone(),
-                        found: id2.0.clone(),
+                        expected: id1.as_str().to_string(),
+                        found: id2.as_str().to_string(),
                         span: to_source_span(self.get_span_for_error(left, right)),
                     });
                 }
 
                 if args1.len() != args2.len() {
                     return Err(UnificationError::ArityMismatch {
-                        type_name: id1.0.clone(),
+                        type_name: id1.as_str().to_string(),
                         expected_arity: args1.len(),
                         found_arity: args2.len(),
                         span: to_source_span(self.get_span_for_error(left, right)),
@@ -260,7 +260,10 @@ impl Unifier {
 
             // Self type with concrete type - resolve Self and unify
             (Type::SelfType { .. }, concrete_type) => {
-                eprintln!("🔍 Unification: Trying to unify Self with concrete type {}", concrete_type);
+                eprintln!(
+                    "🔍 Unification: Trying to unify Self with concrete type {}",
+                    concrete_type
+                );
                 if let Some(resolved_self) = left.resolve_self() {
                     eprintln!("🔍 Unification: Self resolved to {}", resolved_self);
                     work_queue.push_back(UnifyTask {
@@ -271,7 +274,10 @@ impl Unifier {
                     });
                     Ok(Substitution::new())
                 } else {
-                    eprintln!("🔍 Unification: Self could not be resolved - binding context: {:?}", left);
+                    eprintln!(
+                        "🔍 Unification: Self could not be resolved - binding context: {:?}",
+                        left
+                    );
                     Err(UnificationError::CategoryMismatch {
                         expected: self.type_category(left),
                         found: self.type_category(right),
@@ -284,7 +290,10 @@ impl Unifier {
 
             // Concrete type with Self type - resolve Self and unify
             (concrete_type, Type::SelfType { .. }) => {
-                eprintln!("🔍 Unification: Trying to unify concrete type {} with Self", concrete_type);
+                eprintln!(
+                    "🔍 Unification: Trying to unify concrete type {} with Self",
+                    concrete_type
+                );
                 if let Some(resolved_self) = right.resolve_self() {
                     eprintln!("🔍 Unification: Self resolved to {}", resolved_self);
                     work_queue.push_back(UnifyTask {
@@ -295,7 +304,10 @@ impl Unifier {
                     });
                     Ok(Substitution::new())
                 } else {
-                    eprintln!("🔍 Unification: Self could not be resolved - binding context: {:?}", right);
+                    eprintln!(
+                        "🔍 Unification: Self could not be resolved - binding context: {:?}",
+                        right
+                    );
                     Err(UnificationError::CategoryMismatch {
                         expected: self.type_category(left),
                         found: self.type_category(right),

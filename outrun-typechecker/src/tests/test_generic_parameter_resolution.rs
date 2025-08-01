@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod generic_parameter_resolution_tests {
     use crate::inference::TypeInferenceEngine;
-    use crate::types::{Level, Type, TypeVarId};
+    use crate::types::{Level, ModuleName, ProtocolDefinition, Type, TypeModule, TypeVarId};
     use outrun_parser::parse_program;
+    use outrun_parser::Span;
 
     #[test]
     fn test_impl_block_generic_parameter_context() {
@@ -153,27 +154,40 @@ mod generic_parameter_resolution_tests {
 
         // Register the Option protocol so it's recognized as a protocol, not concrete type
         let option_protocol_id = ModuleName::new("Option");
-        engine.protocol_registry_mut().register_protocol_definition(
-            option_protocol_id.clone(),
-            std::collections::HashSet::new(), // No required protocols
-            ModuleName::new("TestModule"),
-            std::collections::HashSet::new(), // No default implementations
-            std::collections::HashSet::new(), // No required functions
-            None,                             // No span
-        );
+        engine
+            .protocol_registry_mut()
+            .register_module(TypeModule::Protocol {
+                name: option_protocol_id.clone(),
+                definition: ProtocolDefinition {
+                    protocol_name: option_protocol_id.clone(),
+                    required_protocols: std::collections::HashSet::new(),
+                    defining_module: ModuleName::new("TestModule"),
+                    default_implementations: std::collections::HashSet::new(),
+                    required_functions: std::collections::HashSet::new(),
+                    span: None,
+                },
+                source_location: Span::new(0, 0),
+                generic_arity: 1,
+            })
+            .unwrap();
 
         // Also register in type registry so convert_type_annotation can find it
         engine
             .type_registry_mut()
-            .protocol_registry_mut()
-            .register_protocol_definition(
-                option_protocol_id,
-                std::collections::HashSet::new(), // No required protocols
-                ModuleName::new("TestModule"),
-                std::collections::HashSet::new(), // No default implementations
-                std::collections::HashSet::new(), // No required functions
-                None,                             // No span
-            );
+            .register_module(TypeModule::Protocol {
+                name: option_protocol_id.clone(),
+                definition: ProtocolDefinition {
+                    protocol_name: option_protocol_id,
+                    required_protocols: std::collections::HashSet::new(),
+                    defining_module: ModuleName::new("TestModule"),
+                    default_implementations: std::collections::HashSet::new(),
+                    required_functions: std::collections::HashSet::new(),
+                    span: None,
+                },
+                source_location: Span::new(0, 0),
+                generic_arity: 1,
+            })
+            .unwrap();
 
         // Set up a generic parameter context
         engine.add_generic_parameter(
@@ -203,11 +217,15 @@ mod generic_parameter_resolution_tests {
                 let param_type = param_type_result.unwrap();
                 match param_type {
                     Type::Protocol {
-                        id: ProtocolId(ref protocol_name),
+                        name: ref protocol_name,
                         ref args,
                         ..
                     } => {
-                        assert_eq!(protocol_name, "Option", "Should be Option protocol");
+                        assert_eq!(
+                            protocol_name.as_str(),
+                            "Option",
+                            "Should be Option protocol"
+                        );
                         assert_eq!(args.len(), 1, "Should have one type argument");
 
                         // Check that the argument is the T type variable

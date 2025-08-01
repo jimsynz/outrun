@@ -4,8 +4,9 @@
 //! is in function call inference rather than basic type compatibility
 
 use crate::inference::TypeInferenceEngine;
-use crate::types::{ModuleName};
+use crate::types::{ModuleName, ProtocolDefinition, TypeModule};
 use outrun_parser::parse_program;
+use outrun_parser::Span;
 
 #[test]
 fn test_function_with_option_integer_parameter() {
@@ -34,39 +35,54 @@ fn test_function_with_option_integer_parameter() {
     // Register protocol definitions in the type registry
     engine
         .type_registry_mut()
-        .type_registry_mut()
-        .register_protocol_definition(
-            ModuleName::new("Integer"),
-            std::collections::HashSet::new(),
-            ModuleName::new("Integer"),
-            std::collections::HashSet::new(),
-            std::collections::HashSet::new(),
-            None,
-        );
+        .register_module(TypeModule::Protocol {
+            name: ModuleName::new("Integer"),
+            definition: ProtocolDefinition {
+                protocol_name: ModuleName::new("Integer"),
+                required_protocols: std::collections::HashSet::new(),
+                defining_module: ModuleName::new("Integer"),
+                default_implementations: std::collections::HashSet::new(),
+                required_functions: std::collections::HashSet::new(),
+                span: None,
+            },
+            source_location: Span::new(0, 0),
+            generic_arity: 0,
+        })
+        .unwrap();
 
     engine
         .type_registry_mut()
-        .type_registry_mut()
-        .register_protocol_definition(
-            ModuleName::new("Boolean"),
-            std::collections::HashSet::new(),
-            ModuleName::new("Boolean"),
-            std::collections::HashSet::new(),
-            std::collections::HashSet::new(),
-            None,
-        );
+        .register_module(TypeModule::Protocol {
+            name: ModuleName::new("Boolean"),
+            definition: ProtocolDefinition {
+                protocol_name: ModuleName::new("Boolean"),
+                required_protocols: std::collections::HashSet::new(),
+                defining_module: ModuleName::new("Boolean"),
+                default_implementations: std::collections::HashSet::new(),
+                required_functions: std::collections::HashSet::new(),
+                span: None,
+            },
+            source_location: Span::new(0, 0),
+            generic_arity: 0,
+        })
+        .unwrap();
 
     engine
         .type_registry_mut()
-        .type_registry_mut()
-        .register_protocol_definition(
-            ModuleName::new("Option"),
-            std::collections::HashSet::new(),
-            ModuleName::new("Option"),
-            std::collections::HashSet::new(),
-            std::collections::HashSet::new(),
-            None,
-        );
+        .register_module(TypeModule::Protocol {
+            name: ModuleName::new("Option"),
+            definition: ProtocolDefinition {
+                protocol_name: ModuleName::new("Option"),
+                required_protocols: std::collections::HashSet::new(),
+                defining_module: ModuleName::new("Option"),
+                default_implementations: std::collections::HashSet::new(),
+                required_functions: std::collections::HashSet::new(),
+                span: None,
+            },
+            source_location: Span::new(0, 0),
+            generic_arity: 1,
+        })
+        .unwrap();
 
     // Register Integer implementation
     engine

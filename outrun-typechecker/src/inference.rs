@@ -13,9 +13,7 @@ use crate::{
         UnificationError as OriginalUnificationError,
     },
     registry::{ProtocolRegistry, TypeRegistry},
-    types::{
-        Constraint, Level, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId,
-    },
+    types::{Constraint, Level, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId},
 };
 use outrun_parser::{
     ConstDefinition, Expression, FunctionDefinition, FunctionSignature, ImplBlock, Item, Program,
@@ -93,8 +91,6 @@ pub struct TypeInferenceEngine {
 /// Unique identifier for inference tasks in the iterative system
 pub type TaskId = u64;
 
-
-
 /// State of an inference task in the iterative processing system
 #[derive(Debug)]
 pub enum TaskState {
@@ -138,7 +134,7 @@ enum WorkItem {
         expression: *mut Expression,
         context: InferenceContext,
     },
-    
+
     /// Continue processing an expression using results from its dependencies
     ContinueWithResults {
         expression: *mut Expression,
@@ -146,7 +142,6 @@ enum WorkItem {
         dependency_count: usize,
     },
 }
-
 
 /// Context for type inference operations
 #[derive(Debug, Clone)]
@@ -230,33 +225,30 @@ impl FunctionSignatureAnalyzer {
     }
 
     /// Analyze a complete function signature
-    pub fn analyze_signature(
-        params: &[(String, Type)],
-        return_type: &Type,
-    ) -> SignatureAnalysis {
+    pub fn analyze_signature(params: &[(String, Type)], return_type: &Type) -> SignatureAnalysis {
         let mut analyzer = Self::new();
-        
-        // Analyze all parameter types  
+
+        // Analyze all parameter types
         for (i, (param_name, param_type)) in params.iter().enumerate() {
             analyzer.analyze_type_in_position(
                 param_type,
-                &crate::types::TypePosition::ArgumentPosition { 
-                    index: i,        // Keep index for backward compatibility
+                &crate::types::TypePosition::ArgumentPosition {
+                    index: i, // Keep index for backward compatibility
                     path: vec![],
                     param_name: Some(param_name.clone()), // Add parameter name!
-                }
+                },
             );
         }
-        
+
         // Analyze return type
         analyzer.analyze_type_in_position(
             return_type,
-            &crate::types::TypePosition::ReturnPosition { path: vec![] }
+            &crate::types::TypePosition::ReturnPosition { path: vec![] },
         );
-        
+
         // Generate unification constraints for same-variable occurrences
         analyzer.generate_unification_constraints();
-        
+
         analyzer.current_analysis
     }
 
@@ -267,7 +259,11 @@ impl FunctionSignatureAnalyzer {
             let mut full_self_pos = self_pos.clone();
             // Combine position path with type's internal path
             match position {
-                crate::types::TypePosition::ArgumentPosition { index, path, param_name } => {
+                crate::types::TypePosition::ArgumentPosition {
+                    index,
+                    path,
+                    param_name,
+                } => {
                     // Use parameter name if available, otherwise fall back to index for compatibility
                     let position_identifier = if let Some(name) = param_name {
                         format!("param_{}", name)
@@ -292,16 +288,21 @@ impl FunctionSignatureAnalyzer {
 
         // Collect type variable positions
         for (var_name, positions) in typ.collect_type_variable_positions() {
-            let entry = self.current_analysis.type_variable_positions
+            let entry = self
+                .current_analysis
+                .type_variable_positions
                 .entry(var_name)
                 .or_default();
-            
+
             for var_pos in positions {
                 let mut full_pos = var_pos.clone();
                 // Add position context to variable position
                 match position {
                     crate::types::TypePosition::ArgumentPosition { index, path, .. } => {
-                        if let crate::types::TypePosition::VariablePosition { path: ref mut var_path } = &mut full_pos {
+                        if let crate::types::TypePosition::VariablePosition {
+                            path: ref mut var_path,
+                        } = &mut full_pos
+                        {
                             let mut full_path = vec![format!("arg_{}", index)];
                             full_path.extend(path.clone());
                             full_path.extend(var_path.clone());
@@ -309,7 +310,10 @@ impl FunctionSignatureAnalyzer {
                         }
                     }
                     crate::types::TypePosition::ReturnPosition { path } => {
-                        if let crate::types::TypePosition::VariablePosition { path: ref mut var_path } = &mut full_pos {
+                        if let crate::types::TypePosition::VariablePosition {
+                            path: ref mut var_path,
+                        } = &mut full_pos
+                        {
                             let mut full_path = vec!["return".to_string()];
                             full_path.extend(path.clone());
                             full_path.extend(var_path.clone());
@@ -327,15 +331,17 @@ impl FunctionSignatureAnalyzer {
             match typ {
                 Type::Protocol { name, args, .. } => {
                     for (i, arg) in args.iter().enumerate() {
-                        self.current_analysis.protocol_constraints.push(ProtocolConstraint {
-                            protocol_id: name.clone(),
-                            constraining_type: arg.clone(),
-                            position: crate::types::TypePosition::GenericArgument {
-                                container: name.as_str().to_string(),
-                                arg_index: i,
-                                path: vec![],
-                            },
-                        });
+                        self.current_analysis
+                            .protocol_constraints
+                            .push(ProtocolConstraint {
+                                protocol_id: name.clone(),
+                                constraining_type: arg.clone(),
+                                position: crate::types::TypePosition::GenericArgument {
+                                    container: name.as_str().to_string(),
+                                    arg_index: i,
+                                    path: vec![],
+                                },
+                            });
                     }
                 }
                 _ => {} // Other protocol constraint patterns
@@ -350,21 +356,23 @@ impl FunctionSignatureAnalyzer {
             if positions.len() > 1 {
                 // Create equality constraints between all occurrences
                 for _i in 1..positions.len() {
-                    self.current_analysis.unification_constraints.push(Constraint::Equality {
-                        left: Box::new(Type::Variable {
-                            var_id: TypeVarId(0), // Placeholder - will be resolved during inference
-                            level: Level(0),
-                            name: Some(var_name.clone()),
+                    self.current_analysis
+                        .unification_constraints
+                        .push(Constraint::Equality {
+                            left: Box::new(Type::Variable {
+                                var_id: TypeVarId(0), // Placeholder - will be resolved during inference
+                                level: Level(0),
+                                name: Some(var_name.clone()),
+                                span: None,
+                            }),
+                            right: Box::new(Type::Variable {
+                                var_id: TypeVarId(0), // Placeholder - will be resolved during inference
+                                level: Level(0),
+                                name: Some(var_name.clone()),
+                                span: None,
+                            }),
                             span: None,
-                        }),
-                        right: Box::new(Type::Variable {
-                            var_id: TypeVarId(0), // Placeholder - will be resolved during inference
-                            level: Level(0),
-                            name: Some(var_name.clone()),
-                            span: None,
-                        }),
-                        span: None,
-                    });
+                        });
                 }
             }
         }
@@ -374,15 +382,17 @@ impl FunctionSignatureAnalyzer {
             for i in 1..self.current_analysis.self_positions.len() {
                 let first_self = &self.current_analysis.self_positions[0];
                 let other_self = &self.current_analysis.self_positions[i];
-                
-                self.current_analysis.unification_constraints.push(Constraint::SelfBinding {
-                    self_context: first_self.binding_context.clone(),
-                    bound_type: Box::new(Type::SelfType {
-                        binding_context: other_self.binding_context.clone(),
+
+                self.current_analysis
+                    .unification_constraints
+                    .push(Constraint::SelfBinding {
+                        self_context: first_self.binding_context.clone(),
+                        bound_type: Box::new(Type::SelfType {
+                            binding_context: other_self.binding_context.clone(),
+                            span: None,
+                        }),
                         span: None,
-                    }),
-                    span: None,
-                });
+                    });
             }
         }
     }
@@ -395,7 +405,9 @@ impl FunctionSignatureAnalyzer {
         // Find Self positions in the signature
         for self_pos in &analysis.self_positions {
             // Try to extract Self type from corresponding argument
-            if let Some(self_type) = Self::extract_self_from_argument_position(&self_pos.path, call_args)? {
+            if let Some(self_type) =
+                Self::extract_self_from_argument_position(&self_pos.path, call_args)?
+            {
                 return Ok(Some(self_type));
             }
         }
@@ -463,7 +475,8 @@ impl TypeInferenceEngine {
             current_file: None,
             type_variable_counter: 0,
             symbol_table: HashMap::new(),
-            universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(),
+            universal_dispatch_registry: crate::universal_dispatch::UniversalDispatchRegistry::new(
+            ),
             error_context: ErrorContext::new(),
             current_self_context: SelfBindingContext::ProtocolDefinition {
                 protocol_name: ModuleName::new("Unknown"),
@@ -519,11 +532,11 @@ impl TypeInferenceEngine {
         self.current_module = module.clone();
         // Update the protocol registry within the type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.set_current_module.set_current_module(module);
+            type_registry.set_current_module(module);
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.set_current_module.set_current_module(module);
+            new_type_registry.set_current_module(module);
             self.type_registry = Rc::new(new_type_registry);
         }
     }
@@ -546,8 +559,16 @@ impl TypeInferenceEngine {
     /// Create a FileSpan using current file context
     pub fn create_file_span(&self, span: Option<outrun_parser::Span>) -> crate::error::FileSpan {
         crate::error::FileSpan {
-            span: span.unwrap_or_else(|| outrun_parser::Span { start: 0, end: 0, start_line_col: None, end_line_col: None }),
-            source_file: self.current_file.clone().unwrap_or_else(|| "unknown".to_string()),
+            span: span.unwrap_or_else(|| outrun_parser::Span {
+                start: 0,
+                end: 0,
+                start_line_col: None,
+                end_line_col: None,
+            }),
+            source_file: self
+                .current_file
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
         }
     }
 
@@ -558,13 +579,11 @@ impl TypeInferenceEngine {
     }
 
     /// Get a mutable reference to the protocol registry within the type registry
-    pub fn protocol_registry_mut(&mut self) -> &mut ProtocolRegistry {
+    pub fn protocol_registry_mut(&mut self) -> &mut TypeRegistry {
         // Clone and replace the type registry to get mutable access
         let new_registry = (*self.type_registry).clone();
         self.type_registry = Rc::new(new_registry);
-        Rc::get_mut(&mut self.type_registry)
-            .expect("Should be uniquely owned after replacement")
-            .set_current_module
+        Rc::get_mut(&mut self.type_registry).expect("Should be uniquely owned after replacement")
     }
 
     /// Get mutable access to type registry for testing and configuration
@@ -572,8 +591,7 @@ impl TypeInferenceEngine {
         // Always clone and replace to avoid borrow checker issues
         let new_registry = (*self.type_registry).clone();
         self.type_registry = Rc::new(new_registry);
-        Rc::get_mut(&mut self.type_registry)
-            .expect("Should be uniquely owned after replacement")
+        Rc::get_mut(&mut self.type_registry).expect("Should be uniquely owned after replacement")
     }
 
     pub fn function_registry_mut(&mut self) -> &mut FunctionRegistry {
@@ -607,7 +625,7 @@ impl TypeInferenceEngine {
         type_annotation: &outrun_parser::TypeAnnotation,
     ) -> Result<(), TypecheckError> {
         use outrun_parser::TypeAnnotation;
-        
+
         let span = match type_annotation {
             TypeAnnotation::Simple { span, .. } => *span,
             TypeAnnotation::Tuple { span, .. } => *span,
@@ -615,27 +633,34 @@ impl TypeInferenceEngine {
         };
 
         let module_name = ModuleName::new(type_name);
-        
+
         // Check if we already have this forward binding
         if let Some(existing_module) = self.type_registry.get_module(type_name) {
             match existing_module {
-                crate::types::TypeModule::ForwardBinding { expected_arity: existing_arity, references, .. } => {
+                crate::types::TypeModule::ForwardBinding {
+                    expected_arity: existing_arity,
+                    references,
+                    ..
+                } => {
                     // Update existing forward binding with new reference
                     let mut updated_references = references.clone();
                     updated_references.push(span);
-                    
+
                     // Check for arity conflicts
                     if let Some(existing) = existing_arity {
                         if *existing != expected_arity {
-                            return Err(TypecheckError::TypeError(crate::error::TypeError::ArityConflict {
-                                type_name: type_name.to_string(),
-                                expected_arity: *existing,
-                                found_arity: expected_arity,
-                                span: crate::error::to_source_span(Some(span)),
-                            }));
+                            return Err(TypecheckError::TypeError(
+                                crate::error::TypeError::ArityConflict {
+                                    type_name: type_name.to_string(),
+                                    expected_arity: *existing,
+                                    found_arity: expected_arity,
+                                    span: crate::error::to_source_span(Some(span))
+                                        .unwrap_or_else(|| miette::SourceSpan::from(0..0)),
+                                },
+                            ));
                         }
                     }
-                    
+
                     // Update the forward binding with new reference
                     let updated_forward_binding = crate::types::TypeModule::ForwardBinding {
                         name: module_name.clone(),
@@ -643,8 +668,9 @@ impl TypeInferenceEngine {
                         source_location: span,
                         references: updated_references,
                     };
-                    
-                    self.type_registry_mut().register_module(updated_forward_binding)?;
+
+                    self.type_registry_mut()
+                        .register_module(updated_forward_binding)?;
                 }
                 _ => {
                     // Type already exists as concrete type or protocol - no need for forward binding
@@ -659,20 +685,26 @@ impl TypeInferenceEngine {
                 source_location: span,
                 references: vec![span],
             };
-            
+
             self.type_registry_mut().register_module(forward_binding)?;
         }
-        
+
         Ok(())
+    }
+
+    /// Check if a type satisfies a protocol (legacy compatibility)
+    fn type_satisfies_protocol(&self, type_name: &ModuleName, protocol_name: &ModuleName) -> bool {
+        // Simple implementation - check if there's an implementation module
+        let impl_name = ModuleName::implementation(type_name.as_str(), protocol_name.as_str());
+        self.type_registry.get_module(impl_name.as_str()).is_some()
     }
 
     /// Analyze recursive type patterns and emit compiler warnings
     #[allow(clippy::result_large_err)]
     fn analyze_recursive_patterns_and_emit_warnings(&mut self) -> Result<(), TypecheckError> {
         // Create a constraint solver to analyze the protocol registry
-        let mut constraint_solver = crate::constraints::ConstraintSolver::with_registry(
-            self.type_registry.protocol_registry().clone()
-        );
+        let mut constraint_solver =
+            crate::constraints::ConstraintSolver::with_registry((*self.type_registry).clone());
 
         // Analyze recursive patterns in protocol implementations
         constraint_solver.analyze_recursive_type_patterns();
@@ -717,32 +749,37 @@ impl TypeInferenceEngine {
     /// This should be called before type checking function bodies
     fn initialize_call_stack_backtracking(&mut self) {
         // Create a constraint solver with backtracking capabilities
-        let mut constraint_solver = crate::constraints::ConstraintSolver::with_registry(
-            self.type_registry.protocol_registry().clone()
-        );
-        
+        let mut constraint_solver =
+            crate::constraints::ConstraintSolver::with_registry((*self.type_registry).clone());
+
         // Initialize call stack context with reasonable depth limit
         let call_stack_context = crate::constraints::CallStackContext::new(10);
         constraint_solver.set_call_stack_context(call_stack_context);
-        
+
         // Store the constraint solver for use during type inference
         self.constraint_solver_with_backtracking = Some(constraint_solver);
-        
+
         eprintln!("🔧 Call stack backtracking system initialized (Phase 2 complete)");
     }
 
     /// Get mutable access to the constraint solver with backtracking (if initialized)
-    pub fn constraint_solver_with_backtracking_mut(&mut self) -> Option<&mut crate::constraints::ConstraintSolver> {
+    pub fn constraint_solver_with_backtracking_mut(
+        &mut self,
+    ) -> Option<&mut crate::constraints::ConstraintSolver> {
         self.constraint_solver_with_backtracking.as_mut()
     }
 
     /// Get immutable access to the constraint solver with backtracking (if initialized)
-    pub fn constraint_solver_with_backtracking(&self) -> Option<&crate::constraints::ConstraintSolver> {
+    pub fn constraint_solver_with_backtracking(
+        &self,
+    ) -> Option<&crate::constraints::ConstraintSolver> {
         self.constraint_solver_with_backtracking.as_ref()
     }
 
     /// Get the universal dispatch registry containing all registered clauses
-    pub fn universal_dispatch_registry(&self) -> &crate::universal_dispatch::UniversalDispatchRegistry {
+    pub fn universal_dispatch_registry(
+        &self,
+    ) -> &crate::universal_dispatch::UniversalDispatchRegistry {
         &self.universal_dispatch_registry
     }
 
@@ -753,12 +790,12 @@ impl TypeInferenceEngine {
         dependency_function_registry: std::rc::Rc<FunctionRegistry>,
     ) -> Result<(), crate::error::TypecheckError> {
         // Merge the dependency registries into our existing ones while preserving orphan rules
-        
+
         // For now, we'll use a simple approach - replace our registries with the dependencies
         // TODO: Implement proper registry merging when needed
         self.type_registry = dependency_type_registry;
         self.function_registry = dependency_function_registry;
-        
+
         Ok(())
     }
 
@@ -799,13 +836,13 @@ impl TypeInferenceEngine {
 
     /// Get a reference to the protocol registry for testing
     #[cfg(test)]
-    pub fn get_protocol_registry(&self) -> &ProtocolRegistry {
-        self.type_registry.protocol_registry()
+    pub fn get_protocol_registry(&self) -> &TypeRegistry {
+        &*self.type_registry
     }
 
     /// Get a reference to the protocol registry for dispatch table building
     pub fn protocol_registry(&self) -> &ProtocolRegistry {
-        self.type_registry.protocol_registry()
+        &self.type_registry
     }
 
     /// Test helper to expose types_are_compatible for testing
@@ -953,7 +990,11 @@ impl TypeInferenceEngine {
                 self.collect_protocol_requirements_recursive(left, required_protocols)?;
                 self.collect_protocol_requirements_recursive(right, required_protocols)?;
             }
-            ConstraintExpression::Constraint { type_param, protocol_bound, .. } => {
+            ConstraintExpression::Constraint {
+                type_param,
+                protocol_bound,
+                ..
+            } => {
                 // Handle "Self: BinarySubtraction" patterns
                 if type_param.name == "Self" {
                     // Convert protocol_bound (Vec<TypeIdentifier>) to protocol name
@@ -1024,7 +1065,11 @@ impl TypeInferenceEngine {
                     .collect::<Vec<_>>()
                     .join(".");
                 for protocol_function in &protocol_def.functions {
-                    self.register_protocol_function_signature(&protocol_name, protocol_function, protocol_def)?;
+                    self.register_protocol_function_signature(
+                        &protocol_name,
+                        protocol_function,
+                        protocol_def,
+                    )?;
                 }
             }
             // Skip expression items and other items
@@ -1084,7 +1129,7 @@ impl TypeInferenceEngine {
 
         // Mark struct's module as local (for orphan rule)
         let struct_module = ModuleName::new(&struct_name);
-        
+
         // Add to unified type registry as local module
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry.add_local_module(struct_module.clone());
@@ -1110,7 +1155,7 @@ impl TypeInferenceEngine {
             defining_module: struct_module.clone(), // Struct defines itself
             is_generic: !generic_params.is_empty(),
             span: Some(struct_def.span),
-            is_never_type: false, // TODO: Extract from attributes when macro system is ready
+            never_info: None, // TODO: Extract from attributes when macro system is ready
         };
 
         // Create struct module for unified registry
@@ -1123,11 +1168,13 @@ impl TypeInferenceEngine {
 
         // Register struct in unified type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_module(struct_type_module)
+            type_registry
+                .register_module(struct_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_module(struct_type_module)
+            new_type_registry
+                .register_module(struct_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
             self.type_registry = Rc::new(new_type_registry);
         }
@@ -1197,24 +1244,35 @@ impl TypeInferenceEngine {
 
         // Register the function in the function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(struct_name.to_string(), function_name.clone(), function_info);
+            registry.register_function(
+                struct_name.to_string(),
+                function_name.clone(),
+                function_info,
+            );
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
-            new_registry.register_function(struct_name.to_string(), function_name.clone(), function_info);
+            new_registry.register_function(
+                struct_name.to_string(),
+                function_name.clone(),
+                function_info,
+            );
             self.function_registry = Rc::new(new_registry);
         }
 
         // Generate public function template for dependency usage (if public)
-        if matches!(function.visibility, outrun_parser::FunctionVisibility::Public) {
+        if matches!(
+            function.visibility,
+            outrun_parser::FunctionVisibility::Public
+        ) {
             let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
                 struct_name.to_string(),
                 function_name,
             );
-            
+
             let template_visibility = crate::constraints::FunctionVisibility::Public;
             let available_generics = struct_generic_params.clone();
-            
+
             if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
                 if let Err(e) = constraint_solver.generate_public_function_template(
                     function_signature,
@@ -1223,7 +1281,10 @@ impl TypeInferenceEngine {
                     &available_generics,
                 ) {
                     // Log template generation failure but don't fail compilation
-                    eprintln!("Warning: Failed to generate template for {}.{}: {}", struct_name, function.name.name, e);
+                    eprintln!(
+                        "Warning: Failed to generate template for {}.{}: {}",
+                        struct_name, function.name.name, e
+                    );
                 }
             }
         }
@@ -1247,7 +1308,7 @@ impl TypeInferenceEngine {
 
         // Mark protocol's module as local (for orphan rule)
         let protocol_module = ModuleName::new(&protocol_name);
-        
+
         // Add to unified type registry as local module
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry.add_local_module(protocol_module.clone());
@@ -1284,7 +1345,7 @@ impl TypeInferenceEngine {
             }
         }
 
-        // Extract required protocols from constraint expressions  
+        // Extract required protocols from constraint expressions
         let required_protocols = if let Some(constraints) = &protocol_def.constraints {
             self.extract_protocol_requirements(constraints)?
         } else {
@@ -1311,11 +1372,13 @@ impl TypeInferenceEngine {
 
         // Register protocol in unified type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_module(protocol_type_module)
+            type_registry
+                .register_module(protocol_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_module(protocol_type_module)
+            new_type_registry
+                .register_module(protocol_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
             self.type_registry = Rc::new(new_type_registry);
         }
@@ -1345,7 +1408,11 @@ impl TypeInferenceEngine {
             }
             ProtocolFunction::Definition(definition) => {
                 // For protocol function definitions, register the signature part
-                self.register_protocol_function_definition(protocol_name, definition, protocol_def)?;
+                self.register_protocol_function_definition(
+                    protocol_name,
+                    definition,
+                    protocol_def,
+                )?;
             }
             ProtocolFunction::StaticDefinition(static_def) => {
                 // For static definitions, register the signature part
@@ -1584,12 +1651,15 @@ impl TypeInferenceEngine {
         let new_context = SelfBindingContext::Implementation {
             implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
-            protocol_id: ModuleName::new(&protocol_name),
+            protocol_name: ModuleName::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
         eprintln!("🔄 CONTEXT CHANGE: Entering impl block");
         eprintln!("  📤 Old context: {:?}", old_self_context);
-        eprintln!("  📥 New context: {} implementing {}", type_name, protocol_name);
+        eprintln!(
+            "  📥 New context: {} implementing {}",
+            type_name, protocol_name
+        );
         self.current_self_context = new_context;
 
         // Collect impl block functions
@@ -1599,7 +1669,10 @@ impl TypeInferenceEngine {
 
         // Restore previous contexts
         eprintln!("🔄 CONTEXT RESTORE: Exiting impl block collection");
-        eprintln!("  📤 Current context: {} implementing {}", type_name, protocol_name);
+        eprintln!(
+            "  📤 Current context: {} implementing {}",
+            type_name, protocol_name
+        );
         eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
@@ -1641,10 +1714,10 @@ impl TypeInferenceEngine {
 
         // Extract generic parameters from impl block context
         let impl_generic_params = self.extract_impl_block_generic_parameters(impl_block);
-        
+
         // Validate that all constrained type variables appear in the impl type specifications
         self.validate_impl_constraint_variables(impl_block, &impl_generic_params)?;
-        
+
         let is_generic = !impl_generic_params.is_empty();
 
         // Create function info for impl block function
@@ -1662,24 +1735,35 @@ impl TypeInferenceEngine {
 
         // Register the impl function in the function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(impl_scope.to_string(), function_name.clone(), function_info);
+            registry.register_function(
+                impl_scope.to_string(),
+                function_name.clone(),
+                function_info,
+            );
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
-            new_registry.register_function(impl_scope.to_string(), function_name.clone(), function_info);
+            new_registry.register_function(
+                impl_scope.to_string(),
+                function_name.clone(),
+                function_info,
+            );
             self.function_registry = Rc::new(new_registry);
         }
 
         // Generate public function template for dependency usage (if public)
-        if matches!(function.visibility, outrun_parser::FunctionVisibility::Public) {
+        if matches!(
+            function.visibility,
+            outrun_parser::FunctionVisibility::Public
+        ) {
             let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
                 impl_scope.to_string(),
                 function_name,
             );
-            
+
             let template_visibility = crate::constraints::FunctionVisibility::Public;
             let available_generics = self.extract_impl_block_generic_parameters(impl_block);
-            
+
             if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
                 if let Err(e) = constraint_solver.generate_public_function_template(
                     function_signature,
@@ -1688,7 +1772,10 @@ impl TypeInferenceEngine {
                     &available_generics,
                 ) {
                     // Log template generation failure but don't fail compilation
-                    eprintln!("Warning: Failed to generate template for {}.{}: {}", impl_scope, function.name.name, e);
+                    eprintln!(
+                        "Warning: Failed to generate template for {}.{}: {}",
+                        impl_scope, function.name.name, e
+                    );
                 }
             }
         }
@@ -1721,7 +1808,10 @@ impl TypeInferenceEngine {
     }
 
     /// Extract generic parameter names from struct by name (for function registration)
-    fn extract_struct_generic_parameters_by_name(&self, struct_name: &str) -> Result<Vec<String>, TypecheckError> {
+    fn extract_struct_generic_parameters_by_name(
+        &self,
+        struct_name: &str,
+    ) -> Result<Vec<String>, TypecheckError> {
         if let Some(struct_def) = self.struct_registry.get(struct_name) {
             Ok(self.extract_struct_generic_parameters(struct_def))
         } else {
@@ -1783,12 +1873,17 @@ impl TypeInferenceEngine {
 
     /// Extract type variable names from a type annotation
     /// This identifies type variables vs concrete types based on naming conventions
-    fn extract_type_variables_from_annotation(&self, annotation: &outrun_parser::TypeAnnotation) -> Vec<String> {
+    fn extract_type_variables_from_annotation(
+        &self,
+        annotation: &outrun_parser::TypeAnnotation,
+    ) -> Vec<String> {
         use outrun_parser::TypeAnnotation;
         let mut type_vars = Vec::new();
 
         match annotation {
-            TypeAnnotation::Simple { path, generic_args, .. } => {
+            TypeAnnotation::Simple {
+                path, generic_args, ..
+            } => {
                 // Check if this is a type variable (single identifier, looks like a type parameter)
                 if path.len() == 1 {
                     let name = &path[0].name;
@@ -1819,9 +1914,14 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            TypeAnnotation::Function { params, return_type, .. } => {
+            TypeAnnotation::Function {
+                params,
+                return_type,
+                ..
+            } => {
                 for param in params {
-                    let nested_vars = self.extract_type_variables_from_annotation(&param.type_annotation);
+                    let nested_vars =
+                        self.extract_type_variables_from_annotation(&param.type_annotation);
                     for var in nested_vars {
                         if !type_vars.contains(&var) {
                             type_vars.push(var);
@@ -1842,7 +1942,10 @@ impl TypeInferenceEngine {
 
     /// Extract type variable names from constraint expressions
     /// Handles: T: Display, U: Debug, T: Display && U: Debug, (T: Display)
-    fn extract_type_variables_from_constraint_expression(&self, constraint: &outrun_parser::ConstraintExpression) -> Vec<String> {
+    fn extract_type_variables_from_constraint_expression(
+        &self,
+        constraint: &outrun_parser::ConstraintExpression,
+    ) -> Vec<String> {
         use outrun_parser::ConstraintExpression;
         let mut type_vars = Vec::new();
 
@@ -1851,7 +1954,7 @@ impl TypeInferenceEngine {
                 // Handle: T: Display && U: Debug
                 let left_vars = self.extract_type_variables_from_constraint_expression(left);
                 let right_vars = self.extract_type_variables_from_constraint_expression(right);
-                
+
                 for var in left_vars {
                     if !type_vars.contains(&var) {
                         type_vars.push(var);
@@ -1866,13 +1969,16 @@ impl TypeInferenceEngine {
             ConstraintExpression::Constraint { type_param, .. } => {
                 // Handle: T: Display and Self: Display
                 let param_name = &type_param.name;
-                if (param_name == "Self" || self.is_type_variable_name(param_name)) && !type_vars.contains(param_name) {
+                if (param_name == "Self" || self.is_type_variable_name(param_name))
+                    && !type_vars.contains(param_name)
+                {
                     type_vars.push(param_name.clone());
                 }
             }
             ConstraintExpression::Parenthesized { expression, .. } => {
                 // Handle: (T: Display)
-                let nested_vars = self.extract_type_variables_from_constraint_expression(expression);
+                let nested_vars =
+                    self.extract_type_variables_from_constraint_expression(expression);
                 for var in nested_vars {
                     if !type_vars.contains(&var) {
                         type_vars.push(var);
@@ -1887,17 +1993,22 @@ impl TypeInferenceEngine {
     /// Validate that all constrained type variables appear in the impl type specifications
     /// Also supports Self constraints in addition to regular type variable constraints
     #[allow(clippy::result_large_err)]
-    fn validate_impl_constraint_variables(&self, impl_block: &ImplBlock, available_type_vars: &[String]) -> Result<(), TypecheckError> {
+    fn validate_impl_constraint_variables(
+        &self,
+        impl_block: &ImplBlock,
+        available_type_vars: &[String],
+    ) -> Result<(), TypecheckError> {
         if let Some(constraints) = &impl_block.constraints {
-            let constraint_vars = self.extract_type_variables_from_constraint_expression(constraints);
-            
+            let constraint_vars =
+                self.extract_type_variables_from_constraint_expression(constraints);
+
             // Check each constrained variable exists in the available type variables or is Self
             for constrained_var in constraint_vars {
                 if constrained_var == "Self" {
                     // Self is always valid in impl block constraints
                     continue;
                 }
-                
+
                 if !available_type_vars.contains(&constrained_var) {
                     // Find which type variables are available for helpful error message
                     let available_list = if available_type_vars.is_empty() {
@@ -1905,7 +2016,7 @@ impl TypeInferenceEngine {
                     } else {
                         available_type_vars.join(", ")
                     };
-                    
+
                     return Err(TypecheckError::InferenceError(
                         crate::error::InferenceError::InvalidConstraintVariable {
                             span: crate::error::to_source_span(Some(*constraints.span())),
@@ -1921,7 +2032,7 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -1940,7 +2051,10 @@ impl TypeInferenceEngine {
         }
 
         // Common type parameter conventions
-        matches!(name, "Key" | "Value" | "Input" | "Output" | "Result" | "Error" | "Element")
+        matches!(
+            name,
+            "Key" | "Value" | "Input" | "Output" | "Result" | "Error" | "Element"
+        )
     }
 
     /// Collect a function definition
@@ -1975,7 +2089,7 @@ impl TypeInferenceEngine {
 
         // Create function info
         let function_info = FunctionInfo {
-            defining_scope: self.current_module.0.clone(),
+            defining_scope: self.current_module.as_str().to_string(),
             function_name: function_name.clone(),
             visibility,
             parameters,
@@ -1988,12 +2102,16 @@ impl TypeInferenceEngine {
 
         // Get mutable reference to function registry
         if let Some(registry) = Rc::get_mut(&mut self.function_registry) {
-            registry.register_function(self.current_module.0.clone(), function_name.clone(), function_info);
+            registry.register_function(
+                self.current_module.as_str().to_string(),
+                function_name.clone(),
+                function_info,
+            );
         } else {
             // If there are multiple references, we need to clone and replace
             let mut new_registry = (*self.function_registry).clone();
             new_registry.register_function(
-                self.current_module.0.clone(),
+                self.current_module.as_str().to_string(),
                 function_name.clone(),
                 function_info,
             );
@@ -2001,15 +2119,18 @@ impl TypeInferenceEngine {
         }
 
         // Generate public function template for dependency usage (if public)
-        if matches!(func_def.visibility, outrun_parser::FunctionVisibility::Public) {
+        if matches!(
+            func_def.visibility,
+            outrun_parser::FunctionVisibility::Public
+        ) {
             let function_signature = crate::universal_dispatch::FunctionSignature::qualified(
-                self.current_module.0.clone(),
+                self.current_module.as_str().to_string(),
                 function_name,
             );
-            
+
             let template_visibility = crate::constraints::FunctionVisibility::Public;
             let available_generics = Vec::new(); // TODO: Handle top-level generic functions
-            
+
             if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
                 if let Err(e) = constraint_solver.generate_public_function_template(
                     function_signature,
@@ -2018,7 +2139,12 @@ impl TypeInferenceEngine {
                     &available_generics,
                 ) {
                     // Log template generation failure but don't fail compilation
-                    eprintln!("Warning: Failed to generate template for {}.{}: {}", self.current_module.0, func_def.name.name, e);
+                    eprintln!(
+                        "Warning: Failed to generate template for {}.{}: {}",
+                        self.current_module.as_str(),
+                        func_def.name.name,
+                        e
+                    );
                 }
             }
         }
@@ -2121,7 +2247,8 @@ impl TypeInferenceEngine {
         span: outrun_parser::Span,
     ) -> Result<(), TypecheckError> {
         // Create implementation module name using colon syntax
-        let impl_module_name = ModuleName::implementation(implementing_type.as_str(), protocol.as_str());
+        let impl_module_name =
+            ModuleName::implementation(implementing_type.as_str(), protocol.as_str());
 
         // Add to unified type registry as local module
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
@@ -2138,18 +2265,20 @@ impl TypeInferenceEngine {
             implementing_type: implementing_type.clone(),
             protocol: protocol.clone(),
             generic_bindings: Vec::new(), // No generic parameters for automatic implementations
-            functions: Vec::new(), // Automatic implementations have no explicit functions
+            functions: Vec::new(),        // Automatic implementations have no explicit functions
             source_location: span,
             defining_module: defining_module.clone(),
         };
 
         // Register implementation module in unified type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_module(impl_type_module)
+            type_registry
+                .register_module(impl_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_module(impl_type_module)
+            new_type_registry
+                .register_module(impl_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
             self.type_registry = Rc::new(new_type_registry);
         }
@@ -2222,14 +2351,22 @@ impl TypeInferenceEngine {
         for function in &impl_block.functions {
             let func_def = crate::types::FunctionDefinition {
                 name: function.name.name.clone(),
-                parameters: function.parameters.iter().map(|param| {
-                    let param_type = self.convert_type_annotation(&param.type_annotation)
-                        .unwrap_or_else(|_| Type::concrete("Unknown")); // Fallback for conversion errors
-                    (param.name.name.clone(), param_type)
-                }).collect(),
-                return_type: self.convert_type_annotation(&function.return_type)
+                parameters: function
+                    .parameters
+                    .iter()
+                    .map(|param| {
+                        let param_type = self
+                            .convert_type_annotation(&param.type_annotation)
+                            .unwrap_or_else(|_| Type::concrete("Unknown")); // Fallback for conversion errors
+                        (param.name.name.clone(), param_type)
+                    })
+                    .collect(),
+                return_type: self
+                    .convert_type_annotation(&function.return_type)
                     .unwrap_or_else(|_| Type::concrete("Unknown")), // Fallback for conversion errors
-                body: Some(function.body.clone()),
+                body: None,       // TODO: Convert Block to Expression when needed
+                is_static: false, // impl block functions are not static
+                span: Some(function.span),
             };
             impl_functions.push(func_def);
         }
@@ -2242,16 +2379,18 @@ impl TypeInferenceEngine {
             generic_bindings: Vec::new(), // TODO: Handle generic parameters
             functions: impl_functions,
             source_location: impl_block.span,
-            defining_module,
+            defining_module: defining_module.clone(),
         };
 
         // Register implementation module in unified type registry
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
-            type_registry.register_module(impl_type_module)
+            type_registry
+                .register_module(impl_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
-            new_type_registry.register_module(impl_type_module)
+            new_type_registry
+                .register_module(impl_type_module)
                 .map_err(|e| TypecheckError::TypeError(e))?;
             self.type_registry = Rc::new(new_type_registry);
         }
@@ -2355,7 +2494,7 @@ impl TypeInferenceEngine {
         // Set Self binding context for protocol function type checking
         let old_self_context = self.current_self_context.clone();
         self.current_self_context = SelfBindingContext::ProtocolDefinition {
-            protocol_id: ModuleName::new(&protocol_name),
+            protocol_name: ModuleName::new(&protocol_name),
             protocol_args: vec![],
         };
 
@@ -2367,7 +2506,7 @@ impl TypeInferenceEngine {
                     // because they contain Self types that can't be resolved yet.
                     // Instead, they are stored as templates and monomorphized + typechecked
                     // when called with concrete argument types.
-                    // 
+                    //
                     // The monomorphization happens during protocol function calls in
                     // resolve_protocol_call when we have concrete Self types.
                 }
@@ -2422,7 +2561,7 @@ impl TypeInferenceEngine {
         self.current_self_context = SelfBindingContext::Implementation {
             implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
-            protocol_id: ModuleName::new(&protocol_name),
+            protocol_name: ModuleName::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
 
@@ -2432,7 +2571,10 @@ impl TypeInferenceEngine {
 
         // Restore previous contexts
         eprintln!("🔄 CONTEXT RESTORE: Exiting impl block typechecking");
-        eprintln!("  📤 Current context: {} implementing {}", type_name, protocol_name);
+        eprintln!(
+            "  📤 Current context: {} implementing {}",
+            type_name, protocol_name
+        );
         eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
@@ -2446,7 +2588,7 @@ impl TypeInferenceEngine {
         &mut self,
         func_def: &FunctionDefinition,
     ) -> Result<(), TypecheckError> {
-        let module_scope = self.current_module.0.clone();
+        let module_scope = self.current_module.as_str().to_string();
         self.typecheck_function_body(&module_scope, func_def)
     }
 
@@ -2458,7 +2600,7 @@ impl TypeInferenceEngine {
     ) -> Result<(), TypecheckError> {
         // FIXED: Implement let binding type checking using iterative inference system
         // This resolves the missing universal_clause_ids issue for desugared operators
-        
+
         let mut context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
@@ -2466,11 +2608,11 @@ impl TypeInferenceEngine {
             self_binding: self.current_self_context.clone(), // Inherit current Self context
             bindings: HashMap::new(),
         };
-        
+
         // Use iterative inference to process the expression
         // This ensures function calls get their universal_clause_ids set properly
         self.infer_expression(&mut let_binding.expression, &mut context)?;
-        
+
         Ok(())
     }
 
@@ -2482,13 +2624,10 @@ impl TypeInferenceEngine {
     /// TODO: Replace with proper attribute system when macro system is implemented
     fn types_are_compatible_with_never(&self, expected: &Type, found: &Type) -> bool {
         // Never types can unify with any type (bottom type property)
-        if self.type_registry.is_never_type(found) {
-            return true;
-        }
-        if self.type_registry.is_never_type(expected) {
-            return true;
-        }
-        
+        // TODO: Implement proper never type checking
+        // For now, skip never type compatibility
+        let _ = (found, expected);
+
         // Fall back to regular type compatibility
         self.types_are_compatible(expected, found)
     }
@@ -2502,19 +2641,30 @@ impl TypeInferenceEngine {
     /// across nested inference calls within the same inference session
     fn reset_iterative_state(&mut self) {
         if self.inference_depth == 0 {
-            println!("🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})", self.inference_tasks.len(), self.inference_depth);
+            println!(
+                "🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})",
+                self.inference_tasks.len(),
+                self.inference_depth
+            );
             self.inference_tasks.clear();
             self.ready_task_queue.clear();
             self.task_results.clear();
             self.expression_to_task_map.clear();
             self.next_task_id = 0;
         } else {
-            println!("🔄 PRESERVING TASK STATE: {} tasks preserved at depth {}", self.inference_tasks.len(), self.inference_depth);
+            println!(
+                "🔄 PRESERVING TASK STATE: {} tasks preserved at depth {}",
+                self.inference_tasks.len(),
+                self.inference_depth
+            );
             // CRITICAL FIX: Ensure next_task_id is set to avoid ID collisions with preserved tasks
             // Find the highest existing task ID and set next_task_id to the next available ID
             if let Some(&max_task_id) = self.inference_tasks.keys().max() {
                 self.next_task_id = max_task_id + 1;
-                println!("🔧 ADJUSTED next_task_id to {} to avoid collisions", self.next_task_id);
+                println!(
+                    "🔧 ADJUSTED next_task_id to {} to avoid collisions",
+                    self.next_task_id
+                );
             }
         }
     }
@@ -2526,20 +2676,19 @@ impl TypeInferenceEngine {
         id
     }
 
-
-
     /// Create a new inference task for an expression
     fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
         // Check if this expression should not be reused
         // Identifiers are context-dependent due to variable bindings
         // Function calls should not be reused because they represent different operations
-        let should_not_reuse = unsafe { 
-            matches!((*expression).kind, 
-                outrun_parser::ExpressionKind::Identifier(_) |
-                outrun_parser::ExpressionKind::FunctionCall(_)
+        let should_not_reuse = unsafe {
+            matches!(
+                (*expression).kind,
+                outrun_parser::ExpressionKind::Identifier(_)
+                    | outrun_parser::ExpressionKind::FunctionCall(_)
             )
         };
-        
+
         // DEBUGGING: Check if task already exists for this expression
         if !should_not_reuse {
             if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
@@ -2553,10 +2702,13 @@ impl TypeInferenceEngine {
                     // Self context has changed - fall through to create new task
                 }
             }
-        }        
+        }
         let task_id = self.generate_task_id();
-        println!("      ➕ Creating new task {} for expression at {:p}", task_id, expression);
-        
+        println!(
+            "      ➕ Creating new task {} for expression at {:p}",
+            task_id, expression
+        );
+
         let task = InferenceTask {
             id: task_id,
             expression,
@@ -2568,12 +2720,15 @@ impl TypeInferenceEngine {
         };
 
         self.inference_tasks.insert(task_id, task);
-        
+
         // DEBUG: Check if we're overwriting an existing mapping
         if let Some(old_task_id) = self.expression_to_task_map.insert(expression, task_id) {
-            println!("      ⚠️  OVERWRITING: Expression had task {} -> now has task {}", old_task_id, task_id);
+            println!(
+                "      ⚠️  OVERWRITING: Expression had task {} -> now has task {}",
+                old_task_id, task_id
+            );
         }
-        
+
         task_id
     }
 
@@ -2583,30 +2738,41 @@ impl TypeInferenceEngine {
         if let Some(dependent) = self.inference_tasks.get_mut(&dependent_task) {
             // DEBUG: Check if this dependency is already present
             if dependent.dependencies.contains(&dependency_task) {
-                println!("      🔄 Task {} already has dependency {}, not adding duplicate", dependent_task, dependency_task);
+                println!(
+                    "      🔄 Task {} already has dependency {}, not adding duplicate",
+                    dependent_task, dependency_task
+                );
                 return;
             }
-            
+
             dependent.dependencies.push(dependency_task);
-            println!("      ✅ Task {} now has {} dependencies: {:?}", dependent_task, dependent.dependencies.len(), dependent.dependencies);
+            println!(
+                "      ✅ Task {} now has {} dependencies: {:?}",
+                dependent_task,
+                dependent.dependencies.len(),
+                dependent.dependencies
+            );
         } else {
             println!("      ❌ Failed to find dependent task {}", dependent_task);
         }
-        
+
         // Add dependent to the dependency task
         if let Some(dependency) = self.inference_tasks.get_mut(&dependency_task) {
             if !dependency.dependents.contains(&dependent_task) {
                 dependency.dependents.push(dependent_task);
             }
         } else {
-            println!("      ❌ Failed to find dependency task {}", dependency_task);
+            println!(
+                "      ❌ Failed to find dependency task {}",
+                dependency_task
+            );
         }
     }
 
     /// Mark tasks with no dependencies as ready
     fn mark_ready_tasks(&mut self) {
         let task_ids: Vec<TaskId> = self.inference_tasks.keys().cloned().collect();
-        
+
         for task_id in task_ids {
             let task = self.inference_tasks.get_mut(&task_id).unwrap();
             if task.dependencies.is_empty() && matches!(task.state, TaskState::Pending) {
@@ -2620,11 +2786,11 @@ impl TypeInferenceEngine {
     fn complete_task(&mut self, task_id: TaskId, result: InferenceResult) {
         // Store the result
         self.task_results.insert(task_id, result.clone());
-        
+
         // Update task state
         if let Some(task) = self.inference_tasks.get_mut(&task_id) {
             task.state = TaskState::Completed(result);
-            
+
             // Process dependents
             let dependents = task.dependents.clone();
             for dependent_id in dependents {
@@ -2638,14 +2804,20 @@ impl TypeInferenceEngine {
         if let Some(dependent_task) = self.inference_tasks.get_mut(&dependent_id) {
             // CRITICAL FIX: Move completed dependency to completed_dependencies list instead of removing it
             if dependent_task.dependencies.contains(&completed_dependency) {
-                dependent_task.dependencies.retain(|&dep| dep != completed_dependency);
-                dependent_task.completed_dependencies.push(completed_dependency);
+                dependent_task
+                    .dependencies
+                    .retain(|&dep| dep != completed_dependency);
+                dependent_task
+                    .completed_dependencies
+                    .push(completed_dependency);
                 println!("      📋 Task {} moved dependency {} to completed (remaining: {}, completed: {})", 
                     dependent_id, completed_dependency, dependent_task.dependencies.len(), dependent_task.completed_dependencies.len());
             }
-            
+
             // If no more dependencies, mark as ready
-            if dependent_task.dependencies.is_empty() && matches!(dependent_task.state, TaskState::Pending) {
+            if dependent_task.dependencies.is_empty()
+                && matches!(dependent_task.state, TaskState::Pending)
+            {
                 dependent_task.state = TaskState::Ready;
                 self.ready_task_queue.push_back(dependent_id);
             }
@@ -2663,33 +2835,43 @@ impl TypeInferenceEngine {
         // DEBUG: Function call processing
         let call_name = match &func_call.path {
             outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-            outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+            outrun_parser::FunctionPath::Qualified { module, name } => {
+                format!("{}.{}", module.name, name.name)
+            }
             _ => "dynamic".to_string(),
         };
-        
+
         // Get dependency results for arguments
         let task = &self.inference_tasks[&task_id];
-        println!("🔧 Processing function call: {} with {} dependencies (task_id: {})", call_name, task.dependencies.len(), task_id);
+        println!(
+            "🔧 Processing function call: {} with {} dependencies (task_id: {})",
+            call_name,
+            task.dependencies.len(),
+            task_id
+        );
         println!("    🔍 Task dependencies: {:?}", task.dependencies);
-        
+
         // DEBUG: Check if this task exists in the map and compare
         if let Some(stored_task) = self.inference_tasks.get(&task_id) {
-            println!("    🔍 Stored task dependencies: {:?}", stored_task.dependencies);
+            println!(
+                "    🔍 Stored task dependencies: {:?}",
+                stored_task.dependencies
+            );
             if stored_task.dependencies != task.dependencies {
                 println!("    ⚠️  MISMATCH: Retrieved task differs from stored task!");
             }
         } else {
             println!("    ❌ Task {} not found in inference_tasks map!", task_id);
         }
-        
+
         let mut arg_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 arg_results.push(result.clone());
             }
         }
-        
+
         // Update argument expressions with inferred types from results
         for (_i, _result) in arg_results.iter().enumerate() {
             if let Some(arg) = func_call.arguments.get_mut(_i) {
@@ -2707,10 +2889,13 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         // CRITICAL FIX: Extract argument types from completed dependency results
         let mut arg_types = Vec::new();
-        println!("    🔍 Extracting {} argument types from completed dependencies", task.completed_dependencies.len());
+        println!(
+            "    🔍 Extracting {} argument types from completed dependencies",
+            task.completed_dependencies.len()
+        );
         for (i, dependency_id) in task.completed_dependencies.iter().enumerate() {
             if let Some(result) = self.task_results.get(dependency_id) {
                 println!("      ✅ Arg {}: {:?}", i, result.inferred_type);
@@ -2720,7 +2905,7 @@ impl TypeInferenceEngine {
                 arg_types.push(None);
             }
         }
-        // Use existing function call inference with processed arguments  
+        // Use existing function call inference with processed arguments
         // CRITICAL FIX: Pass the original func_call directly so modifications are preserved
         // Skip recursive argument processing since dependencies are already processed
         let mut mutable_context = context.clone();
@@ -2738,16 +2923,16 @@ impl TypeInferenceEngine {
         // Get dependency results for elements
         let task = &self.inference_tasks[&task_id];
         let mut element_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 element_results.push(result.clone());
             }
         }
-        
+
         // Create modified list literal with processed element types
         let mut processed_literal = list_literal.clone();
-        
+
         // Update list element expressions with inferred types from results
         for (_i, _result) in element_results.iter().enumerate() {
             if let Some(element) = processed_literal.elements.get_mut(_i) {
@@ -2758,7 +2943,7 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         // Use existing recursive list literal inference with processed elements
         let mut mutable_context = context.clone();
         self.infer_list_literal(&processed_literal, &mut mutable_context)
@@ -2775,16 +2960,16 @@ impl TypeInferenceEngine {
         // Get dependency results for elements
         let task = &self.inference_tasks[&task_id];
         let mut element_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 element_results.push(result.clone());
             }
         }
-        
+
         // Create modified tuple literal with processed element types
         let mut processed_literal = tuple_literal.clone();
-        
+
         // Update tuple element expressions with inferred types from results
         for (_i, _result) in element_results.iter().enumerate() {
             if let Some(element) = processed_literal.elements.get_mut(_i) {
@@ -2793,7 +2978,7 @@ impl TypeInferenceEngine {
                 let _ = element; // Suppress unused variable warning
             }
         }
-        
+
         // Use existing recursive tuple literal inference with processed elements
         let mut mutable_context = context.clone();
         self.infer_tuple_literal(&processed_literal, &mut mutable_context)
@@ -2810,16 +2995,16 @@ impl TypeInferenceEngine {
         // Get dependency results for key-value pairs
         let task = &self.inference_tasks[&task_id];
         let mut entry_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 entry_results.push(result.clone());
             }
         }
-        
+
         // Create modified map literal with processed entry types
         let mut processed_literal = map_literal.clone();
-        
+
         // Update map entry expressions with inferred types from results
         let mut result_index = 0;
         for entry in &mut processed_literal.entries {
@@ -2848,7 +3033,7 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         // Use existing recursive map literal inference with processed entries
         let mut mutable_context = context.clone();
         self.infer_map_literal(&processed_literal, &mut mutable_context)
@@ -2863,7 +3048,7 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // Get dependency result for inner expression
         let task = &self.inference_tasks[&task_id];
-        
+
         if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(inner_result) = self.task_results.get(dependency_id) {
                 // Parenthesized expressions just pass through the inner type
@@ -2873,16 +3058,22 @@ impl TypeInferenceEngine {
                     substitution: inner_result.substitution.clone(),
                 })
             } else {
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["Parenthesized expression inner dependency not completed".to_string()],
-                }))
+                Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(None),
+                        suggestions: vec![
+                            "Parenthesized expression inner dependency not completed".to_string(),
+                        ],
+                    },
+                ))
             }
         } else {
-            Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: to_source_span(None),
-                suggestions: vec!["Parenthesized expression has no dependencies".to_string()],
-            }))
+            Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: to_source_span(None),
+                    suggestions: vec!["Parenthesized expression has no dependencies".to_string()],
+                },
+            ))
         }
     }
 
@@ -2895,15 +3086,15 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // Get dependency result for object expression
         let task = &self.inference_tasks[&task_id];
-        
+
         if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(object_result) = self.task_results.get(dependency_id) {
                 // Clone the object result to avoid borrowing conflicts
                 let object_type = object_result.inferred_type.clone();
-                
+
                 // Get the field access expression to extract field name
                 let expression = unsafe { &*task.expression };
-                
+
                 if let outrun_parser::ExpressionKind::FieldAccess(field_access) = &expression.kind {
                     // Use existing field access type inference with processed object type
                     let mut mutable_context = context.clone();
@@ -2913,22 +3104,30 @@ impl TypeInferenceEngine {
                         &mut mutable_context,
                     )
                 } else {
-                    Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: to_source_span(None),
-                        suggestions: vec!["Expected field access expression".to_string()],
-                    }))
+                    Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(None),
+                            suggestions: vec!["Expected field access expression".to_string()],
+                        },
+                    ))
                 }
             } else {
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["Field access object dependency not completed".to_string()],
-                }))
+                Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(None),
+                        suggestions: vec![
+                            "Field access object dependency not completed".to_string()
+                        ],
+                    },
+                ))
             }
         } else {
-            Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: to_source_span(None),
-                suggestions: vec!["Field access has no dependencies".to_string()],
-            }))
+            Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: to_source_span(None),
+                    suggestions: vec!["Field access has no dependencies".to_string()],
+                },
+            ))
         }
     }
 
@@ -2943,20 +3142,20 @@ impl TypeInferenceEngine {
         // Get dependency results for clause bodies and guards
         let task = &self.inference_tasks[&task_id];
         let mut dependency_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 dependency_results.push(result.clone());
             }
         }
-        
+
         // Create modified anonymous function with processed clause types
         let processed_fn = anonymous_fn.clone();
-        
+
         // For now, just use the results to verify dependencies are processed
         // The actual type inference logic can delegate to existing implementation
         let _ = dependency_results; // Suppress unused variable warning
-        
+
         // Use existing recursive anonymous function inference
         let mut mutable_context = context.clone();
         self.infer_anonymous_function(&processed_fn, &mut mutable_context)
@@ -2972,20 +3171,20 @@ impl TypeInferenceEngine {
         // Get dependency results for field values
         let task = &self.inference_tasks[&task_id];
         let mut field_results = Vec::new();
-        
+
         for dependency_id in &task.completed_dependencies {
             if let Some(result) = self.task_results.get(dependency_id) {
                 field_results.push(result.clone());
             }
         }
-        
-        // Get the struct literal expression 
+
+        // Get the struct literal expression
         let expression = unsafe { &*task.expression };
-        
+
         if let outrun_parser::ExpressionKind::Struct(struct_literal) = &expression.kind {
             // Create modified struct literal with processed field types
             let mut processed_literal = struct_literal.clone();
-            
+
             // Update struct field expressions with inferred types from results
             let mut result_index = 0;
             for field in &mut processed_literal.fields {
@@ -3005,7 +3204,7 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            
+
             // Use existing recursive struct literal inference with processed fields
             let mut mutable_context = context.clone();
             // For now, assign a fresh type variable since struct literal inference is not yet implemented
@@ -3016,10 +3215,12 @@ impl TypeInferenceEngine {
                 substitution: mutable_context.substitution.clone(),
             })
         } else {
-            Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: to_source_span(None),
-                suggestions: vec!["Expected struct literal expression".to_string()],
-            }))
+            Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: to_source_span(None),
+                    suggestions: vec!["Expected struct literal expression".to_string()],
+                },
+            ))
         }
     }
 
@@ -3032,15 +3233,15 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // Get dependency result for condition
         let task = &self.inference_tasks[&task_id];
-        
+
         if let Some(dependency_id) = task.completed_dependencies.first() {
             if let Some(condition_result) = self.task_results.get(dependency_id) {
                 // Get the if expression
                 let expression = unsafe { &*task.expression };
-                
+
                 if let outrun_parser::ExpressionKind::IfExpression(if_expr) = &expression.kind {
                     println!("🔧 Implementing if expression type inference");
-                    
+
                     // CRITICAL FIX: Collect dependency results first to avoid borrowing conflicts
                     let mut dependency_results: Vec<Type> = Vec::new();
                     for dependency_id in &task.completed_dependencies {
@@ -3048,7 +3249,7 @@ impl TypeInferenceEngine {
                             dependency_results.push(result.inferred_type.clone());
                         }
                     }
-                    
+
                     // Extract branch types from dependency results
                     // dependency_results[0] = condition, dependency_results[1] = then, dependency_results[2] = else (if present)
                     let then_result = if dependency_results.len() > 1 {
@@ -3058,7 +3259,7 @@ impl TypeInferenceEngine {
                         Type::variable(self.fresh_type_var(), Level(0))
                     };
                     println!("  Then branch type: {:?}", then_result);
-                    
+
                     let else_result = if dependency_results.len() > 2 {
                         Some(dependency_results[2].clone())
                     } else if if_expr.else_block.is_some() {
@@ -3068,11 +3269,11 @@ impl TypeInferenceEngine {
                         println!("  No else branch");
                         None
                     };
-                    
+
                     if let Some(ref else_type) = else_result {
                         println!("  Else branch type: {:?}", else_type);
                     }
-                    
+
                     // Determine the unified type
                     let unified_type = match else_result {
                         Some(else_result) => {
@@ -3081,43 +3282,51 @@ impl TypeInferenceEngine {
                                 then_result // Use then branch type as the unified type
                             } else {
                                 println!("  ❌ Branch types are incompatible");
-                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
+                                return Err(TypecheckError::InferenceError(
+                                    InferenceError::AmbiguousType {
+                                        span: to_source_span(Some(expression.span)),
+                                        suggestions: vec![format!(
                                         "If branches have incompatible types: then={:?}, else={:?}",
                                         then_result, else_result
                                     )],
-                                }));
+                                    },
+                                ));
                             }
                         }
                         None => {
                             // No else branch - the then block type must implement Default
                             println!("  🔧 No else branch - checking Default protocol requirement");
-                            
+
                             // Check if the then block type implements Default protocol
                             let default_protocol_id = crate::types::ModuleName::new("Default");
-                            
+
                             // Extract the type ID from the then_result type
                             let type_implements_default = match &then_result {
                                 Type::Concrete { name, .. } => {
-                                    self.protocol_registry().type_satisfies_protocol(name, &default_protocol_id)
+                                    self.type_satisfies_protocol(name, &default_protocol_id)
                                 }
                                 Type::Protocol { name, .. } => {
                                     // For protocol types, check if the protocol itself satisfies Default
-                                    self.protocol_registry().type_satisfies_protocol(name, &default_protocol_id)
+                                    self.type_satisfies_protocol(name, &default_protocol_id)
                                 }
-                                Type::SelfType { binding_context, .. } => {
+                                Type::SelfType {
+                                    binding_context, ..
+                                } => {
                                     // For Self types, check if the implementing type satisfies Default
                                     match binding_context {
-                                        crate::types::SelfBindingContext::Implementation { implementing_type, .. } => {
-                                            self.protocol_registry().type_satisfies_protocol(implementing_type, &default_protocol_id)
-                                        }
-                                        _ => false
+                                        crate::types::SelfBindingContext::Implementation {
+                                            implementing_type,
+                                            ..
+                                        } => self.type_satisfies_protocol(
+                                            implementing_type,
+                                            &default_protocol_id,
+                                        ),
+                                        _ => false,
                                     }
                                 }
-                                _ => false
+                                _ => false,
                             };
-                            
+
                             if type_implements_default {
                                 println!("  ✅ Type implements Default protocol");
                                 then_result
@@ -3133,31 +3342,39 @@ impl TypeInferenceEngine {
                             }
                         }
                     };
-                    
+
                     println!("  ✅ If expression unified type: {:?}", unified_type);
-                    
+
                     Ok(InferenceResult {
                         inferred_type: unified_type,
                         constraints: context.constraints.clone(),
                         substitution: context.substitution.clone(),
                     })
                 } else {
-                    Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: to_source_span(None),
-                        suggestions: vec!["Expected if expression".to_string()],
-                    }))
+                    Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(None),
+                            suggestions: vec!["Expected if expression".to_string()],
+                        },
+                    ))
                 }
             } else {
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["If expression condition dependency not completed".to_string()],
-                }))
+                Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(None),
+                        suggestions: vec![
+                            "If expression condition dependency not completed".to_string()
+                        ],
+                    },
+                ))
             }
         } else {
-            Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: to_source_span(None),
-                suggestions: vec!["If expression has no dependencies".to_string()],
-            }))
+            Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: to_source_span(None),
+                    suggestions: vec!["If expression has no dependencies".to_string()],
+                },
+            ))
         }
     }
 
@@ -3171,45 +3388,51 @@ impl TypeInferenceEngine {
         // Get the case expression
         let task = &self.inference_tasks[&task_id];
         let expression = unsafe { &*task.expression };
-        
+
         if let outrun_parser::ExpressionKind::CaseExpression(case_expr) = &expression.kind {
             // Get scrutinee result from dependencies - clone to avoid borrow conflicts
-            let scrutinee_result = if let Some(dependency_id) = task.completed_dependencies.first() {
-                self.task_results.get(dependency_id)
-                    .ok_or_else(|| TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: Some(self.create_file_span(None).to_source_span()),
-                        suggestions: vec!["Missing scrutinee result".to_string()],
-                    }))?.clone()
+            let scrutinee_result = if let Some(dependency_id) = task.completed_dependencies.first()
+            {
+                self.task_results
+                    .get(dependency_id)
+                    .ok_or_else(|| {
+                        TypecheckError::InferenceError(InferenceError::AmbiguousType {
+                            span: Some(self.create_file_span(None).to_source_span()),
+                            suggestions: vec!["Missing scrutinee result".to_string()],
+                        })
+                    })?
+                    .clone()
             } else {
-                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: Some(self.create_file_span(None).to_source_span()),
-                    suggestions: vec!["Case expression missing scrutinee".to_string()],
-                }));
+                return Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: Some(self.create_file_span(None).to_source_span()),
+                        suggestions: vec!["Case expression missing scrutinee".to_string()],
+                    },
+                ));
             };
-            
+
             let scrutinee_type = scrutinee_result.inferred_type;
             let mut result_constraints = context.constraints.clone();
             let result_substitution = context.substitution.clone();
             let mut clause_result_types = Vec::new();
-            
+
             // Process each case clause with proper scoping
             for clause in &case_expr.clauses {
                 // Create a new context scope for this clause
                 let mut clause_context = context.clone();
-                
+
                 // Extract pattern bindings and add them to the bindings map
-                let pattern_bindings = self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
+                let pattern_bindings =
+                    self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
                 for (name, binding_type) in pattern_bindings {
                     clause_context.bindings.insert(name, binding_type);
                 }
-                
+
                 // Process guard expression if present (with pattern bindings in scope)
                 if let Some(guard_expr) = &clause.guard {
-                    let guard_result = self.infer_expression_recursive(
-                        &mut guard_expr.clone(), 
-                        &mut clause_context
-                    )?;
-                    
+                    let guard_result = self
+                        .infer_expression_recursive(&mut guard_expr.clone(), &mut clause_context)?;
+
                     // Guard must be Boolean - simplified constraint for now
                     let _boolean_type = Type::concrete("Outrun.Core.Boolean");
                     let fresh_var = self.fresh_type_var();
@@ -3221,13 +3444,13 @@ impl TypeInferenceEngine {
                         protocol: crate::types::ModuleName::new("Boolean"),
                         span: None,
                     });
-                    
+
                     // Merge constraints
                     result_constraints.extend(guard_result.constraints);
                     // Merge substitutions - simplified for now
                     // TODO: Implement proper substitution merging
                 }
-                
+
                 // Process clause result expression (with pattern bindings in scope)
                 let clause_result_expr = match &clause.result {
                     outrun_parser::CaseResult::Expression(expr) => expr.as_ref(),
@@ -3239,18 +3462,18 @@ impl TypeInferenceEngine {
                         continue;
                     }
                 };
-                
+
                 let clause_result = self.infer_expression_recursive(
                     &mut clause_result_expr.clone(),
-                    &mut clause_context
+                    &mut clause_context,
                 )?;
-                
+
                 clause_result_types.push(clause_result.inferred_type.clone());
                 result_constraints.extend(clause_result.constraints);
                 // Merge substitutions - simplified for now
                 // TODO: Implement proper substitution merging
             }
-            
+
             // All clause results must have the same type
             let case_result_type = if clause_result_types.is_empty() {
                 let fresh_var = self.fresh_type_var();
@@ -3261,17 +3484,19 @@ impl TypeInferenceEngine {
                 // to ensure all clause types are compatible
                 first_type
             };
-            
+
             Ok(InferenceResult {
                 inferred_type: case_result_type,
                 constraints: result_constraints,
                 substitution: result_substitution,
             })
         } else {
-            Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                span: Some(self.create_file_span(None).to_source_span()),
-                suggestions: vec!["Expected case expression".to_string()],
-            }))
+            Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: Some(self.create_file_span(None).to_source_span()),
+                    suggestions: vec!["Expected case expression".to_string()],
+                },
+            ))
         }
     }
 
@@ -3283,16 +3508,22 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // CRITICAL FIX: Track inference depth for proper task state management
         self.inference_depth += 1;
-        println!("🔥 INFER_EXPRESSION CALLED (depth={}) - Expression type: {:?}", 
-            self.inference_depth, std::mem::discriminant(&expression.kind));
-        
+        println!(
+            "🔥 INFER_EXPRESSION CALLED (depth={}) - Expression type: {:?}",
+            self.inference_depth,
+            std::mem::discriminant(&expression.kind)
+        );
+
         // Execute main logic with proper cleanup
         let result = self.infer_expression_impl(expression, context);
-        
+
         // CRITICAL FIX: Always decrement depth on exit (both success and error paths)
         self.inference_depth -= 1;
-        println!("✅ INFER_EXPRESSION COMPLETED (depth={})", self.inference_depth);
-        
+        println!(
+            "✅ INFER_EXPRESSION COMPLETED (depth={})",
+            self.inference_depth
+        );
+
         result
     }
 
@@ -3303,7 +3534,7 @@ impl TypeInferenceEngine {
         scrutinee_type: &Type,
     ) -> Result<Vec<(String, Type)>, TypecheckError> {
         let mut bindings = Vec::new();
-        
+
         match pattern {
             outrun_parser::Pattern::Identifier(identifier) => {
                 // Simple identifier pattern binds the entire scrutinee
@@ -3330,7 +3561,8 @@ impl TypeInferenceEngine {
                     if name.as_str() == "List" && args.len() == 1 {
                         let element_type = &args[0];
                         for element_pattern in &list_pattern.elements {
-                            let element_bindings = self.extract_pattern_bindings(element_pattern, element_type)?;
+                            let element_bindings =
+                                self.extract_pattern_bindings(element_pattern, element_type)?;
                             bindings.extend(element_bindings);
                         }
                     }
@@ -3341,10 +3573,10 @@ impl TypeInferenceEngine {
                 // Would need to extract tuple element types
             }
         }
-        
+
         Ok(bindings)
     }
-    
+
     /// Recursive inference method for processing expressions within case clauses
     /// This is needed because the iterative system can't handle nested inference
     fn infer_expression_recursive(
@@ -3357,18 +3589,26 @@ impl TypeInferenceEngine {
         match &expression.kind {
             outrun_parser::ExpressionKind::Identifier(name) => {
                 if let Some(var_type) = context.bindings.get(&name.name) {
-                    eprintln!("🔍 process_single_task Identifier: {} -> {}", name.name, var_type);
+                    eprintln!(
+                        "🔍 process_single_task Identifier: {} -> {}",
+                        name.name, var_type
+                    );
                     Ok(InferenceResult {
                         inferred_type: var_type.clone(),
                         constraints: vec![],
                         substitution: Substitution::new(),
                     })
                 } else {
-                    eprintln!("🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings", name.name);
-                    Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: Some(self.create_file_span(None).to_source_span()),
-                        suggestions: vec![format!("Unknown variable: {}", name.name)],
-                    }))
+                    eprintln!(
+                        "🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings",
+                        name.name
+                    );
+                    Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: Some(self.create_file_span(None).to_source_span()),
+                            suggestions: vec![format!("Unknown variable: {}", name.name)],
+                        },
+                    ))
                 }
             }
             outrun_parser::ExpressionKind::Boolean(_) => {
@@ -3394,7 +3634,7 @@ impl TypeInferenceEngine {
             }
         }
     }
-    
+
     /// Recursive function call inference for case clause processing
     fn infer_function_call_recursive(
         &mut self,
@@ -3430,7 +3670,7 @@ impl TypeInferenceEngine {
                 // Expression-based function calls - not handled for now
             }
         }
-        
+
         // For other function calls, assign a fresh type variable
         let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
         Ok(InferenceResult {
@@ -3447,68 +3687,82 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         let mut work_stack: Vec<WorkItem> = vec![WorkItem::EvaluateExpression {
             expression: expression as *mut Expression,
             context: context.clone(),
         }];
         let mut result_stack: Vec<InferenceResult> = Vec::new();
-        
+
         while let Some(work_item) = work_stack.pop() {
             match work_item {
-                WorkItem::EvaluateExpression { expression, context } => {
+                WorkItem::EvaluateExpression {
+                    expression,
+                    context,
+                } => {
                     let expr_ref = unsafe { &mut *expression };
-                    
+
                     match &mut expr_ref.kind {
                         // Leaf expressions - no dependencies, process immediately
-                        ExpressionKind::Boolean(_) | ExpressionKind::Integer(_) | 
-                        ExpressionKind::Float(_) | ExpressionKind::String(_) |
-                        ExpressionKind::Atom(_) | ExpressionKind::Sigil(_) |
-                        ExpressionKind::Identifier(_) | ExpressionKind::TypeIdentifier(_) |
-                        ExpressionKind::QualifiedIdentifier(_) | ExpressionKind::FunctionCapture(_) => {
+                        ExpressionKind::Boolean(_)
+                        | ExpressionKind::Integer(_)
+                        | ExpressionKind::Float(_)
+                        | ExpressionKind::String(_)
+                        | ExpressionKind::Atom(_)
+                        | ExpressionKind::Sigil(_)
+                        | ExpressionKind::Identifier(_)
+                        | ExpressionKind::TypeIdentifier(_)
+                        | ExpressionKind::QualifiedIdentifier(_)
+                        | ExpressionKind::FunctionCapture(_) => {
                             let result = self.infer_leaf_expression(expr_ref, &context)?;
                             result_stack.push(result);
-                        },
-                        
+                        }
+
                         // Composite expressions - push continuation then dependencies
                         ExpressionKind::FunctionCall(func_call) => {
                             let arg_count = func_call.arguments.len();
-                            
+
                             // Push continuation first (processed after dependencies)
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: arg_count,
                             });
-                            
+
                             // Push argument evaluations in reverse order
                             for arg in func_call.arguments.iter_mut().rev() {
                                 match arg {
-                                    outrun_parser::Argument::Named { expression: arg_expr, .. } => {
+                                    outrun_parser::Argument::Named {
+                                        expression: arg_expr,
+                                        ..
+                                    } => {
                                         work_stack.push(WorkItem::EvaluateExpression {
                                             expression: arg_expr as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
-                                    outrun_parser::Argument::Spread { expression: arg_expr, .. } => {
+                                    }
+                                    outrun_parser::Argument::Spread {
+                                        expression: arg_expr,
+                                        ..
+                                    } => {
                                         work_stack.push(WorkItem::EvaluateExpression {
                                             expression: arg_expr as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                 }
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::List(list_literal) => {
                             let element_count = list_literal.elements.len();
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: element_count,
                             });
-                            
+
                             // Push element evaluations in reverse order
                             for element in list_literal.elements.iter_mut().rev() {
                                 match element {
@@ -3517,30 +3771,32 @@ impl TypeInferenceEngine {
                                             expression: expr.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::ListElement::Spread(identifier) => {
                                         // Create a temporary identifier expression for the spread
                                         let identifier_expr = Expression {
-                                            kind: outrun_parser::ExpressionKind::Identifier(identifier.clone()),
+                                            kind: outrun_parser::ExpressionKind::Identifier(
+                                                identifier.clone(),
+                                            ),
                                             span: identifier.span,
                                             type_info: None,
                                         };
                                         // For now, skip spread elements - they need special handling
                                         // TODO: Implement proper spread element type inference
-                                    },
+                                    }
                                 }
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::Tuple(tuple_literal) => {
                             let element_count = tuple_literal.elements.len();
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: element_count,
                             });
-                            
+
                             // Push element evaluations in reverse order
                             for element in tuple_literal.elements.iter_mut().rev() {
                                 work_stack.push(WorkItem::EvaluateExpression {
@@ -3548,8 +3804,8 @@ impl TypeInferenceEngine {
                                     context: context.clone(),
                                 });
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::Map(map_literal) => {
                             let mut dep_count = 0;
                             for entry in &map_literal.entries {
@@ -3559,13 +3815,13 @@ impl TypeInferenceEngine {
                                     outrun_parser::MapEntry::Spread(_) => dep_count += 0, // skip spreads for now
                                 }
                             }
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: dep_count,
                             });
-                            
+
                             // Push entry evaluations in reverse order
                             for entry in map_literal.entries.iter_mut().rev() {
                                 match entry {
@@ -3578,111 +3834,121 @@ impl TypeInferenceEngine {
                                             expression: key.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::MapEntry::Shorthand { value, .. } => {
                                         work_stack.push(WorkItem::EvaluateExpression {
                                             expression: value.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::MapEntry::Spread(_) => {
                                         // Skip spread elements for now
                                         // TODO: Implement proper spread element type inference
-                                    },
+                                    }
                                 }
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::Struct(struct_literal) => {
                             // Count only fields that have expressions to evaluate
                             let mut field_count = 0;
                             for field in &struct_literal.fields {
                                 match field {
-                                    outrun_parser::StructLiteralField::Assignment { .. } => field_count += 1,
-                                    outrun_parser::StructLiteralField::Shorthand(_) => {}, // No expression to evaluate
-                                    outrun_parser::StructLiteralField::Spread(_) => {}, // Skip spreads for now
+                                    outrun_parser::StructLiteralField::Assignment { .. } => {
+                                        field_count += 1
+                                    }
+                                    outrun_parser::StructLiteralField::Shorthand(_) => {} // No expression to evaluate
+                                    outrun_parser::StructLiteralField::Spread(_) => {} // Skip spreads for now
                                 }
                             }
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: field_count,
                             });
-                            
+
                             // Push field value evaluations in reverse order
                             for field in struct_literal.fields.iter_mut().rev() {
                                 match field {
-                                    outrun_parser::StructLiteralField::Assignment { value, .. } => {
+                                    outrun_parser::StructLiteralField::Assignment {
+                                        value, ..
+                                    } => {
                                         work_stack.push(WorkItem::EvaluateExpression {
                                             expression: value.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::StructLiteralField::Shorthand(_) => {
                                         // Shorthand fields don't have expressions to evaluate
                                         // The identifier itself is the value
-                                    },
+                                    }
                                     outrun_parser::StructLiteralField::Spread(_) => {
                                         // Skip spread elements for now
                                         // TODO: Implement proper spread element type inference
-                                    },
+                                    }
                                 }
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::BinaryOp(_) => {
-                            unreachable!("Binary operations should be desugared before type checking");
-                        },
-                        
+                            unreachable!(
+                                "Binary operations should be desugared before type checking"
+                            );
+                        }
+
                         ExpressionKind::UnaryOp(_) => {
-                            unreachable!("Unary operations should be desugared before type checking");
-                        },
-                        
+                            unreachable!(
+                                "Unary operations should be desugared before type checking"
+                            );
+                        }
+
                         ExpressionKind::FieldAccess(field_access) => {
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: 1, // object
                             });
-                            
+
                             work_stack.push(WorkItem::EvaluateExpression {
                                 expression: field_access.object.as_mut() as *mut Expression,
                                 context: context.clone(),
                             });
-                        },
-                        
+                        }
+
                         ExpressionKind::Parenthesized(inner_expr) => {
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: 1, // inner expression
                             });
-                            
+
                             work_stack.push(WorkItem::EvaluateExpression {
                                 expression: inner_expr.as_mut() as *mut Expression,
                                 context: context.clone(),
                             });
-                        },
-                        
+                        }
+
                         ExpressionKind::IfExpression(if_expr) => {
                             let mut dep_count = 2; // condition + then
                             if if_expr.else_block.is_some() {
                                 dep_count = 3; // condition + then + else
                             }
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: dep_count,
                             });
-                            
+
                             // Push in reverse order: else, then, condition
                             if let Some(else_block) = &mut if_expr.else_block {
                                 // For now, treat blocks as single expressions (simplified)
                                 // TODO: Handle full block processing
                                 if let Some(last_stmt) = else_block.statements.last_mut() {
-                                    if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                    if let outrun_parser::StatementKind::Expression(expr) =
+                                        &mut last_stmt.kind
+                                    {
                                         work_stack.push(WorkItem::EvaluateExpression {
                                             expression: expr.as_mut() as *mut Expression,
                                             context: context.clone(),
@@ -3690,33 +3956,35 @@ impl TypeInferenceEngine {
                                     }
                                 }
                             }
-                            
+
                             // Handle then block
                             if let Some(last_stmt) = if_expr.then_block.statements.last_mut() {
-                                if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                if let outrun_parser::StatementKind::Expression(expr) =
+                                    &mut last_stmt.kind
+                                {
                                     work_stack.push(WorkItem::EvaluateExpression {
                                         expression: expr.as_mut() as *mut Expression,
                                         context: context.clone(),
                                     });
                                 }
                             }
-                            
+
                             work_stack.push(WorkItem::EvaluateExpression {
                                 expression: if_expr.condition.as_mut() as *mut Expression,
                                 context: context.clone(),
                             });
-                        },
-                        
+                        }
+
                         ExpressionKind::CaseExpression(case_expr) => {
                             // case_expr has: expression (scrutinee) + clauses
                             let clause_count = case_expr.clauses.len();
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: 1 + clause_count, // scrutinee + clauses
                             });
-                            
+
                             // Push clause evaluations in reverse order
                             for clause in case_expr.clauses.iter_mut().rev() {
                                 // For now, just evaluate the clause result
@@ -3727,38 +3995,40 @@ impl TypeInferenceEngine {
                                             expression: expr.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::CaseResult::Block(block) => {
                                         // For now, treat blocks as single expressions (simplified)
                                         if let Some(last_stmt) = block.statements.last_mut() {
-                                            if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                            if let outrun_parser::StatementKind::Expression(expr) =
+                                                &mut last_stmt.kind
+                                            {
                                                 work_stack.push(WorkItem::EvaluateExpression {
                                                     expression: expr.as_mut() as *mut Expression,
                                                     context: context.clone(),
                                                 });
                                             }
                                         }
-                                    },
+                                    }
                                 }
                             }
-                            
+
                             // Push scrutinee evaluation
                             work_stack.push(WorkItem::EvaluateExpression {
                                 expression: case_expr.expression.as_mut() as *mut Expression,
                                 context: context.clone(),
                             });
-                        },
-                        
+                        }
+
                         ExpressionKind::AnonymousFunction(anon_fn) => {
                             // Anonymous functions have clauses with bodies
                             let clause_count = anon_fn.clauses.len();
-                            
+
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
                                 context: context.clone(),
                                 dependency_count: clause_count,
                             });
-                            
+
                             // Push clause body evaluations in reverse order
                             for clause in anon_fn.clauses.iter_mut().rev() {
                                 match &mut clause.body {
@@ -3767,62 +4037,79 @@ impl TypeInferenceEngine {
                                             expression: expr.as_mut() as *mut Expression,
                                             context: context.clone(),
                                         });
-                                    },
+                                    }
                                     outrun_parser::AnonymousBody::Block(block) => {
                                         // For now, treat blocks as single expressions (simplified)
                                         if let Some(last_stmt) = block.statements.last_mut() {
-                                            if let outrun_parser::StatementKind::Expression(expr) = &mut last_stmt.kind {
+                                            if let outrun_parser::StatementKind::Expression(expr) =
+                                                &mut last_stmt.kind
+                                            {
                                                 work_stack.push(WorkItem::EvaluateExpression {
                                                     expression: expr.as_mut() as *mut Expression,
                                                     context: context.clone(),
                                                 });
                                             }
                                         }
-                                    },
+                                    }
                                 }
                             }
-                        },
-                        
+                        }
+
                         ExpressionKind::MacroInjection(_) => {
                             // Macro injections should be expanded before type checking
-                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expr_ref.span)),
-                                suggestions: vec!["Macro injections should be expanded before type checking".to_string()],
-                            }));
-                        },
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expr_ref.span)),
+                                    suggestions: vec![
+                                        "Macro injections should be expanded before type checking"
+                                            .to_string(),
+                                    ],
+                                },
+                            ));
+                        }
                     }
-                },
-                
-                WorkItem::ContinueWithResults { expression, context, dependency_count } => {
+                }
+
+                WorkItem::ContinueWithResults {
+                    expression,
+                    context,
+                    dependency_count,
+                } => {
                     // Collect dependency results from result_stack
                     let mut dependency_results = Vec::new();
                     for _ in 0..dependency_count {
                         if let Some(result) = result_stack.pop() {
                             dependency_results.push(result);
                         } else {
-                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                span: to_source_span(None),
-                                suggestions: vec!["Missing dependency result".to_string()],
-                            }));
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(None),
+                                    suggestions: vec!["Missing dependency result".to_string()],
+                                },
+                            ));
                         }
                     }
                     dependency_results.reverse(); // Restore correct order
-                    
+
                     // Process expression with dependency results
                     let expr_ref = unsafe { &mut *expression };
-                    let result = self.infer_expression_with_dependencies(expr_ref, &context, &dependency_results)?;
+                    let result = self.infer_expression_with_dependencies(
+                        expr_ref,
+                        &context,
+                        &dependency_results,
+                    )?;
                     result_stack.push(result);
                 }
             }
         }
-        
+
         // Return the final result
-        result_stack.pop().ok_or_else(|| TypecheckError::InferenceError(
-            InferenceError::AmbiguousType {
+        result_stack.pop().ok_or_else(|| {
+            TypecheckError::InferenceError(InferenceError::AmbiguousType {
                 span: to_source_span(Some(expression.span)),
                 suggestions: vec!["No result produced".to_string()],
-            }
-        ))
+            })
+        })
     }
 
     /// Process leaf expressions that have no dependencies
@@ -3832,43 +4119,33 @@ impl TypeInferenceEngine {
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         match &expression.kind {
-            ExpressionKind::Boolean(_) => {
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Outrun.Core.Boolean"),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            },
-            ExpressionKind::Integer(_) => {
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Outrun.Core.Integer64"),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            },
-            ExpressionKind::Float(_) => {
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Outrun.Core.Float64"),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            },
-            ExpressionKind::String(_) => {
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Outrun.Core.String"),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            },
-            ExpressionKind::Atom(_) => {
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Outrun.Core.Atom"),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            },
+            ExpressionKind::Boolean(_) => Ok(InferenceResult {
+                inferred_type: Type::concrete("Outrun.Core.Boolean"),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            }),
+            ExpressionKind::Integer(_) => Ok(InferenceResult {
+                inferred_type: Type::concrete("Outrun.Core.Integer64"),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            }),
+            ExpressionKind::Float(_) => Ok(InferenceResult {
+                inferred_type: Type::concrete("Outrun.Core.Float64"),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            }),
+            ExpressionKind::String(_) => Ok(InferenceResult {
+                inferred_type: Type::concrete("Outrun.Core.String"),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            }),
+            ExpressionKind::Atom(_) => Ok(InferenceResult {
+                inferred_type: Type::concrete("Outrun.Core.Atom"),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            }),
             ExpressionKind::Sigil(sigil_literal) => {
                 // Sigil literals need special handling - they're processed by sigil protocols
                 // For now, return a generic type - this should be enhanced later
@@ -3877,7 +4154,7 @@ impl TypeInferenceEngine {
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
+            }
             ExpressionKind::Identifier(identifier) => {
                 // Look up identifier in context bindings or symbol table
                 if let Some(var_type) = context.bindings.get(&identifier.name) {
@@ -3899,7 +4176,7 @@ impl TypeInferenceEngine {
                             binding_context: context.self_binding.clone(),
                             span: Some(expression.span),
                         };
-                        
+
                         // Try to resolve Self to concrete type
                         if let Some(resolved_self) = self_type.resolve_self() {
                             Ok(InferenceResult {
@@ -3916,13 +4193,18 @@ impl TypeInferenceEngine {
                             })
                         }
                     } else {
-                        Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![format!("Unknown identifier: {}", identifier.name)],
-                        }))
+                        Err(TypecheckError::InferenceError(
+                            InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec![format!(
+                                    "Unknown identifier: {}",
+                                    identifier.name
+                                )],
+                            },
+                        ))
                     }
                 }
-            },
+            }
             ExpressionKind::TypeIdentifier(type_id) => {
                 // Type identifiers represent types themselves
                 // For now, treat them as concrete types
@@ -3931,12 +4213,12 @@ impl TypeInferenceEngine {
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
+            }
             ExpressionKind::QualifiedIdentifier(qualified_id) => {
                 // Use existing qualified identifier inference
                 let mut mutable_context = context.clone();
                 self.infer_qualified_identifier(qualified_id, &mut mutable_context)
-            },
+            }
             ExpressionKind::FunctionCapture(_) => {
                 // Function captures create function types
                 // For now, return a generic function type - this needs proper implementation
@@ -3945,13 +4227,13 @@ impl TypeInferenceEngine {
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
-            _ => {
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+            }
+            _ => Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
                     span: to_source_span(Some(expression.span)),
                     suggestions: vec!["Expression type not supported as leaf".to_string()],
-                }))
-            }
+                },
+            )),
         }
     }
 
@@ -3963,7 +4245,7 @@ impl TypeInferenceEngine {
         dependency_results: &[InferenceResult],
     ) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         match &mut expression.kind {
             ExpressionKind::FunctionCall(func_call) => {
                 // Convert dependency results to argument types
@@ -3971,12 +4253,16 @@ impl TypeInferenceEngine {
                     .iter()
                     .map(|result| Some(result.inferred_type.clone()))
                     .collect();
-                
+
                 // Use existing function call inference with precomputed argument types
                 let mut mutable_context = context.clone();
-                self.infer_function_call_with_precomputed_args(func_call, &mut mutable_context, &arg_types)
-            },
-            
+                self.infer_function_call_with_precomputed_args(
+                    func_call,
+                    &mut mutable_context,
+                    &arg_types,
+                )
+            }
+
             ExpressionKind::List(list_literal) => {
                 // All elements have been processed, infer list type from element types
                 if dependency_results.is_empty() {
@@ -3990,40 +4276,47 @@ impl TypeInferenceEngine {
                 } else {
                     // Non-empty list - all elements should have the same type
                     let first_element_type = &dependency_results[0].inferred_type;
-                    
+
                     // Check that all elements have compatible types
                     for (i, result) in dependency_results.iter().enumerate().skip(1) {
                         if !self.types_are_compatible(first_element_type, &result.inferred_type) {
-                            return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expression.span)),
-                                suggestions: vec![format!("List element {} has type {}, but expected {}", 
-                                    i, result.inferred_type, first_element_type)],
-                            }));
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "List element {} has type {}, but expected {}",
+                                        i, result.inferred_type, first_element_type
+                                    )],
+                                },
+                            ));
                         }
                     }
-                    
+
                     Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete("List", vec![first_element_type.clone()]),
+                        inferred_type: Type::generic_concrete(
+                            "List",
+                            vec![first_element_type.clone()],
+                        ),
                         constraints: Vec::new(),
                         substitution: Substitution::new(),
                     })
                 }
-            },
-            
+            }
+
             ExpressionKind::Tuple(tuple_literal) => {
                 // Tuple type is the product of all element types
                 let element_types: Vec<Type> = dependency_results
                     .iter()
                     .map(|result| result.inferred_type.clone())
                     .collect();
-                
+
                 Ok(InferenceResult {
                     inferred_type: Type::generic_concrete("Tuple", element_types),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
-            
+            }
+
             ExpressionKind::Map(map_literal) => {
                 // Map type is Map<K, V> where K and V are inferred from entries
                 if dependency_results.is_empty() {
@@ -4040,42 +4333,56 @@ impl TypeInferenceEngine {
                     // dependency_results are in pairs: [key1, value1, key2, value2, ...]
                     let first_key_type = &dependency_results[0].inferred_type;
                     let first_value_type = &dependency_results[1].inferred_type;
-                    
+
                     // Check that all keys and values have compatible types
                     for chunk in dependency_results.chunks(2).skip(1) {
                         if chunk.len() == 2 {
                             if !self.types_are_compatible(first_key_type, &chunk[0].inferred_type) {
-                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!("Map key has type {}, but expected {}", 
-                                        chunk[0].inferred_type, first_key_type)],
-                                }));
+                                return Err(TypecheckError::InferenceError(
+                                    InferenceError::AmbiguousType {
+                                        span: to_source_span(Some(expression.span)),
+                                        suggestions: vec![format!(
+                                            "Map key has type {}, but expected {}",
+                                            chunk[0].inferred_type, first_key_type
+                                        )],
+                                    },
+                                ));
                             }
-                            if !self.types_are_compatible(first_value_type, &chunk[1].inferred_type) {
-                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!("Map value has type {}, but expected {}", 
-                                        chunk[1].inferred_type, first_value_type)],
-                                }));
+                            if !self.types_are_compatible(first_value_type, &chunk[1].inferred_type)
+                            {
+                                return Err(TypecheckError::InferenceError(
+                                    InferenceError::AmbiguousType {
+                                        span: to_source_span(Some(expression.span)),
+                                        suggestions: vec![format!(
+                                            "Map value has type {}, but expected {}",
+                                            chunk[1].inferred_type, first_value_type
+                                        )],
+                                    },
+                                ));
                             }
                         }
                     }
-                    
+
                     Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete("Map", vec![first_key_type.clone(), first_value_type.clone()]),
+                        inferred_type: Type::generic_concrete(
+                            "Map",
+                            vec![first_key_type.clone(), first_value_type.clone()],
+                        ),
                         constraints: Vec::new(),
                         substitution: Substitution::new(),
                     })
                 }
-            },
-            
+            }
+
             ExpressionKind::Struct(struct_literal) => {
                 // Struct type is determined by the struct name and field types
-                let struct_name = struct_literal.type_path.iter()
+                let struct_name = struct_literal
+                    .type_path
+                    .iter()
                     .map(|segment| segment.name.as_str())
                     .collect::<Vec<_>>()
                     .join(".");
-                
+
                 // CRITICAL FIX: Use expected type for bidirectional inference of generic parameters
                 if let Some(expected_type) = &context.expected_type {
                     // Check if the expected type matches this struct name
@@ -4084,14 +4391,14 @@ impl TypeInferenceEngine {
                         Type::Protocol { name, .. } => Some(name.as_str()),
                         _ => None,
                     };
-                    
+
                     if let Some(expected_name) = expected_name {
                         if expected_name == struct_name {
                             println!("🚨🚨🚨 STRUCT LITERAL BIDIRECTIONAL INFERENCE 🚨🚨🚨");
                             println!("  Struct name: {}", struct_name);
                             println!("  Expected type: {:?}", expected_type);
                             println!("  Using expected type with generic parameters!");
-                            
+
                             // Use the expected type which includes generic parameters
                             return Ok(InferenceResult {
                                 inferred_type: expected_type.clone(),
@@ -4100,9 +4407,12 @@ impl TypeInferenceEngine {
                             });
                         }
                     }
-                    
+
                     // Expected type doesn't match, fall back to concrete type
-                    println!("🔍 Struct literal: expected type {} doesn't match struct {}", expected_type, struct_name);
+                    println!(
+                        "🔍 Struct literal: expected type {} doesn't match struct {}",
+                        expected_type, struct_name
+                    );
                     Ok(InferenceResult {
                         inferred_type: Type::concrete(&struct_name),
                         constraints: Vec::new(),
@@ -4116,17 +4426,21 @@ impl TypeInferenceEngine {
                         substitution: Substitution::new(),
                     })
                 }
-            },
-            
+            }
+
             ExpressionKind::FieldAccess(field_access) => {
                 // dependency_results[0] = object
                 let object_type = &dependency_results[0].inferred_type;
-                
+
                 // Use existing field access inference
                 let mut mutable_context = context.clone();
-                self.infer_field_access_type(object_type, &field_access.field.name, &mut mutable_context)
-            },
-            
+                self.infer_field_access_type(
+                    object_type,
+                    &field_access.field.name,
+                    &mut mutable_context,
+                )
+            }
+
             ExpressionKind::Parenthesized(_) => {
                 // Parenthesized expressions just pass through the inner type
                 // dependency_results[0] = inner expression
@@ -4135,8 +4449,8 @@ impl TypeInferenceEngine {
                     constraints: dependency_results[0].constraints.clone(),
                     substitution: dependency_results[0].substitution.clone(),
                 })
-            },
-            
+            }
+
             ExpressionKind::IfExpression(if_expr) => {
                 // dependency_results[0] = condition, [1] = then, [2] = else (if present)
                 let condition_type = &dependency_results[0].inferred_type;
@@ -4146,95 +4460,123 @@ impl TypeInferenceEngine {
                 } else {
                     None
                 };
-                
+
                 // Verify condition is Boolean
                 let boolean_type = Type::concrete("Outrun.Core.Boolean");
                 if !self.types_are_compatible(condition_type, &boolean_type) {
-                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: to_source_span(Some(if_expr.condition.span)),
-                        suggestions: vec![format!("Expected Boolean, found {}", condition_type)],
-                    }));
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(if_expr.condition.span)),
+                            suggestions: vec![format!(
+                                "Expected Boolean, found {}",
+                                condition_type
+                            )],
+                        },
+                    ));
                 }
-                
+
                 // Determine result type
                 let result_type = if let Some(else_type) = else_type {
                     // Both branches present - they must be compatible
                     if self.types_are_compatible(then_type, else_type) {
                         then_type.clone()
                     } else {
-                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![format!("If branches have incompatible types: {} vs {}", then_type, else_type)],
-                        }));
+                        return Err(TypecheckError::InferenceError(
+                            InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec![format!(
+                                    "If branches have incompatible types: {} vs {}",
+                                    then_type, else_type
+                                )],
+                            },
+                        ));
                     }
                 } else {
                     // No else branch - result is Option<then_type>
                     Type::generic_concrete("Option", vec![then_type.clone()])
                 };
-                
+
                 Ok(InferenceResult {
                     inferred_type: result_type,
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
-            
+            }
+
             ExpressionKind::CaseExpression(case_expr) => {
                 // dependency_results[0] = scrutinee, [1..] = clause results
                 let scrutinee_type = &dependency_results[0].inferred_type;
-                
+
                 if dependency_results.len() < 2 {
-                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: to_source_span(Some(expression.span)),
-                        suggestions: vec!["Case expression must have at least one clause".to_string()],
-                    }));
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![
+                                "Case expression must have at least one clause".to_string()
+                            ],
+                        },
+                    ));
                 }
-                
+
                 // All clause results should have compatible types
                 let first_clause_type = &dependency_results[1].inferred_type;
                 for (i, result) in dependency_results.iter().enumerate().skip(2) {
                     if !self.types_are_compatible(first_clause_type, &result.inferred_type) {
-                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![format!("Case clause {} has type {}, but expected {}", 
-                                i - 1, result.inferred_type, first_clause_type)],
-                        }));
+                        return Err(TypecheckError::InferenceError(
+                            InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec![format!(
+                                    "Case clause {} has type {}, but expected {}",
+                                    i - 1,
+                                    result.inferred_type,
+                                    first_clause_type
+                                )],
+                            },
+                        ));
                     }
                 }
-                
+
                 // TODO: Add pattern matching validation against scrutinee_type
-                
+
                 Ok(InferenceResult {
                     inferred_type: first_clause_type.clone(),
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
-            
+            }
+
             ExpressionKind::AnonymousFunction(anon_fn) => {
                 // Anonymous functions create function types
                 // For now, create a generic function type
                 // TODO: Infer proper parameter and return types from clauses
-                
+
                 if dependency_results.is_empty() {
-                    return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                        span: to_source_span(Some(expression.span)),
-                        suggestions: vec!["Anonymous function must have at least one clause".to_string()],
-                    }));
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![
+                                "Anonymous function must have at least one clause".to_string()
+                            ],
+                        },
+                    ));
                 }
-                
+
                 // All clause bodies should have compatible return types
                 let first_return_type = &dependency_results[0].inferred_type;
                 for (i, result) in dependency_results.iter().enumerate().skip(1) {
                     if !self.types_are_compatible(first_return_type, &result.inferred_type) {
-                        return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![format!("Function clause {} returns {}, but expected {}", 
-                                i, result.inferred_type, first_return_type)],
-                        }));
+                        return Err(TypecheckError::InferenceError(
+                            InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec![format!(
+                                    "Function clause {} returns {}, but expected {}",
+                                    i, result.inferred_type, first_return_type
+                                )],
+                            },
+                        ));
                     }
                 }
-                
+
                 // Create a simplified function type
                 // TODO: Extract proper parameter types from clause parameters
                 Ok(InferenceResult {
@@ -4242,14 +4584,14 @@ impl TypeInferenceEngine {
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
-            },
-            
-            _ => {
-                Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
+            }
+
+            _ => Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
                     span: to_source_span(Some(expression.span)),
                     suggestions: vec!["Expression type not supported with dependencies".to_string()],
-                }))
-            }
+                },
+            )),
         }
     }
 
@@ -4260,45 +4602,68 @@ impl TypeInferenceEngine {
         root_context: InferenceContext,
     ) -> Result<TaskId, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         // DEBUG: Track task creation
         let start_tasks = self.inference_tasks.len();
-        println!("🔍 Starting task collection (current tasks: {})", start_tasks);
-        
+        println!(
+            "🔍 Starting task collection (current tasks: {})",
+            start_tasks
+        );
+
         // Create root task
         let root_task_id = self.create_task(root_expression as *mut Expression, root_context);
-        
+
         // Use work stack for non-recursive traversal (similar to desugaring pattern)
         let mut work_stack: Vec<&mut Expression> = vec![root_expression];
-        
+
         while let Some(current_expr) = work_stack.pop() {
-            let current_task_id = *self.expression_to_task_map.get(&(current_expr as *mut Expression))
+            let current_task_id = *self
+                .expression_to_task_map
+                .get(&(current_expr as *mut Expression))
                 .expect("Expression should have corresponding task");
-            
+
             // Add child expressions based on expression type and create dependencies
             match &mut current_expr.kind {
                 ExpressionKind::FunctionCall(function_call) => {
                     // DEBUG: Function call task collection
                     let call_name = match &function_call.path {
                         outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-                        outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+                        outrun_parser::FunctionPath::Qualified { module, name } => {
+                            format!("{}.{}", module.name, name.name)
+                        }
                         _ => "dynamic".to_string(),
                     };
-                    println!("🔧 Task collection for function call: {} with {} arguments (task_id: {})", call_name, function_call.arguments.len(), current_task_id);
-                    
+                    println!(
+                        "🔧 Task collection for function call: {} with {} arguments (task_id: {})",
+                        call_name,
+                        function_call.arguments.len(),
+                        current_task_id
+                    );
+
                     // Function call depends on all its arguments
                     for (i, argument) in function_call.arguments.iter_mut().enumerate() {
-                        if let outrun_parser::Argument::Named { name, expression, .. } = argument {
-                            println!("  📋 Creating dependency for argument {}: {} (type: {:?})", i, name.name, expression.kind);
-                            
+                        if let outrun_parser::Argument::Named {
+                            name, expression, ..
+                        } = argument
+                        {
+                            println!(
+                                "  📋 Creating dependency for argument {}: {} (type: {:?})",
+                                i, name.name, expression.kind
+                            );
+
                             // Create task for argument expression
-                            let arg_context = self.inference_tasks[&current_task_id].context.clone();
-                            let arg_task_id = self.create_task(expression as *mut Expression, arg_context);
-                            
+                            let arg_context =
+                                self.inference_tasks[&current_task_id].context.clone();
+                            let arg_task_id =
+                                self.create_task(expression as *mut Expression, arg_context);
+
                             // Function call depends on its argument
-                            println!("    ➕ Adding dependency: {} -> {}", current_task_id, arg_task_id);
+                            println!(
+                                "    ➕ Adding dependency: {} -> {}",
+                                current_task_id, arg_task_id
+                            );
                             self.add_task_dependency(current_task_id, arg_task_id);
-                            
+
                             // Add argument to work stack for further processing
                             work_stack.push(expression);
                         }
@@ -4308,9 +4673,11 @@ impl TypeInferenceEngine {
                     // List depends on all its elements
                     for element in &mut list_literal.elements {
                         if let outrun_parser::ListElement::Expression(expr) = element {
-                            let elem_context = self.inference_tasks[&current_task_id].context.clone();
-                            let elem_task_id = self.create_task(expr.as_mut() as *mut Expression, elem_context);
-                            
+                            let elem_context =
+                                self.inference_tasks[&current_task_id].context.clone();
+                            let elem_task_id =
+                                self.create_task(expr.as_mut() as *mut Expression, elem_context);
+
                             self.add_task_dependency(current_task_id, elem_task_id);
                             work_stack.push(expr);
                         }
@@ -4320,8 +4687,9 @@ impl TypeInferenceEngine {
                     // Tuple depends on all its elements
                     for element in &mut tuple_literal.elements {
                         let elem_context = self.inference_tasks[&current_task_id].context.clone();
-                        let elem_task_id = self.create_task(element as *mut Expression, elem_context);
-                        
+                        let elem_task_id =
+                            self.create_task(element as *mut Expression, elem_context);
+
                         self.add_task_dependency(current_task_id, elem_task_id);
                         work_stack.push(element);
                     }
@@ -4331,22 +4699,28 @@ impl TypeInferenceEngine {
                     for entry in &mut map_literal.entries {
                         match entry {
                             outrun_parser::MapEntry::Assignment { key, value } => {
-                                let key_context = self.inference_tasks[&current_task_id].context.clone();
-                                let value_context = self.inference_tasks[&current_task_id].context.clone();
-                                
-                                let key_task_id = self.create_task(key.as_mut() as *mut Expression, key_context);
-                                let value_task_id = self.create_task(value.as_mut() as *mut Expression, value_context);
-                                
+                                let key_context =
+                                    self.inference_tasks[&current_task_id].context.clone();
+                                let value_context =
+                                    self.inference_tasks[&current_task_id].context.clone();
+
+                                let key_task_id =
+                                    self.create_task(key.as_mut() as *mut Expression, key_context);
+                                let value_task_id = self
+                                    .create_task(value.as_mut() as *mut Expression, value_context);
+
                                 self.add_task_dependency(current_task_id, key_task_id);
                                 self.add_task_dependency(current_task_id, value_task_id);
-                                
+
                                 work_stack.push(key);
                                 work_stack.push(value);
                             }
                             outrun_parser::MapEntry::Shorthand { value, .. } => {
-                                let value_context = self.inference_tasks[&current_task_id].context.clone();
-                                let value_task_id = self.create_task(value.as_mut() as *mut Expression, value_context);
-                                
+                                let value_context =
+                                    self.inference_tasks[&current_task_id].context.clone();
+                                let value_task_id = self
+                                    .create_task(value.as_mut() as *mut Expression, value_context);
+
                                 self.add_task_dependency(current_task_id, value_task_id);
                                 work_stack.push(value);
                             }
@@ -4361,18 +4735,24 @@ impl TypeInferenceEngine {
                     for clause in &mut anon_fn.clauses {
                         // Process guard expression if present
                         if let Some(ref mut guard) = clause.guard {
-                            let guard_context = self.inference_tasks[&current_task_id].context.clone();
-                            let guard_task_id = self.create_task(guard as *mut Expression, guard_context);
-                            
+                            let guard_context =
+                                self.inference_tasks[&current_task_id].context.clone();
+                            let guard_task_id =
+                                self.create_task(guard as *mut Expression, guard_context);
+
                             self.add_task_dependency(current_task_id, guard_task_id);
                             work_stack.push(guard);
                         }
-                        
+
                         // Process body expression if it's an expression
-                        if let outrun_parser::AnonymousBody::Expression(ref mut body_expr) = clause.body {
-                            let body_context = self.inference_tasks[&current_task_id].context.clone();
-                            let body_task_id = self.create_task(body_expr.as_mut() as *mut Expression, body_context);
-                            
+                        if let outrun_parser::AnonymousBody::Expression(ref mut body_expr) =
+                            clause.body
+                        {
+                            let body_context =
+                                self.inference_tasks[&current_task_id].context.clone();
+                            let body_task_id = self
+                                .create_task(body_expr.as_mut() as *mut Expression, body_context);
+
                             self.add_task_dependency(current_task_id, body_task_id);
                             work_stack.push(body_expr);
                         }
@@ -4381,16 +4761,20 @@ impl TypeInferenceEngine {
                 ExpressionKind::Parenthesized(inner_expr) => {
                     // Parenthesized expression depends on its inner expression
                     let inner_context = self.inference_tasks[&current_task_id].context.clone();
-                    let inner_task_id = self.create_task(inner_expr.as_mut() as *mut Expression, inner_context);
-                    
+                    let inner_task_id =
+                        self.create_task(inner_expr.as_mut() as *mut Expression, inner_context);
+
                     self.add_task_dependency(current_task_id, inner_task_id);
                     work_stack.push(inner_expr);
                 }
                 ExpressionKind::FieldAccess(field_access) => {
                     // Field access depends on its object expression
                     let object_context = self.inference_tasks[&current_task_id].context.clone();
-                    let object_task_id = self.create_task(field_access.object.as_mut() as *mut Expression, object_context);
-                    
+                    let object_task_id = self.create_task(
+                        field_access.object.as_mut() as *mut Expression,
+                        object_context,
+                    );
+
                     self.add_task_dependency(current_task_id, object_task_id);
                     work_stack.push(&mut field_access.object);
                 }
@@ -4399,9 +4783,11 @@ impl TypeInferenceEngine {
                     for field in &mut struct_literal.fields {
                         match field {
                             outrun_parser::StructLiteralField::Assignment { value, .. } => {
-                                let field_context = self.inference_tasks[&current_task_id].context.clone();
-                                let field_task_id = self.create_task(value.as_mut() as *mut Expression, field_context);
-                                
+                                let field_context =
+                                    self.inference_tasks[&current_task_id].context.clone();
+                                let field_task_id = self
+                                    .create_task(value.as_mut() as *mut Expression, field_context);
+
                                 self.add_task_dependency(current_task_id, field_task_id);
                                 work_stack.push(value);
                             }
@@ -4417,30 +4803,40 @@ impl TypeInferenceEngine {
                 ExpressionKind::IfExpression(if_expr) => {
                     // If expression depends on condition and both branches
                     let condition_context = self.inference_tasks[&current_task_id].context.clone();
-                    let condition_task_id = self.create_task(if_expr.condition.as_mut() as *mut Expression, condition_context);
-                    
+                    let condition_task_id = self.create_task(
+                        if_expr.condition.as_mut() as *mut Expression,
+                        condition_context,
+                    );
+
                     self.add_task_dependency(current_task_id, condition_task_id);
                     work_stack.push(&mut if_expr.condition);
-                    
+
                     // CRITICAL FIX: Process then and else blocks for proper if expression type inference
                     // The then block is required
                     if let Some(then_expr) = if_expr.then_block.statements.last_mut() {
-                        if let outrun_parser::StatementKind::Expression(expr) = &mut then_expr.kind {
-                            let then_context = self.inference_tasks[&current_task_id].context.clone();
-                            let then_task_id = self.create_task(expr.as_mut() as *mut Expression, then_context);
-                            
+                        if let outrun_parser::StatementKind::Expression(expr) = &mut then_expr.kind
+                        {
+                            let then_context =
+                                self.inference_tasks[&current_task_id].context.clone();
+                            let then_task_id =
+                                self.create_task(expr.as_mut() as *mut Expression, then_context);
+
                             self.add_task_dependency(current_task_id, then_task_id);
                             work_stack.push(expr.as_mut());
                         }
                     }
-                    
+
                     // The else block is optional
                     if let Some(else_block) = &mut if_expr.else_block {
                         if let Some(else_expr) = else_block.statements.last_mut() {
-                            if let outrun_parser::StatementKind::Expression(expr) = &mut else_expr.kind {
-                                let else_context = self.inference_tasks[&current_task_id].context.clone();
-                                let else_task_id = self.create_task(expr.as_mut() as *mut Expression, else_context);
-                                
+                            if let outrun_parser::StatementKind::Expression(expr) =
+                                &mut else_expr.kind
+                            {
+                                let else_context =
+                                    self.inference_tasks[&current_task_id].context.clone();
+                                let else_task_id = self
+                                    .create_task(expr.as_mut() as *mut Expression, else_context);
+
                                 self.add_task_dependency(current_task_id, else_task_id);
                                 work_stack.push(expr.as_mut());
                             }
@@ -4451,23 +4847,36 @@ impl TypeInferenceEngine {
                     println!("  📋 Setting up case expression task dependencies (ONLY scrutinee)");
                     // IMPORTANT: For case expressions, we only process the scrutinee upfront
                     // Guard expressions and clause results will be processed later with pattern bindings in scope
-                    
+
                     let scrutinee_context = self.inference_tasks[&current_task_id].context.clone();
-                    let scrutinee_task_id = self.create_task(case_expr.expression.as_mut() as *mut Expression, scrutinee_context);
-                    
+                    let scrutinee_task_id = self.create_task(
+                        case_expr.expression.as_mut() as *mut Expression,
+                        scrutinee_context,
+                    );
+
                     self.add_task_dependency(current_task_id, scrutinee_task_id);
                     work_stack.push(&mut case_expr.expression);
-                    println!("    ✅ Added scrutinee dependency: task {:?} depends on task {:?}", current_task_id, scrutinee_task_id);
-                    
+                    println!(
+                        "    ✅ Added scrutinee dependency: task {:?} depends on task {:?}",
+                        current_task_id, scrutinee_task_id
+                    );
+
                     // NOTE: We deliberately DO NOT process guard expressions here
                     // They will be processed in infer_case_expression_with_processed_clauses
                     // with the proper pattern bindings in scope
                 }
                 // Simple literals and identifiers have no dependencies
-                ExpressionKind::Boolean(_) | ExpressionKind::Integer(_) | ExpressionKind::Float(_) 
-                | ExpressionKind::String(_) | ExpressionKind::Atom(_) | ExpressionKind::Sigil(_)
-                | ExpressionKind::Identifier(_) | ExpressionKind::QualifiedIdentifier(_) | ExpressionKind::TypeIdentifier(_)
-                | ExpressionKind::MacroInjection(_) | ExpressionKind::FunctionCapture(_) => {
+                ExpressionKind::Boolean(_)
+                | ExpressionKind::Integer(_)
+                | ExpressionKind::Float(_)
+                | ExpressionKind::String(_)
+                | ExpressionKind::Atom(_)
+                | ExpressionKind::Sigil(_)
+                | ExpressionKind::Identifier(_)
+                | ExpressionKind::QualifiedIdentifier(_)
+                | ExpressionKind::TypeIdentifier(_)
+                | ExpressionKind::MacroInjection(_)
+                | ExpressionKind::FunctionCapture(_) => {
                     // No child expressions to process
                 }
                 // Binary/Unary operations should be desugared before reaching here
@@ -4476,51 +4885,67 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         // DEBUG: Report task collection results
         let end_tasks = self.inference_tasks.len();
         let created_tasks = end_tasks - start_tasks;
-        println!("🔍 Task collection complete: created {} tasks (total: {})", created_tasks, end_tasks);
-        println!("🔍 Expression map size: {}", self.expression_to_task_map.len());
-        
+        println!(
+            "🔍 Task collection complete: created {} tasks (total: {})",
+            created_tasks, end_tasks
+        );
+        println!(
+            "🔍 Expression map size: {}",
+            self.expression_to_task_map.len()
+        );
+
         Ok(root_task_id)
     }
 
     /// Process a single task (this replaces the recursive logic in each expression case)
     fn process_single_task(&mut self, task_id: TaskId) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         let task = self.inference_tasks.get_mut(&task_id).unwrap();
         task.state = TaskState::Processing;
-        
+
         let expression = unsafe { &mut *task.expression };
         let context = task.context.clone(); // Clone to avoid borrow issues
-        
+
         // Debug: Check context during task processing
         if let ExpressionKind::FunctionCall(func_call) = &expression.kind {
             let func_name = match &func_call.path {
                 outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-                outrun_parser::FunctionPath::Qualified { module, name } => format!("{}.{}", module.name, name.name),
+                outrun_parser::FunctionPath::Qualified { module, name } => {
+                    format!("{}.{}", module.name, name.name)
+                }
                 outrun_parser::FunctionPath::Expression { .. } => "dynamic".to_string(),
             };
             if func_name.contains("list_head") {
-                eprintln!("🔍 TASK PROCESSING: Processing {} call (task {})", func_name, task_id);
+                eprintln!(
+                    "🔍 TASK PROCESSING: Processing {} call (task {})",
+                    func_name, task_id
+                );
                 eprintln!("  📋 Current self context: {:?}", self.current_self_context);
                 eprintln!("  📋 Task context: {:?}", context.self_binding);
             }
         }
-        
+
         // STRICT CHECK: No binary or unary operations should reach type inference
         // If they do, it indicates a bug in the desugaring phase
         match &expression.kind {
             ExpressionKind::BinaryOp(binary_op) => {
-                eprintln!("🚨 DESUGARING BUG: Binary operation {:?} at span {:?} was not desugared!", 
-                         binary_op.operator, expression.span);
+                eprintln!(
+                    "🚨 DESUGARING BUG: Binary operation {:?} at span {:?} was not desugared!",
+                    binary_op.operator, expression.span
+                );
                 eprintln!("   This indicates the desugaring engine missed this expression.");
                 eprintln!("   All binary operations should be converted to protocol calls before type inference.");
                 eprintln!("   DEBUGGING INFO:");
-                eprintln!("     - Operator: {:?}", binary_op.operator);  
-                eprintln!("     - Span: start={}, end={}", expression.span.start, expression.span.end);
+                eprintln!("     - Operator: {:?}", binary_op.operator);
+                eprintln!(
+                    "     - Span: start={}, end={}",
+                    expression.span.start, expression.span.end
+                );
                 eprintln!("     - Line info: {:?}", expression.span.start_line_col);
                 eprintln!("   IMPORTANT: This is occurring during core library precompilation!");
                 eprintln!("   The user test code contains no subtract operations.");
@@ -4528,7 +4953,7 @@ impl TypeInferenceEngine {
                 eprintln!("     1. Macro expansion creating new AST nodes");
                 eprintln!("     2. Some AST transformation step");
                 eprintln!("     3. An AST node type not being traversed by desugaring");
-                
+
                 let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
                     span: to_source_span(Some(expression.span)),
                     suggestions: vec![format!("Binary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", binary_op.operator)],
@@ -4542,11 +4967,13 @@ impl TypeInferenceEngine {
                 return Err(error);
             }
             ExpressionKind::UnaryOp(unary_op) => {
-                eprintln!("🚨 DESUGARING BUG: Unary operation {:?} at span {:?} was not desugared!", 
-                         unary_op.operator, expression.span);
+                eprintln!(
+                    "🚨 DESUGARING BUG: Unary operation {:?} at span {:?} was not desugared!",
+                    unary_op.operator, expression.span
+                );
                 eprintln!("   This indicates the desugaring engine missed this expression.");
                 eprintln!("   All unary operations should be converted to protocol calls before type inference.");
-                
+
                 let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
                     span: to_source_span(Some(expression.span)),
                     suggestions: vec![format!("Unary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", unary_op.operator)],
@@ -4561,7 +4988,7 @@ impl TypeInferenceEngine {
             }
             _ => {} // OK - no undesugared operations
         }
-        
+
         let result = match &mut expression.kind {
             ExpressionKind::Boolean(_) => {
                 let inferred_type = Type::concrete("Outrun.Core.Boolean");
@@ -4630,7 +5057,7 @@ impl TypeInferenceEngine {
                 self.infer_parenthesized_expression_with_processed_inner(task_id, &context)
             }
             ExpressionKind::QualifiedIdentifier(qualified_id) => {
-                // Qualified identifier - no dependencies, can process directly  
+                // Qualified identifier - no dependencies, can process directly
                 let mut mutable_context = context;
                 self.infer_qualified_identifier(qualified_id, &mut mutable_context)
             }
@@ -4640,7 +5067,11 @@ impl TypeInferenceEngine {
             }
             ExpressionKind::AnonymousFunction(anonymous_fn) => {
                 // Anonymous function - all clause bodies/guards should be processed by now
-                self.infer_anonymous_function_with_processed_clauses(anonymous_fn, task_id, &context)
+                self.infer_anonymous_function_with_processed_clauses(
+                    anonymous_fn,
+                    task_id,
+                    &context,
+                )
             }
             ExpressionKind::Sigil(_) => {
                 // Sigil literals have concrete type based on sigil type
@@ -4691,13 +5122,17 @@ impl TypeInferenceEngine {
                 })
             }
             ExpressionKind::BinaryOp(_) => {
-                unreachable!("Binary operations should have been caught by desugaring bug check above")
+                unreachable!(
+                    "Binary operations should have been caught by desugaring bug check above"
+                )
             }
             ExpressionKind::UnaryOp(_) => {
-                unreachable!("Unary operations should have been caught by desugaring bug check above")  
+                unreachable!(
+                    "Unary operations should have been caught by desugaring bug check above"
+                )
             }
         };
-        
+
         result
     }
 
@@ -4708,19 +5143,22 @@ impl TypeInferenceEngine {
         scope: &str,
         function: &FunctionDefinition,
     ) -> Result<(), TypecheckError> {
-        eprintln!("🔍 FUNCTION TYPECHECK: Starting {}.{}", scope, function.name.name);
+        eprintln!(
+            "🔍 FUNCTION TYPECHECK: Starting {}.{}",
+            scope, function.name.name
+        );
         eprintln!("  📋 Current self context: {:?}", self.current_self_context);
-        
+
         // Convert the declared return type for bidirectional inference
         let declared_return_type = self.convert_type_annotation(&function.return_type)?;
-        
+
         // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
             expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ModuleName::new(scope),
+                protocol_name: ModuleName::new(scope),
                 protocol_args: vec![],
             },
             bindings: HashMap::new(),
@@ -4743,10 +5181,20 @@ impl TypeInferenceEngine {
 
         // CRITICAL DEBUG: Log detailed type information for any ceil function
         if function.name.name == "ceil" {
-            println!("🚨 CRITICAL DEBUG: {}.{} function body type checking", scope, function.name.name);
+            println!(
+                "🚨 CRITICAL DEBUG: {}.{} function body type checking",
+                scope, function.name.name
+            );
             println!("  Declared return type: {:?}", declared_return_type);
             println!("  Inferred body type: {:?}", body_type);
-            println!("  Function parameters: {:?}", function.parameters.iter().map(|p| (&p.name.name, &p.type_annotation)).collect::<Vec<_>>());
+            println!(
+                "  Function parameters: {:?}",
+                function
+                    .parameters
+                    .iter()
+                    .map(|p| (&p.name.name, &p.type_annotation))
+                    .collect::<Vec<_>>()
+            );
             println!("  Symbol table: {:?}", self.symbol_table);
         }
 
@@ -4758,7 +5206,7 @@ impl TypeInferenceEngine {
             println!("🚨 TYPE MISMATCH ERROR in {}.{}", scope, function.name.name);
             println!("  Expected: {:?}", declared_return_type);
             println!("  Found: {:?}", body_type);
-            
+
             self.symbol_table = old_symbol_table; // Restore before error
             return Err(TypecheckError::UnificationError(
                 OriginalUnificationError::TypeMismatch {
@@ -4791,14 +5239,14 @@ impl TypeInferenceEngine {
     ) -> Result<(), TypecheckError> {
         // Convert the declared return type for bidirectional inference
         let declared_return_type = self.convert_type_annotation(&static_def.return_type)?;
-        
+
         // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
             expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
             self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_id: ModuleName::new(scope),
+                protocol_name: ModuleName::new(scope),
                 protocol_args: vec![],
             },
             bindings: HashMap::new(),
@@ -4892,7 +5340,7 @@ impl TypeInferenceEngine {
         }
 
         // The type of a block is the type of its last statement
-        // If there's no meaningful return type (e.g., last statement was a let binding), 
+        // If there's no meaningful return type (e.g., last statement was a let binding),
         // that's an error since Outrun doesn't have Unit types
         match last_type {
             Some(t) => Ok(t),
@@ -4986,12 +5434,12 @@ impl TypeInferenceEngine {
             // Same concrete types are compatible
             (
                 Type::Concrete {
-                    id: id1,
+                    name: id1,
                     args: args1,
                     ..
                 },
                 Type::Concrete {
-                    id: id2,
+                    name: id2,
                     args: args2,
                     ..
                 },
@@ -5013,36 +5461,36 @@ impl TypeInferenceEngine {
             // Protocol types: check if found type can implement expected protocol
             (
                 Type::Concrete {
-                    id: concrete_type, ..
+                    name: concrete_type,
+                    ..
                 },
-                Type::Protocol { id: protocol, .. },
+                Type::Protocol { name: protocol, .. },
             ) => {
                 // Check if the concrete type implements the protocol (with all requirements)
-                self.protocol_registry()
-                    .type_satisfies_protocol(concrete_type, protocol)
+                self.type_satisfies_protocol(concrete_type, protocol)
             }
 
             // Protocol satisfied by concrete type: check if concrete type implements the protocol
             (
-                Type::Protocol { id: protocol, .. },
+                Type::Protocol { name: protocol, .. },
                 Type::Concrete {
-                    id: concrete_type, ..
+                    name: concrete_type,
+                    ..
                 },
             ) => {
                 // Check if the concrete type implements the protocol (reverse direction)
-                self.protocol_registry()
-                    .type_satisfies_protocol(concrete_type, protocol)
+                self.type_satisfies_protocol(concrete_type, protocol)
             }
 
             // Two protocol types: check if they're the same protocol with compatible arguments
             (
                 Type::Protocol {
-                    id: id1,
+                    name: id1,
                     args: args1,
                     ..
                 },
                 Type::Protocol {
-                    id: id2,
+                    name: id2,
                     args: args2,
                     ..
                 },
@@ -5067,7 +5515,10 @@ impl TypeInferenceEngine {
                 eprintln!("🔍 types_are_compatible: SelfType vs {}", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = found_type.resolve_self() {
-                    eprintln!("🔍 types_are_compatible: Self resolved to {}, checking compatibility", resolved_self);
+                    eprintln!(
+                        "🔍 types_are_compatible: Self resolved to {}, checking compatibility",
+                        resolved_self
+                    );
                     self.types_are_compatible(&resolved_self, other)
                 } else {
                     eprintln!("🔍 types_are_compatible: Self could not be resolved");
@@ -5079,7 +5530,10 @@ impl TypeInferenceEngine {
                 eprintln!("🔍 types_are_compatible: {} vs SelfType", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = expected_type.resolve_self() {
-                    eprintln!("🔍 types_are_compatible: Self resolved to {}, checking compatibility", resolved_self);
+                    eprintln!(
+                        "🔍 types_are_compatible: Self resolved to {}, checking compatibility",
+                        resolved_self
+                    );
                     self.types_are_compatible(other, &resolved_self)
                 } else {
                     eprintln!("🔍 types_are_compatible: Self could not be resolved");
@@ -5155,7 +5609,6 @@ impl TypeInferenceEngine {
         ))
     }
 
-
     /// Phase 3: Static Clause Elimination
     /// Eliminate clauses that can never match based on static type and value analysis
     fn eliminate_impossible_clauses(
@@ -5173,7 +5626,7 @@ impl TypeInferenceEngine {
 
         // Step 2: Filter clauses that could possibly match
         let mut viable_clauses = Vec::new();
-        
+
         for &clause_id in clauses {
             if let Some(clause) = self.universal_dispatch_registry.get_clause(clause_id) {
                 // Conservative elimination: only eliminate clauses we're 100% sure can't match
@@ -5209,10 +5662,10 @@ impl TypeInferenceEngine {
         // Analyze each guard in the clause
         for guard in &clause.guards {
             match guard {
-                crate::universal_dispatch::Guard::TypeCompatible { 
-                    target_type, 
-                    implementing_type, 
-                    .. 
+                crate::universal_dispatch::Guard::TypeCompatible {
+                    target_type,
+                    implementing_type,
+                    ..
                 } => {
                     // Static type compatibility check
                     if !self.types_could_be_compatible(target_type, implementing_type)? {
@@ -5238,7 +5691,7 @@ impl TypeInferenceEngine {
                 }
             }
         }
-        
+
         Ok(true) // Clause could potentially match
     }
 
@@ -5250,10 +5703,10 @@ impl TypeInferenceEngine {
     ) -> Result<bool, TypecheckError> {
         // Use existing type compatibility logic but in a more permissive way
         // This is a conservative check - we only eliminate obvious impossibilities
-        
+
         match (type1, type2) {
             // Same concrete types are always compatible
-            (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => {
+            (Type::Concrete { name: id1, .. }, Type::Concrete { name: id2, .. }) => {
                 Ok(self.type_ids_are_equivalent(id1, id2))
             }
             // Variables could unify with anything
@@ -5264,9 +5717,7 @@ impl TypeInferenceEngine {
             (Type::Protocol { .. }, Type::Concrete { .. }) => Ok(true),
             (Type::Concrete { .. }, Type::Protocol { .. }) => Ok(true),
             // Same protocol types could be compatible
-            (Type::Protocol { id: id1, .. }, Type::Protocol { id: id2, .. }) => {
-                Ok(id1 == id2)
-            }
+            (Type::Protocol { name: id1, .. }, Type::Protocol { name: id2, .. }) => Ok(id1 == id2),
             // Function types - basic compatibility check
             (Type::Function { .. }, Type::Function { .. }) => Ok(true),
             // Different concrete types are incompatible
@@ -5284,9 +5735,7 @@ impl TypeInferenceEngine {
         // Static evaluation of common guard patterns
         match &expression.kind {
             // Literal boolean values
-            outrun_parser::ExpressionKind::Boolean(bool_lit) => {
-                Ok(Some(bool_lit.value))
-            }
+            outrun_parser::ExpressionKind::Boolean(bool_lit) => Ok(Some(bool_lit.value)),
             // Function calls (desugared operators)
             outrun_parser::ExpressionKind::FunctionCall(func_call) => {
                 match &func_call.path {
@@ -5320,7 +5769,7 @@ impl TypeInferenceEngine {
         }
 
         let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
-        
+
         match (left_lit, right_lit) {
             (Some(left), Some(right)) => {
                 // Both sides are literals - can evaluate statically
@@ -5340,7 +5789,7 @@ impl TypeInferenceEngine {
         }
 
         let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
-        
+
         match (left_lit, right_lit) {
             (Some(left), Some(right)) => {
                 // Both sides are literals - can evaluate statically
@@ -5356,16 +5805,16 @@ impl TypeInferenceEngine {
         arguments: &[outrun_parser::Argument],
     ) -> Result<(Option<LiteralValue>, Option<LiteralValue>), TypecheckError> {
         let mut literals = Vec::new();
-        
+
         for arg in arguments {
             let expr = match arg {
                 outrun_parser::Argument::Named { expression, .. } => expression,
                 outrun_parser::Argument::Spread { expression, .. } => expression,
             };
-            
+
             literals.push(self.extract_literal_value(expr));
         }
-        
+
         Ok((
             literals.first().cloned().flatten(),
             literals.get(1).cloned().flatten(),
@@ -5407,19 +5856,19 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<Vec<Type>, TypecheckError> {
         let mut arg_types = Vec::new();
-        
+
         for argument in arguments {
             let expr = match argument {
                 outrun_parser::Argument::Named { expression, .. } => expression,
                 outrun_parser::Argument::Spread { expression, .. } => expression,
             };
-            
+
             // Create a mutable clone for type inference
             let mut expr_clone = expr.clone();
             let result = self.infer_expression(&mut expr_clone, context)?;
             arg_types.push(result.inferred_type);
         }
-        
+
         Ok(arg_types)
     }
 
@@ -5430,17 +5879,21 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        println!("🔥🔥🔥 RESOLVE_SIMPLE_FUNCTION_CLAUSES: {} 🔥🔥🔥", function_name);
+        println!(
+            "🔥🔥🔥 RESOLVE_SIMPLE_FUNCTION_CLAUSES: {} 🔥🔥🔥",
+            function_name
+        );
         // Use existing dispatcher logic but convert to universal result
         let function_context = self.create_function_context_from_inference_context(context);
-        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None)
-            .with_context(function_context);
+        let dispatcher =
+            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None)
+                .with_context(function_context);
 
         match dispatcher.resolve_local_call(function_name, Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 // Single resolved function - create single clause
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                
+
                 // CRITICAL FIX: Apply generic parameter substitution for local function calls
                 // This resolves the issue where local functions returning Option<T> don't get
                 // their generic parameters substituted (e.g., Option<T> -> Option<Integer>)
@@ -5449,13 +5902,16 @@ impl TypeInferenceEngine {
                     function_name,
                     &resolved_func.function_info.parameters,
                     function_call,
-                    context
+                    context,
                 )?;
-                
+
                 // Register this clause in the universal dispatch registry
                 self.register_function_clause(clause_id, &resolved_func);
-                
-                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::single(
+                    clause_id,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
                 // Multiple candidates - create multiple clauses
@@ -5465,28 +5921,31 @@ impl TypeInferenceEngine {
                 } else {
                     Type::variable(self.fresh_type_var(), Level(0))
                 };
-                
+
                 for candidate in candidates {
                     let clause_id = crate::universal_dispatch::ClauseId::new();
                     self.register_function_clause(clause_id, &candidate);
                     clause_ids.push(clause_id);
                 }
-                
-                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::multi(
+                    clause_ids,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::NotFound) => {
                 // Function not found - create error clause
-                return Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
-                    protocol_name: "unknown".to_string(),
-                    type_name: function_name.to_string(),
-                    file_span: Some(self.create_file_span(Some(function_call.span))),
-                    similar_implementations: Vec::new(),
-                    suggestions: Vec::new(),
-                }));
+                return Err(TypecheckError::DispatchError(
+                    crate::error::DispatchError::NoImplementation {
+                        protocol_name: "unknown".to_string(),
+                        type_name: function_name.to_string(),
+                        file_span: Some(self.create_file_span(Some(function_call.span))),
+                        similar_implementations: Vec::new(),
+                        suggestions: Vec::new(),
+                    },
+                ));
             }
-            Err(dispatch_error) => {
-                Err(TypecheckError::DispatchError(dispatch_error))
-            }
+            Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
         }
     }
 
@@ -5500,31 +5959,49 @@ impl TypeInferenceEngine {
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
         let qualified_start = std::time::Instant::now();
-        println!("🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥", module_name, function_name, precomputed_arg_types.len());
-        
+        println!(
+            "🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥",
+            module_name,
+            function_name,
+            precomputed_arg_types.len()
+        );
+
         // Special debugging for Option.some? calls
         if module_name == "Option" && function_name == "some?" {
             println!("              🚨 CRITICAL: Option.some? call detected!");
-            println!("                Precomputed arg types: {:?}", precomputed_arg_types);
+            println!(
+                "                Precomputed arg types: {:?}",
+                precomputed_arg_types
+            );
             for (i, arg_type) in precomputed_arg_types.iter().enumerate() {
                 println!("                  Arg {}: {:?}", i, arg_type);
             }
         }
-        
+
         // CRITICAL DEBUG: Log every Option.unwrap call
         if module_name == "Option" && function_name == "unwrap" {
             println!("              🚨 CRITICAL: Option.unwrap call detected!");
-            println!("                Precomputed arg types: {:?}", precomputed_arg_types);
+            println!(
+                "                Precomputed arg types: {:?}",
+                precomputed_arg_types
+            );
         }
-        
+
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ModuleName::new(module_name);
-        
+
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
-        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
-            println!("                🎯 Protocol call - resolving target type with precomputed args");
-            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context, Some(precomputed_arg_types))?;
+        let target_type = if self.type_registry.has_protocol(&protocol_id) {
+            println!(
+                "                🎯 Protocol call - resolving target type with precomputed args"
+            );
+            let resolved_target = self.resolve_protocol_call_target_type(
+                &qualified_name,
+                function_call,
+                context,
+                Some(precomputed_arg_types),
+            )?;
             // If we resolved a SelfType to a concrete type through constraint analysis,
             // we need to substitute it before passing to the dispatcher
             resolved_target.map(|t| {
@@ -5542,34 +6019,45 @@ impl TypeInferenceEngine {
         };
         let target_type_time = target_type_start.elapsed();
         if target_type_time.as_millis() > 1 {
-            println!("                ⏱️  Target type resolution with precomputed args: {:.2?}", target_type_time);
+            println!(
+                "                ⏱️  Target type resolution with precomputed args: {:.2?}",
+                target_type_time
+            );
         }
 
         let dispatcher_start = std::time::Instant::now();
-        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
-        
+        let dispatcher =
+            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None);
+
         let resolve_start = std::time::Instant::now();
-        let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
+        let result = match dispatcher.resolve_qualified_call(
+            &qualified_name,
+            target_type.as_ref(),
+            Some(function_call.span),
+        ) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                
+
                 // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
-                let return_type = if self.protocol_registry().has_protocol(&protocol_id) {
+                let return_type = if self.type_registry.has_protocol(&protocol_id) {
                     self.substitute_protocol_generics_in_return_type(
                         &resolved_func.function_info.return_type,
                         &qualified_name,
                         target_type.as_ref(),
                         precomputed_arg_types,
                         function_call,
-                        context
+                        context,
                     )?
                 } else {
                     resolved_func.function_info.return_type.clone()
                 };
-                
+
                 self.register_function_clause(clause_id, &resolved_func);
-                
-                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::single(
+                    clause_id,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
                 let mut clause_ids = Vec::new();
@@ -5578,55 +6066,72 @@ impl TypeInferenceEngine {
                 } else {
                     Type::variable(self.fresh_type_var(), Level(0))
                 };
-                
+
                 for candidate in candidates {
                     let clause_id = crate::universal_dispatch::ClauseId::new();
                     self.register_function_clause(clause_id, &candidate);
                     clause_ids.push(clause_id);
                 }
-                
-                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::multi(
+                    clause_ids,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::NotFound) => {
                 // Check for lazy intrinsic registration
                 if module_name == "Outrun.Intrinsic" {
-                    match self.try_lazy_intrinsic_registration(function_name, &function_call.arguments, function_call.span, context) {
+                    match self.try_lazy_intrinsic_registration(
+                        function_name,
+                        &function_call.arguments,
+                        function_call.span,
+                        context,
+                    ) {
                         Ok(result) => {
                             // Convert InferenceResult to UniversalCallResolution
                             let clause_id = crate::universal_dispatch::ClauseId::new();
-                            return Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, result.inferred_type));
+                            return Ok(crate::typed_ast::UniversalCallResolution::single(
+                                clause_id,
+                                result.inferred_type,
+                            ));
                         }
                         Err(_) => {
                             // Fall through to NotFound error
                         }
                     }
                 }
-                
-                Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
-                    span: crate::error::to_source_span(Some(function_call.span)),
-                    suggestions: vec![format!("Unknown function: {}", qualified_name)],
-                }))
+
+                Err(TypecheckError::InferenceError(
+                    crate::error::InferenceError::AmbiguousType {
+                        span: crate::error::to_source_span(Some(function_call.span)),
+                        suggestions: vec![format!("Unknown function: {}", qualified_name)],
+                    },
+                ))
             }
-            Err(dispatch_error) => {
-                Err(TypecheckError::DispatchError(dispatch_error))
-            }
+            Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
         };
-        
+
         let resolve_time = resolve_start.elapsed();
         if resolve_time.as_millis() > 1 {
-            println!("                ⏱️  Dispatcher resolve (precomputed): {:.2?}", resolve_time);
+            println!(
+                "                ⏱️  Dispatcher resolve (precomputed): {:.2?}",
+                resolve_time
+            );
         }
-        
+
         let dispatcher_time = dispatcher_start.elapsed();
         if dispatcher_time.as_millis() > 1 {
-            println!("                ⏱️  Dispatcher total (precomputed): {:.2?}", dispatcher_time);
+            println!(
+                "                ⏱️  Dispatcher total (precomputed): {:.2?}",
+                dispatcher_time
+            );
         }
-        
+
         let qualified_time = qualified_start.elapsed();
         if qualified_time.as_millis() > 1 {
-            println!("              🏁 resolve_qualified_function_clauses_with_precomputed_args total: {:.2?}", qualified_time);  
+            println!("              🏁 resolve_qualified_function_clauses_with_precomputed_args total: {:.2?}", qualified_time);
         }
-        
+
         result
     }
 
@@ -5639,22 +6144,33 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
         let qualified_start = std::time::Instant::now();
-        println!("              🔧 resolve_qualified_function_clauses: {}.{}", module_name, function_name);
-        
+        println!(
+            "              🔧 resolve_qualified_function_clauses: {}.{}",
+            module_name, function_name
+        );
+
         // CRITICAL DEBUG: Log every Option.unwrap call
         if module_name == "Option" && function_name == "unwrap" {
             println!("              🚨 CRITICAL: Option.unwrap call detected (NON-PRECOMPUTED)!");
-            println!("                Function call arguments: {:?}", function_call.arguments.len());
+            println!(
+                "                Function call arguments: {:?}",
+                function_call.arguments.len()
+            );
         }
-        
+
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ModuleName::new(module_name);
-        
+
         // Check if this is a protocol call
         let target_type_start = std::time::Instant::now();
-        let target_type = if self.protocol_registry().has_protocol(&protocol_id) {
+        let target_type = if self.type_registry.has_protocol(&protocol_id) {
             println!("                🎯 Protocol call - resolving target type");
-            let resolved_target = self.resolve_protocol_call_target_type(&qualified_name, function_call, context, None)?;
+            let resolved_target = self.resolve_protocol_call_target_type(
+                &qualified_name,
+                function_call,
+                context,
+                None,
+            )?;
             // If we resolved a SelfType to a concrete type through constraint analysis,
             // we need to substitute it before passing to the dispatcher
             resolved_target.map(|t| {
@@ -5672,22 +6188,32 @@ impl TypeInferenceEngine {
         };
         let target_type_time = target_type_start.elapsed();
         if target_type_time.as_millis() > 1 {
-            println!("                ⏱️  Target type resolution: {:.2?}", target_type_time);
+            println!(
+                "                ⏱️  Target type resolution: {:.2?}",
+                target_type_time
+            );
         }
 
         let dispatcher_start = std::time::Instant::now();
-        let dispatcher = FunctionDispatcher::new(self.protocol_registry(), &self.function_registry, None, None);
-        
+        let dispatcher =
+            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None);
+
         let resolve_start = std::time::Instant::now();
-        let result = match dispatcher.resolve_qualified_call(&qualified_name, target_type.as_ref(), Some(function_call.span)) {
+        let result = match dispatcher.resolve_qualified_call(
+            &qualified_name,
+            target_type.as_ref(),
+            Some(function_call.span),
+        ) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
                 let clause_id = crate::universal_dispatch::ClauseId::new();
-                
+
                 // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
-                let return_type = if self.protocol_registry().has_protocol(&protocol_id) {
+                let return_type = if self.type_registry.has_protocol(&protocol_id) {
                     // For non-precomputed version, we need to infer argument types first
-                    let arg_types: Vec<Option<Type>> = function_call.arguments.iter().map(|arg| {
-                        match arg {
+                    let arg_types: Vec<Option<Type>> = function_call
+                        .arguments
+                        .iter()
+                        .map(|arg| match arg {
                             outrun_parser::Argument::Named { expression, .. } => {
                                 let mut expr_clone = expression.clone();
                                 match self.infer_expression(&mut expr_clone, context) {
@@ -5696,24 +6222,27 @@ impl TypeInferenceEngine {
                                 }
                             }
                             _ => None,
-                        }
-                    }).collect();
-                    
+                        })
+                        .collect();
+
                     self.substitute_protocol_generics_in_return_type(
                         &resolved_func.function_info.return_type,
                         &qualified_name,
                         target_type.as_ref(),
                         &arg_types,
                         function_call,
-                        context
+                        context,
                     )?
                 } else {
                     resolved_func.function_info.return_type.clone()
                 };
-                
+
                 self.register_function_clause(clause_id, &resolved_func);
-                
-                Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::single(
+                    clause_id,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
                 let mut clause_ids = Vec::new();
@@ -5722,57 +6251,77 @@ impl TypeInferenceEngine {
                 } else {
                     Type::variable(self.fresh_type_var(), Level(0))
                 };
-                
+
                 for candidate in candidates {
                     let clause_id = crate::universal_dispatch::ClauseId::new();
                     self.register_function_clause(clause_id, &candidate);
                     clause_ids.push(clause_id);
                 }
-                
-                Ok(crate::typed_ast::UniversalCallResolution::multi(clause_ids, return_type))
+
+                Ok(crate::typed_ast::UniversalCallResolution::multi(
+                    clause_ids,
+                    return_type,
+                ))
             }
             Ok(crate::dispatch::DispatchResult::NotFound) => {
                 // Check for lazy intrinsic registration
                 if module_name == "Outrun.Intrinsic" {
-                    match self.try_lazy_intrinsic_registration(function_name, &function_call.arguments, function_call.span, context) {
+                    match self.try_lazy_intrinsic_registration(
+                        function_name,
+                        &function_call.arguments,
+                        function_call.span,
+                        context,
+                    ) {
                         Ok(result) => {
                             // Create single clause for lazily registered intrinsic
                             let clause_id = crate::universal_dispatch::ClauseId::new();
                             // Register intrinsic clause (simplified for now)
-                            Ok(crate::typed_ast::UniversalCallResolution::single(clause_id, result.inferred_type))
+                            Ok(crate::typed_ast::UniversalCallResolution::single(
+                                clause_id,
+                                result.inferred_type,
+                            ))
                         }
                         Err(error) => Err(error),
                     }
                 } else {
-                    Err(TypecheckError::DispatchError(crate::error::DispatchError::NoImplementation {
-                        protocol_name: module_name.to_string(),
-                        type_name: function_name.to_string(),
-                        file_span: Some(self.create_file_span(Some(function_call.span))),
-                        similar_implementations: Vec::new(),
-                        suggestions: Vec::new(),
-                    }))
+                    Err(TypecheckError::DispatchError(
+                        crate::error::DispatchError::NoImplementation {
+                            protocol_name: module_name.to_string(),
+                            type_name: function_name.to_string(),
+                            file_span: Some(self.create_file_span(Some(function_call.span))),
+                            similar_implementations: Vec::new(),
+                            suggestions: Vec::new(),
+                        },
+                    ))
                 }
             }
-            Err(dispatch_error) => {
-                Err(TypecheckError::DispatchError(dispatch_error))
-            }
+            Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
         };
-        
+
         let resolve_time = resolve_start.elapsed();
         if resolve_time.as_millis() > 1 {
-            println!("                ⏱️  Dispatcher resolve: {:.2?}", resolve_time);
+            println!(
+                "                ⏱️  Dispatcher resolve: {:.2?}",
+                resolve_time
+            );
         }
-        
+
         let dispatcher_time = dispatcher_start.elapsed();
         if dispatcher_time.as_millis() > 1 {
-            println!("                ⏱️  Dispatcher total: {:.2?}", dispatcher_time);
+            println!(
+                "                ⏱️  Dispatcher total: {:.2?}",
+                dispatcher_time
+            );
         }
-        
+
         let qualified_time = qualified_start.elapsed();
         if qualified_time.as_millis() > 1 {
-            println!("              🏁 resolve_qualified_function_clauses total: {:.2?}", qualified_time);  
+            println!(
+                "              🏁 resolve_qualified_function_clauses total: {:.2?}",
+                qualified_time
+            );
         }
-        
+
         result
     }
 
@@ -5783,18 +6332,18 @@ impl TypeInferenceEngine {
         resolved_func: &crate::dispatch::ResolvedFunction,
     ) {
         use crate::universal_dispatch::*;
-        
+
         // DEBUG: Add extensive logging for function clause registration
-        
+
         // Create function signature from resolved function
         let signature = FunctionSignature::new(
             vec![resolved_func.function_info.defining_scope.clone()],
             resolved_func.function_info.function_name.clone(),
         );
-        
+
         // Create guards based on function type
         let mut guards = Vec::new();
-        
+
         // Add type compatibility guard if there's an implementing type
         if let Some(implementing_type) = &resolved_func.implementing_type {
             guards.push(Guard::TypeCompatible {
@@ -5803,14 +6352,17 @@ impl TypeInferenceEngine {
                 constraint_context: ConstraintContext::new(),
             });
         }
-        
+
         // Add always-true guard as fallback
         guards.push(Guard::AlwaysTrue);
-        
+
         // Create function body based on resolved function
         let body = if let Some(block) = &resolved_func.function_info.body {
             FunctionBody::UserFunction(block.clone())
-        } else if resolved_func.qualified_name.starts_with("Outrun.Intrinsic.") {
+        } else if resolved_func
+            .qualified_name
+            .starts_with("Outrun.Intrinsic.")
+        {
             // Only treat as intrinsic if it's actually in the Outrun.Intrinsic namespace
             FunctionBody::IntrinsicFunction(resolved_func.qualified_name.clone())
         } else {
@@ -5818,7 +6370,7 @@ impl TypeInferenceEngine {
             // These should be resolved through the legacy dispatch system to concrete implementations
             return; // Don't register a universal clause for abstract protocol functions
         };
-        
+
         // Create clause info
         let clause_info = ClauseInfo {
             clause_id,
@@ -5829,13 +6381,14 @@ impl TypeInferenceEngine {
             priority: 0,
             span: resolved_func.function_info.span,
         };
-        
+
         // Register the clause
-        self.universal_dispatch_registry.register_clause(clause_info);
+        self.universal_dispatch_registry
+            .register_clause(clause_info);
     }
 
     /// Infer the type of a function call using universal dispatch with precomputed argument types
-    /// Uses iterative system - argument types come from dependency task results 
+    /// Uses iterative system - argument types come from dependency task results
     #[allow(clippy::result_large_err)]
     fn infer_function_call_with_precomputed_args(
         &mut self,
@@ -5844,27 +6397,32 @@ impl TypeInferenceEngine {
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<InferenceResult, TypecheckError> {
         // DEBUG: Track function call operations for performance monitoring (disabled for production)
-        
+
         // Phase 2: Universal Interpreter Simplification
         // ALL function calls now go through the universal dispatch system
-        
+
         // Use precomputed argument types from task results to avoid recursion
-        let universal_resolution = self.resolve_universal_function_call_with_precomputed_args(function_call, context, precomputed_arg_types)?;
-        
+        let universal_resolution = self.resolve_universal_function_call_with_precomputed_args(
+            function_call,
+            context,
+            precomputed_arg_types,
+        )?;
+
         // Set the resolved function key for interpreter dispatch (LEGACY)
         // For now, use the first clause ID as the key (will be enhanced in Phase 3)
         if let Some(first_clause) = universal_resolution.possible_clauses.first() {
             function_call.resolved_function_key = Some(format!("clause_{}", first_clause.0));
         }
-        
+
         // Set the universal clause IDs for universal dispatch system
         function_call.universal_clause_ids = Some(
-            universal_resolution.possible_clauses.iter()
-                .map(|clause_id| clause_id.as_str())
-                .collect()
+            universal_resolution
+                .possible_clauses
+                .iter()
+                .map(|clause_id| clause_id.0)
+                .collect(),
         );
-        
-        
+
         Ok(InferenceResult {
             inferred_type: universal_resolution.return_type,
             constraints: context.constraints.clone(),
@@ -5883,35 +6441,42 @@ impl TypeInferenceEngine {
         // DEBUG: Track function call operations
         let func_call_start = std::time::Instant::now();
         println!("          🔍 infer_function_call_skip_args (NO RECURSION)");
-        
+
         // Phase 2: Universal Interpreter Simplification
         // ALL function calls now go through the universal dispatch system
-        
+
         let resolve_start = std::time::Instant::now();
         // Extract precomputed argument types from task results to avoid recursion
         // This is the key fix - use already-computed dependency results instead of recomputing
         let universal_resolution = self.resolve_universal_function_call(function_call, context)?;
         let resolve_time = resolve_start.elapsed();
         if resolve_time.as_millis() > 1 {
-            println!("            ⏱️  Universal resolution (no recursion): {:.2?}", resolve_time);
+            println!(
+                "            ⏱️  Universal resolution (no recursion): {:.2?}",
+                resolve_time
+            );
         }
-        
+
         // Set the resolved function key for interpreter dispatch (LEGACY)
         // For now, use the first clause ID as the key (will be enhanced in Phase 3)
         if let Some(first_clause) = universal_resolution.possible_clauses.first() {
             function_call.resolved_function_key = Some(format!("clause_{}", first_clause.0));
         }
-        
+
         // Set the universal clause IDs for universal dispatch system
         function_call.universal_clause_ids = Some(
-            universal_resolution.possible_clauses.iter()
-                .map(|clause_id| clause_id.as_str())
-                .collect()
+            universal_resolution
+                .possible_clauses
+                .iter()
+                .map(|clause_id| clause_id.0)
+                .collect(),
         );
-        
+
         // SKIP ARGUMENT PROCESSING - arguments already processed by iterative system
-        println!("            ⚡ SKIPPING recursive argument processing - already done by task system!");
-        
+        println!(
+            "            ⚡ SKIPPING recursive argument processing - already done by task system!"
+        );
+
         // For now, return the resolved return type
         // In Phase 3, this will be enhanced with full constraint solving
         let result_start = std::time::Instant::now();
@@ -5924,15 +6489,17 @@ impl TypeInferenceEngine {
         if result_time.as_millis() > 1 {
             println!("            ⏱️  Result construction: {:.2?}", result_time);
         }
-        
-        let func_total_time = func_call_start.elapsed();  
+
+        let func_total_time = func_call_start.elapsed();
         if func_total_time.as_millis() > 1 {
-            println!("          🏁 infer_function_call_skip_args total: {:.2?}", func_total_time);
+            println!(
+                "          🏁 infer_function_call_skip_args total: {:.2?}",
+                func_total_time
+            );
         }
-        
+
         result
     }
-
 
     /// Universal function call resolution - converts any function call into clause lists
     /// Uses iterative system to avoid recursive argument processing  
@@ -5942,8 +6509,7 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        
-        // Get initial clause resolution  
+        // Get initial clause resolution
         let initial_resolution = match &function_call.path {
             outrun_parser::FunctionPath::Simple { name } => {
                 // Simple function call - resolve to local context clauses
@@ -5954,20 +6520,28 @@ impl TypeInferenceEngine {
                 let _qualified_name = format!("{}.{}", module.name, name.name);
                 let module_name = &module.name;
                 let protocol_id = crate::types::ModuleName::new(module_name);
-                
+
                 // Check if this is a protocol call - pass precomputed args to avoid recursion!
-                
-                self.resolve_qualified_function_clauses_with_precomputed_args(module_name, &name.name, function_call, context, precomputed_arg_types)
+
+                self.resolve_qualified_function_clauses_with_precomputed_args(
+                    module_name,
+                    &name.name,
+                    function_call,
+                    context,
+                    precomputed_arg_types,
+                )
             }
             outrun_parser::FunctionPath::Expression { .. } => {
                 // Dynamic function call - not yet supported
-                return Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
-                    span: crate::error::to_source_span(Some(function_call.span)),
-                    suggestions: vec!["Dynamic function calls not yet supported".to_string()],
-                }));
+                return Err(TypecheckError::InferenceError(
+                    crate::error::InferenceError::AmbiguousType {
+                        span: crate::error::to_source_span(Some(function_call.span)),
+                        suggestions: vec!["Dynamic function calls not yet supported".to_string()],
+                    },
+                ));
             }
         }?;
-        
+
         Ok(initial_resolution)
     }
 
@@ -5977,8 +6551,8 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
         println!("            🚀 resolve_universal_function_call (no recursion)");
-        
-        // Get initial clause resolution  
+
+        // Get initial clause resolution
         let initial_resolution = match &function_call.path {
             outrun_parser::FunctionPath::Simple { name } => {
                 // Simple function call - resolve to local context clauses
@@ -5989,23 +6563,30 @@ impl TypeInferenceEngine {
                 let _qualified_name = format!("{}.{}", module.name, name.name);
                 let module_name = &module.name;
                 let protocol_id = crate::types::ModuleName::new(module_name);
-                
+
                 // Check if this is a protocol call - log it but proceed normally
-                if self.protocol_registry().has_protocol(&protocol_id) {
+                if self.type_registry.has_protocol(&protocol_id) {
                     println!("              ⚡ Protocol call detected - will skip recursive resolution inside resolve_qualified_function_clauses!");
                 }
-                
-                self.resolve_qualified_function_clauses(module_name, &name.name, function_call, context)
+
+                self.resolve_qualified_function_clauses(
+                    module_name,
+                    &name.name,
+                    function_call,
+                    context,
+                )
             }
             outrun_parser::FunctionPath::Expression { .. } => {
                 // Dynamic function call - not yet supported
-                return Err(TypecheckError::InferenceError(crate::error::InferenceError::AmbiguousType {
-                    span: crate::error::to_source_span(Some(function_call.span)),
-                    suggestions: vec!["Dynamic function calls not yet supported".to_string()],
-                }));
+                return Err(TypecheckError::InferenceError(
+                    crate::error::InferenceError::AmbiguousType {
+                        span: crate::error::to_source_span(Some(function_call.span)),
+                        suggestions: vec!["Dynamic function calls not yet supported".to_string()],
+                    },
+                ));
             }
         }?;
-        
+
         Ok(initial_resolution)
     }
 
@@ -6018,7 +6599,6 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
         precomputed_arg_types: Option<&[Option<Type>]>,
     ) -> Result<Option<Type>, TypecheckError> {
-        
         // Look up the function signature for analysis
         let (module_name, function_name) = if let Some(dot_pos) = qualified_name.rfind('.') {
             (&qualified_name[..dot_pos], &qualified_name[dot_pos + 1..])
@@ -6026,9 +6606,11 @@ impl TypeInferenceEngine {
             return Ok(None);
         };
 
-
         // Get function info from registry and clone the data we need
-        let (function_parameters, function_return_type) = if let Some(info) = self.function_registry.get_function(module_name, function_name) {
+        let (function_parameters, function_return_type) = if let Some(info) = self
+            .function_registry
+            .get_function(module_name, function_name)
+        {
             (info.parameters.clone(), info.return_type.clone())
         } else {
             return Ok(None); // Function not found, let dispatcher handle the error
@@ -6039,7 +6621,6 @@ impl TypeInferenceEngine {
             &function_parameters,
             &function_return_type,
         );
-
 
         // If there are no Self positions, this is not a protocol call requiring Self inference
         if signature_analysis.self_positions.is_empty() {
@@ -6109,7 +6690,10 @@ impl TypeInferenceEngine {
         };
 
         // Get function info to understand parameter types
-        let function_parameters = if let Some(info) = self.function_registry.get_function(module_name, function_name) {
+        let function_parameters = if let Some(info) = self
+            .function_registry
+            .get_function(module_name, function_name)
+        {
             info.parameters.clone()
         } else {
             return Ok(return_type.clone()); // Function not found
@@ -6119,13 +6703,22 @@ impl TypeInferenceEngine {
         if module_name == "Option" {
             println!("              🔧 Option protocol detected - attempting generic substitution");
             println!("                Function: {}", function_name);
-            println!("                Precomputed arg types count: {}", precomputed_arg_types.len());
-            println!("                Function parameters: {:?}", function_parameters);
+            println!(
+                "                Precomputed arg types count: {}",
+                precomputed_arg_types.len()
+            );
+            println!(
+                "                Function parameters: {:?}",
+                function_parameters
+            );
             println!("                Original return type: {:?}", return_type);
-            
+
             // Find the argument that contains the protocol type (usually named 'value' for Option.unwrap)
             for (i, (param_name, _param_type)) in function_parameters.iter().enumerate() {
-                println!("                  Checking parameter {}: {} (type: {:?})", i, param_name, _param_type);
+                println!(
+                    "                  Checking parameter {}: {} (type: {:?})",
+                    i, param_name, _param_type
+                );
                 if param_name == "value" {
                     // Get the actual argument type
                     if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
@@ -6135,26 +6728,36 @@ impl TypeInferenceEngine {
                             if name.as_str() == "Option" && !args.is_empty() {
                                 // The first argument of Option<T> is T
                                 let inner_type = &args[0];
-                                println!("                    ✅ Substituting T with: {:?}", inner_type);
-                                let result = self.substitute_generic_parameter_in_type(return_type, "T", inner_type)?;
+                                println!(
+                                    "                    ✅ Substituting T with: {:?}",
+                                    inner_type
+                                );
+                                let result = self.substitute_generic_parameter_in_type(
+                                    return_type,
+                                    "T",
+                                    inner_type,
+                                )?;
                                 println!("                    ✅ Final return type: {:?}", result);
                                 return Ok(result);
                             }
                         }
                     } else {
-                        println!("                    ❌ No argument type available at index {}", i);
+                        println!(
+                            "                    ❌ No argument type available at index {}",
+                            i
+                        );
                     }
                     break;
                 }
             }
             println!("              ❌ No 'value' parameter found or substitution failed");
         }
-        
+
         // For other protocols, implement generic substitution as needed
         // This can be extended for other protocol patterns
         Ok(return_type.clone())
     }
-    
+
     /// Helper method to substitute a specific generic parameter in a type
     fn substitute_generic_parameter_in_type(
         &self,
@@ -6168,28 +6771,34 @@ impl TypeInferenceEngine {
                 if name.as_str() == param_name {
                     return Ok(replacement.clone());
                 }
-                
+
                 // Recursively substitute in arguments
-                let substituted_args: Result<Vec<_>, _> = args.iter()
-                    .map(|arg| self.substitute_generic_parameter_in_type(arg, param_name, replacement))
+                let substituted_args: Result<Vec<_>, _> = args
+                    .iter()
+                    .map(|arg| {
+                        self.substitute_generic_parameter_in_type(arg, param_name, replacement)
+                    })
                     .collect();
-                
+
                 Ok(Type::Protocol {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: *span,
+                    span: span.clone(),
                 })
             }
             Type::Concrete { name, args, span } => {
                 // Recursively substitute in generic arguments
-                let substituted_args: Result<Vec<_>, _> = args.iter()
-                    .map(|arg| self.substitute_generic_parameter_in_type(arg, param_name, replacement))
+                let substituted_args: Result<Vec<_>, _> = args
+                    .iter()
+                    .map(|arg| {
+                        self.substitute_generic_parameter_in_type(arg, param_name, replacement)
+                    })
                     .collect();
-                
+
                 Ok(Type::Concrete {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: *span,
+                    span: span.clone(),
                 })
             }
             Type::Variable { .. } => {
@@ -6219,10 +6828,16 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<Type, TypecheckError> {
-        println!("🚨🚨🚨 LOCAL FUNCTION GENERIC SUBSTITUTION for: {} 🚨🚨🚨", function_name);
+        println!(
+            "🚨🚨🚨 LOCAL FUNCTION GENERIC SUBSTITUTION for: {} 🚨🚨🚨",
+            function_name
+        );
         println!("                Original return type: {:?}", return_type);
-        println!("                Function parameters: {:?}", function_parameters);
-        
+        println!(
+            "                Function parameters: {:?}",
+            function_parameters
+        );
+
         // Get the argument types by inferring them from the function call
         let mut argument_types = Vec::new();
         for argument in &function_call.arguments {
@@ -6231,41 +6846,53 @@ impl TypeInferenceEngine {
                 outrun_parser::Argument::Named { expression, .. } => expression,
                 outrun_parser::Argument::Spread { expression, .. } => expression,
             };
-            
+
             // Create a mutable copy for inference
             let mut expr_copy = expression.clone();
             let arg_result = self.infer_expression(&mut expr_copy, context)?;
             argument_types.push(arg_result.inferred_type);
         }
-        
-        println!("                Inferred argument types: {:?}", argument_types);
-        
+
+        println!(
+            "                Inferred argument types: {:?}",
+            argument_types
+        );
+
         // Build a map of generic parameter substitutions
         let mut substitutions = std::collections::HashMap::new();
-        
+
         // Match parameter types with argument types to find generic substitutions
         for (i, (param_name, param_type)) in function_parameters.iter().enumerate() {
             if let Some(arg_type) = argument_types.get(i) {
-                println!("                  Matching param {}: {} (type: {:?}) with arg type: {:?}", 
-                         i, param_name, param_type, arg_type);
-                
+                println!(
+                    "                  Matching param {}: {} (type: {:?}) with arg type: {:?}",
+                    i, param_name, param_type, arg_type
+                );
+
                 // Find generic parameter substitutions by matching param_type with arg_type
                 self.extract_generic_substitutions(param_type, arg_type, &mut substitutions)?;
             }
         }
-        
+
         println!("                Found substitutions: {:?}", substitutions);
-        
+
         // Apply all substitutions to the return type
         let mut result_type = return_type.clone();
         for (generic_param, concrete_type) in substitutions {
-            result_type = self.substitute_generic_parameter_in_type(&result_type, &generic_param, &concrete_type)?;
+            result_type = self.substitute_generic_parameter_in_type(
+                &result_type,
+                &generic_param,
+                &concrete_type,
+            )?;
         }
-        
-        println!("                ✅ Final substituted return type: {:?}", result_type);
+
+        println!(
+            "                ✅ Final substituted return type: {:?}",
+            result_type
+        );
         Ok(result_type)
     }
-    
+
     /// Extract generic parameter substitutions by matching a parameter type with an argument type
     /// For example, matching Option<T> with Option<Integer> would extract T -> Integer
     #[allow(clippy::result_large_err)]
@@ -6277,8 +6904,18 @@ impl TypeInferenceEngine {
     ) -> Result<(), TypecheckError> {
         match (param_type, arg_type) {
             // Match Protocol<T> with Protocol<ConcreteType>
-            (Type::Protocol { name: param_id, args: param_args, .. }, 
-             Type::Protocol { name: arg_id, args: arg_args, .. }) => {
+            (
+                Type::Protocol {
+                    name: param_id,
+                    args: param_args,
+                    ..
+                },
+                Type::Protocol {
+                    name: arg_id,
+                    args: arg_args,
+                    ..
+                },
+            ) => {
                 if param_id.as_str() == arg_id.as_str() && param_args.len() == arg_args.len() {
                     // Recursively match generic arguments
                     for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
@@ -6286,10 +6923,20 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            
+
             // Match Concrete<T> with Concrete<ConcreteType>
-            (Type::Concrete { name: param_id, args: param_args, .. }, 
-             Type::Concrete { name: arg_id, args: arg_args, .. }) => {
+            (
+                Type::Concrete {
+                    name: param_id,
+                    args: param_args,
+                    ..
+                },
+                Type::Concrete {
+                    name: arg_id,
+                    args: arg_args,
+                    ..
+                },
+            ) => {
                 if param_id.as_str() == arg_id.as_str() && param_args.len() == arg_args.len() {
                     // Recursively match generic arguments
                     for (param_arg, arg_arg) in param_args.iter().zip(arg_args.iter()) {
@@ -6297,17 +6944,24 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            
+
             // Match generic parameter T with concrete type
-            (Type::Protocol { name: param_id, args, .. }, concrete_type) if args.is_empty() => {
+            (
+                Type::Protocol {
+                    name: param_id,
+                    args,
+                    ..
+                },
+                concrete_type,
+            ) if args.is_empty() => {
                 // This is a generic parameter (like T) - record the substitution
                 substitutions.insert(param_id.as_str().to_string(), concrete_type.clone());
             }
-            
+
             // Other cases don't contribute to generic substitutions
             _ => {}
         }
-        
+
         Ok(())
     }
 
@@ -6324,13 +6978,12 @@ impl TypeInferenceEngine {
 
         // For each Self position in the function signature
         for self_position in self_positions {
-            
             // Find which parameter contains Self
-            if let Some(param_name) = self.extract_parameter_name_from_position(&self_position.path) {
-                
+            if let Some(param_name) = self.extract_parameter_name_from_position(&self_position.path)
+            {
                 // Find the corresponding argument by name in the function call
-                if let Some(argument_expr) = self.find_argument_by_name(function_call, &param_name) {
-                    
+                if let Some(argument_expr) = self.find_argument_by_name(function_call, &param_name)
+                {
                     // Infer the type of this argument
                     let mut expr_clone = argument_expr.clone();
                     match self.infer_expression(&mut expr_clone, context) {
@@ -6345,7 +6998,7 @@ impl TypeInferenceEngine {
         }
 
         // Unify all candidate Self types to ensure consistency
-        
+
         if candidate_self_types.is_empty() {
             Ok(None)
         } else if candidate_self_types.len() == 1 {
@@ -6356,11 +7009,13 @@ impl TypeInferenceEngine {
             let first_type = &candidate_self_types[0];
             for candidate in &candidate_self_types[1..] {
                 if !self.types_are_compatible(first_type, candidate) {
-                    return Err(TypecheckError::InferenceError(InferenceError::SelfTypeUnificationFailure {
-                        first_self_type: first_type.clone(),
-                        conflicting_self_type: candidate.clone(),
-                        span: None, // TODO: Add span information
-                    }));
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::SelfTypeUnificationFailure {
+                            first_self_type: first_type.clone(),
+                            conflicting_self_type: candidate.clone(),
+                            span: None, // TODO: Add span information
+                        },
+                    ));
                 }
             }
             Ok(Some(first_type.clone()))
@@ -6392,7 +7047,9 @@ impl TypeInferenceEngine {
     ) -> Option<outrun_parser::Expression> {
         for argument in &function_call.arguments {
             match argument {
-                outrun_parser::Argument::Named { name, expression, .. } => {
+                outrun_parser::Argument::Named {
+                    name, expression, ..
+                } => {
                     if name.name == param_name {
                         return Some(expression.clone());
                     }
@@ -6402,7 +7059,6 @@ impl TypeInferenceEngine {
         }
         None
     }
-
 
     /// Validate that type variable unification constraints are satisfied
     #[allow(clippy::result_large_err)]
@@ -6423,7 +7079,7 @@ impl TypeInferenceEngine {
                     } else {
                         left.as_ref().clone()
                     };
-                    
+
                     let right_resolved = if right.is_self_type() {
                         self_type.clone()
                     } else {
@@ -6432,12 +7088,14 @@ impl TypeInferenceEngine {
 
                     // Check if the types are compatible
                     if !self.types_are_compatible(&left_resolved, &right_resolved) {
-                        return Err(TypecheckError::InferenceError(InferenceError::TypeVariableUnificationFailure {
-                            variable_name: format!("{} = {}", left_resolved, right_resolved),
-                            first_type: left_resolved,
-                            conflicting_type: right_resolved,
-                            span: None, // TODO: Add span information
-                        }));
+                        return Err(TypecheckError::InferenceError(
+                            InferenceError::TypeVariableUnificationFailure {
+                                variable_name: format!("{} = {}", left_resolved, right_resolved),
+                                first_type: left_resolved,
+                                conflicting_type: right_resolved,
+                                span: None, // TODO: Add span information
+                            },
+                        ));
                     }
                 }
                 _ => {
@@ -6448,7 +7106,6 @@ impl TypeInferenceEngine {
 
         Ok(())
     }
-
 
     /// Try to lazily register an intrinsic function based on common patterns
     #[allow(clippy::result_large_err)]
@@ -7240,8 +7897,6 @@ impl TypeInferenceEngine {
         })
     }
 
-
-
     /// Generate constraints for generic function calls (Phase 3.5)
     #[allow(clippy::result_large_err)]
     pub fn generate_generic_function_constraints(
@@ -7251,10 +7906,10 @@ impl TypeInferenceEngine {
         _context: &InferenceContext,
     ) -> Result<Vec<Constraint>, TypecheckError> {
         let mut constraints = Vec::new();
-        
+
         // Extract type parameter mappings from arguments to generic parameters
         let mut type_param_mappings: HashMap<String, Type> = HashMap::new();
-        
+
         // Iterate through parameters and arguments to build type parameter mapping
         for (i, ((_param_name, param_type), arg_type)) in function_info
             .parameters
@@ -7272,12 +7927,14 @@ impl TypeInferenceEngine {
             )?;
             constraints.extend(param_constraints);
         }
-        
+
         // Generate consistency constraints: all occurrences of same type parameter must unify
         for (type_param, inferred_type) in &type_param_mappings {
             // For each occurrence of this type parameter in the function signature,
             // create a constraint that it must equal the inferred type
-            for (param_index, (_param_name, param_type)) in function_info.parameters.iter().enumerate() {
+            for (param_index, (_param_name, param_type)) in
+                function_info.parameters.iter().enumerate()
+            {
                 let param_constraints = Self::generate_type_parameter_equality_constraints(
                     param_type,
                     type_param,
@@ -7286,7 +7943,7 @@ impl TypeInferenceEngine {
                 )?;
                 constraints.extend(param_constraints);
             }
-            
+
             // Also constrain the return type if it contains this type parameter
             let return_constraints = Self::generate_type_parameter_equality_constraints(
                 &function_info.return_type,
@@ -7296,10 +7953,10 @@ impl TypeInferenceEngine {
             )?;
             constraints.extend(return_constraints);
         }
-        
+
         Ok(constraints)
     }
-    
+
     /// Extract type parameter constraints from parameter-argument type pairing
     #[allow(clippy::result_large_err)]
     fn extract_type_parameter_constraints(
@@ -7310,7 +7967,7 @@ impl TypeInferenceEngine {
         generic_parameters: &[String],
     ) -> Result<Vec<Constraint>, TypecheckError> {
         let mut constraints = Vec::new();
-        
+
         match param_type {
             Type::Concrete { name, args, .. } => {
                 // Check if this is actually a generic parameter from the function signature
@@ -7330,7 +7987,11 @@ impl TypeInferenceEngine {
                 } else {
                     // Concrete type with possible generic arguments
                     match arg_type {
-                        Type::Concrete { name: arg_id, args: arg_args, .. } => {
+                        Type::Concrete {
+                            name: arg_id,
+                            args: arg_args,
+                            ..
+                        } => {
                             // Check that concrete types match
                             if name.as_str() != arg_id.as_str() {
                                 constraints.push(Constraint::Equality {
@@ -7341,13 +8002,14 @@ impl TypeInferenceEngine {
                             } else {
                                 // Recursively process generic arguments
                                 for (param_arg, arg_arg) in args.iter().zip(arg_args.iter()) {
-                                    let nested_constraints = Self::extract_type_parameter_constraints(
-                                        param_arg,
-                                        arg_arg,
-                                        type_param_mappings,
-                                        _param_index,
-                                        generic_parameters,
-                                    )?;
+                                    let nested_constraints =
+                                        Self::extract_type_parameter_constraints(
+                                            param_arg,
+                                            arg_arg,
+                                            type_param_mappings,
+                                            _param_index,
+                                            generic_parameters,
+                                        )?;
                                     constraints.extend(nested_constraints);
                                 }
                             }
@@ -7372,10 +8034,10 @@ impl TypeInferenceEngine {
                 });
             }
         }
-        
+
         Ok(constraints)
     }
-    
+
     /// Generate equality constraints for all occurrences of a type parameter
     #[allow(clippy::result_large_err)]
     fn generate_type_parameter_equality_constraints(
@@ -7385,7 +8047,7 @@ impl TypeInferenceEngine {
         _position: usize,
     ) -> Result<Vec<Constraint>, TypecheckError> {
         let mut constraints = Vec::new();
-        
+
         match typ {
             Type::Concrete { name, args, .. } => {
                 if name.as_str() == type_param {
@@ -7398,12 +8060,13 @@ impl TypeInferenceEngine {
                 } else {
                     // Recursively check generic arguments
                     for arg in args {
-                        let nested_constraints = Self::generate_type_parameter_equality_constraints(
-                            arg,
-                            type_param,
-                            inferred_type,
-                            _position,
-                        )?;
+                        let nested_constraints =
+                            Self::generate_type_parameter_equality_constraints(
+                                arg,
+                                type_param,
+                                inferred_type,
+                                _position,
+                            )?;
                         constraints.extend(nested_constraints);
                     }
                 }
@@ -7412,10 +8075,10 @@ impl TypeInferenceEngine {
                 // Other type forms don't contain type parameters we can substitute
             }
         }
-        
+
         Ok(constraints)
     }
-    
+
     /// Instantiate a generic return type with inferred type parameters
     #[allow(clippy::result_large_err)]
     pub fn instantiate_generic_return_type(
@@ -7426,21 +8089,25 @@ impl TypeInferenceEngine {
     ) -> Result<Type, TypecheckError> {
         // Build type parameter substitution map
         let mut substitutions: HashMap<String, Type> = HashMap::new();
-        
+
         // Extract substitutions from parameter-argument pairs
         for ((_param_name, param_type), arg_type) in function_info
             .parameters
             .iter()
             .zip(inferred_arguments.iter())
         {
-            Self::collect_type_parameter_substitutions(param_type, arg_type, &mut substitutions, &function_info.generic_parameters)?;
+            Self::collect_type_parameter_substitutions(
+                param_type,
+                arg_type,
+                &mut substitutions,
+                &function_info.generic_parameters,
+            )?;
         }
-        
-        
+
         // Apply substitutions to return type
         return_type.substitute_type_parameters(&substitutions, false)
     }
-    
+
     /// Collect type parameter substitutions from parameter-argument type matching
     #[allow(clippy::result_large_err)]
     fn collect_type_parameter_substitutions(
@@ -7456,12 +8123,22 @@ impl TypeInferenceEngine {
                     substitutions.insert(name.as_str().to_string(), arg_type.clone());
                 } else {
                     // Recursively process generic arguments - both param and arg must be concrete with matching base types
-                    if let Type::Concrete { name: arg_id, args: arg_args, .. } = arg_type {
+                    if let Type::Concrete {
+                        name: arg_id,
+                        args: arg_args,
+                        ..
+                    } = arg_type
+                    {
                         // Base types should match (e.g., both "Type")
                         if name.as_str() == arg_id.as_str() {
                             // Recursively match type arguments
                             for (param_arg, arg_arg) in args.iter().zip(arg_args.iter()) {
-                                Self::collect_type_parameter_substitutions(param_arg, arg_arg, substitutions, generic_parameters)?;
+                                Self::collect_type_parameter_substitutions(
+                                    param_arg,
+                                    arg_arg,
+                                    substitutions,
+                                    generic_parameters,
+                                )?;
                             }
                         }
                         // If base types don't match, we can't extract substitutions
@@ -7474,8 +8151,6 @@ impl TypeInferenceEngine {
         }
         Ok(())
     }
-    
-
 
     /// Convert inference context to dispatch function context
     fn create_function_context_from_inference_context(
@@ -7486,21 +8161,21 @@ impl TypeInferenceEngine {
         // In a full implementation, we would extract the context from the inference context
         match &context.self_binding {
             SelfBindingContext::ProtocolDefinition {
-                protocol_id,
+                protocol_name,
                 protocol_args,
             } => crate::dispatch::FunctionContext::Protocol {
-                protocol_id: protocol_id.clone(),
+                protocol_name: protocol_name.clone(),
                 protocol_args: protocol_args.clone(),
             },
             SelfBindingContext::Implementation {
                 implementing_type,
                 implementing_args,
-                protocol_id,
+                protocol_name,
                 protocol_args,
             } => crate::dispatch::FunctionContext::Implementation {
                 implementing_type: implementing_type.clone(),
                 implementing_args: implementing_args.clone(),
-                protocol_id: protocol_id.clone(),
+                protocol_name: protocol_name.clone(),
                 protocol_args: protocol_args.clone(),
             },
             SelfBindingContext::FunctionContext { parent_context, .. } => {
@@ -7516,21 +8191,21 @@ impl TypeInferenceEngine {
     ) -> crate::dispatch::FunctionContext {
         match self_binding {
             SelfBindingContext::ProtocolDefinition {
-                protocol_id,
+                protocol_name,
                 protocol_args,
             } => crate::dispatch::FunctionContext::Protocol {
-                protocol_id: protocol_id.clone(),
+                protocol_name: protocol_name.clone(),
                 protocol_args: protocol_args.clone(),
             },
             SelfBindingContext::Implementation {
                 implementing_type,
                 implementing_args,
-                protocol_id,
+                protocol_name,
                 protocol_args,
             } => crate::dispatch::FunctionContext::Implementation {
                 implementing_type: implementing_type.clone(),
                 implementing_args: implementing_args.clone(),
-                protocol_id: protocol_id.clone(),
+                protocol_name: protocol_name.clone(),
                 protocol_args: protocol_args.clone(),
             },
             SelfBindingContext::FunctionContext { parent_context, .. } => {
@@ -8105,7 +8780,6 @@ impl TypeInferenceEngine {
         })
     }
 
-
     /// Convert a parser type annotation to a typechecker type
     #[allow(clippy::result_large_err, clippy::only_used_in_recursion)]
     pub(crate) fn convert_type_annotation(
@@ -8160,8 +8834,12 @@ impl TypeInferenceEngine {
                         })
                     } else {
                         // Unknown type - register as forward binding and create placeholder
-                        self.register_forward_binding(&type_name, type_args.len(), type_annotation)?;
-                        
+                        self.register_forward_binding(
+                            &type_name,
+                            type_args.len(),
+                            type_annotation,
+                        )?;
+
                         Ok(Type::Concrete {
                             name: crate::types::ModuleName::new(type_name),
                             args: type_args,
@@ -8362,7 +9040,7 @@ impl TypeInferenceEngine {
     ) -> Result<Type, TypecheckError> {
         Self::apply_substitution_static(ty, substitution)
     }
-    
+
     /// Static helper for applying generic substitution to a type
     fn apply_substitution_static(
         ty: Type,
@@ -8383,7 +9061,7 @@ impl TypeInferenceEngine {
                     Ok(Type::Concrete {
                         name: name.clone(),
                         args: substituted_args?,
-                        span: *span,
+                        span: span.clone(),
                     })
                 }
             }
@@ -8397,7 +9075,7 @@ impl TypeInferenceEngine {
                 Ok(Type::Protocol {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: *span,
+                    span: span.clone(),
                 })
             }
             // Other types don't need substitution
@@ -8471,7 +9149,7 @@ mod tests {
     fn test_type_inference_engine_creation() {
         let engine = TypeInferenceEngine::new();
         assert_eq!(engine.type_variable_counter, 0);
-        assert_eq!(engine.current_module.0, "main");
+        assert_eq!(engine.current_module.as_str(), "main");
     }
 
     #[test]
@@ -8526,10 +9204,10 @@ mod tests {
     fn test_module_management() {
         let mut engine = TypeInferenceEngine::new();
 
-        assert_eq!(engine.current_module.0, "main");
+        assert_eq!(engine.current_module.as_str(), "main");
 
         engine.set_current_module(ModuleName::new("Http::Client"));
-        assert_eq!(engine.current_module.0, "Http::Client");
+        assert_eq!(engine.current_module.as_str(), "Http::Client");
     }
 
     #[test]
@@ -8725,7 +9403,9 @@ mod tests {
 
                 // Check first element is Integer64
                 match &args[0] {
-                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Integer64"),
+                    Type::Concrete { name, .. } => {
+                        assert_eq!(name.as_str(), "Outrun.Core.Integer64")
+                    }
                     _ => panic!("Expected Integer64 first element"),
                 }
 
@@ -8828,7 +9508,9 @@ mod tests {
 
                 // Check value type is Integer64
                 match &args[1] {
-                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Integer64"),
+                    Type::Concrete { name, .. } => {
+                        assert_eq!(name.as_str(), "Outrun.Core.Integer64")
+                    }
                     _ => panic!("Expected Integer64 value type"),
                 }
             }
@@ -8844,13 +9526,13 @@ pub fn is_type_parameter_name(name: &str) -> bool {
     if name.len() == 1 && name.chars().next().unwrap().is_ascii_uppercase() {
         return true;
     }
-    
+
     // Starts with T (common type parameter convention)
     if name.starts_with('T') && name.len() > 1 {
         // But not if it's a concrete type like "Type"
         return name != "Type";
     }
-    
+
     // Common type parameter names (but exclude concrete types)
     matches!(name, "Key" | "Value" | "Input" | "Output" | "Result" | "Error") &&
     // Exclude common concrete types that might match these patterns
@@ -8861,32 +9543,30 @@ pub fn is_type_parameter_name(name: &str) -> bool {
 mod debug_tests {
     #[test]
     fn test_debug_unary_minus_constraint_resolution() {
-        use outrun_parser::parse_program;
-        use crate::{CompilationResult, Package};
         use crate::desugaring::DesugaringEngine;
+        use crate::{CompilationResult, Package};
+        use outrun_parser::parse_program;
 
         let source_code = "-1"; // This should trigger UnaryMinus.minus(value: 1)
-        
-        
+
         // Parse the source code
         let mut program = parse_program(source_code).expect("Parse should succeed");
-        
+
         // Manually desugar to see what happens
         let mut desugaring_engine = DesugaringEngine::new();
         let _desugar_result = desugaring_engine.desugar_program(&mut program);
-        
+
         // Create a package and add the program
         let mut package = Package::new("debug_test".to_string());
         package.add_program(program);
-        
+
         // Try to compile the package to trigger the debug output
         let result = CompilationResult::compile_package(&mut package);
-        
-        // We expect this to succeed or fail with a specific error  
+
+        // We expect this to succeed or fail with a specific error
         match result {
-            Ok(_) => {},
-            Err(_e) => {},
+            Ok(_) => {}
+            Err(_e) => {}
         }
     }
 }
-

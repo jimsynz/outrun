@@ -116,11 +116,16 @@ impl FunctionRegistry {
 
     /// Get function info by module and name
     pub fn get_function(&self, module_name: &str, function_name: &str) -> Option<&FunctionInfo> {
-        let result = self.functions
+        let result = self
+            .functions
             .get(&(module_name.to_string(), function_name.to_string()));
         if module_name == "Outrun.Intrinsic" && function_name == "list_head" {
-            eprintln!("🔍 Function registry lookup: {}.{} -> {:?}", module_name, function_name, 
-                result.map(|f| &f.return_type));
+            eprintln!(
+                "🔍 Function registry lookup: {}.{} -> {:?}",
+                module_name,
+                function_name,
+                result.map(|f| &f.return_type)
+            );
         }
         result
     }
@@ -226,8 +231,16 @@ impl<'a> FunctionDispatcher<'a> {
     /// Create a FileSpan using current file context
     fn create_file_span(&self, span: Option<Span>) -> crate::error::FileSpan {
         crate::error::FileSpan {
-            span: span.unwrap_or_else(|| Span { start: 0, end: 0, start_line_col: None, end_line_col: None }),
-            source_file: self.current_file.clone().unwrap_or_else(|| "unknown".to_string()),
+            span: span.unwrap_or_else(|| Span {
+                start: 0,
+                end: 0,
+                start_line_col: None,
+                end_line_col: None,
+            }),
+            source_file: self
+                .current_file
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
         }
     }
 
@@ -291,7 +304,11 @@ impl<'a> FunctionDispatcher<'a> {
             } => {
                 // Local call in impl context -> try impl functions first, then protocol defaults
                 if let Some(func_info) = self.function_registry.get_function(
-                    &format!("impl {} for {}", protocol_name.as_str(), implementing_type.as_str()),
+                    &format!(
+                        "impl {} for {}",
+                        protocol_name.as_str(),
+                        implementing_type.as_str()
+                    ),
                     function_name,
                 ) {
                     // Found in implementation
@@ -345,9 +362,9 @@ impl<'a> FunctionDispatcher<'a> {
                 let protocol_name_module = ModuleName::new(protocol_name);
 
                 // First try exact match with current protocol name
-                let mut impl_info =
-                    self.type_registry
-                        .get_implementation(name.as_str(), protocol_name);
+                let mut impl_info = self
+                    .type_registry
+                    .get_implementation(name.as_str(), protocol_name);
 
                 // If not found and we have args, also try with empty args (for generic implementations registered without args)
                 if impl_info.is_none() && !args.is_empty() {
@@ -376,9 +393,9 @@ impl<'a> FunctionDispatcher<'a> {
                     // Implementation lookup: protocol="{}", type="{}", args={:?}
                     let _debug_info = (generic_protocol_id.clone(), name.clone(), args);
 
-                    impl_info =
-                        self.type_registry
-                            .get_implementation(name.as_str(), protocol_name);
+                    impl_info = self
+                        .type_registry
+                        .get_implementation(name.as_str(), protocol_name);
                 }
 
                 if let Some(_impl_info) = impl_info {
@@ -458,7 +475,7 @@ impl<'a> FunctionDispatcher<'a> {
                 // Protocol requirement match: Integer requires BinarySubtraction, so Integer can call BinarySubtraction.method
                 else if self
                     .type_registry
-                    .protocol_requires(source_protocol_name, &target_protocol_id)
+                    .protocol_requires(&source_protocol_name, &target_protocol_id)
                 {
                     // The protocol type satisfies the requirement for the target protocol
                     // Look for concrete implementations of the protocol type that implement the target protocol
@@ -468,7 +485,8 @@ impl<'a> FunctionDispatcher<'a> {
                         protocol_name: protocol_name.to_string(),
                         target_description: format!(
                             "Protocol mismatch: {} does not require {}",
-                            source_protocol_name.as_str(), protocol_name
+                            source_protocol_name.as_str(),
+                            protocol_name
                         ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
@@ -626,8 +644,13 @@ impl<'a> FunctionDispatcher<'a> {
     /// Check if we have local access to a module (for private function visibility)
     fn is_local_access(&self, module_name: &str) -> bool {
         match &self.context {
-            FunctionContext::Protocol { protocol_name, .. } => protocol_name.as_str() == module_name,
-            FunctionContext::Module { module_name: ctx_module_name, .. } => ctx_module_name.as_str() == module_name,
+            FunctionContext::Protocol { protocol_name, .. } => {
+                protocol_name.as_str() == module_name
+            }
+            FunctionContext::Module {
+                module_name: ctx_module_name,
+                ..
+            } => ctx_module_name.as_str() == module_name,
             FunctionContext::Implementation {
                 implementing_type,
                 protocol_name,

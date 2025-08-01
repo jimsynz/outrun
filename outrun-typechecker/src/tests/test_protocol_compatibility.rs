@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod protocol_compatibility_tests {
     use crate::inference::TypeInferenceEngine;
-    use crate::types::{Type};
+    use crate::types::{ModuleName, Type};
 
     #[test]
     fn test_generic_protocol_compatibility() {
@@ -11,18 +11,18 @@ mod protocol_compatibility_tests {
 
         // Test: Option<Any> should be compatible with Option<Any>
         let option_any1 = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![Type::Protocol {
-                id: ModuleName::new("Any"),
+                name: ModuleName::new("Any"),
                 args: vec![],
                 span: None,
             }],
             span: None,
         };
         let option_any2 = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![Type::Protocol {
-                id: ModuleName::new("Any"),
+                name: ModuleName::new("Any"),
                 args: vec![],
                 span: None,
             }],
@@ -60,12 +60,12 @@ mod protocol_compatibility_tests {
 
         // Test: User should be compatible with Any
         let user_type = Type::Concrete {
-            id: crate::types::ModuleName::new("User"),
+            name: crate::types::ModuleName::new("User"),
             args: vec![],
             span: None,
         };
         let any_type = Type::Protocol {
-            id: ModuleName::new("Any"),
+            name: ModuleName::new("Any"),
             args: vec![],
             span: None,
         };
@@ -77,12 +77,12 @@ mod protocol_compatibility_tests {
 
         // Test: Option<User> should be compatible with Option<Any>
         let option_user = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![user_type],
             span: None,
         };
         let option_any = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![any_type],
             span: None,
         };
@@ -99,16 +99,16 @@ mod protocol_compatibility_tests {
 
         // Test: Option<Any> should NOT be compatible with Option (no args)
         let option_any = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![Type::Protocol {
-                id: ModuleName::new("Any"),
+                name: ModuleName::new("Any"),
                 args: vec![],
                 span: None,
             }],
             span: None,
         };
         let option_no_args = Type::Protocol {
-            id: ModuleName::new("Option"),
+            name: ModuleName::new("Option"),
             args: vec![],
             span: None,
         };

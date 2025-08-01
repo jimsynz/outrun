@@ -5,8 +5,9 @@ use outrun_parser::{parse_program, BinaryOperator, ExpressionKind};
 
 #[test]
 fn test_operator_desugaring_with_typechecking() {
-    use crate::types::{ModuleName};
+    use crate::types::{ModuleName, ProtocolDefinition, TypeModule};
     use crate::{DesugaringEngine, TypeInferenceEngine};
+    use outrun_parser::Span;
 
     // Create a simple program with binary operations
     let source = r#"
@@ -20,23 +21,39 @@ fn test_operator_desugaring_with_typechecking() {
     let mut desugaring_engine = DesugaringEngine::new();
 
     // Register necessary protocols for arithmetic operations
-    engine.protocol_registry_mut().register_protocol_definition(
-        ModuleName::new("BinaryAddition"),
-        std::collections::HashSet::new(),
-        ModuleName::new("TestModule"),
-        std::collections::HashSet::new(),
-        std::collections::HashSet::new(),
-        None,
-    );
+    engine
+        .protocol_registry_mut()
+        .register_module(TypeModule::Protocol {
+            name: ModuleName::new("BinaryAddition"),
+            definition: ProtocolDefinition {
+                protocol_name: ModuleName::new("BinaryAddition"),
+                required_protocols: std::collections::HashSet::new(),
+                defining_module: ModuleName::new("TestModule"),
+                default_implementations: std::collections::HashSet::new(),
+                required_functions: std::collections::HashSet::new(),
+                span: None,
+            },
+            source_location: Span::new(0, 0),
+            generic_arity: 0,
+        })
+        .unwrap();
 
-    engine.protocol_registry_mut().register_protocol_definition(
-        ModuleName::new("BinaryMultiplication"),
-        std::collections::HashSet::new(),
-        ModuleName::new("TestModule"),
-        std::collections::HashSet::new(),
-        std::collections::HashSet::new(),
-        None,
-    );
+    engine
+        .protocol_registry_mut()
+        .register_module(TypeModule::Protocol {
+            name: ModuleName::new("BinaryMultiplication"),
+            definition: ProtocolDefinition {
+                protocol_name: ModuleName::new("BinaryMultiplication"),
+                required_protocols: std::collections::HashSet::new(),
+                defining_module: ModuleName::new("TestModule"),
+                default_implementations: std::collections::HashSet::new(),
+                required_functions: std::collections::HashSet::new(),
+                span: None,
+            },
+            source_location: Span::new(0, 0),
+            generic_arity: 0,
+        })
+        .unwrap();
 
     // Apply desugaring first
     let desugar_result = desugaring_engine.desugar_program(&mut program);

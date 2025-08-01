@@ -710,7 +710,7 @@ impl ConstraintSolver {
                 } => {
                     // Self is already bound to the implementing type - check consistency
                     let expected_self = Type::Concrete {
-                        name: implementing_type.as_str().to_string(),
+                        name: implementing_type.clone(),
                         args: implementing_args.clone(),
                         span: None,
                     };
@@ -799,7 +799,8 @@ impl ConstraintSolver {
                     Err(ConstraintError::Unsatisfiable {
                         constraint: format!(
                             "type variable must resolve to {}, but got protocol {}",
-                            expected_name, name.as_str()
+                            expected_name,
+                            name.as_str()
                         ),
                         span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                     })
@@ -904,7 +905,7 @@ impl ConstraintSolver {
                 return Some(RecursivePatternInfo {
                     pattern_key,
                     implementing_type: Type::Concrete {
-                        id: impl_info.implementing_type.clone(),
+                        name: impl_info.implementing_type.clone(),
                         args: impl_info.implementing_args.clone(),
                         span: impl_info.span,
                     },
@@ -1216,8 +1217,12 @@ impl ConstraintSolver {
     fn types_overlap(&self, type1: &Type, type2: &Type) -> bool {
         // Simple overlap check - in a full implementation this would be more sophisticated
         match (type1, type2) {
-            (Type::Concrete { name: name1, .. }, Type::Concrete { name: name2, .. }) => name1 == name2,
-            (Type::Protocol { name: name1, .. }, Type::Protocol { name: name2, .. }) => name1 == name2,
+            (Type::Concrete { name: name1, .. }, Type::Concrete { name: name2, .. }) => {
+                name1 == name2
+            }
+            (Type::Protocol { name: name1, .. }, Type::Protocol { name: name2, .. }) => {
+                name1 == name2
+            }
             (Type::Variable { var_id: id1, .. }, Type::Variable { var_id: id2, .. }) => id1 == id2,
             _ => false, // Conservative approach
         }
@@ -1750,7 +1755,7 @@ mod tests {
                 vec![],
                 ModuleName::new("Display"),
                 vec![],
-                crate::types::ModuleId::new("Integer"),
+                ModuleName::new("Integer"),
                 None,
             )
             .unwrap();
@@ -1761,7 +1766,7 @@ mod tests {
                 vec![],
                 ModuleName::new("Display"),
                 vec![],
-                crate::types::ModuleId::new("String"),
+                ModuleName::new("String"),
                 None,
             )
             .unwrap();
@@ -1772,7 +1777,7 @@ mod tests {
                 vec![],
                 ModuleName::new("Debug"),
                 vec![],
-                crate::types::ModuleId::new("Integer"),
+                ModuleName::new("Integer"),
                 None,
             )
             .unwrap();
@@ -1783,7 +1788,7 @@ mod tests {
                 vec![],
                 ModuleName::new("Debug"),
                 vec![],
-                crate::types::ModuleId::new("String"),
+                ModuleName::new("String"),
                 None,
             )
             .unwrap();
@@ -1794,7 +1799,7 @@ mod tests {
                 vec![],
                 ModuleName::new("Clone"),
                 vec![],
-                crate::types::ModuleId::new("String"),
+                ModuleName::new("String"),
                 None,
             )
             .unwrap();
@@ -2049,10 +2054,10 @@ mod tests {
     #[test]
     fn test_protocol_registry_integration() {
         let mut registry = TypeRegistry::new();
-        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
-        registry.add_local_module(crate::types::ModuleId::new("TestType"));
-        registry.add_local_module(crate::types::ModuleId::new("TestProtocol"));
-        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
+        registry.add_local_module(ModuleName::new("TestModule"));
+        registry.add_local_module(ModuleName::new("TestType"));
+        registry.add_local_module(ModuleName::new("TestProtocol"));
+        registry.set_current_module(ModuleName::new("TestModule"));
 
         let protocol = ModuleName::new("TestProtocol");
         let type_id = ModuleName::new("TestType");
@@ -2067,7 +2072,7 @@ mod tests {
                 vec![],
                 protocol.clone(),
                 vec![],
-                crate::types::ModuleId::new("TestType"),
+                ModuleName::new("TestType"),
                 None,
             )
             .unwrap();
@@ -2080,7 +2085,7 @@ mod tests {
 
         // Verify the solver can access the registry
         assert!(solver
-            .protocol_registry()
+            .type_registry()
             .has_implementation(&protocol, &type_id));
     }
 
@@ -2126,7 +2131,7 @@ mod tests {
 
             // Create substitution T -> Display protocol type
             let protocol_type = Type::Protocol {
-                id: ModuleName::new("Display"),
+                name: ModuleName::new("Display"),
                 args: vec![],
                 span: None,
             };
@@ -2294,17 +2299,17 @@ mod tests {
     #[test]
     fn test_self_with_generic_types() {
         let mut registry = TypeRegistry::new();
-        registry.add_local_module(crate::types::ModuleId::new("List"));
-        registry.add_local_module(crate::types::ModuleId::new("Display"));
-        registry.add_local_module(crate::types::ModuleId::new("TestModule"));
-        registry.set_current_module(crate::types::ModuleId::new("TestModule"));
+        registry.add_local_module(ModuleName::new("List"));
+        registry.add_local_module(ModuleName::new("Display"));
+        registry.add_local_module(ModuleName::new("TestModule"));
+        registry.set_current_module(ModuleName::new("TestModule"));
         registry
             .register_implementation(
                 ModuleName::new("List"),
                 vec![Type::concrete("String")],
                 ModuleName::new("Display"),
                 vec![],
-                crate::types::ModuleId::new("List"),
+                ModuleName::new("List"),
                 None,
             )
             .unwrap();

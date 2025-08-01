@@ -18,7 +18,7 @@ def test_simple_case(input: Boolean): Boolean {
 
     // This tests that pattern bindings are available in guard expressions
     let result = CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_) => {
             println!("✅ Case expression with guard pattern binding compiled successfully");
@@ -52,10 +52,12 @@ def test_pattern_binding_scope(input: Option<Integer>): Integer {
 
     // This tests that pattern bindings are properly scoped within case expressions
     let result = CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_) => {
-            println!("✅ Nested case expression with pattern binding scoping compiled successfully");
+            println!(
+                "✅ Nested case expression with pattern binding scoping compiled successfully"
+            );
         }
         Err(e) => {
             println!("❌ Nested case expression compilation failed: {:?}", e);
@@ -78,13 +80,13 @@ def test_unknown_variable(): Boolean {
     let mut program = parse_program(source).expect("Failed to parse test program");
     // Set a fake source file to test file context
     program.debug_info.source_file = Some("test_file.outrun".to_string());
-    
+
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
 
     // This should fail with an unknown variable error that shows the correct file
     let result = CompilationResult::compile_package(&mut package);
-    
+
     match result {
         Ok(_) => {
             println!("❌ Expected compilation to fail with unknown variable error");

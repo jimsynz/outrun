@@ -32,8 +32,12 @@ fn test_function_type_inference_exists() {
 
     let inference_result = result.unwrap();
     match &inference_result.inferred_type {
-        Type::Concrete { id, .. } => {
-            assert_eq!(id.name(), "Outrun.Core.Integer64", "Should infer Integer64");
+        Type::Concrete { name, .. } => {
+            assert_eq!(
+                name.as_str(),
+                "Outrun.Core.Integer64",
+                "Should infer Integer64"
+            );
         }
         other => panic!("Expected concrete Integer64 type, got: {:?}", other),
     }
@@ -89,8 +93,8 @@ fn test_function_type_annotation_conversion() {
     assert!(result.is_ok(), "String inference should work");
 
     match &result.unwrap().inferred_type {
-        Type::Concrete { id, .. } => {
-            assert_eq!(id.name(), "Outrun.Core.String", "Should infer String");
+        Type::Concrete { name, .. } => {
+            assert_eq!(name.as_str(), "Outrun.Core.String", "Should infer String");
         }
         other => panic!("Expected String type, got: {:?}", other),
     }

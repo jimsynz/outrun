@@ -76,7 +76,7 @@ fn main() {
                 outrun_typechecker::debug_spans::debug_minimal_typecheck();
                 return;
             }
-            
+
             handle_typecheck_command(files, core_lib);
         }
         Some(Commands::Repl {
@@ -274,7 +274,7 @@ fn typecheck_core_library() -> Result<()> {
             );
             println!(
                 "• Protocol Registry: {} entries",
-                compilation_result.protocol_registry.implementation_count()
+                compilation_result.type_registry.implementation_count()
             );
             println!(
                 "• Dispatch Table: {} entries",
@@ -393,14 +393,14 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     } else {
                         format!(" Try: {}", suggestions.join(", "))
                     };
-                    
+
                     // Include filename in error message if available
                     let filename_info = if let Some(file_span) = file_span {
                         format!(" [File: {}]", file_span.filename())
                     } else {
                         String::new()
                     };
-                    
+
                     (
                         None, // We'll let the old span-guessing logic handle the span for now
                         format!(
@@ -508,6 +508,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
             TypecheckError::Generic { message, span } => {
                 (span.as_ref(), format!("Type checking error: {}", message))
             }
+            TypecheckError::TypeError(type_error) => (None, format!("Type error: {}", type_error)),
         },
         CompilerError::ModuleRedefinition { span, module_name } => (
             span.as_ref(),
@@ -520,7 +521,9 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
 }
 
 /// Extract FileSpan from errors that support it (new approach)
-fn extract_file_span_from_error(error: &outrun_typechecker::CompilerError) -> Option<&outrun_typechecker::error::FileSpan> {
+fn extract_file_span_from_error(
+    error: &outrun_typechecker::CompilerError,
+) -> Option<&outrun_typechecker::error::FileSpan> {
     use outrun_typechecker::{CompilerError, DispatchError, TypecheckError};
 
     match error {
@@ -567,7 +570,10 @@ fn extract_error_message(error: &outrun_typechecker::CompilerError) -> String {
 }
 
 /// Create a miette report directly from a FileSpan (bypasses the guessing logic)
-fn create_miette_report_with_file_span(file_span: &outrun_typechecker::error::FileSpan, message: &str) -> Result<()> {
+fn create_miette_report_with_file_span(
+    file_span: &outrun_typechecker::error::FileSpan,
+    message: &str,
+) -> Result<()> {
     // Try to read the source file
     if let Ok(source_content) = std::fs::read_to_string(&file_span.source_file) {
         let filename = std::path::Path::new(&file_span.source_file)
@@ -587,7 +593,10 @@ fn create_miette_report_with_file_span(file_span: &outrun_typechecker::error::Fi
         println!("{:?}", report);
         Ok(())
     } else {
-        Err(miette::miette!("Could not read source file: {}", file_span.source_file))
+        Err(miette::miette!(
+            "Could not read source file: {}",
+            file_span.source_file
+        ))
     }
 }
 

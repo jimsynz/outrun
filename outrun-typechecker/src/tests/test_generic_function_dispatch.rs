@@ -8,7 +8,8 @@ use crate::dispatch::{
     MonomorphisationEntry, MonomorphisationTable,
 };
 use crate::registry::ProtocolRegistry;
-use crate::types::{Type};
+use crate::types::ModuleName;
+use crate::types::Type;
 use std::collections::HashMap;
 
 fn create_test_registries() -> (ProtocolRegistry, FunctionRegistry) {
@@ -26,15 +27,15 @@ fn create_test_registries() -> (ProtocolRegistry, FunctionRegistry) {
             parameters: vec![(
                 "value".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("T"),
+                    name: ModuleName::new("T"),
                     args: vec![],
                     span: None,
                 },
             )],
             return_type: Type::Concrete {
-                id: ModuleName::new("Wrapper"),
+                name: ModuleName::new("Wrapper"),
                 args: vec![Type::Concrete {
-                    id: ModuleName::new("T"),
+                    name: ModuleName::new("T"),
                     args: vec![],
                     span: None,
                 }],
@@ -58,13 +59,13 @@ fn create_test_registries() -> (ProtocolRegistry, FunctionRegistry) {
             parameters: vec![(
                 "value".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("Integer64"),
+                    name: ModuleName::new("Integer64"),
                     args: vec![],
                     span: None,
                 },
             )],
             return_type: Type::Concrete {
-                id: ModuleName::new("Integer64"),
+                name: ModuleName::new("Integer64"),
                 args: vec![],
                 span: None,
             },
@@ -89,15 +90,15 @@ fn create_test_monomorphisation_table() -> MonomorphisationTable {
         parameters: vec![(
             "value".to_string(),
             Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: ModuleName::new("Wrapper"),
+            name: ModuleName::new("Wrapper"),
             args: vec![Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -112,7 +113,7 @@ fn create_test_monomorphisation_table() -> MonomorphisationTable {
     // Add monomorphisation for Wrapper<Integer64>
     let mut int_substitutions = HashMap::new();
     let int_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -134,7 +135,7 @@ fn create_test_monomorphisation_table() -> MonomorphisationTable {
     // Add monomorphisation for Wrapper<String>
     let mut string_substitutions = HashMap::new();
     let string_type = Type::Concrete {
-        id: ModuleName::new("String"),
+        name: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
@@ -187,7 +188,7 @@ fn test_resolve_generic_call_with_monomorphisation() {
 
     // Test resolving a monomorphised generic function call
     let int_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -205,7 +206,7 @@ fn test_resolve_generic_call_with_monomorphisation() {
             // Verify the parameter type was monomorphised
             assert_eq!(resolved_func.function_info.parameters.len(), 1);
             match &resolved_func.function_info.parameters[0].1 {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
                 _ => panic!("Expected concrete Integer64 type for parameter"),
             }
         }
@@ -227,7 +228,7 @@ fn test_resolve_generic_call_different_types() {
 
     // Test with String type
     let string_type = Type::Concrete {
-        id: ModuleName::new("String"),
+        name: ModuleName::new("String"),
         args: vec![],
         span: None,
     };
@@ -240,17 +241,17 @@ fn test_resolve_generic_call_different_types() {
         DispatchResult::Resolved(resolved_func) => {
             // Verify the parameter type was monomorphised to String
             match &resolved_func.function_info.parameters[0].1 {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "String"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "String"),
                 _ => panic!("Expected concrete String type for parameter"),
             }
 
             // Verify the return type was monomorphised to Wrapper<String>
             match &resolved_func.function_info.return_type {
-                Type::Concrete { id, args, .. } => {
-                    assert_eq!(id.name(), "Wrapper");
+                Type::Concrete { name, args, .. } => {
+                    assert_eq!(name.as_str(), "Wrapper");
                     assert_eq!(args.len(), 1);
                     match &args[0] {
-                        Type::Concrete { id, .. } => assert_eq!(id.name(), "String"),
+                        Type::Concrete { name, .. } => assert_eq!(name.as_str(), "String"),
                         _ => panic!("Expected String type for Wrapper argument"),
                     }
                 }
@@ -269,7 +270,7 @@ fn test_resolve_generic_call_without_monomorphisation() {
     let dispatcher = FunctionDispatcher::new(&protocol_registry, &function_registry, None, None);
 
     let int_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -302,7 +303,7 @@ fn test_resolve_qualified_call_with_types() {
     );
 
     let int_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };
@@ -365,7 +366,7 @@ fn test_resolve_generic_call_nonexistent_monomorphisation() {
 
     // Try to resolve with a type that doesn't have a monomorphisation
     let boolean_type = Type::Concrete {
-        id: ModuleName::new("Boolean"),
+        name: ModuleName::new("Boolean"),
         args: vec![],
         span: None,
     };
@@ -397,7 +398,7 @@ fn test_resolve_generic_call_nonexistent_function() {
     );
 
     let int_type = Type::Concrete {
-        id: ModuleName::new("Integer64"),
+        name: ModuleName::new("Integer64"),
         args: vec![],
         span: None,
     };

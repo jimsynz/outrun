@@ -632,11 +632,16 @@ impl Type {
                 };
                 eprintln!("🔍 resolve_self: Self -> {}", resolved);
                 Some(resolved)
-            },
-            Self::SelfType { binding_context, .. } => {
-                eprintln!("🔍 resolve_self: Self with unbound context: {:?}", binding_context);
+            }
+            Self::SelfType {
+                binding_context, ..
+            } => {
+                eprintln!(
+                    "🔍 resolve_self: Self with unbound context: {:?}",
+                    binding_context
+                );
                 None // Self is unbound in protocol definitions
-            },
+            }
             _ => None,
         }
     }
@@ -1004,13 +1009,13 @@ pub enum TypeModule {
     },
     /// Implementation module (e.g., "List:Display", "Map:Iterator")
     Implementation {
-        name: ModuleName,                    // "List:Display"
-        implementing_type: ModuleName,       // "List"
-        protocol: ModuleName,                // "Display"
-        generic_bindings: Vec<Type>,         // T -> String for this impl
-        functions: Vec<FunctionDefinition>,  // The actual impl functions
+        name: ModuleName,                   // "List:Display"
+        implementing_type: ModuleName,      // "List"
+        protocol: ModuleName,               // "Display"
+        generic_bindings: Vec<Type>,        // T -> String for this impl
+        functions: Vec<FunctionDefinition>, // The actual impl functions
         source_location: Span,
-        defining_module: ModuleName,         // Where this impl lives
+        defining_module: ModuleName, // Where this impl lives
     },
     /// Forward binding for types referenced before definition
     ForwardBinding {

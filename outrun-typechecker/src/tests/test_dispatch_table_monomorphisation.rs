@@ -1,14 +1,16 @@
-//! Test for Phase 3.4: Dispatch Table Integration with Monomorphisation
-//!
-//! Tests the build_dispatch_table_with_monomorphisation function and integration
-//! of monomorphised functions into the dispatch table.
+// Test for Phase 3.4: Dispatch Table Integration with Monomorphisation
+//
+// Tests the build_dispatch_table_with_monomorphisation function and integration
+// of monomorphised functions into the dispatch table.
+
+use crate::types::ModuleName;
 
 use crate::dispatch::{
     build_dispatch_table, FunctionInfo, FunctionRegistry, FunctionVisibility,
     MonomorphisationEntry, MonomorphisationTable,
 };
 use crate::registry::ProtocolRegistry;
-use crate::types::{Type};
+use crate::types::Type;
 use std::collections::HashMap;
 
 fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationTable) {
@@ -24,15 +26,15 @@ fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationT
         parameters: vec![(
             "item".to_string(),
             Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             },
         )],
         return_type: Type::Concrete {
-            id: ModuleName::new("Container"),
+            name: ModuleName::new("Container"),
             args: vec![Type::Concrete {
-                id: ModuleName::new("T"),
+                name: ModuleName::new("T"),
                 args: vec![],
                 span: None,
             }],
@@ -53,7 +55,7 @@ fn create_test_setup() -> (ProtocolRegistry, FunctionRegistry, MonomorphisationT
     // Add monomorphisations for Integer64 and String
     for type_name in &["Integer64", "String"] {
         let concrete_type = Type::Concrete {
-            id: ModuleName::new(*type_name),
+            name: ModuleName::new(*type_name),
             args: vec![],
             span: None,
         };
@@ -124,17 +126,17 @@ fn test_monomorphised_entries_have_correct_function_info() {
     // Verify parameter types were substituted
     assert_eq!(int_entry.function_info.parameters.len(), 1);
     match &int_entry.function_info.parameters[0].1 {
-        Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+        Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
         _ => panic!("Expected concrete Integer64 type"),
     }
 
     // Verify return type was substituted
     match &int_entry.function_info.return_type {
-        Type::Concrete { id, args, .. } => {
-            assert_eq!(id.name(), "Container");
+        Type::Concrete { name, args, .. } => {
+            assert_eq!(name.as_str(), "Container");
             assert_eq!(args.len(), 1);
             match &args[0] {
-                Type::Concrete { id, .. } => assert_eq!(id.name(), "Integer64"),
+                Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Integer64"),
                 _ => panic!("Expected Integer64 type for Container argument"),
             }
         }
@@ -161,9 +163,9 @@ fn test_monomorphised_entries_different_types() {
         &int_entry.function_info.parameters[0].1,
         &string_entry.function_info.parameters[0].1,
     ) {
-        (Type::Concrete { id: id1, .. }, Type::Concrete { id: id2, .. }) => {
-            assert_eq!(id1.name(), "Integer64");
-            assert_eq!(id2.name(), "String");
+        (Type::Concrete { name: id1, .. }, Type::Concrete { name: id2, .. }) => {
+            assert_eq!(id1.as_str(), "Integer64");
+            assert_eq!(id2.as_str(), "String");
         }
         _ => panic!("Expected concrete types for both parameters"),
     }
@@ -216,7 +218,7 @@ fn test_complex_generic_types_in_dispatch_table() {
             (
                 "key".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("K"),
+                    name: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
@@ -224,9 +226,9 @@ fn test_complex_generic_types_in_dispatch_table() {
             (
                 "values".to_string(),
                 Type::Concrete {
-                    id: ModuleName::new("List"),
+                    name: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: ModuleName::new("V"),
+                        name: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -235,17 +237,17 @@ fn test_complex_generic_types_in_dispatch_table() {
             ),
         ],
         return_type: Type::Concrete {
-            id: ModuleName::new("Map"),
+            name: ModuleName::new("Map"),
             args: vec![
                 Type::Concrete {
-                    id: ModuleName::new("K"),
+                    name: ModuleName::new("K"),
                     args: vec![],
                     span: None,
                 },
                 Type::Concrete {
-                    id: ModuleName::new("List"),
+                    name: ModuleName::new("List"),
                     args: vec![Type::Concrete {
-                        id: ModuleName::new("V"),
+                        name: ModuleName::new("V"),
                         args: vec![],
                         span: None,
                     }],
@@ -271,7 +273,7 @@ fn test_complex_generic_types_in_dispatch_table() {
     substitutions.insert(
         "K".to_string(),
         Type::Concrete {
-            id: ModuleName::new("String"),
+            name: ModuleName::new("String"),
             args: vec![],
             span: None,
         },
@@ -279,7 +281,7 @@ fn test_complex_generic_types_in_dispatch_table() {
     substitutions.insert(
         "V".to_string(),
         Type::Concrete {
-            id: ModuleName::new("Integer64"),
+            name: ModuleName::new("Integer64"),
             args: vec![],
             span: None,
         },

@@ -36,15 +36,15 @@ fn test_type_kind_resolution() {
     // Test that core protocols are recognized
     assert!(type_registry.is_protocol("Display"));
     assert!(type_registry.is_protocol("BinaryAddition"));
-    
+
     // Test that core structs are recognized
     assert!(type_registry.is_struct("Outrun.Core.Integer64"));
     assert!(type_registry.is_struct("Outrun.Core.List"));
-    
+
     // Test that unknown types are not found
     assert!(!type_registry.is_protocol("UnknownProtocol"));
     assert!(!type_registry.is_struct("UnknownStruct"));
-    
+
     println!("✅ Type kind resolution working correctly");
 }
 
@@ -66,11 +66,11 @@ fn test_boolean_no_longer_hardcoded() {
     let result = engine.convert_type_annotation(&boolean_annotation);
 
     match result {
-        Ok(crate::types::Type::Concrete { id, .. }) => {
+        Ok(crate::types::Type::Concrete { name, .. }) => {
             // This should now resolve to the registered Boolean concrete type
-            println!("✅ Boolean resolved to concrete type: {}", id.name());
+            println!("✅ Boolean resolved to concrete type: {}", name.as_str());
             // Without protocol registration, it should default to concrete
-            assert_eq!(id.name(), "Boolean");
+            assert_eq!(name.as_str(), "Boolean");
         }
         Ok(other_type) => {
             println!("Boolean resolved to: {:?}", other_type);
@@ -88,7 +88,7 @@ fn test_protocol_vs_concrete_distinction() {
     // Test that we can distinguish protocols from structs
     assert!(type_registry.is_protocol("Display"));
     assert!(!type_registry.is_struct("Display"));
-    
+
     assert!(type_registry.is_struct("Outrun.Core.Boolean"));
     assert!(!type_registry.is_protocol("Outrun.Core.Boolean"));
 
