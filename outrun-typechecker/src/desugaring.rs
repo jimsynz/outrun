@@ -41,18 +41,9 @@ impl DesugaringEngine {
 
     /// Desugar all operators in a program, transforming them into protocol function calls
     pub fn desugar_program(&mut self, program: &mut Program) -> Result<(), TypecheckError> {
-        eprintln!(
-            "🔧 Starting program desugaring with {} items",
-            program.items.len()
-        );
-        for (i, item) in program.items.iter_mut().enumerate() {
-            eprintln!("🔧 Desugaring item {}", i);
+        for item in program.items.iter_mut() {
             self.desugar_item(item)?;
         }
-        eprintln!(
-            "🔧 Program desugaring complete. Total transformations: {}",
-            self.transformations.len()
-        );
         Ok(())
     }
 
@@ -142,8 +133,6 @@ impl DesugaringEngine {
 
     /// Iteratively desugar all operators in an expression tree to prevent stack overflow
     pub fn desugar_expression(&mut self, expr: &mut Expression) -> Result<(), TypecheckError> {
-        eprintln!("🔍 Starting expression desugaring at span {:?}", expr.span);
-
         // Use iterative approach to handle deep expression trees
         let mut work_stack: Vec<&mut Expression> = vec![expr];
         let mut transform_stack: Vec<*mut Expression> = Vec::new();
@@ -156,18 +145,10 @@ impl DesugaringEngine {
             // Add child expressions to work stack
             match &mut current_expr.kind {
                 ExpressionKind::BinaryOp(binary_op) => {
-                    eprintln!(
-                        "🎯 Found binary operation {:?} at span {:?} during traversal",
-                        binary_op.operator, current_expr.span
-                    );
                     work_stack.push(&mut binary_op.left);
                     work_stack.push(&mut binary_op.right);
                 }
                 ExpressionKind::UnaryOp(unary_op) => {
-                    eprintln!(
-                        "🎯 Found unary operation {:?} at span {:?} during traversal",
-                        unary_op.operator, current_expr.span
-                    );
                     work_stack.push(&mut unary_op.operand);
                 }
                 ExpressionKind::FunctionCall(func_call) => {
@@ -346,10 +327,6 @@ impl DesugaringEngine {
                                 current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
                             }
                             Err(e) => {
-                                println!(
-                                    "❌ Failed to desugar binary op {:?} at span {:?}: {}",
-                                    binary_op.operator, current_expr.span, e
-                                );
                                 return Err(e);
                             }
                         }
@@ -366,10 +343,6 @@ impl DesugaringEngine {
                                 current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
                             }
                             Err(e) => {
-                                println!(
-                                    "❌ Failed to desugar unary op {:?} at span {:?}: {}",
-                                    unary_op.operator, current_expr.span, e
-                                );
                                 return Err(e);
                             }
                         }
@@ -380,11 +353,6 @@ impl DesugaringEngine {
             }
         }
 
-        eprintln!(
-            "🔍 Expression desugaring complete at span {:?}. Transformations made: {}",
-            expr.span,
-            self.transformations.len()
-        );
         Ok(())
     }
 

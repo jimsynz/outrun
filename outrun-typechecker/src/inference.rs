@@ -3823,18 +3823,7 @@ impl TypeInferenceEngine {
                     });
                 }
 
-                // Handle Option.unwrap specifically
-                if module.name == "Option" && name.name == "unwrap" {
-                    eprintln!("🔍 Handling Option.unwrap call");
-                    // Option.unwrap takes Option<T> and returns T
-                    // For now, return a fresh type variable - this should be the inner type
-                    let inner_type = Type::variable(self.fresh_type_var(), Level(0));
-                    return Ok(InferenceResult {
-                        inferred_type: inner_type,
-                        constraints: vec![],
-                        substitution: Substitution::new(),
-                    });
-                }
+
             }
             outrun_parser::FunctionPath::Expression { .. } => {
                 // Expression-based function calls - not handled for now
@@ -6930,72 +6919,64 @@ impl TypeInferenceEngine {
             return Ok(return_type.clone()); // No module, can't be protocol
         };
 
-        // Get function info to understand parameter types
-        let function_parameters = if let Some(info) = self
+        // Get function info to understand parameter types and generic parameters
+        let function_info = if let Some(info) = self
             .function_registry
             .get_function(module_name, function_name)
         {
-            info.parameters.clone()
+            info
         } else {
             return Ok(return_type.clone()); // Function not found
         };
 
-        // Handle the most common case: Option<T> where T needs substitution
-        if module_name == "Option" {
-            // println!("              🔧 Option protocol detected - attempting generic substitution");
-            println!("                Function: {}", function_name);
-            println!(
-                "                Precomputed arg types count: {}",
-                precomputed_arg_types.len()
-            );
-            println!(
-                "                Function parameters: {:?}",
-                function_parameters
-            );
-            println!("                Original return type: {:?}", return_type);
-
-            // Find the argument that contains the protocol type (usually named 'value' for Option.unwrap)
-            for (i, (param_name, _param_type)) in function_parameters.iter().enumerate() {
-                println!(
-                    "                  Checking parameter {}: {} (type: {:?})",
-                    i, param_name, _param_type
-                );
-                if param_name == "value" {
-                    // Get the actual argument type
-                    if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
-                        println!("                    Found argument type: {:?}", arg_type);
-                        // Extract T from Option<T>
-                        if let Type::Protocol { name, args, .. } = arg_type {
-                            if name.as_str() == "Option" && !args.is_empty() {
-                                // The first argument of Option<T> is T
-                                let inner_type = &args[0];
-                                println!(
-                                    "                    ✅ Substituting T with: {:?}",
-                                    inner_type
-                                );
-                                let result = self.substitute_generic_parameter_in_type(
-                                    return_type,
-                                    "T",
-                                    inner_type,
-                                )?;
-                                println!("                    ✅ Final return type: {:?}", result);
-                                return Ok(result);
-                            }
-                        }
-                    } else {
-                        println!(
-                            "                    ❌ No argument type available at index {}",
-                            i
-                        );
-                    }
-                    break;
-                }
-            }
-            // println!("              ❌ No 'value' parameter found or substitution failed");
+        // If the function has no generic parameters, no substitution needed
+        if function_info.generic_parameters.is_empty() {
+            return Ok(return_type.clone());
         }
 
-        // For other protocols, implement generic substitution as needed
-        // This can be extended for other protocol patterns
+        // Build a substitution map from generic parameters to concrete types
+        let mut substitution_map = std::collections::HashMap::new();
+
+        // Look for Self-typed parameters to extract generic type arguments
+        for (i, (param_name, param_type)) in function_info.parameters.iter().enumerate() {
+            // Check if this parameter has type Self (the protocol type)
+            if matches!(param_type, Type::SelfType { .. }) {
+                // Get the actual argument type
+                if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
+                    // Extract generic arguments from the concrete type
+                    // For example, from Option<Integer>, extract that T = Integer
+                    match arg_type {
+                        Type::Protocol { name, args, .. } | Type::Concrete { name, args, .. } => {
+                            // Check if this is the protocol we're working with
+                            if name.as_str() == module_name {
+                                // Map generic parameters to their concrete types
+                                for (j, generic_param) in function_info.generic_parameters.iter().enumerate() {
+                                    if let Some(concrete_type) = args.get(j) {
+                                        substitution_map.insert(generic_param.clone(), concrete_type.clone());
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // If we found substitutions, apply them to the return type
+        if !substitution_map.is_empty() {
+            let mut result = return_type.clone();
+            for (generic_param, concrete_type) in substitution_map.iter() {
+                result = self.substitute_generic_parameter_in_type(
+                    &result,
+                    generic_param,
+                    concrete_type,
+                )?;
+            }
+            return Ok(result);
+        }
+
+        // No substitution needed or possible
         Ok(return_type.clone())
     }
 

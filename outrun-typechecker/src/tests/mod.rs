@@ -20,6 +20,7 @@ pub mod test_function_inference_simple;
 pub mod test_function_integration_real;
 pub mod test_generic_function_constraints;
 pub mod test_generic_function_dispatch;
+pub mod test_generic_substitution;
 pub mod test_implementation_tracking;
 pub mod test_integration_comprehensive;
 pub mod test_intrinsic_compatibility;

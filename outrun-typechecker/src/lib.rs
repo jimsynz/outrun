@@ -134,19 +134,12 @@ impl CompilationResult {
             let mut core_package_std = Package::from_loaded_package(core_package);
             core_package_std.package_name = "outrun-core".to_string();
 
-            // println!("📦 Pre-compiling core library for REPL optimization...");
-
             // Compile the core library without loading it again (it's already loaded)
             // Use compile_package_internal directly to avoid double-loading
             let engine = crate::inference::TypeInferenceEngine::bootstrap();
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
             let core_result =
                 Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine)?;
-
-            println!(
-                "✅ Core library pre-compiled successfully with {} implementations",
-                core_result.type_registry.implementation_count()
-            );
 
             Ok(core_result)
         } else {
@@ -224,11 +217,8 @@ impl CompilationResult {
                     if let Some(prev_digest) = prev_module_digests.get(module_id) {
                         // Module exists in both versions - check if content actually changed
                         if prev_digest != new_digest {
-                            println!(
-                                "⚠️  package {} redefined module {}",
-                                package.package_name,
-                                module_id.as_str()
-                            );
+                            // Module was redefined with different content
+                            // This is allowed for hot reloading scenarios
                         }
                     }
                 }
@@ -459,16 +449,7 @@ impl CompilationResult {
         mut desugaring_engine: DesugaringEngine,
     ) -> Result<CompilationResult, CompilerError> {
         // Phase 1: Desugar all operators into protocol function calls
-        for (i, program) in package.programs.iter_mut().enumerate() {
-            eprintln!(
-                "🔧 PHASE 1: Desugaring program {} from package '{}'",
-                i, package.package_name
-            );
-            if let Some(file_path) = &program.debug_info.source_file {
-                eprintln!("🔧   File: {}", file_path);
-            } else {
-                eprintln!("🔧   File: <unknown>");
-            }
+        for program in package.programs.iter_mut() {
             desugaring_engine.desugar_program(program)?;
         }
 
@@ -959,10 +940,6 @@ protocol Display {
 
         let optimized_time = start_optimized.elapsed();
 
-        // println!("📊 Performance comparison:");
-        println!("   Traditional approach: {:?}", traditional_time);
-        println!("   Optimized approach:   {:?}", optimized_time);
-
         // Assert both approaches work (implicit - if we got here they succeeded)
         assert!(
             traditional_time.as_nanos() > 0,
@@ -1018,9 +995,6 @@ protocol Display {
         initial_package.add_program(initial_program);
 
         let initial_result = CompilationResult::compile_package(&mut initial_package);
-        if let Err(ref e) = initial_result {
-            eprintln!("Initial compilation error: {:?}", e);
-        }
         assert!(initial_result.is_ok(), "Initial compilation should succeed");
         let initial_compilation = initial_result.unwrap();
 
