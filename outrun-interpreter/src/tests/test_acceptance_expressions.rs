@@ -3,11 +3,11 @@
 //! These tests systematically verify which expression types are implemented
 //! and working correctly with the parser → interpreter pipeline.
 
-use crate::OutrunTestHarness;
+use crate::InterpreterSession;
 
 #[test]
 fn test_supported_literal_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Integer literals (working)
     harness.assert_evaluates_to_integer("42", 42).unwrap();
@@ -31,7 +31,7 @@ fn test_supported_literal_expressions() {
 
 #[test]
 fn test_variable_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Set up variables
     harness.evaluate("let x = 42").unwrap();
@@ -48,7 +48,7 @@ fn test_variable_expressions() {
 
 #[test]
 fn test_let_binding_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Simple let bindings (working)
     harness.evaluate("let x = 42").unwrap();
@@ -68,7 +68,7 @@ fn test_let_binding_expressions() {
 
 #[test]
 fn test_case_expression_basic() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Simple case expressions with literal patterns (working)
     let code = r#"
@@ -111,7 +111,7 @@ fn test_case_expression_basic() {
 
 #[test]
 fn test_current_interpreter_capabilities_summary() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // This test documents what's currently working
     println!("=== CURRENT INTERPRETER CAPABILITIES ===");

@@ -3,11 +3,11 @@
 //! These tests verify that the new interpreter can correctly evaluate
 //! all basic literal types supported by Outrun.
 
-use crate::OutrunTestHarness;
+use crate::InterpreterSession;
 
 #[test]
 fn test_integer_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test positive integers
     harness.assert_evaluates_to_integer("42", 42).unwrap();
@@ -25,7 +25,7 @@ fn test_integer_literals() {
 
 #[test]
 fn test_boolean_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     harness.assert_evaluates_to_boolean("true", true).unwrap();
     harness.assert_evaluates_to_boolean("false", false).unwrap();
@@ -33,7 +33,7 @@ fn test_boolean_literals() {
 
 #[test]
 fn test_string_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test basic strings
     harness
@@ -64,7 +64,7 @@ fn test_string_literals() {
 
 #[test]
 fn test_atom_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     harness.assert_evaluates_to_atom(":hello", "hello").unwrap();
     harness.assert_evaluates_to_atom(":world", "world").unwrap();
@@ -75,7 +75,7 @@ fn test_atom_literals() {
 
 #[test]
 fn test_literal_combinations_with_variables() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test let bindings with different literal types
     harness.evaluate("let int_var = 42").unwrap();
@@ -111,7 +111,7 @@ fn test_literal_combinations_with_variables() {
 
 #[test]
 fn test_literal_edge_cases() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test edge case integers
     harness.assert_evaluates_to_integer("0", 0).unwrap();
@@ -132,7 +132,7 @@ fn test_literal_edge_cases() {
 
 #[test]
 fn test_variable_shadowing_with_literals() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Define a variable
     harness.evaluate("let x = 42").unwrap();
@@ -153,7 +153,7 @@ fn test_variable_shadowing_with_literals() {
 
 #[test]
 fn test_multiple_variable_scopes() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test that variables persist across evaluations
     harness.evaluate("let a = 1").unwrap();

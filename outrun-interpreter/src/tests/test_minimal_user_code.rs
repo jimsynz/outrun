@@ -1,8 +1,8 @@
-use crate::test_harness::OutrunTestHarness;
+use crate::test_harness::InterpreterSession;
 
 #[test]
 fn test_unary_minus_constraint_system() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
     
     // This should work now with the redesigned constraint system
     match harness.evaluate("-1") {
@@ -18,7 +18,7 @@ fn test_unary_minus_constraint_system() {
 
 #[test] 
 fn test_simple_literal_only() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
     
     // Try just a literal with no operators
     match harness.evaluate("42") {

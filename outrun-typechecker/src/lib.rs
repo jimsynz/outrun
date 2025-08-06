@@ -164,6 +164,16 @@ impl CompilationResult {
         expression_source: &str,
         precompiled_core: &CompilationResult,
     ) -> Result<CompilationResult, CompilerError> {
+        Self::compile_repl_expression_with_context(expression_source, precompiled_core, None)
+    }
+    
+    /// Compile a REPL expression with optional session context (variables from previous evaluations)
+    /// This enables proper compilation of expressions that reference session variables
+    pub fn compile_repl_expression_with_context(
+        expression_source: &str,
+        precompiled_core: &CompilationResult,
+        session_context: Option<&std::collections::HashMap<String, crate::types::Type>>,
+    ) -> Result<CompilationResult, CompilerError> {
         // Parse the REPL expression as a program
         let program =
             outrun_parser::parse_program(expression_source).map_err(CompilerError::Parse)?;
@@ -172,8 +182,28 @@ impl CompilationResult {
         let mut expr_package = Package::new("repl_expression".to_string());
         expr_package.add_program(program);
 
-        // Compile with the pre-compiled core library as a dependency
-        Self::compile_with_dependencies(&mut expr_package, vec![precompiled_core.clone()])
+        // If we have session context, we need to use compile_package_internal with a pre-configured engine
+        if let Some(context) = session_context {
+            // Create engine with the pre-compiled core library
+            let mut engine = crate::inference::TypeInferenceEngine::with_registries(
+                precompiled_core.function_registry.clone(),
+                precompiled_core.type_registry.clone(),
+            );
+            
+            // Bind session variables
+            for (var_name, var_type) in context {
+                engine.bind_variable(var_name, var_type.clone());
+            }
+            
+            // Create desugaring engine
+            let desugaring_engine = crate::desugaring::DesugaringEngine::new();
+            
+            // Compile with the pre-configured engine
+            Self::compile_package_internal(&mut expr_package, engine, desugaring_engine)
+        } else {
+            // No session context - use standard compilation
+            Self::compile_with_dependencies(&mut expr_package, vec![precompiled_core.clone()])
+        }
     }
 
     /// Recompile a package, allowing it to redefine its own modules (for hot reloading/plugins)

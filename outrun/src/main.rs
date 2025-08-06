@@ -8,10 +8,10 @@ use std::path::PathBuf;
 use std::process;
 use thiserror::Error;
 
+mod repl;
 mod sexpr;
-mod simple_repl; // New simplified REPL with new interpreter
 
-use simple_repl::{SimpleReplConfig, SimpleReplSession};
+use repl::{ReplConfig, ReplSession};
 
 #[derive(Parser)]
 #[command(
@@ -58,6 +58,24 @@ enum Commands {
         #[arg(long, value_name = "FILE")]
         context: Option<PathBuf>,
     },
+    /// Evaluate Outrun expressions directly
+    Eval {
+        /// Expression to evaluate (if not provided, reads from stdin)
+        #[arg(short = 'e', long = "expr", value_name = "EXPRESSION")]
+        expression: Option<String>,
+        
+        /// Read expression from a file
+        #[arg(short = 'f', long = "file", value_name = "FILE", conflicts_with = "expression")]
+        file: Option<PathBuf>,
+        
+        /// Show type information with results
+        #[arg(long, short = 't')]
+        show_types: bool,
+
+        /// Enable verbose error messages
+        #[arg(long, short = 'v')]
+        verbose: bool,
+    },
 }
 
 fn main() {
@@ -85,6 +103,14 @@ fn main() {
             context,
         }) => {
             handle_repl_command(show_types, verbose, context);
+        }
+        Some(Commands::Eval {
+            expression,
+            file,
+            show_types,
+            verbose,
+        }) => {
+            handle_eval_command(expression, file, show_types, verbose);
         }
         None => {
             // No subcommand provided, show help
@@ -928,7 +954,7 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
 
 fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>) {
     // Create REPL configuration based on command line options
-    let config = SimpleReplConfig {
+    let config = ReplConfig {
         show_types,
         verbose_errors: verbose,
         ..Default::default()
@@ -943,7 +969,7 @@ fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>
     }
 
     // Create and start the REPL session
-    match SimpleReplSession::with_config(config) {
+    match ReplSession::with_config(config) {
         Ok(mut session) => {
             if let Err(e) = session.run() {
                 eprintln!("REPL error: {e:?}");
@@ -953,6 +979,73 @@ fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>
         Err(e) => {
             eprintln!("Failed to start REPL: {e:?}");
             process::exit(1);
+        }
+    }
+}
+
+fn handle_eval_command(
+    expression: Option<String>,
+    file: Option<PathBuf>,
+    show_types: bool,
+    verbose: bool,
+) {
+    use outrun_interpreter::InterpreterSession;
+    
+    // Get the expression to evaluate
+    let expr_code = if let Some(expr) = expression {
+        // Use -e flag expression
+        expr
+    } else if let Some(file_path) = file {
+        // Read from file
+        match fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("Failed to read file '{}': {}", file_path.display(), e);
+                process::exit(1);
+            }
+        }
+    } else {
+        // Read from stdin
+        let mut buffer = String::new();
+        if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+            eprintln!("Failed to read from stdin: {}", e);
+            process::exit(1);
+        }
+        buffer
+    };
+
+    // Create an interpreter session
+    let mut session = match InterpreterSession::new() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to create interpreter session: {:?}", e);
+            process::exit(1);
+        }
+    };
+
+    // Split the input into lines and evaluate each one
+    // This allows for multiple expressions like "let x = 5\nx * 2"
+    let lines: Vec<&str> = expr_code.lines().filter(|line| !line.trim().is_empty()).collect();
+    
+    for (i, line) in lines.iter().enumerate() {
+        match session.evaluate(line) {
+            Ok(value) => {
+                // Only print the result of the last expression
+                if i == lines.len() - 1 {
+                    println!("{}", value.display());
+                    if show_types {
+                        println!("// Type: {}", value.type_name());
+                    }
+                }
+            }
+            Err(e) => {
+                if verbose {
+                    eprintln!("Error evaluating expression: {:?}", e);
+                } else {
+                    eprintln!("Error: {}", e);
+                }
+                process::exit(1);
+            }
         }
     }
 }

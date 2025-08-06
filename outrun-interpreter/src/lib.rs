@@ -27,7 +27,7 @@ pub use context::{InterpreterContext, InterpreterError};
 pub use evaluator::{EvaluationError, ExpressionEvaluator};
 pub use intrinsics::{IntrinsicError, IntrinsicsHandler};
 pub use pattern::{PatternMatchError, PatternMatcher};
-pub use test_harness::{OutrunTestHarness, TestHarnessError};
+pub use test_harness::{InterpreterSession, TestHarnessError};
 pub use value::Value;
 
 /// Main entry point for evaluating expressions with the new system

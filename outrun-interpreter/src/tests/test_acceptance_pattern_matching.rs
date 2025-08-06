@@ -3,11 +3,11 @@
 //! These tests verify that the new interpreter correctly handles working pattern matching
 //! constructs. Tests for unimplemented features (tuples, lists) have been removed.
 
-use crate::OutrunTestHarness;
+use crate::InterpreterSession;
 
 #[test]
 fn test_let_binding_identifier_patterns() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test simple identifier pattern
     harness.evaluate("let x = 42").unwrap();
@@ -26,7 +26,7 @@ fn test_let_binding_identifier_patterns() {
 
 #[test]
 fn test_case_expression_literal_patterns() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test integer literal patterns
     let code = r#"
@@ -76,7 +76,7 @@ fn test_case_expression_literal_patterns() {
 
 #[test]
 fn test_case_expression_identifier_patterns() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test identifier pattern (catch-all)
     let code = r#"
@@ -100,7 +100,7 @@ fn test_case_expression_identifier_patterns() {
 
 #[test]
 fn test_case_expression_pattern_precedence() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test that more specific patterns match before general ones
     let code = r#"
@@ -127,7 +127,7 @@ fn test_case_expression_pattern_precedence() {
 
 #[test]
 fn test_case_expression_with_variables() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Set up variables for testing
     harness.evaluate("let x = 42").unwrap();
@@ -147,7 +147,7 @@ fn test_case_expression_with_variables() {
 
 #[test]
 fn test_pattern_binding_scope() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test that pattern bindings don't leak outside case expressions
     harness.evaluate("let x = \"original\"").unwrap();

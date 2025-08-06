@@ -1,17 +1,88 @@
-//! Testing harness for the new Outrun interpreter system
+//! Interpreter session for the Outrun interpreter system
 //!
-//! This module provides a convenient testing harness that allows tests to:
-//! - Execute arbitrary Outrun code expressions using the new interpreter
+//! This module provides an interpreter session that allows:
+//! - Execute arbitrary Outrun code expressions using the interpreter
 //! - Assert on the evaluated results with type checking
 //! - Set up variables and context for testing scenarios
-//! - Handle parser → interpreter pipeline gracefully
+//! - Handle parser → typechecker → interpreter pipeline gracefully
 //! - Maintain variable persistence across evaluations (REPL-like behavior)
+//! - Track variable types for proper compilation with operators
 
 use crate::{EvaluationError, ExpressionEvaluator, InterpreterContext, Value};
 use miette::Diagnostic;
-use outrun_parser::{ParseError, parse_program};
+use outrun_parser::{Expression, ExpressionKind, ParseError, parse_program};
 use outrun_typechecker::{CompilationResult, CompilerError, Package};
 use thiserror::Error;
+
+/// Check if an expression contains operators that need desugaring
+fn expression_contains_operators(expr: &Expression) -> bool {
+    match &expr.kind {
+        ExpressionKind::BinaryOp(_) | ExpressionKind::UnaryOp(_) => true,
+
+        ExpressionKind::Parenthesized(inner) => expression_contains_operators(inner),
+
+        ExpressionKind::FunctionCall(call) => {
+            // Check if any arguments contain operators
+            call.arguments.iter().any(|arg| match arg {
+                outrun_parser::Argument::Named { expression, .. } => {
+                    expression_contains_operators(expression)
+                }
+                _ => false,
+            })
+        }
+
+        ExpressionKind::FieldAccess(field_access) => {
+            expression_contains_operators(&field_access.object)
+        }
+
+        ExpressionKind::IfExpression(if_expr) => {
+            expression_contains_operators(&if_expr.condition)
+                || if_expr.then_block.statements.iter().any(|stmt| {
+                    if let outrun_parser::StatementKind::Expression(e) = &stmt.kind {
+                        expression_contains_operators(e)
+                    } else {
+                        false
+                    }
+                })
+                || if_expr.else_block.as_ref().map_or(false, |block| {
+                    block.statements.iter().any(|stmt| {
+                        if let outrun_parser::StatementKind::Expression(e) = &stmt.kind {
+                            expression_contains_operators(e)
+                        } else {
+                            false
+                        }
+                    })
+                })
+        }
+
+        ExpressionKind::CaseExpression(case_expr) => {
+            expression_contains_operators(&case_expr.expression)
+                || case_expr.clauses.iter().any(|clause| {
+                    let result_has_ops = match &clause.result {
+                        outrun_parser::CaseResult::Expression(e) => {
+                            expression_contains_operators(e)
+                        }
+                        outrun_parser::CaseResult::Block(block) => {
+                            block.statements.iter().any(|stmt| {
+                                if let outrun_parser::StatementKind::Expression(e) = &stmt.kind {
+                                    expression_contains_operators(e)
+                                } else {
+                                    false
+                                }
+                            })
+                        }
+                    };
+                    result_has_ops
+                        || clause
+                            .guard
+                            .as_ref()
+                            .map_or(false, |g| expression_contains_operators(g))
+                })
+        }
+
+        _ => false,
+    }
+}
 
 /// Errors that can occur during test harness operations
 #[derive(Debug, Error, Diagnostic)]
@@ -71,8 +142,8 @@ impl From<CompilerError> for TestHarnessError {
     }
 }
 
-/// Test harness for evaluating Outrun expressions with the new interpreter system
-pub struct OutrunTestHarness {
+/// Interpreter session for evaluating Outrun expressions
+pub struct InterpreterSession {
     /// Expression evaluator for running code (cached after first use)
     evaluator: Option<ExpressionEvaluator>,
     /// Interpreter context with variables and state
@@ -81,45 +152,46 @@ pub struct OutrunTestHarness {
     core_compilation: Option<CompilationResult>,
     /// Session package that accumulates all evaluations for variable persistence
     session_package: Package,
+    /// Type information for session variables (for proper compilation with operators)
+    session_variable_types: std::collections::HashMap<String, outrun_typechecker::types::Type>,
 }
 
-impl OutrunTestHarness {
-    /// Create a new test harness with the new interpreter system
+impl InterpreterSession {
+    /// Create a new interpreter session
     pub fn new() -> Result<Self, TestHarnessError> {
         let context = InterpreterContext::new();
 
-        // Pre-compile core library once for efficient REPL-like behavior
-        let core_compilation =
-            CompilationResult::precompile_core_library().map_err(|e| TestHarnessError::Setup {
-                message: format!("Failed to precompile core library: {}", e),
-            })?;
-
-        // Create session package for accumulating evaluations
-        let session_package = Package::new("test_session".to_string());
-
         Ok(Self {
-            evaluator: None, // Will be cached after first use
+            evaluator: None,
             context,
-            core_compilation: Some(core_compilation),
-            session_package,
+            core_compilation: None,
+            session_package: Package::new("test_session".to_string()),
+            session_variable_types: std::collections::HashMap::new(),
         })
     }
 
     /// Execute an Outrun expression and return the result using the full pipeline
     pub fn evaluate(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
-        let core_compilation =
-            self.core_compilation
-                .as_ref()
-                .ok_or_else(|| TestHarnessError::Setup {
-                    message: "Core library not precompiled".to_string(),
-                })?;
+        // Precompile core library on first use
+        if self.core_compilation.is_none() {
+            self.core_compilation = Some(CompilationResult::precompile_core_library()?);
+        }
+        
+        let core_compilation = self.core_compilation.as_ref().unwrap();
 
         // Try to compile the expression first. If it fails with an undefined variable error,
         // and we have that variable in our context, skip typechecking and evaluate directly
-        let compilation_result =
-            CompilationResult::compile_repl_expression(expression_code, core_compilation);
+        let compilation_result = if self.session_variable_types.is_empty() {
+            CompilationResult::compile_repl_expression(expression_code, core_compilation)
+        } else {
+            CompilationResult::compile_repl_expression_with_context(
+                expression_code,
+                core_compilation,
+                Some(&self.session_variable_types),
+            )
+        };
 
-        let (should_skip_typecheck, parsed_program) = match compilation_result {
+        let (_should_skip_typecheck, parsed_program) = match compilation_result {
             Ok(compilation) => {
                 // Compilation succeeded - use it normally
                 self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
@@ -135,39 +207,104 @@ impl OutrunTestHarness {
                         message: "No programs found in compilation result".to_string(),
                     })?
                     .clone();
+                
+                // Extract type information from let bindings if present
+                for item in &desugared_program.items {
+                    if let outrun_parser::ItemKind::LetBinding(let_binding) = &item.kind {
+                        if let outrun_parser::Pattern::Identifier(identifier) = &let_binding.pattern {
+                            if let Some(ref type_info) = let_binding.expression.type_info {
+                                // Store the type for this variable
+                                let type_obj = outrun_typechecker::types::Type::concrete(&type_info.resolved_type);
+                                self.session_variable_types.insert(identifier.name.clone(), type_obj);
+                            } else {
+                                // Try to infer type from the expression if it's a literal
+                                if let outrun_parser::ExpressionKind::Integer(_) = &let_binding.expression.kind {
+                                    let type_obj = outrun_typechecker::types::Type::concrete("Outrun.Core.Integer64");
+                                    self.session_variable_types.insert(identifier.name.clone(), type_obj);
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 (false, desugared_program)
             }
             Err(CompilerError::Typecheck(boxed_err)) => {
-                if let outrun_typechecker::TypecheckError::InferenceError(
-                    outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. },
-                ) = boxed_err.as_ref()
-                {
-                    // Check if we have this variable in our interpreter context
-                    if self.context.get_variable(variable_name).is_ok() {
-                        // We have the variable! Skip typechecking and evaluate directly
-                        // Use the core compilation for the evaluator
-                        self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
-                            core_compilation.dispatch_table.clone(),
-                            core_compilation.function_registry.clone(),
-                            core_compilation.universal_dispatch.clone(),
-                        ));
-                        (true, parse_program(expression_code)?)
+                // Check if this is a variable-not-found error (can be either UndefinedVariable or AmbiguousType)
+                let variable_name =
+                    if let outrun_typechecker::TypecheckError::InferenceError(inference_err) =
+                        boxed_err.as_ref()
+                    {
+                        match inference_err {
+                            // Handle AmbiguousType with "Unknown identifier" message
+                            outrun_typechecker::InferenceError::AmbiguousType {
+                                suggestions,
+                                ..
+                            } => suggestions.iter().find_map(|s| {
+                                if s.starts_with("Unknown identifier: ") {
+                                    Some(s.trim_start_matches("Unknown identifier: ").to_string())
+                                } else {
+                                    None
+                                }
+                            }),
+                            // Also handle UndefinedVariable (in case typechecker uses this in the future)
+                            outrun_typechecker::InferenceError::UndefinedVariable {
+                                variable_name,
+                                ..
+                            } => Some(variable_name.clone()),
+                            _ => None,
+                        }
                     } else {
-                        // We don't have the variable either - propagate the error
-                        return Err(TestHarnessError::Compiler {
-                            source: Box::new(CompilerError::Typecheck(Box::new(
-                                outrun_typechecker::TypecheckError::InferenceError(
-                                    outrun_typechecker::InferenceError::UndefinedVariable {
-                                        variable_name: variable_name.clone(),
-                                        span: None,
-                                        similar_names: vec![],
-                                        context: Some(
-                                            "Variable not found in test harness context"
-                                                .to_string(),
-                                        ),
-                                    },
+                        None
+                    };
+
+                if let Some(var_name) = variable_name {
+                    // Check if we have this variable in our interpreter context
+                    if self.context.get_variable(&var_name).is_ok() {
+                        // We have the variable! We need to handle this carefully.
+                        // If the expression is just a simple variable reference, we can skip typechecking.
+                        // But if it contains operators, we need to compile it properly with variable context.
+
+                        // Parse the expression first to check what it contains
+                        let parsed_program = parse_program(expression_code)?;
+
+                        // Check if this is a simple variable reference or a complex expression
+                        let needs_full_compilation =
+                            if let Some(first_item) = parsed_program.items.first() {
+                                match &first_item.kind {
+                                    outrun_parser::ItemKind::Expression(expr) => {
+                                        // Check if the expression contains operators that need desugaring
+                                        expression_contains_operators(expr)
+                                    }
+                                    _ => false,
+                                }
+                            } else {
+                                false
+                            };
+
+                        if needs_full_compilation {
+                            // The expression contains operators that need proper compilation
+                            // The session context should handle this now via compile_repl_expression_with_context
+                            return Err(TestHarnessError::Internal {
+                                message: format!(
+                                    "Variable '{}' found in interpreter but compilation still failed. \
+                                     This may indicate a type mismatch or other compilation issue.",
+                                    var_name
                                 ),
-                            ))),
+                            });
+                        } else {
+                            // Simple variable reference - we can skip typechecking
+                            self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+                                core_compilation.dispatch_table.clone(),
+                                core_compilation.function_registry.clone(),
+                                core_compilation.universal_dispatch.clone(),
+                            ));
+                            (true, parsed_program)
+                        }
+                    } else {
+                        // We don't have the variable either - propagate the original error
+                        return Err(TestHarnessError::Compiler {
+                            source: Box::new(CompilerError::Typecheck(boxed_err)),
                         });
                     }
                 } else {
@@ -195,13 +332,7 @@ impl OutrunTestHarness {
                     Ok(value)
                 }
                 outrun_parser::ItemKind::LetBinding(let_binding) => {
-                    // Handle let bindings by evaluating them (only if not skipping typecheck)
-                    if should_skip_typecheck {
-                        return Err(TestHarnessError::Internal {
-                            message: "Cannot evaluate let bindings when skipping typecheck"
-                                .to_string(),
-                        });
-                    }
+                    // Handle let bindings - works whether we skip typecheck or not
                     self.evaluate_let_binding(let_binding)
                 }
                 _ => Err(TestHarnessError::Internal {
@@ -238,6 +369,9 @@ impl OutrunTestHarness {
                 });
             }
         };
+
+        // Type information is already extracted in the evaluate method when compilation succeeds
+        // No need to duplicate here
 
         // Bind variables in the interpreter context
         for variable_name in &variable_names {
@@ -443,7 +577,7 @@ impl OutrunTestHarness {
     }
 }
 
-impl Default for OutrunTestHarness {
+impl Default for InterpreterSession {
     fn default() -> Self {
         Self::new().expect("Failed to create default test harness")
     }
@@ -455,13 +589,13 @@ mod tests {
 
     #[test]
     fn test_harness_creation() {
-        let harness = OutrunTestHarness::new();
+        let harness = InterpreterSession::new();
         assert!(harness.is_ok());
     }
 
     #[test]
     fn test_basic_integer_evaluation() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         let result = harness.evaluate("42").unwrap();
         assert_eq!(result, Value::integer(42));
@@ -472,7 +606,7 @@ mod tests {
 
     #[test]
     fn test_basic_string_evaluation() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         let result = harness.evaluate("\"hello\"").unwrap();
         assert_eq!(result, Value::string("hello".to_string()));
@@ -485,7 +619,7 @@ mod tests {
 
     #[test]
     fn test_basic_boolean_evaluation() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         harness.assert_evaluates_to_boolean("true", true).unwrap();
         harness.assert_evaluates_to_boolean("false", false).unwrap();
@@ -493,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_variable_binding() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         // Test let binding evaluation
         let result = harness.evaluate("let x = 42").unwrap();
@@ -509,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_context_management() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         // Define variable manually
         harness
@@ -535,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_error_handling() {
-        let mut harness = OutrunTestHarness::new().unwrap();
+        let mut harness = InterpreterSession::new().unwrap();
 
         // Test parse error
         let result = harness.evaluate("invalid syntax 123 @#$");

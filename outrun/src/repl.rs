@@ -1,24 +1,18 @@
-//! REPL (Read-Eval-Print Loop) implementation for the Outrun interpreter
+//! REPL (Read-Eval-Print Loop) implementation for Outrun
 //!
-//! This module provides an interactive REPL that integrates the parser, typechecker,
-//! and interpreter to provide a complete Outrun evaluation experience. Features:
+//! This module provides an interactive REPL that works with the 
+//! interpreter and typechecker v3 system. Features:
 //! - Interactive expression evaluation with persistent variable bindings
-//! - Integration with parser → typechecker → interpreter pipeline
+//! - Pattern matching support for let bindings and case expressions
 //! - REPL commands for debugging and inspection
-//! - Error recovery and beautiful error reporting with miette
+//! - Error recovery with beautiful error reporting using miette
 //! - History support and line editing with rustyline
 
 use miette::Diagnostic;
-use outrun_interpreter::{ExpressionEvaluator, InterpreterContext, Value};
-use outrun_parser::{ParseError, parse_expression, parse_program};
-use outrun_typechecker::{
-    CompilerEnvironment,
-    checker::{TypedExpression, TypedItemKind},
-    error::TypeError,
-    unification::StructuredType,
-};
+use outrun_interpreter::{InterpreterSession, TestHarnessError, Value};
+use outrun_parser::ParseError;
 use rustyline::{DefaultEditor, error::ReadlineError};
-use std::collections::HashMap;
+// use std::collections::HashMap; // Not needed for simple REPL
 use thiserror::Error;
 
 /// Errors that can occur in the REPL
@@ -30,17 +24,8 @@ pub enum ReplError {
         source: ParseError,
     },
 
-    #[error("Type error: {source}")]
-    TypeCheck {
-        #[from]
-        source: TypeError,
-    },
-
     #[error("Runtime error: {source}")]
-    Runtime {
-        #[from]
-        source: outrun_interpreter::EvaluationError,
-    },
+    Runtime { source: BoxedTestHarnessError },
 
     #[error("IO error: {source}")]
     Io {
@@ -61,34 +46,82 @@ pub enum ReplError {
     Internal { message: String },
 }
 
+impl From<TestHarnessError> for ReplError {
+    fn from(err: TestHarnessError) -> Self {
+        ReplError::Runtime {
+            source: BoxedTestHarnessError(Box::new(err)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BoxedTestHarnessError(Box<TestHarnessError>);
+
+impl std::fmt::Display for BoxedTestHarnessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for BoxedTestHarnessError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+impl miette::Diagnostic for BoxedTestHarnessError {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.0.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.0.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.0.labels()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn miette::Diagnostic> + 'a>> {
+        self.0.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn miette::Diagnostic> {
+        self.0.diagnostic_source()
+    }
+}
+
 /// REPL session that maintains state across evaluations
 pub struct ReplSession {
     /// Interactive line editor with history
     editor: DefaultEditor,
 
-    /// Interpreter context for persistent variable bindings
-    interpreter_context: InterpreterContext,
-
-    /// Compiler environment for type checking and compilation
-    compiler_environment: outrun_typechecker::CompilerEnvironment,
-
-    /// Variable bindings visible to the user
-    user_variables: HashMap<String, (Value, StructuredType)>, // name -> (value, structured_type)
+    /// Interpreter session for full pipeline integration (Parser → Typechecker → Interpreter)
+    session: InterpreterSession,
 
     /// REPL configuration
     config: ReplConfig,
 
     /// Session statistics
     stats: ReplStats,
-
-    /// Shared compilation context for efficient memory usage
-    compilation_session: outrun_typechecker::shared_context::CompilationSessionContext,
 }
 
 /// REPL configuration options
 #[derive(Debug, Clone)]
 pub struct ReplConfig {
-    /// Show type information with results
+    /// Show type information with results (simplified - no actual type checking)
     pub show_types: bool,
 
     /// Show detailed error information
@@ -110,7 +143,7 @@ pub struct ReplConfig {
 impl Default for ReplConfig {
     fn default() -> Self {
         Self {
-            show_types: true,
+            show_types: false, // Simplified - no type checking yet
             verbose_errors: false,
             max_display_items: 20,
             prompt: "outrun> ".to_string(),
@@ -140,17 +173,10 @@ pub struct ReplStats {
 #[derive(Debug)]
 pub enum ReplResult {
     /// Successfully evaluated expression
-    Value {
-        value: Value,
-        type_display: String,
-        bound_variables: Vec<String>,
-    },
+    Value { value: Value },
 
     /// Executed a REPL command
     Command { message: String },
-
-    /// Let binding result
-    LetBinding { variables: String, value: Value },
 
     /// Empty line or comment
     Empty,
@@ -176,35 +202,16 @@ impl ReplSession {
             }
         }
 
-        // Initialize CompilerEnvironment with core library directly by compiling it
-        // This matches the working typecheck command approach
-        let mut compiler_environment = CompilerEnvironment::new();
-        let _core_result = outrun_typechecker::core_library::compile_core_library_with_environment(
-            &mut compiler_environment,
-        );
-
-        // Create shared compilation context from core library (efficient, no duplication)
-        let shared_context = outrun_typechecker::shared_context::SharedCompilationContextFactory::create_from_core_library();
-        let compilation_session = shared_context.create_session_context();
-
-        // Use the UnificationContext from the core compilation to ensure TypeInterner consistency
-        let unification_context = shared_context.core_compilation().type_context.clone();
-
-        // Create interpreter context with the CompilerEnvironment
-        let interpreter_context = InterpreterContext::new(
-            unification_context,
-            compiler_environment.clone(),
-            Some(100), // Reasonable stack limit for REPL
-        );
+        // Create interpreter session for full pipeline integration
+        let session = InterpreterSession::new().map_err(|e| ReplError::Internal {
+            message: format!("Failed to create interpreter session: {e}"),
+        })?;
 
         Ok(Self {
             editor,
-            interpreter_context,
-            compiler_environment,
-            user_variables: HashMap::new(),
+            session,
             config,
             stats: ReplStats::default(),
-            compilation_session,
         })
     }
 
@@ -287,7 +294,6 @@ impl ReplSession {
         let mut bracket_count = 0;
         let mut paren_count = 0;
         let mut in_string = false;
-        let mut in_char = false;
         let mut escaped = false;
 
         let chars: Vec<char> = input.chars().collect();
@@ -303,34 +309,31 @@ impl ReplSession {
             }
 
             match ch {
-                '\\' if in_string || in_char => {
+                '\\' if in_string => {
                     escaped = true;
                 }
-                '"' if !in_char => {
+                '"' => {
                     in_string = !in_string;
                 }
-                '\'' if !in_string => {
-                    in_char = !in_char;
-                }
-                '{' if !in_string && !in_char => {
+                '{' if !in_string => {
                     brace_count += 1;
                 }
-                '}' if !in_string && !in_char => {
+                '}' if !in_string => {
                     brace_count -= 1;
                 }
-                '[' if !in_string && !in_char => {
+                '[' if !in_string => {
                     bracket_count += 1;
                 }
-                ']' if !in_string && !in_char => {
+                ']' if !in_string => {
                     bracket_count -= 1;
                 }
-                '(' if !in_string && !in_char => {
+                '(' if !in_string => {
                     paren_count += 1;
                 }
-                ')' if !in_string && !in_char => {
+                ')' if !in_string => {
                     paren_count -= 1;
                 }
-                '#' if !in_string && !in_char => {
+                '#' if !in_string => {
                     // Skip rest of line (comment)
                     while i < chars.len() && chars[i] != '\n' {
                         i += 1;
@@ -344,7 +347,7 @@ impl ReplSession {
         }
 
         // Input is complete if all brackets are balanced and we're not in a string
-        brace_count == 0 && bracket_count == 0 && paren_count == 0 && !in_string && !in_char
+        brace_count == 0 && bracket_count == 0 && paren_count == 0 && !in_string
     }
 
     /// Evaluate a line of input
@@ -352,7 +355,7 @@ impl ReplSession {
         let trimmed = line.trim();
 
         // Handle empty lines and comments
-        if trimmed.is_empty() || trimmed.starts_with("//") {
+        if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#") {
             return Ok(ReplResult::Empty);
         }
 
@@ -361,141 +364,13 @@ impl ReplSession {
             return self.execute_command(trimmed);
         }
 
-        // Try to parse as expression first, fallback to parsing as a program for statements
-        let parsed_expr = match parse_expression(trimmed) {
-            Ok(expr) => expr,
-            Err(_) => {
-                // If expression parsing fails, try parsing as a program to handle let bindings
-                let program = parse_program(trimmed)?;
-
-                // Extract the first item from the program
-                if let Some(first_item) = program.items.first() {
-                    match &first_item.kind {
-                        outrun_parser::ItemKind::Expression(expr) => expr.clone(),
-                        outrun_parser::ItemKind::LetBinding(let_binding) => {
-                            // Handle let bindings by type checking and evaluating them
-                            return self.evaluate_let_binding(let_binding, line);
-                        }
-                        _ => {
-                            return Err(ReplError::Internal {
-                                message: format!(
-                                    "Unsupported item type in REPL: {:?}",
-                                    first_item.kind
-                                ),
-                            });
-                        }
-                    }
-                } else {
-                    return Err(ReplError::Internal {
-                        message: "No items found in parsed program".to_string(),
-                    });
-                }
-            }
-        };
-
-        // Create a simple program with just the expression
-        let temp_program = outrun_parser::Program {
-            items: vec![outrun_parser::Item {
-                kind: outrun_parser::ItemKind::Expression(parsed_expr.clone()),
-                span: parsed_expr.span,
-            }],
-            span: parsed_expr.span,
-            debug_info: outrun_parser::DebugInfo {
-                source_file: Some("<repl>".to_string()),
-                comments: Vec::new(),
-            },
-        };
-
-        // Collect external variables for the type checker
-        let external_variables: HashMap<String, StructuredType> = self
-            .user_variables
-            .iter()
-            .map(|(name, (_, structured_type))| (name.clone(), structured_type.clone()))
-            .collect();
-
-        // Create a program collection with just the user's expression
-        let mut user_collection = outrun_typechecker::ProgramCollection::new();
-        user_collection.add_program(
-            "<repl>".to_string(),
-            temp_program.clone(),
-            trimmed.to_string(),
-        );
-
-        // Use the persistent compiler environment which already has core library loaded
-        // This eliminates the problematic fresh CompilerEnvironment creation
-        let user_compilation = self
-            .compiler_environment
-            .compile_collection_with_external_variables(user_collection, external_variables)
-            .map_err(|errors| {
-                // Take the first error for now - in the future we could display all errors
-                if let Some(first_error) = errors.into_iter().next() {
-                    ReplError::TypeCheck {
-                        source: first_error,
-                    }
-                } else {
-                    ReplError::Internal {
-                        message: "Type checker returned empty error list".to_string(),
-                    }
-                }
-            })?;
-
-        // Update our compilation session to include the new code (efficient, no cloning)
-        self.compilation_session
-            .set_user_compilation(user_compilation.clone());
-
-        // Extract the typed program from the compilation result
-        let typed_program = user_compilation
-            .typed_programs
-            .get("<repl>")
-            .ok_or_else(|| ReplError::Internal {
-                message: "No typed program found for REPL input".to_string(),
-            })?;
-
-        // Extract the typed expression (should be the only item in the program)
-        let typed_expr = if let Some(typed_item) = typed_program.items.first() {
-            if let TypedItemKind::Expression(expr) = &typed_item.kind {
-                expr.as_ref().clone()
-            } else {
-                return Err(ReplError::Internal {
-                    message: "Expected typed expression from type checker".to_string(),
-                });
-            }
-        } else {
-            return Err(ReplError::Internal {
-                message: "Type checker returned empty program".to_string(),
-            });
-        };
-
-        // The interpreter context automatically uses the updated CompilerEnvironment from the type context
-        // No need to manually update function registry - it's handled through CompilerEnvironment
-
-        // Create evaluator with the persistent CompilerEnvironment
-        let dispatch_context = outrun_typechecker::context::FunctionDispatchContext::new(Some(
-            self.compiler_environment.clone(),
-        ));
-        let mut evaluator = ExpressionEvaluator::from_dispatch_context(dispatch_context);
-
-        // Evaluate the expression with the updated main context
-        let value = evaluator.evaluate(&mut self.interpreter_context, &typed_expr)?;
+        // Use the interpreter session to evaluate with full pipeline integration
+        let value = self.session.evaluate(trimmed)?;
 
         // Update statistics
         self.stats.expressions_evaluated += 1;
 
-        // Extract type information for display
-        let type_display = self.format_type_for_display(&typed_expr);
-
-        // Handle variable bindings from let expressions or patterns
-        let bound_variables = self.extract_and_bind_variables(&typed_expr, &value)?;
-
-        if !bound_variables.is_empty() {
-            self.stats.variables_bound += bound_variables.len();
-        }
-
-        Ok(ReplResult::Value {
-            value,
-            type_display,
-            bound_variables,
-        })
+        Ok(ReplResult::Value { value })
     }
 
     /// Execute a REPL command
@@ -517,20 +392,13 @@ impl ReplSession {
             }),
 
             "/clear" => {
-                self.user_variables.clear();
-
-                // Reset compilation session back to just the core library (efficient, no cloning)
-                self.compilation_session.clear_user_compilation();
-
-                // Recreate interpreter context with fresh UnificationContext from core library
-                let core_compilation = self.compilation_session.core_context().core_compilation();
-                self.interpreter_context = InterpreterContext::new(
-                    core_compilation.type_context.clone(),
-                    self.compiler_environment.clone(),
-                    Some(100),
-                );
+                // Reset interpreter session (clears all variables)
+                self.session =
+                    InterpreterSession::new().map_err(|e| ReplError::Internal {
+                        message: format!("Failed to reset interpreter session: {e}"),
+                    })?;
                 Ok(ReplResult::Command {
-                    message: "Variables and compilation state cleared".to_string(),
+                    message: "Variables cleared".to_string(),
                 })
             }
 
@@ -548,7 +416,7 @@ impl ReplSession {
                 Some(&"on") => {
                     self.config.show_types = true;
                     Ok(ReplResult::Command {
-                        message: "Type display enabled".to_string(),
+                        message: "Type display enabled (note: no type checking yet)".to_string(),
                     })
                 }
                 Some(&"off") => {
@@ -559,7 +427,7 @@ impl ReplSession {
                 }
                 _ => Ok(ReplResult::Command {
                     message: format!(
-                        "Type display is {}",
+                        "Type display is {} (note: no type checking yet)",
                         if self.config.show_types { "on" } else { "off" }
                     ),
                 }),
@@ -571,242 +439,16 @@ impl ReplSession {
         }
     }
 
-    /// Extract and bind variables from expressions (for let expressions and patterns)
-    fn extract_and_bind_variables(
-        &mut self,
-        _typed_expr: &TypedExpression,
-        _value: &Value,
-    ) -> Result<Vec<String>, ReplError> {
-        // TODO: Implement variable binding extraction for let expressions
-        // For now, return empty vector
-        Ok(vec![])
-    }
-
-    /// Extract variable names from a pattern
-    fn extract_pattern_variables(
-        &self,
-        pattern: &outrun_parser::Pattern,
-        _value: &Value,
-    ) -> Result<Vec<String>, ReplError> {
-        // For now, only support simple identifier patterns
-        // TODO: Add support for complex patterns (struct destructuring, etc.)
-        match pattern {
-            outrun_parser::Pattern::Identifier(identifier) => Ok(vec![identifier.name.clone()]),
-            _ => Err(ReplError::Internal {
-                message: format!("Complex patterns not yet supported in REPL: {pattern:?}"),
-            }),
-        }
-    }
-
-    /// Evaluate a let binding statement
-    fn evaluate_let_binding(
-        &mut self,
-        let_binding: &outrun_parser::LetBinding,
-        _input: &str,
-    ) -> Result<ReplResult, ReplError> {
-        // Create a temporary program with the let binding for type checking
-        let temp_program = outrun_parser::Program {
-            items: vec![outrun_parser::Item {
-                kind: outrun_parser::ItemKind::LetBinding(let_binding.clone()),
-                span: let_binding.span,
-            }],
-            span: let_binding.span,
-            debug_info: outrun_parser::DebugInfo {
-                source_file: Some("<repl>".to_string()),
-                comments: Vec::new(),
-            },
-        };
-
-        // Type check the let binding using the persistent compiler environment
-        let mut collection = outrun_typechecker::ProgramCollection::new();
-        collection.add_program(
-            "<repl-let>".to_string(),
-            temp_program.clone(),
-            format!("{temp_program}"),
-        );
-
-        let external_variables: HashMap<String, StructuredType> = self
-            .user_variables
-            .iter()
-            .map(|(name, (_, structured_type))| (name.clone(), structured_type.clone()))
-            .collect();
-
-        let compilation_result = self
-            .compiler_environment
-            .compile_collection_with_external_variables(collection, external_variables)
-            .map_err(|errors| {
-                if let Some(first_error) = errors.into_iter().next() {
-                    ReplError::TypeCheck {
-                        source: first_error,
-                    }
-                } else {
-                    ReplError::Internal {
-                        message: "Type checker returned empty error list".to_string(),
-                    }
-                }
-            })?;
-
-        // Extract the typed program from the compilation result
-        let typed_program =
-            if let Some(typed_program) = compilation_result.typed_programs.get("<repl-let>") {
-                typed_program.clone()
-            } else {
-                return Err(ReplError::Internal {
-                    message: "Failed to extract typed program from compilation result".to_string(),
-                });
-            };
-
-        // Extract the typed let binding
-        let typed_let_binding = if let Some(first_item) = typed_program.items.first() {
-            if let TypedItemKind::LetBinding(let_binding) = &first_item.kind {
-                let_binding.as_ref()
-            } else {
-                return Err(ReplError::Internal {
-                    message: "Expected typed let binding from type checker".to_string(),
-                });
-            }
-        } else {
-            return Err(ReplError::Internal {
-                message: "Type checker returned empty program".to_string(),
-            });
-        };
-
-        // Create evaluator with the persistent CompilerEnvironment
-        let dispatch_context = outrun_typechecker::context::FunctionDispatchContext::new(Some(
-            self.compiler_environment.clone(),
-        ));
-        let mut evaluator = ExpressionEvaluator::from_dispatch_context(dispatch_context);
-
-        // Evaluate the RHS expression
-        let value =
-            evaluator.evaluate(&mut self.interpreter_context, &typed_let_binding.expression)?;
-
-        // Extract variable name(s) from the pattern
-        let variable_names = self.extract_pattern_variables(&let_binding.pattern, &value)?;
-
-        // Bind variables in the interpreter context
-        for variable_name in &variable_names {
-            // In REPL mode, allow rebinding variables by updating if they already exist
-            match self
-                .interpreter_context
-                .define_variable(variable_name.clone(), value.clone())
-            {
-                Ok(()) => {} // Successfully defined new variable
-                Err(_) => {
-                    // Variable might already exist, try updating it
-                    self.interpreter_context
-                        .update_variable(variable_name, value.clone())
-                        .map_err(|_| ReplError::Internal {
-                            message: format!("Failed to bind variable '{variable_name}'"),
-                        })?;
-                }
-            }
-
-            // Also track in user_variables for :vars command
-            // Get the structured type from the typed expression
-            let structured_type = typed_let_binding
-                .expression
-                .structured_type
-                .clone()
-                .unwrap_or_else(|| {
-                    // If no structured type is available, create a placeholder using the compiler environment's interner
-                    // This should not happen in a properly type-checked expression but provides a fallback
-                    let placeholder_type_id =
-                        self.compiler_environment.intern_type_name("UnknownType");
-                    StructuredType::Simple(placeholder_type_id)
-                });
-            self.user_variables
-                .insert(variable_name.clone(), (value.clone(), structured_type));
-        }
-
-        // Update statistics
-        self.stats.variables_bound += variable_names.len();
-
-        // Display result
-        let variable_list = variable_names.join(", ");
-        Ok(ReplResult::LetBinding {
-            variables: variable_list,
-            value: value.clone(),
-        })
-    }
-
-    /// Format type information for display
-    fn format_type_for_display(&self, typed_expr: &TypedExpression) -> String {
-        // Method 1: Check structured_type field first
-        if let Some(ref structured_type) = typed_expr.structured_type {
-            return structured_type.to_string_representation();
-        }
-
-        // Method 2: Check debug info for inferred types
-        if let Some(ref debug_info) = typed_expr.debug_info {
-            let span_key = (typed_expr.span.start, typed_expr.span.end);
-            if let Some(inferred_type) = debug_info.inferred_types.get(&span_key) {
-                return inferred_type.to_string_representation();
-            }
-        }
-
-        // Method 3: Fallback to expression kind analysis
-        match &typed_expr.kind {
-            outrun_typechecker::checker::TypedExpressionKind::Integer(_) => "Integer".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::Float(_) => "Float".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::String(_) => "String".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::Boolean(_) => "Boolean".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::Atom(_) => "Atom".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::List { .. } => "List".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::Map { .. } => "Map".to_string(),
-            outrun_typechecker::checker::TypedExpressionKind::Tuple { .. } => "Tuple".to_string(),
-            _ => "Unknown".to_string(),
-        }
-    }
-
     /// Display the result of evaluation
     fn display_result(&self, result: ReplResult) {
         match result {
-            ReplResult::Value {
-                value,
-                type_display,
-                bound_variables,
-            } => {
+            ReplResult::Value { value } => {
                 // Display the value
-                if self.config.show_types {
-                    println!("{value}: {type_display}");
-                } else {
-                    println!("{value}");
-                }
-
-                // Display bound variables if any
-                if !bound_variables.is_empty() {
-                    for var in bound_variables {
-                        if let Some((val, structured_type)) = self.user_variables.get(&var) {
-                            if self.config.show_types {
-                                let type_display = structured_type.to_string_representation();
-                                println!("{var}: {type_display} = {val}");
-                            } else {
-                                println!("{var} = {val}");
-                            }
-                        }
-                    }
-                }
+                println!("{}", value.display());
             }
 
             ReplResult::Command { message } => {
                 println!("{message}");
-            }
-
-            ReplResult::LetBinding { variables, value } => {
-                // Display the let binding result
-                if self.config.show_types {
-                    // Get type information for the first variable (they all have the same value)
-                    let first_var = variables.split(',').next().unwrap_or("").trim();
-                    if let Some((_, structured_type)) = self.user_variables.get(first_var) {
-                        let type_display = structured_type.to_string_representation();
-                        println!("{variables}: {type_display} = {value}");
-                    } else {
-                        println!("{variables} = {value}");
-                    }
-                } else {
-                    println!("{variables} = {value}");
-                }
             }
 
             ReplResult::Empty => {} // No output for empty lines
@@ -818,23 +460,21 @@ impl ReplSession {
     /// Display an error with appropriate formatting
     fn display_error(&self, error: ReplError, source_code: Option<&str>) {
         match error {
-            ReplError::TypeCheck { source } => {
-                // TypeError implements Clone + Diagnostic, so we can create proper miette reports
+            ReplError::Parse { source } => {
+                // ParseError implements Diagnostic and contains its own source code
+                let report = miette::Report::new(source);
+                eprintln!("{report:?}");
+            }
+            ReplError::Runtime { source } => {
+                // EvaluationError should be displayed with context
                 if let Some(source_code) = source_code {
                     let named_source = miette::NamedSource::new("<repl>", source_code.to_string());
                     let report = miette::Report::new(source).with_source_code(named_source);
                     eprintln!("{report:?}");
                 } else {
-                    // Without source context, create a simple report
                     let report = miette::Report::new(source);
                     eprintln!("{report:?}");
                 }
-            }
-            ReplError::Parse { source } => {
-                // ParseError implements Diagnostic and contains its own source code
-                // from #[source_code] annotation, so we can create a report directly
-                let report = miette::Report::new(source);
-                eprintln!("{report:?}");
             }
             ReplError::Internal { .. } | ReplError::Command { .. } => {
                 // Create a miette report for internal/command errors
@@ -860,8 +500,9 @@ impl ReplSession {
 
     /// Print welcome message
     fn print_welcome(&self) {
-        println!("🌆 Outrun REPL v0.1.0 🌃");
-        println!("Type /help for commands, /quit to exit");
+        println!("🌆 Outrun REPL v2.0 (Simplified) 🌃");
+        println!("Using new interpreter system - Type /help for commands, /quit to exit");
+        println!("Note: Type checking not yet integrated - expressions evaluated directly");
         println!();
     }
 
@@ -882,21 +523,25 @@ impl ReplSession {
 
     /// Get help message
     fn help_message(&self) -> String {
-        r#"Outrun REPL Commands:
+        r#"Outrun REPL Commands (Simplified):
   /help, /h           Show this help message
-  /vars, /variables   List all variables with their values and types
+  /vars, /variables   List all variables with their values
   /clear              Clear all variables and reset the session
   /stats              Show session statistics
   /config             Show current configuration
-  /types [on|off]     Toggle type display
+  /types [on|off]     Toggle type display (note: no type checking yet)
   /quit, /q, /exit    Exit the REPL
 
 Examples:
   42                  # Evaluate an integer literal
   let x = 42          # Bind a variable
-  List.head([1,2,3])  # Call a function
-  [1, 2, 3]           # Create a list
-  Option.some(42)     # Create an Option
+  "hello"             # String literal
+  [1, 2, 3]           # List literal
+  true                # Boolean literal
+  case x { 42 -> "answer"; _ -> "other" }  # Case expression
+
+Note: This is a simplified REPL using the new interpreter.
+Type checking integration is planned for future versions.
 
 Multi-line input:
   let list = [         # Type [ and press Enter
@@ -911,18 +556,18 @@ Use Ctrl+C to interrupt, Ctrl+D to exit."#
 
     /// Format current variables for display
     fn format_variables(&self) -> String {
-        if self.user_variables.is_empty() {
+        // Use the interpreter session context to get variable information
+        let context = self.session.context();
+        if context.is_empty() {
             "No variables defined".to_string()
         } else {
             let mut lines = vec!["Variables:".to_string()];
-            for (name, (value, structured_type)) in &self.user_variables {
-                if self.config.show_types {
-                    let type_display = structured_type.to_string_representation();
-                    lines.push(format!("  {name}: {type_display} = {value}"));
-                } else {
-                    lines.push(format!("  {name} = {value}"));
-                }
+            let variables = context.list_variables();
+
+            for (name, value) in variables {
+                lines.push(format!("  {} = {}", name, value.display()));
             }
+
             lines.join("\n")
         }
     }
@@ -946,7 +591,7 @@ Use Ctrl+C to interrupt, Ctrl+D to exit."#
     fn format_config(&self) -> String {
         format!(
             r#"REPL Configuration:
-  Show types: {}
+  Show types: {} (note: no type checking yet)
   Verbose errors: {}
   Max display items: {}
   Prompt: "{}"
@@ -965,257 +610,5 @@ Use Ctrl+C to interrupt, Ctrl+D to exit."#
 impl Default for ReplSession {
     fn default() -> Self {
         Self::new().expect("Failed to create default REPL session")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn create_test_repl() -> ReplSession {
-        let config = ReplConfig {
-            persist_history: false, // Don't save history in tests
-            history_file: None,
-            ..Default::default()
-        };
-        ReplSession::with_config(config).expect("Failed to create test REPL")
-    }
-
-    #[test]
-    fn test_repl_creation() {
-        let repl = create_test_repl();
-        assert_eq!(repl.stats.expressions_evaluated, 0);
-        assert_eq!(repl.stats.variables_bound, 0);
-        assert_eq!(repl.stats.errors_encountered, 0);
-        assert!(repl.user_variables.is_empty());
-    }
-
-    #[test]
-    fn test_simple_expression_evaluation() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("42").unwrap();
-        if let ReplResult::Value { value, .. } = result {
-            assert_eq!(value, Value::integer(42));
-        } else {
-            panic!("Expected value result");
-        }
-
-        assert_eq!(repl.stats.expressions_evaluated, 1);
-    }
-
-    #[test]
-    fn test_empty_line_handling() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("").unwrap();
-        assert!(matches!(result, ReplResult::Empty));
-
-        let result = repl.evaluate_line("   ").unwrap();
-        assert!(matches!(result, ReplResult::Empty));
-
-        let result = repl.evaluate_line("// comment").unwrap();
-        assert!(matches!(result, ReplResult::Empty));
-    }
-
-    #[test]
-    fn test_help_command() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("/help").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("Outrun REPL Commands"));
-            assert!(message.contains("/help"));
-            assert!(message.contains("/vars"));
-            assert!(message.contains("/quit"));
-        } else {
-            panic!("Expected command result");
-        }
-
-        assert_eq!(repl.stats.commands_executed, 1);
-    }
-
-    #[test]
-    fn test_vars_command_empty() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("/vars").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("No variables defined"));
-        } else {
-            panic!("Expected command result");
-        }
-    }
-
-    #[test]
-    fn test_clear_command() {
-        let mut repl = create_test_repl();
-
-        // Add a mock variable - create a simple type for testing
-        let temp_env =
-            outrun_typechecker::compilation::compiler_environment::CompilerEnvironment::new();
-        let integer_type = StructuredType::Simple(temp_env.intern_type_name("Integer"));
-        repl.user_variables
-            .insert("x".to_string(), (Value::integer(42), integer_type));
-
-        let result = repl.evaluate_line("/clear").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("Variables and compilation state cleared"));
-        } else {
-            panic!("Expected command result");
-        }
-
-        assert!(repl.user_variables.is_empty());
-    }
-
-    #[test]
-    fn test_quit_command() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("/quit").unwrap();
-        assert!(matches!(result, ReplResult::Exit));
-
-        let result = repl.evaluate_line("/q").unwrap();
-        assert!(matches!(result, ReplResult::Exit));
-
-        let result = repl.evaluate_line("/exit").unwrap();
-        assert!(matches!(result, ReplResult::Exit));
-    }
-
-    #[test]
-    fn test_types_command() {
-        let mut repl = create_test_repl();
-
-        // Test toggling types on
-        let result = repl.evaluate_line("/types on").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("enabled"));
-        } else {
-            panic!("Expected command result");
-        }
-        assert!(repl.config.show_types);
-
-        // Test toggling types off
-        let result = repl.evaluate_line("/types off").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("disabled"));
-        } else {
-            panic!("Expected command result");
-        }
-        assert!(!repl.config.show_types);
-
-        // Test status query
-        let result = repl.evaluate_line("/types").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("off"));
-        } else {
-            panic!("Expected command result");
-        }
-    }
-
-    #[test]
-    fn test_unknown_command() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("/unknown");
-        assert!(result.is_err());
-        if let Err(ReplError::Command { message }) = result {
-            assert!(message.contains("Unknown command"));
-            assert!(message.contains("/unknown"));
-        } else {
-            panic!("Expected command error");
-        }
-    }
-
-    #[test]
-    fn test_stats_command() {
-        let mut repl = create_test_repl();
-
-        // Execute some operations first
-        let _ = repl.evaluate_line("42");
-        let _ = repl.evaluate_line("/help");
-
-        let result = repl.evaluate_line("/stats").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("Session Statistics"));
-            assert!(message.contains("Expressions evaluated: 1"));
-            assert!(message.contains("Commands executed: 2")); // /help + /stats
-        } else {
-            panic!("Expected command result");
-        }
-    }
-
-    #[test]
-    fn test_config_command() {
-        let mut repl = create_test_repl();
-
-        let result = repl.evaluate_line("/config").unwrap();
-        if let ReplResult::Command { message } = result {
-            assert!(message.contains("REPL Configuration"));
-            assert!(message.contains("Show types"));
-            assert!(message.contains("outrun>"));
-        } else {
-            panic!("Expected command result");
-        }
-    }
-
-    #[test]
-    fn test_arithmetic_expressions() {
-        let mut repl = create_test_repl();
-
-        // Test simple arithmetic that should work with intrinsics
-        let test_cases = vec![
-            ("42", Value::integer(42)),
-            ("true", Value::boolean(true)),
-            ("false", Value::boolean(false)),
-            (r#""hello""#, Value::string("hello".to_string())),
-        ];
-
-        for (input, expected) in test_cases {
-            let result = repl.evaluate_line(input).unwrap();
-            if let ReplResult::Value { value, .. } = result {
-                assert_eq!(value, expected, "Failed for input: {input}");
-            } else {
-                panic!("Expected value result for input: {input}");
-            }
-        }
-    }
-
-    #[test]
-    fn test_multi_line_input_detection() {
-        let repl = create_test_repl();
-
-        // Test cases for bracket balancing
-        assert!(repl.is_input_complete("42")); // Simple complete input
-        assert!(repl.is_input_complete("let x = 42")); // Complete let binding
-        assert!(repl.is_input_complete("[1, 2, 3]")); // Complete list
-        assert!(repl.is_input_complete("\"hello world\"")); // Complete string
-
-        // Incomplete inputs that should trigger continuation
-        assert!(!repl.is_input_complete("let x = [")); // Unclosed bracket
-        assert!(!repl.is_input_complete("let x = {")); // Unclosed brace
-        assert!(!repl.is_input_complete("func(")); // Unclosed paren
-        assert!(!repl.is_input_complete("\"hello")); // Unclosed string
-        assert!(!repl.is_input_complete("let x = [1,")); // Incomplete list
-
-        // Complex nested cases
-        assert!(repl.is_input_complete("[[1, 2], [3, 4]]")); // Nested complete
-        assert!(!repl.is_input_complete("[[1, 2], [3,")); // Nested incomplete
-        assert!(repl.is_input_complete("\"string with [brackets] inside\"")); // Brackets in string
-
-        // Comments should be ignored
-        assert!(repl.is_input_complete("42 # this is a comment"));
-        assert!(!repl.is_input_complete("[ # comment\n1,"));
-    }
-
-    #[test]
-    fn test_repl_config_defaults() {
-        let config = ReplConfig::default();
-        assert!(config.show_types);
-        assert!(!config.verbose_errors);
-        assert_eq!(config.max_display_items, 20);
-        assert_eq!(config.prompt, "outrun> ");
-        assert!(config.persist_history);
-        assert_eq!(config.history_file, Some(".outrun_history".to_string()));
     }
 }

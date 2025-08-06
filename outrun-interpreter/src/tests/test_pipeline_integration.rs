@@ -3,11 +3,11 @@
 //! These tests verify that the complete Outrun compilation pipeline works correctly,
 //! including operator desugaring, type checking, and final evaluation.
 
-use crate::OutrunTestHarness;
+use crate::InterpreterSession;
 
 #[test]
 fn test_arithmetic_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING ARITHMETIC EXPRESSIONS ===");
 
@@ -48,7 +48,7 @@ fn test_arithmetic_expressions() {
 
 #[test]
 fn test_comparison_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING COMPARISON EXPRESSIONS ===");
 
@@ -71,7 +71,7 @@ fn test_comparison_expressions() {
 
 #[test]
 fn test_boolean_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING BOOLEAN EXPRESSIONS ===");
 
@@ -100,7 +100,7 @@ fn test_boolean_expressions() {
 
 #[test]
 fn test_unary_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING UNARY EXPRESSIONS ===");
 
@@ -129,7 +129,7 @@ fn test_unary_expressions() {
 
 #[test]
 fn test_complex_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING COMPLEX EXPRESSIONS ===");
 
@@ -158,7 +158,7 @@ fn test_complex_expressions() {
 
 #[test]
 fn test_variables_with_expressions() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING VARIABLES WITH EXPRESSIONS ===");
 
@@ -197,7 +197,7 @@ fn test_variables_with_expressions() {
 
 #[test]
 fn test_pipeline_diagnostics() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING PIPELINE DIAGNOSTICS ===");
 

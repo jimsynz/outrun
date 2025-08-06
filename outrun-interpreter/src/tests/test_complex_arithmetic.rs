@@ -1,12 +1,12 @@
 //! Test complex arithmetic expressions with the full pipeline
 
-use crate::test_harness::OutrunTestHarness;
+use crate::test_harness::InterpreterSession;
 
 #[test]
 fn test_complex_arithmetic_expressions() {
     println!("=== TESTING COMPLEX ARITHMETIC EXPRESSIONS ===");
 
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test the expression mentioned by the user: 1 + 2 * 3
     // This should evaluate to 7 (2 * 3 = 6, then 1 + 6 = 7)

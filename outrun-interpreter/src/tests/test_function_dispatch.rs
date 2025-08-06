@@ -3,11 +3,11 @@
 //! This module tests the function dispatch system that was implemented
 //! to enable function calls, list literals, tuple literals, and arithmetic operations.
 
-use crate::OutrunTestHarness;
+use crate::InterpreterSession;
 
 #[test]
 fn test_list_literal_evaluation() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test empty list
     harness.assert_evaluates_to_empty_list("[]").unwrap();
@@ -23,7 +23,7 @@ fn test_list_literal_evaluation() {
 
 #[test]
 fn test_tuple_literal_evaluation() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test tuple creation
     let result = harness.evaluate("(1, 2)").unwrap();
@@ -36,7 +36,7 @@ fn test_tuple_literal_evaluation() {
 
 #[test]
 fn test_intrinsic_function_calls() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // Test if we can call an intrinsic function directly
     // This would work if the typechecker desugars arithmetic to function calls
@@ -53,7 +53,7 @@ fn test_intrinsic_function_calls() {
 
 #[test]
 fn test_function_dispatch_with_simple_calls() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     // These tests will show what function call syntax works
 
@@ -78,7 +78,7 @@ fn test_function_dispatch_with_simple_calls() {
 
 #[test]
 fn test_current_working_features() {
-    let mut harness = OutrunTestHarness::new().unwrap();
+    let mut harness = InterpreterSession::new().unwrap();
 
     println!("=== TESTING NEWLY IMPLEMENTED FEATURES ===");
 
