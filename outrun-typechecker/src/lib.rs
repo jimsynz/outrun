@@ -1056,6 +1056,11 @@ protocol Display {
         let mut package1 = Package::new("myapp".to_string());
         package1.add_program(program1);
         let initial_result = CompilationResult::compile_package(&mut package1);
+        // Temporarily commented out debug output
+        // if let Err(e) = &initial_result {
+        //     eprintln!("❌ COMPILATION ERROR: {}", e);
+        //     eprintln!("❌ FULL ERROR: {:?}", e);
+        // }
         assert!(initial_result.is_ok(), "Initial compilation should succeed");
         let initial_compilation = initial_result.unwrap();
 

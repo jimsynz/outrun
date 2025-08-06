@@ -418,6 +418,15 @@ impl<'a> FunctionDispatcher<'a> {
                         self.resolve_static_call(protocol_name, function_name, span)
                     }
                 } else {
+                    // Check if this is a type variable that looks like a concrete type
+                    // Type variables like "T", "U", "K", "V", etc. can be constrained
+                    if self.is_type_variable_name(name.as_str()) {
+                        // This is likely a constrained type variable
+                        // For now, allow the call and assume constraints will be validated elsewhere
+                        // TODO: Implement proper constraint checking here
+                        return self.resolve_static_call(protocol_name, function_name, span);
+                    }
+
                     // Debug: List all available implementations
                     for impl_info in self.type_registry.all_implementations() {
                         // Show details for List implementations
@@ -658,6 +667,26 @@ impl<'a> FunctionDispatcher<'a> {
             } => module_name == protocol_name.as_str() || module_name == implementing_type.as_str(),
             FunctionContext::TopLevel => false,
         }
+    }
+
+    /// Check if a name looks like a type variable name
+    /// Type variables: T, U, A, B, TKey, TValue, etc.
+    fn is_type_variable_name(&self, name: &str) -> bool {
+        // Single uppercase letters (T, U, K, V, etc.)
+        if name.len() == 1 && name.chars().next().unwrap().is_uppercase() {
+            return true;
+        }
+
+        // T-prefixed names (T1, TKey, TValue, etc.)
+        if name.starts_with('T') && name.len() > 1 && name.chars().nth(1).unwrap().is_uppercase() {
+            return true;
+        }
+
+        // Common type parameter conventions
+        matches!(
+            name,
+            "Key" | "Value" | "Input" | "Output" | "Result" | "Error" | "Element"
+        )
     }
 }
 

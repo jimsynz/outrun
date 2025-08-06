@@ -1873,7 +1873,6 @@ impl TypeInferenceEngine {
                 }
             }
         }
-
         generic_params
     }
 
@@ -2007,6 +2006,8 @@ impl TypeInferenceEngine {
         if let Some(constraints) = &impl_block.constraints {
             let constraint_vars =
                 self.extract_type_variables_from_constraint_expression(constraints);
+
+            // DEBUG: Temporarily removed for cleaner output
 
             // Check each constrained variable exists in the available type variables or is Self
             for constrained_var in constraint_vars {
@@ -2253,7 +2254,10 @@ impl TypeInferenceEngine {
         span: outrun_parser::Span,
     ) -> Result<(), TypecheckError> {
         // Check if implementation already exists to avoid conflicts
-        if self.type_registry.has_implementation(protocol, implementing_type) {
+        if self
+            .type_registry
+            .has_implementation(protocol, implementing_type)
+        {
             // Implementation already exists, skip registration
             return Ok(());
         }
@@ -2295,7 +2299,7 @@ impl TypeInferenceEngine {
             self.type_registry = Rc::new(new_type_registry);
         }
 
-        // Note: No need for legacy register_implementation() call since register_module() 
+        // Note: No need for legacy register_implementation() call since register_module()
         // already handles implementation registration in the unified system
 
         Ok(())
@@ -2387,7 +2391,7 @@ impl TypeInferenceEngine {
             self.type_registry = Rc::new(new_type_registry);
         }
 
-        // Note: No need for legacy register_implementation() call since register_module() 
+        // Note: No need for legacy register_implementation() call since register_module()
         // already handles implementation registration in the unified system
 
         Ok(())
@@ -2611,43 +2615,54 @@ impl TypeInferenceEngine {
         case_expr: &outrun_parser::CaseExpression,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🎯 DIRECT CASE: Processing case expression with {} clauses", case_expr.clauses.len());
-        
+        eprintln!(
+            "🎯 DIRECT CASE: Processing case expression with {} clauses",
+            case_expr.clauses.len()
+        );
+
         // First, infer the scrutinee type
         let mut scrutinee_expr = case_expr.expression.clone();
         let scrutinee_result = self.infer_expression(&mut scrutinee_expr, context)?;
         let scrutinee_type = scrutinee_result.inferred_type;
-        
+
         eprintln!("🎯 DIRECT CASE: Scrutinee type = {:?}", scrutinee_type);
-        
+
         let mut clause_result_types = Vec::new();
         let mut all_constraints = context.constraints.clone();
-        
+
         // Process each clause with pattern bindings
         for clause in &case_expr.clauses {
             eprintln!("🎯 DIRECT CASE: Processing clause with pattern");
-            
+
             // Create a new context for this clause
             let mut clause_context = context.clone();
-            
+
             // Extract pattern bindings
-            let pattern_bindings = self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
+            let pattern_bindings =
+                self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
             eprintln!("🎯 DIRECT CASE: Pattern bindings = {:?}", pattern_bindings);
-            
+
             // Add pattern bindings to clause context
             for (name, binding_type) in pattern_bindings {
-                eprintln!("🎯 DIRECT CASE: Adding binding {} -> {}", name, binding_type);
+                eprintln!(
+                    "🎯 DIRECT CASE: Adding binding {} -> {}",
+                    name, binding_type
+                );
                 clause_context.bindings.insert(name, binding_type);
             }
-            
+
             // Process guard if present
             if let Some(guard_expr) = &clause.guard {
                 eprintln!("🎯 DIRECT CASE: Processing guard with bindings available");
                 let mut guard_expr_mut = guard_expr.clone();
-                let guard_result = self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
-                eprintln!("🎯 DIRECT CASE: Guard result type = {:?}", guard_result.inferred_type);
+                let guard_result =
+                    self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
+                eprintln!(
+                    "🎯 DIRECT CASE: Guard result type = {:?}",
+                    guard_result.inferred_type
+                );
             }
-            
+
             // Process clause result
             let mut clause_result_expr = match &clause.result {
                 outrun_parser::CaseResult::Expression(expr) => (**expr).clone(),
@@ -2655,27 +2670,32 @@ impl TypeInferenceEngine {
                     // For blocks, we need to create an expression from the block
                     // For now, just return a fresh type variable
                     outrun_parser::Expression {
-                        kind: outrun_parser::ExpressionKind::Boolean(outrun_parser::BooleanLiteral { 
-                            value: true, 
-                            span: block.span 
-                        }),
+                        kind: outrun_parser::ExpressionKind::Boolean(
+                            outrun_parser::BooleanLiteral {
+                                value: true,
+                                span: block.span,
+                            },
+                        ),
                         span: block.span,
                         type_info: None,
                     }
                 }
             };
-            
-            let clause_result = self.infer_expression(&mut clause_result_expr, &mut clause_context)?;
+
+            let clause_result =
+                self.infer_expression(&mut clause_result_expr, &mut clause_context)?;
             clause_result_types.push(clause_result.inferred_type);
             all_constraints.extend(clause_result.constraints);
         }
-        
+
         // The result type is the type of the first clause (they should all be compatible)
-        let result_type = clause_result_types.into_iter().next()
+        let result_type = clause_result_types
+            .into_iter()
+            .next()
             .unwrap_or_else(|| Type::variable(self.fresh_type_var(), Level(0)));
-        
+
         eprintln!("🎯 DIRECT CASE: Final result type = {:?}", result_type);
-        
+
         Ok(InferenceResult {
             inferred_type: result_type,
             constraints: all_constraints,
@@ -3436,8 +3456,14 @@ impl TypeInferenceEngine {
         task_id: TaskId,
         context: &InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🔥🔥🔥 CASE EXPRESSION PROCESSING STARTED for task {:?}", task_id);
-        eprintln!("🔥🔥🔥 CONTEXT BINDINGS: {:?}", context.bindings.keys().collect::<Vec<_>>());
+        eprintln!(
+            "🔥🔥🔥 CASE EXPRESSION PROCESSING STARTED for task {:?}",
+            task_id
+        );
+        eprintln!(
+            "🔥🔥🔥 CONTEXT BINDINGS: {:?}",
+            context.bindings.keys().collect::<Vec<_>>()
+        );
         // Get the case expression
         let task = &self.inference_tasks[&task_id];
         let expression = unsafe { &*task.expression };
@@ -3482,15 +3508,23 @@ impl TypeInferenceEngine {
                     eprintln!("🔍 Adding pattern binding: {} -> {}", name, binding_type);
                     clause_context.bindings.insert(name, binding_type);
                 }
-                eprintln!("🔍 CLAUSE CONTEXT: Final bindings = {:?}", clause_context.bindings.keys().collect::<Vec<_>>());
+                eprintln!(
+                    "🔍 CLAUSE CONTEXT: Final bindings = {:?}",
+                    clause_context.bindings.keys().collect::<Vec<_>>()
+                );
 
                 // Process guard expression if present (with pattern bindings in scope)
                 if let Some(guard_expr) = &clause.guard {
-                    eprintln!("🔍 PROCESSING GUARD: Guard expression with pattern bindings available");
-                    eprintln!("🔍 GUARD CONTEXT: Available bindings = {:?}", clause_context.bindings.keys().collect::<Vec<_>>());
-                    
-                    let guard_result = self
-                        .infer_expression_impl(&mut guard_expr.clone(), &mut clause_context)?;
+                    eprintln!(
+                        "🔍 PROCESSING GUARD: Guard expression with pattern bindings available"
+                    );
+                    eprintln!(
+                        "🔍 GUARD CONTEXT: Available bindings = {:?}",
+                        clause_context.bindings.keys().collect::<Vec<_>>()
+                    );
+
+                    let guard_result =
+                        self.infer_expression_impl(&mut guard_expr.clone(), &mut clause_context)?;
 
                     // Guard must be Boolean - simplified constraint for now
                     let _boolean_type = Type::concrete("Outrun.Core.Boolean");
@@ -3632,17 +3666,27 @@ impl TypeInferenceEngine {
             }
             outrun_parser::Pattern::Tuple(tuple_pattern) => {
                 // DEBUG: Add logging to understand tuple pattern matching
-                eprintln!("🔍 TUPLE PATTERN: Processing tuple pattern with {} elements", tuple_pattern.elements.len());
+                eprintln!(
+                    "🔍 TUPLE PATTERN: Processing tuple pattern with {} elements",
+                    tuple_pattern.elements.len()
+                );
                 eprintln!("🔍 SCRUTINEE TYPE: {:?}", scrutinee_type);
-                
+
                 // For tuple patterns, extract element types from the tuple
                 if let Type::Concrete { name, args, .. } = scrutinee_type {
-                    eprintln!("🔍 CONCRETE TYPE: name='{}', args.len()={}", name.as_str(), args.len());
-                    eprintln!("🔍 TUPLE CHECK: contains_Tuple={}, lengths_match={}", 
-                        name.as_str().contains("Tuple"), 
-                        args.len() == tuple_pattern.elements.len());
-                    
-                    if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len() {
+                    eprintln!(
+                        "🔍 CONCRETE TYPE: name='{}', args.len()={}",
+                        name.as_str(),
+                        args.len()
+                    );
+                    eprintln!(
+                        "🔍 TUPLE CHECK: contains_Tuple={}, lengths_match={}",
+                        name.as_str().contains("Tuple"),
+                        args.len() == tuple_pattern.elements.len()
+                    );
+
+                    if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len()
+                    {
                         // Match each tuple element pattern with its corresponding type
                         for (i, element_pattern) in tuple_pattern.elements.iter().enumerate() {
                             if let Some(element_type) = args.get(i) {
@@ -3702,7 +3746,10 @@ impl TypeInferenceEngine {
                         "🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings",
                         name.name
                     );
-                    eprintln!("🔍 Available bindings: {:?}", context.bindings.keys().collect::<Vec<_>>());
+                    eprintln!(
+                        "🔍 Available bindings: {:?}",
+                        context.bindings.keys().collect::<Vec<_>>()
+                    );
                     Err(TypecheckError::InferenceError(
                         InferenceError::AmbiguousType {
                             span: Some(self.create_file_span(None).to_source_span()),
@@ -3741,8 +3788,11 @@ impl TypeInferenceEngine {
         func_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!("🔍 infer_function_call_recursive called with: {:?}", func_call.path);
-        
+        eprintln!(
+            "🔍 infer_function_call_recursive called with: {:?}",
+            func_call.path
+        );
+
         // For now, just handle common cases and fall back to a generic approach
         match &func_call.path {
             outrun_parser::FunctionPath::Simple { name } => {
@@ -3757,8 +3807,11 @@ impl TypeInferenceEngine {
                 }
             }
             outrun_parser::FunctionPath::Qualified { module, name } => {
-                eprintln!("🔍 Handling qualified function call: {:?}.{}", module, name.name);
-                
+                eprintln!(
+                    "🔍 Handling qualified function call: {:?}.{}",
+                    module, name.name
+                );
+
                 // Handle common protocol calls
                 if name.name.ends_with('?') {
                     // Guard function - must return Boolean
@@ -3769,7 +3822,7 @@ impl TypeInferenceEngine {
                         substitution: Substitution::new(),
                     });
                 }
-                
+
                 // Handle Option.unwrap specifically
                 if module.name == "Option" && name.name == "unwrap" {
                     eprintln!("🔍 Handling Option.unwrap call");
@@ -3805,7 +3858,7 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         use outrun_parser::ExpressionKind;
-        
+
         // Special case: Handle case expressions directly to avoid task system issues with pattern bindings
         if let ExpressionKind::CaseExpression(case_expr) = &expression.kind {
             eprintln!("🎯 DIRECT CASE EXPRESSION PROCESSING: Bypassing task system for pattern binding support");
@@ -4442,16 +4495,34 @@ impl TypeInferenceEngine {
             }
 
             ExpressionKind::Map(map_literal) => {
-                // Map type is Map<K, V> where K and V are inferred from entries
+                // Map type is Outrun.Core.Map<K, V> where K and V are inferred from entries
                 if dependency_results.is_empty() {
-                    // Empty map - use generic Map<K, V> with fresh type variables
-                    let key_type = Type::variable(self.fresh_type_var(), Level(0));
-                    let value_type = Type::variable(self.fresh_type_var(), Level(0));
-                    Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete("Map", vec![key_type, value_type]),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
+                    // Empty map - check if we have an expected type
+                    if let Some(expected_type) = &context.expected_type {
+                        eprintln!(
+                            "🗺️ ITERATIVE: Empty map with expected type: {:?}",
+                            expected_type
+                        );
+                        // Use the expected type directly
+                        Ok(InferenceResult {
+                            inferred_type: expected_type.clone(),
+                            constraints: Vec::new(),
+                            substitution: Substitution::new(),
+                        })
+                    } else {
+                        eprintln!("🗺️ ITERATIVE: Empty map without expected type - creating fresh variables");
+                        // Empty map without type hint gets fresh type variables
+                        let key_type = Type::variable(self.fresh_type_var(), Level(0));
+                        let value_type = Type::variable(self.fresh_type_var(), Level(0));
+                        Ok(InferenceResult {
+                            inferred_type: Type::generic_concrete(
+                                "Outrun.Core.Map",
+                                vec![key_type, value_type],
+                            ),
+                            constraints: Vec::new(),
+                            substitution: Substitution::new(),
+                        })
+                    }
                 } else {
                     // Non-empty map - infer key and value types from first entry
                     // dependency_results are in pairs: [key1, value1, key2, value2, ...]
@@ -4489,7 +4560,7 @@ impl TypeInferenceEngine {
 
                     Ok(InferenceResult {
                         inferred_type: Type::generic_concrete(
-                            "Map",
+                            "Outrun.Core.Map",
                             vec![first_key_type.clone(), first_value_type.clone()],
                         ),
                         constraints: Vec::new(),
@@ -5226,7 +5297,10 @@ impl TypeInferenceEngine {
             }
             ExpressionKind::CaseExpression(_) => {
                 // Case expressions - scrutinee and clause results should be processed by now
-                eprintln!("🔥 MAIN CASE EXPRESSION PROCESSING: Task {:?} reached case expression handler", task_id);
+                eprintln!(
+                    "🔥 MAIN CASE EXPRESSION PROCESSING: Task {:?} reached case expression handler",
+                    task_id
+                );
                 self.infer_case_expression_with_processed_clauses(task_id, &context)
             }
             ExpressionKind::MacroInjection(_) => {
@@ -5278,15 +5352,34 @@ impl TypeInferenceEngine {
         // Convert the declared return type for bidirectional inference
         let declared_return_type = self.convert_type_annotation(&function.return_type)?;
 
+        eprintln!(
+            "🎯 Function {}.{} declared return type: {:?}",
+            scope, function.name.name, declared_return_type
+        );
+        eprintln!("🎯 Current self context: {:?}", self.current_self_context);
+
+        // Resolve Self type if the return type is Self
+        let resolved_return_type = if matches!(&declared_return_type, Type::SelfType { .. }) {
+            eprintln!("🎯 Resolving Self type in return position");
+            // Use the Type's resolve_self method
+            declared_return_type
+                .resolve_self()
+                .unwrap_or_else(|| declared_return_type.clone())
+        } else {
+            declared_return_type.clone()
+        };
+
+        eprintln!(
+            "🎯 Resolved return type for expected: {:?}",
+            resolved_return_type
+        );
+
         // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
             substitution: Substitution::new(),
             constraints: Vec::new(),
-            expected_type: Some(declared_return_type.clone()), // CRITICAL FIX: Set expected type for bidirectional inference
-            self_binding: SelfBindingContext::ProtocolDefinition {
-                protocol_name: ModuleName::new(scope),
-                protocol_args: vec![],
-            },
+            expected_type: Some(resolved_return_type.clone()), // Use resolved type for bidirectional inference
+            self_binding: self.current_self_context.clone(), // Use current self context from impl block
             bindings: HashMap::new(),
         };
 
@@ -5443,20 +5536,40 @@ impl TypeInferenceEngine {
         let mut last_type = None;
 
         // Type check each statement
-        for statement in &block.statements {
+        for (i, statement) in block.statements.iter().enumerate() {
+            let is_last = i == block.statements.len() - 1;
+
             match &statement.kind {
                 outrun_parser::StatementKind::Expression(expr) => {
                     // Create RefCell wrapper for the expression to enable mutability
                     let expr_cell = Rc::new(RefCell::new((**expr).clone()));
                     let result = {
                         let mut expr_mut = expr_cell.borrow_mut();
-                        self.infer_expression(&mut expr_mut, context)?
+                        // Only pass expected type to the last expression in the block
+                        if is_last {
+                            eprintln!(
+                                "🎯 BLOCK: Inferring last expression with expected type: {:?}",
+                                context.expected_type
+                            );
+                            self.infer_expression(&mut expr_mut, context)?
+                        } else {
+                            // For non-last expressions, create a context without expected type
+                            let mut no_expected_context = context.clone();
+                            no_expected_context.expected_type = None;
+                            self.infer_expression(&mut expr_mut, &mut no_expected_context)?
+                        }
                     };
                     last_type = Some(result.inferred_type);
                 }
                 outrun_parser::StatementKind::LetBinding(let_binding) => {
                     // Type check the let binding expression and add to symbol table
-                    self.typecheck_let_binding_statement_readonly(let_binding, context)?;
+                    // Let bindings never get the expected type since they don't contribute to return value
+                    let mut no_expected_context = context.clone();
+                    no_expected_context.expected_type = None;
+                    self.typecheck_let_binding_statement_readonly(
+                        let_binding,
+                        &mut no_expected_context,
+                    )?;
                     // Let bindings don't change the block's return type unless they're the last statement
                     // If this is the last statement in the block, then the block has no meaningful return value
                     // which should be an error since Outrun doesn't have Unit types.
@@ -8499,6 +8612,10 @@ impl TypeInferenceEngine {
         // Handle empty map
         if map_literal.entries.is_empty() {
             if let Some(expected_type) = &context.expected_type {
+                eprintln!(
+                    "🗺️ Empty map literal with expected type: {:?}",
+                    expected_type
+                );
                 // Use expected type if available
                 Ok(InferenceResult {
                     inferred_type: expected_type.clone(),
@@ -8506,6 +8623,9 @@ impl TypeInferenceEngine {
                     substitution: context.substitution.clone(),
                 })
             } else {
+                eprintln!(
+                    "🗺️ Empty map literal without expected type - creating fresh type variables"
+                );
                 // Empty map without type hint gets fresh type variables
                 let key_type = Type::variable(self.fresh_type_var(), Level(0));
                 let value_type = Type::variable(self.fresh_type_var(), Level(0));
@@ -8514,6 +8634,7 @@ impl TypeInferenceEngine {
                     args: vec![key_type, value_type],
                     span: None,
                 };
+                eprintln!("🗺️ Created map type with fresh variables: {:?}", map_type);
                 Ok(InferenceResult {
                     inferred_type: map_type,
                     constraints: context.constraints.clone(),

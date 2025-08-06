@@ -215,7 +215,9 @@ fn test_function_inference_feature_completeness() {
                             _ => println!("✗ Anonymous function parsing: NOT WORKING (parsed as different expression)"),
                         }
                     }
-                    _ => println!("✗ Anonymous function parsing: NOT WORKING (parsed as different item)"),
+                    _ => println!(
+                        "✗ Anonymous function parsing: NOT WORKING (parsed as different item)"
+                    ),
                 }
             }
         }

@@ -4,9 +4,7 @@
 //! ensuring coherence and preventing conflicts.
 
 use crate::error::ImplementationError;
-use crate::types::{
-    ConcreteTypeDefinition, ModuleName, ProtocolDefinition, Type, TypeModule,
-};
+use crate::types::{ConcreteTypeDefinition, ModuleName, ProtocolDefinition, Type, TypeModule};
 use outrun_parser::Span;
 use std::collections::{HashMap, HashSet};
 
@@ -292,12 +290,12 @@ impl TypeRegistry {
 
         for (type_name, arity) in &core_types {
             let module_name = ModuleName::new(*type_name);
-            
+
             // Skip registration if module already exists (idempotent registration)
             if self.modules.contains_key(&module_name) {
                 continue;
             }
-            
+
             let type_def = ConcreteTypeDefinition {
                 type_name: module_name.clone(),
                 defining_module: core_module.clone(),
