@@ -863,6 +863,13 @@ impl MonomorphisationTable {
             Type::Variable { .. } => "Var".to_string(), // Should not appear in monomorphised keys
             Type::SelfType { .. } => "Self".to_string(), // Should be resolved before monomorphisation
             Type::Function { .. } => "Function".to_string(), // Function types in generic args
+            Type::Tuple { element_types, .. } => {
+                let element_keys: Vec<String> = element_types
+                    .iter()
+                    .map(Self::type_to_key_component)
+                    .collect();
+                format!("Tuple_{}", element_keys.join("_"))
+            }
         }
     }
 

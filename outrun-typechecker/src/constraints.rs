@@ -557,6 +557,25 @@ impl ConstraintSolver {
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                 })
             }
+
+            Type::Tuple { element_types, .. } => {
+                // Tuple types are structural and don't implement arbitrary protocols
+                // They could potentially implement specific protocols like Display, Debug, etc.
+                // For now, treat as missing implementation
+                let type_name = format!(
+                    "({})",
+                    element_types
+                        .iter()
+                        .map(Self::type_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                Err(ConstraintError::MissingImplementation {
+                    type_name,
+                    protocol_name: protocol.as_str().to_string(),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                })
+            }
         }
     }
 
@@ -617,6 +636,16 @@ impl ConstraintSolver {
             Type::Protocol { name, .. } => format!("protocol {}", name.as_str()),
             Type::SelfType { .. } => "Self".to_string(),
             Type::Function { .. } => "function".to_string(),
+            Type::Tuple { element_types, .. } => {
+                format!(
+                    "({})",
+                    element_types
+                        .iter()
+                        .map(Self::type_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         }
     }
 
@@ -828,6 +857,25 @@ impl ConstraintSolver {
                     span: span.and_then(|s| crate::error::to_source_span(Some(s))),
                 })
             }
+
+            Type::Tuple { element_types, .. } => {
+                // Tuple types don't match simple names
+                let tuple_display = format!(
+                    "({})",
+                    element_types
+                        .iter()
+                        .map(Self::type_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                Err(ConstraintError::Unsatisfiable {
+                    constraint: format!(
+                        "type variable must resolve to {}, but got tuple type {}",
+                        expected_name, tuple_display
+                    ),
+                    span: span.and_then(|s| crate::error::to_source_span(Some(s))),
+                })
+            }
         }
     }
 
@@ -971,6 +1019,16 @@ impl ConstraintSolver {
             Type::Variable { var_id, .. } => format!("T{}", var_id.0),
             Type::SelfType { .. } => "Self".to_string(),
             Type::Function { .. } => "Function".to_string(),
+            Type::Tuple { element_types, .. } => {
+                format!(
+                    "({})",
+                    element_types
+                        .iter()
+                        .map(|t| self.get_type_name(t))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         }
     }
 

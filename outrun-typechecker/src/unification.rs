@@ -365,6 +365,7 @@ impl Unifier {
             Type::Variable { .. } => "type variable".to_string(),
             Type::SelfType { .. } => "Self type".to_string(),
             Type::Function { .. } => "function type".to_string(),
+            Type::Tuple { .. } => "tuple type".to_string(),
         }
     }
 

@@ -286,6 +286,7 @@ impl UniversalDispatchRegistry {
                     Type::Variable { .. } => TypePattern::Generic("T".to_string()),
                     Type::SelfType { .. } => TypePattern::Generic("Self".to_string()),
                     Type::Function { .. } => TypePattern::Generic("Function".to_string()),
+                    Type::Tuple { .. } => TypePattern::Generic("Tuple".to_string()),
                 });
             }
         }

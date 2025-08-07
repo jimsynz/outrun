@@ -114,6 +114,13 @@ pub enum Type {
         return_type: Box<Type>,
         span: Option<Span>,
     },
+
+    /// Tuple types: (Integer64, String, Boolean)
+    /// Structural types with fixed arity and element types
+    Tuple {
+        element_types: Vec<Type>,
+        span: Option<Span>,
+    },
 }
 
 /// Position tracking for type variables and Self within complex type structures
@@ -308,7 +315,8 @@ impl Type {
             | Self::Protocol { span, .. }
             | Self::Variable { span, .. }
             | Self::SelfType { span, .. }
-            | Self::Function { span, .. } => span.as_ref(),
+            | Self::Function { span, .. }
+            | Self::Tuple { span, .. } => span.as_ref(),
         }
     }
 
@@ -349,6 +357,10 @@ impl Type {
                 } => {
                     // Add types from binding context to work stack
                     self.collect_binding_context_types(binding_context, &mut work_stack);
+                }
+                Self::Tuple { element_types, .. } => {
+                    // Add all element types to work stack
+                    work_stack.extend(element_types.iter());
                 }
             }
         }
@@ -423,6 +435,12 @@ impl Type {
                     .any(|(_, param_type)| param_type.is_protocol_constraint())
                     || return_type.is_protocol_constraint()
             }
+            Self::Tuple { element_types, .. } => {
+                // Tuple is a protocol constraint if any element is
+                element_types
+                    .iter()
+                    .any(|elem_type| elem_type.is_protocol_constraint())
+            }
         }
     }
 
@@ -446,6 +464,12 @@ impl Type {
                     .iter()
                     .all(|(_, param_type)| param_type.is_concrete_monomorphizable())
                     && return_type.is_concrete_monomorphizable()
+            }
+            Self::Tuple { element_types, .. } => {
+                // Tuple is monomorphizable if all elements are
+                element_types
+                    .iter()
+                    .all(|elem_type| elem_type.is_concrete_monomorphizable())
             }
         }
     }
@@ -728,6 +752,20 @@ impl Type {
                     span: *span,
                 })
             }
+            Type::Tuple { element_types, span } => {
+                // Recursively substitute in element types
+                let mut substituted_elements = Vec::new();
+                for elem_type in element_types {
+                    substituted_elements.push(
+                        elem_type.substitute_type_parameters(substitutions, allow_self_substitution)?,
+                    );
+                }
+
+                Ok(Type::Tuple {
+                    element_types: substituted_elements,
+                    span: *span,
+                })
+            }
         }
     }
 }
@@ -886,6 +924,10 @@ impl Substitution {
                 span: *span,
             },
             Type::SelfType { .. } => ty.clone(), // Self is handled separately
+            Type::Tuple { element_types, span } => Type::Tuple {
+                element_types: element_types.iter().map(|elem| self.apply(elem)).collect(),
+                span: *span,
+            },
         }
     }
 
@@ -1120,6 +1162,16 @@ impl fmt::Display for Type {
                     write!(f, "{name}: {param_type}")?;
                 }
                 write!(f, ") -> {return_type}>")
+            }
+            Self::Tuple { element_types, .. } => {
+                write!(f, "(")?;
+                for (i, elem_type) in element_types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elem_type}")?;
+                }
+                write!(f, ")")
             }
         }
     }

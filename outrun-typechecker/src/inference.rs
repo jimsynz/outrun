@@ -4608,6 +4608,20 @@ impl TypeInferenceEngine {
                 // Function types don't have generic parameters to substitute
                 Ok(target_type.clone())
             }
+            Type::Tuple { element_types, span } => {
+                // Recursively substitute in element types
+                let substituted_elements: Result<Vec<_>, _> = element_types
+                    .iter()
+                    .map(|elem| {
+                        self.substitute_generic_parameter_in_type(elem, param_name, replacement)
+                    })
+                    .collect();
+
+                Ok(Type::Tuple {
+                    element_types: substituted_elements?,
+                    span: *span,
+                })
+            }
         }
     }
 
@@ -6089,10 +6103,16 @@ impl TypeInferenceEngine {
                     }
                 }
             }
-            TypeAnnotation::Tuple { .. } => {
-                // TODO: Implement tuple types in the typechecker
-                // For now, treat as a placeholder concrete type
-                Ok(Type::concrete("Outrun.Core.Tuple"))
+            TypeAnnotation::Tuple { types, span } => {
+                // Resolve each element type annotation to create structural tuple type
+                let mut element_types = Vec::new();
+                for type_annotation in types {
+                    element_types.push(self.convert_type_annotation(type_annotation)?);
+                }
+                Ok(Type::Tuple {
+                    element_types,
+                    span: Some(*span),
+                })
             }
             TypeAnnotation::Function {
                 params,

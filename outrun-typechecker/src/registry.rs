@@ -283,7 +283,7 @@ impl TypeRegistry {
             ("Outrun.Core.Atom", 0),
             ("Outrun.Core.List", 1),   // List<T>
             ("Outrun.Core.Map", 2),    // Map<K, V>
-            ("Outrun.Core.Tuple", 0),  // Tuple is variadic, but we'll treat as 0 for now
+            // Note: Tuple types are structural, not concrete registry types
             ("Outrun.Core.Option", 1), // Option<T>
             ("Outrun.Core.Result", 2), // Result<T, E>
         ];

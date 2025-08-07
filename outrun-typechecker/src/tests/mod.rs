@@ -41,4 +41,5 @@ pub mod test_protocol_registration_order;
 pub mod test_protocol_registration_timing;
 pub mod test_protocol_return_types;
 pub mod test_self_type_resolution;
+pub mod test_tuple_types_basic;
 pub mod test_unified_package_processing;
