@@ -365,7 +365,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
     match error {
         CompilerError::Parse(parse_error) => {
             // Parse errors already have miette diagnostics, extract what we can
-            (None, format!("Parse error: {}", parse_error))
+            (None, format!("Parse error: {parse_error}"))
         }
         CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
             TypecheckError::InferenceError(inference_error) => match inference_error {
@@ -382,16 +382,16 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     ..
                 } => (
                     span.as_ref(),
-                    format!("Undefined variable: {}", variable_name),
+                    format!("Undefined variable: {variable_name}"),
                 ),
                 InferenceError::UndefinedType {
                     span, type_name, ..
-                } => (span.as_ref(), format!("Undefined type: {}", type_name)),
+                } => (span.as_ref(), format!("Undefined type: {type_name}")),
                 InferenceError::FunctionCallError { span, message, .. } => {
-                    (span.as_ref(), format!("Function call error: {}", message))
+                    (span.as_ref(), format!("Function call error: {message}"))
                 }
                 InferenceError::CollectionMismatch { span, message, .. } => {
-                    (span.as_ref(), format!("Collection type error: {}", message))
+                    (span.as_ref(), format!("Collection type error: {message}"))
                 }
                 InferenceError::EmptyCollectionNeedsAnnotation {
                     span,
@@ -399,7 +399,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     ..
                 } => (
                     span.as_ref(),
-                    format!("Empty {} needs type annotation", collection_type),
+                    format!("Empty {collection_type} needs type annotation"),
                 ),
                 InferenceError::InvalidConstraintVariable {
                     span,
@@ -407,7 +407,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     ..
                 } => (
                     span.as_ref(),
-                    format!("Invalid constraint variable: {}", variable_name),
+                    format!("Invalid constraint variable: {variable_name}"),
                 ),
                 _ => (None, "Type inference error".to_string()),
             },
@@ -435,8 +435,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     (
                         None, // We'll let the old span-guessing logic handle the span for now
                         format!(
-                            "No implementation found: type {} does not implement protocol {}.{}{}",
-                            type_name, protocol_name, suggestion_text, filename_info
+                            "No implementation found: type {type_name} does not implement protocol {protocol_name}.{suggestion_text}{filename_info}"
                         ),
                     )
                 }
@@ -458,8 +457,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 } => (
                     span.as_ref(),
                     format!(
-                        "Unresolved type variable: cannot dispatch on unknown type for protocol {}",
-                        protocol_name
+                        "Unresolved type variable: cannot dispatch on unknown type for protocol {protocol_name}"
                     ),
                 ),
                 DispatchError::UnboundSelfType {
@@ -468,8 +466,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 } => (
                     span.as_ref(),
                     format!(
-                        "Unbound Self type: cannot dispatch on unresolved Self for protocol {}",
-                        protocol_name
+                        "Unbound Self type: cannot dispatch on unresolved Self for protocol {protocol_name}"
                     ),
                 ),
                 DispatchError::InvalidTarget {
@@ -479,8 +476,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 } => (
                     span.as_ref(),
                     format!(
-                        "Invalid dispatch target: {} cannot be called on {}",
-                        protocol_name, target_description
+                        "Invalid dispatch target: {protocol_name} cannot be called on {target_description}"
                     ),
                 ),
             },
@@ -492,7 +488,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     ..
                 } => (
                     span.as_ref(),
-                    format!("Type mismatch: expected {}, found {}", expected, found),
+                    format!("Type mismatch: expected {expected}, found {found}"),
                 ),
                 UnificationError::OccursCheckViolation {
                     span,
@@ -502,8 +498,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 } => (
                     span.as_ref(),
                     format!(
-                        "Occurs check violation: variable {} occurs in {}",
-                        var_name, containing_type
+                        "Occurs check violation: variable {var_name} occurs in {containing_type}"
                     ),
                 ),
                 _ => (None, "Type unification error".to_string()),
@@ -511,7 +506,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
             TypecheckError::ConstraintError(constraint_error) => match constraint_error {
                 ConstraintError::Unsatisfiable { span, constraint } => (
                     span.as_ref(),
-                    format!("Unsatisfiable constraint: {}", constraint),
+                    format!("Unsatisfiable constraint: {constraint}"),
                 ),
                 ConstraintError::ConflictingConstraints {
                     span1,
@@ -521,8 +516,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 } => (
                     span1.as_ref(),
                     format!(
-                        "Conflicting constraints: {} conflicts with {}",
-                        constraint1, constraint2
+                        "Conflicting constraints: {constraint1} conflicts with {constraint2}"
                     ),
                 ),
                 _ => (None, "Constraint solving error".to_string()),
@@ -534,18 +528,17 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                 (None, "Exhaustiveness check failed".to_string())
             }
             TypecheckError::CoreLibraryError(message) => {
-                (None, format!("Core library error: {}", message))
+                (None, format!("Core library error: {message}"))
             }
             TypecheckError::Generic { message, span } => {
-                (span.as_ref(), format!("Type checking error: {}", message))
+                (span.as_ref(), format!("Type checking error: {message}"))
             }
-            TypecheckError::TypeError(type_error) => (None, format!("Type error: {}", type_error)),
+            TypecheckError::TypeError(type_error) => (None, format!("Type error: {type_error}")),
         },
         CompilerError::ModuleRedefinition { span, module_name } => (
             span.as_ref(),
             format!(
-                "Module redefinition: module '{}' is already defined by a dependency package",
-                module_name
+                "Module redefinition: module '{module_name}' is already defined by a dependency package"
             ),
         ),
     }
@@ -559,10 +552,7 @@ fn extract_file_span_from_error(
 
     match error {
         CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
-            TypecheckError::DispatchError(dispatch_error) => match dispatch_error {
-                DispatchError::NoImplementation { file_span, .. } => file_span.as_ref(),
-                _ => None,
-            },
+            TypecheckError::DispatchError(DispatchError::NoImplementation { file_span, .. }) => file_span.as_ref(),
             _ => None,
         },
         _ => None,
@@ -588,15 +578,14 @@ fn extract_error_message(error: &outrun_typechecker::CompilerError) -> String {
                         format!(" Try: {}", suggestions.join(", "))
                     };
                     format!(
-                        "No implementation found: type {} does not implement protocol {}{}",
-                        type_name, protocol_name, suggestion_text
+                        "No implementation found: type {type_name} does not implement protocol {protocol_name}{suggestion_text}"
                     )
                 }
-                _ => format!("Dispatch error: {}", dispatch_error),
+                _ => format!("Dispatch error: {dispatch_error}"),
             },
-            _ => format!("Type checking error: {}", boxed_error),
+            _ => format!("Type checking error: {boxed_error}"),
         },
-        _ => format!("Compiler error: {}", error),
+        _ => format!("Compiler error: {error}"),
     }
 }
 
@@ -621,7 +610,7 @@ fn create_miette_report_with_file_span(
 
         let report = miette::Report::new(diagnostic).with_source_code(named_source);
         println!("\n💎 Beautiful miette error output:");
-        println!("{:?}", report);
+        println!("{report:?}");
         Ok(())
     } else {
         Err(miette::miette!(
@@ -681,10 +670,9 @@ fn create_miette_report_with_source_context(
                             let error_text = &source_content[span_offset..end_offset];
 
                             // Only proceed if the error text looks reasonable
-                            if error_text.trim().len() > 0 {
+                            if !error_text.trim().is_empty() {
                                 println!(
-                                    "✅ Program {}: Found valid span in {} [{}..{}] -> {:?}",
-                                    i, filename, span_offset, end_offset, error_text
+                                    "✅ Program {i}: Found valid span in {filename} [{span_offset}..{end_offset}] -> {error_text:?}"
                                 );
 
                                 // Create a miette report with the correct file context
@@ -699,12 +687,11 @@ fn create_miette_report_with_source_context(
                                     miette::Report::new(diagnostic).with_source_code(named_source);
 
                                 println!("\n💎 Beautiful miette error output:");
-                                eprintln!("{:?}", report);
+                                eprintln!("{report:?}");
                                 return Ok(());
                             } else {
                                 println!(
-                                    "❌ Program {}: {} contains span but points to whitespace: {:?}",
-                                    i, filename, error_text
+                                    "❌ Program {i}: {filename} contains span but points to whitespace: {error_text:?}"
                                 );
                             }
                         } else {
@@ -1013,7 +1000,7 @@ fn handle_eval_command(
         // Read from stdin
         let mut buffer = String::new();
         if let Err(e) = io::stdin().read_to_string(&mut buffer) {
-            eprintln!("Failed to read from stdin: {}", e);
+            eprintln!("Failed to read from stdin: {e}");
             process::exit(1);
         }
         buffer
@@ -1023,7 +1010,7 @@ fn handle_eval_command(
     let mut session = match InterpreterSession::new() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to create interpreter session: {:?}", e);
+            eprintln!("Failed to create interpreter session: {e:?}");
             process::exit(1);
         }
     };
@@ -1048,9 +1035,9 @@ fn handle_eval_command(
             }
             Err(e) => {
                 if verbose {
-                    eprintln!("Error evaluating expression: {:?}", e);
+                    eprintln!("Error evaluating expression: {e:?}");
                 } else {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                 }
                 process::exit(1);
             }

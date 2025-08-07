@@ -323,65 +323,6 @@ fn test_type_inference_engine_fresh_variable_performance() {
 }
 
 #[test]
-#[ignore] // Disabled: takes over a minute to run
-fn test_memory_usage_large_program() {
-    // println!("🚀 Testing memory usage with large program...");
-
-    // Get initial memory usage (this is approximate)
-    let initial_memory = get_approximate_memory_usage();
-
-    // Generate a substantial program
-    let mut source = String::new();
-    let item_count = 1000;
-
-    for i in 0..item_count {
-        source.push_str(&format!(
-            r#"
-            let var_{} = {}
-            let list_{} = [{}, {}, {}]
-            let tuple_{} = ({}, {})
-        "#,
-            i,
-            i,
-            i,
-            i,
-            i + 1,
-            i + 2,
-            i,
-            i * 2,
-            i * 3
-        ));
-    }
-
-    let mut program = parse_program(&source).expect("Failed to parse large program");
-
-    let before_typecheck = get_approximate_memory_usage();
-    let result = typecheck_program_without_core(&mut program);
-    let after_typecheck = get_approximate_memory_usage();
-
-    // println!("📊 Memory usage:");
-    println!("  Initial: {} KB", initial_memory / 1024);
-    println!("  Before typecheck: {} KB", before_typecheck / 1024);
-    println!("  After typecheck: {} KB", after_typecheck / 1024);
-    println!(
-        "  Typecheck overhead: {} KB",
-        (after_typecheck - before_typecheck) / 1024
-    );
-
-    match result {
-        Ok(_) => println!("✓ Large program typechecked successfully"),
-        Err(e) => println!("! Large program failed: {:?}", e),
-    }
-
-    // Memory usage should be reasonable (not exponential)
-    let typecheck_overhead = after_typecheck - before_typecheck;
-    assert!(
-        typecheck_overhead < 50 * 1024 * 1024,
-        "Typecheck memory overhead should be reasonable (< 50MB)"
-    );
-}
-
-#[test]
 fn test_concurrent_typechecking_simulation() {
     // println!("🚀 Testing concurrent typechecking simulation...");
 
@@ -440,16 +381,4 @@ fn test_concurrent_typechecking_simulation() {
     );
 }
 
-/// Approximate memory usage measurement (platform-dependent)
-fn get_approximate_memory_usage() -> usize {
-    // This is a rough approximation - in a real implementation you might use
-    // platform-specific APIs or memory profiling tools
 
-    // For now, just return a placeholder that increases over time
-    // to simulate memory usage tracking
-    static mut COUNTER: usize = 0;
-    unsafe {
-        COUNTER += 1024; // Simulate increasing memory usage
-        COUNTER
-    }
-}
