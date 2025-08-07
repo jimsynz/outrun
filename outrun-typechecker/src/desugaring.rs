@@ -686,16 +686,16 @@ mod tests {
                 assert_eq!(func_call.arguments.len(), 2);
                 match &func_call.arguments[0] {
                     Argument::Named { name, .. } => {
-                        assert_eq!(name.name, "left");
+                        assert_eq!(name.name, "lhs");
                     }
-                    _ => panic!("Expected named argument 'left'"),
+                    _ => panic!("Expected named argument 'lhs'"),
                 }
 
                 match &func_call.arguments[1] {
                     Argument::Named { name, .. } => {
-                        assert_eq!(name.name, "right");
+                        assert_eq!(name.name, "rhs");
                     }
-                    _ => panic!("Expected named argument 'right'"),
+                    _ => panic!("Expected named argument 'rhs'"),
                 }
             }
             _ => panic!("Expected function call after desugaring"),

@@ -199,10 +199,10 @@ fn test_unary_operators_desugaring() {
 fn test_comparison_operators() {
     let test_cases = vec![
         ("x == y", "Equality", "equal?"),
-        ("x < y", "Comparison", "less_than?"),
-        ("x <= y", "Comparison", "less_than_or_equal?"),
-        ("x > y", "Comparison", "greater_than?"),
-        ("x >= y", "Comparison", "greater_than_or_equal?"),
+        ("x < y", "Comparison", "less?"),
+        ("x <= y", "Comparison", "less_equal?"),
+        ("x > y", "Comparison", "greater?"),
+        ("x >= y", "Comparison", "greater_equal?"),
     ];
 
     for (source, expected_protocol, expected_method) in test_cases {

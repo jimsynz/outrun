@@ -333,31 +333,46 @@ impl InterpreterSession {
             }
         };
 
-        // Extract the first item for evaluation
-        if let Some(first_item) = parsed_program.items.first() {
-            match &first_item.kind {
+        // Process all items in the program
+        let mut last_value = crate::Value::Boolean(true);
+        
+        for item in &parsed_program.items {
+            match &item.kind {
                 outrun_parser::ItemKind::Expression(expr) => {
                     // Evaluate the expression with our interpreter
                     let evaluator = self.evaluator.as_ref().unwrap(); // Should always be Some by this point
-                    let value = evaluator.evaluate(expr, &mut self.context)?;
-                    Ok(value)
+                    last_value = evaluator.evaluate(expr, &mut self.context)?;
                 }
                 outrun_parser::ItemKind::LetBinding(let_binding) => {
                     // Handle let bindings - works whether we skip typecheck or not
-                    self.evaluate_let_binding(let_binding)
+                    last_value = self.evaluate_let_binding(let_binding)?;
                 }
-                _ => Err(TestHarnessError::Internal {
-                    message: format!(
-                        "Unsupported item type in test harness: {:?}",
-                        first_item.kind
-                    ),
-                }),
+                outrun_parser::ItemKind::StructDefinition(_) => {
+                    // Struct definitions are handled during compilation, nothing to do at runtime
+                    last_value = crate::Value::Boolean(true);
+                }
+                outrun_parser::ItemKind::ImplBlock(_) => {
+                    // Implementation blocks are handled during compilation, nothing to do at runtime
+                    last_value = crate::Value::Boolean(true);
+                }
+                _ => {
+                    return Err(TestHarnessError::Internal {
+                        message: format!(
+                            "Unsupported item type in test harness: {:?}",
+                            item.kind
+                        ),
+                    });
+                }
             }
-        } else {
-            Err(TestHarnessError::Internal {
-                message: "No items found in parsed program".to_string(),
-            })
         }
+        
+        if parsed_program.items.is_empty() {
+            return Err(TestHarnessError::Internal {
+                message: "No items found in parsed program".to_string(),
+            });
+        }
+        
+        Ok(last_value)
     }
 
     /// Evaluate a let binding and return the bound value

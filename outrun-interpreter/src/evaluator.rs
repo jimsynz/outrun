@@ -247,6 +247,11 @@ impl ExpressionEvaluator {
                 self.evaluate(inner, context)
             }
 
+            // Struct construction - create struct values
+            ExpressionKind::Struct(struct_literal) => {
+                self.evaluate_struct_literal(struct_literal, context, span)
+            }
+
             // For now, return errors for unsupported expressions
             _ => Err(EvaluationError::UnsupportedExpression {
                 expr_type: self.expression_type_name(kind).to_string(),
@@ -855,7 +860,61 @@ impl ExpressionEvaluator {
         }
     }
 
-    /// Get a human-readable name for an expression type
+    /// Evaluate a struct literal to create a struct value
+    fn evaluate_struct_literal(
+        &self,
+        struct_literal: &outrun_parser::StructLiteral,
+        context: &mut InterpreterContext,
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        // For now, create a simple struct representation using a map-like structure
+        // TODO: This should integrate with the type system to create proper struct values
+        
+        let mut fields = std::collections::HashMap::new();
+        
+        for field in &struct_literal.fields {
+            match field {
+                outrun_parser::StructLiteralField::Assignment { name, value } => {
+                    let field_value = self.evaluate(value, context)?;
+                    fields.insert(name.name.clone(), field_value);
+                }
+                outrun_parser::StructLiteralField::Shorthand(name) => {
+                    // Shorthand: { x } means { x: x }
+                    let field_value = context
+                        .get_variable(&name.name)
+                        .cloned()
+                        .map_err(|_| EvaluationError::VariableNotFound {
+                            name: name.name.clone(),
+                            span,
+                        })?;
+                    fields.insert(name.name.clone(), field_value);
+                }
+                outrun_parser::StructLiteralField::Spread(_) => {
+                    // TODO: Implement spread syntax
+                    return Err(EvaluationError::UnsupportedExpression {
+                        expr_type: "struct_spread".to_string(),
+                        span,
+                    });
+                }
+            }
+        }
+        
+        // Create a struct value - for now use a simple representation
+        // TODO: This should create proper typed struct values
+        let type_name = struct_literal.type_path
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        
+        Ok(Value::Struct {
+            type_name,
+            fields,
+            type_info: None, // TODO: Get type info from typechecker
+        })
+    }
+
+    /// Get a human-readable name for an expression type (for error messages)
     fn expression_type_name(&self, kind: &ExpressionKind) -> &'static str {
         match kind {
             ExpressionKind::Integer(_) => "integer_literal",
