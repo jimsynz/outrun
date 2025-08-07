@@ -434,8 +434,8 @@ impl ExpressionEvaluator {
         // Check if we have universal clause IDs from the typechecker
         if let Some(clause_ids) = &function_call.universal_clause_ids {
             // Convert u64 IDs to ClauseId structs
-            let clause_ids: Vec<outrun_typechecker::universal_dispatch::ClauseId> = 
-                clause_ids.iter().map(|&id| outrun_typechecker::universal_dispatch::ClauseId(id)).collect();
+            let clause_ids: Vec<ClauseId> = 
+                clause_ids.iter().map(|&id| ClauseId(id)).collect();
             // Universal dispatch for user functions and protocol implementations
             self.dispatch_clauses(&clause_ids, &function_call.arguments, context, span)
         } else {
@@ -563,7 +563,7 @@ impl ExpressionEvaluator {
         &self,
         protocol_function: &str,
         argument_value: &Value,
-    ) -> Vec<outrun_typechecker::universal_dispatch::ClauseId> {
+    ) -> Vec<ClauseId> {
         // Parse the protocol function name (e.g., "UnaryMinus.minus")
         let parts: Vec<&str> = protocol_function.split('.').collect();
         if parts.len() != 2 {
@@ -599,7 +599,7 @@ impl ExpressionEvaluator {
     /// Universal clause-based dispatch - the future of function dispatch
     fn dispatch_clauses(
         &self,
-        clause_ids: &[outrun_typechecker::universal_dispatch::ClauseId],
+        clause_ids: &[ClauseId],
         arguments: &[outrun_parser::Argument],
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
@@ -661,7 +661,7 @@ impl ExpressionEvaluator {
     /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
     fn dispatch_clauses_with_values(
         &self,
-        clause_ids: &[outrun_typechecker::universal_dispatch::ClauseId],
+        clause_ids: &[ClauseId],
         args: &[Value],
         context: &mut InterpreterContext,
         span: outrun_parser::Span,

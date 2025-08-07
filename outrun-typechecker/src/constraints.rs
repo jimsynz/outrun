@@ -970,7 +970,7 @@ impl ConstraintSolver {
 
     /// Generate and store a warning about recursive implementation patterns
     fn emit_recursive_implementation_warning(&mut self, pattern: &RecursivePatternInfo) {
-        let type_name = self.get_type_name(&pattern.implementing_type);
+        let type_name = Self::get_type_name(&pattern.implementing_type);
         let explanation = format!(
             "Implementation creates recursive pattern: {} -> {} -> {} -> ...",
             type_name,
@@ -999,7 +999,7 @@ impl ConstraintSolver {
     fn expand_recursive_pattern(&self, pattern: &RecursivePatternInfo, depth: usize) -> String {
         // Simple expansion for demonstration
         // In real implementation, this would be more sophisticated
-        let base_name = self.get_type_name(&pattern.implementing_type);
+        let base_name = Self::get_type_name(&pattern.implementing_type);
 
         let mut result = base_name.clone();
         for _ in 0..depth {
@@ -1009,7 +1009,7 @@ impl ConstraintSolver {
     }
 
     /// Extract a name from a Type for display purposes
-    fn get_type_name(&self, ty: &Type) -> String {
+    fn get_type_name(ty: &Type) -> String {
         match ty {
             Type::Concrete { name, .. } => name.as_str().to_string(),
             Type::Protocol { name, .. } => name.as_str().to_string(),
@@ -1024,7 +1024,7 @@ impl ConstraintSolver {
                     "({})",
                     element_types
                         .iter()
-                        .map(|t| self.get_type_name(t))
+                        .map(Self::get_type_name)
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
