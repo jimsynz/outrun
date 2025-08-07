@@ -5,6 +5,27 @@ The Equality protocol defines the behaviour for equality comparison operators.
 When you write `a == b`, it becomes `Equality.equal?(lhs: a, rhs: b)`.
 When you write `a != b`, it becomes `Equality.not_equal?(lhs: a, rhs: b)`.
 
+## Automatic Implementation
+
+**All types automatically implement Equality** using the universal equality intrinsic.
+This means every struct, enum, and built-in type supports `==` and `!=` operators
+without requiring manual implementation.
+
+## Custom Implementation
+
+Types can override the default implementation when custom equality logic is needed:
+
+```outrun
+struct Person(name: String, age: Integer) {}
+
+# Custom equality that only compares names
+impl Equality for Person {
+    def equal?(lhs: Self, rhs: Self): Boolean {
+        String.equal?(lhs: lhs.name, rhs: rhs.name)
+    }
+}
+```
+
 ## Requirements
 
 - Both operands must be the same concrete type
@@ -20,6 +41,12 @@ When you write `a != b`, it becomes `Equality.not_equal?(lhs: a, rhs: b)`.
 "hello" != "world"            # Equality.not_equal?(lhs: "hello", rhs: "world"): Boolean
 user1 == user2                # Equality.equal?(lhs: user1, rhs: user2): Boolean
 
+# Works automatically for custom types
+struct Point(x: Integer, y: Integer) {}
+let p1 = Point { x: 1, y: 2 }
+let p2 = Point { x: 1, y: 2 }
+p1 == p2                      # true (automatic implementation)
+
 # Used in guards
 def process(x: Integer, y: Integer): String
 when Equality.equal?(lhs: x, rhs: 0) {
@@ -29,7 +56,9 @@ when Equality.equal?(lhs: x, rhs: 0) {
 """)
 protocol Equality {
     @Doc(content: "Test if two values are equal")
-    def equal?(lhs: Self, rhs: Self): Boolean
+    def equal?(lhs: Self, rhs: Self): Boolean {
+        Outrun.Intrinsic.equal(lhs: lhs, rhs: rhs)
+    }
 
     @Doc(content: "Test if two values are not equal")
     def not_equal?(lhs: Self, rhs: Self): Boolean {

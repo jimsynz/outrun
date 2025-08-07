@@ -14,7 +14,7 @@
 //! **Unary Operators → Protocol Calls:**
 //! - `+a` → `UnaryPlus.plus(value: a)`
 //! - `-a` → `UnaryMinus.minus(value: a)`
-//! - `!a` → `LogicalNot.not?(value: a)`
+//! - `!a` → `LogicalNot.not(value: a)`
 //! - `~a` → `BitwiseNot.bitwise_not(value: a)`
 
 use outrun_parser::{
@@ -460,7 +460,7 @@ impl DesugaringEngine {
         let (protocol_name, function_name) = match unary_op.operator {
             UnaryOperator::Plus => ("UnaryPlus", "plus"),
             UnaryOperator::Minus => ("UnaryMinus", "minus"),
-            UnaryOperator::LogicalNot => ("LogicalNot", "not?"),
+            UnaryOperator::LogicalNot => ("LogicalNot", "not"),
             UnaryOperator::BitwiseNot => ("BitwiseNot", "bitwise_not"),
         };
 

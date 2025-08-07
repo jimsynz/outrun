@@ -2211,6 +2211,15 @@ impl TypeInferenceEngine {
             struct_def.span,
         )?;
 
+        // Register Equality implementation
+        let equality_protocol = ModuleName::new("Equality");
+        self.register_automatic_implementation(
+            &implementing_type,
+            &equality_protocol,
+            &defining_module,
+            struct_def.span,
+        )?;
+
         Ok(())
     }
 

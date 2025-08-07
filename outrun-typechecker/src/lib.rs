@@ -468,22 +468,23 @@ impl CompilationResult {
             result?;
         }
 
-        // Phase 2.5: Register automatic implementations (Any, Inspect) for all struct types
-        for program in &package.programs {
-            if let Some(source_file) = &program.debug_info.source_file {
-                engine.set_current_file(source_file.clone());
-            }
-            let result = engine.register_automatic_implementations(program);
-            engine.clear_current_file();
-            result?;
-        }
-
         // Phase 3: Register all explicit protocol implementations
         for program in &package.programs {
             if let Some(source_file) = &program.debug_info.source_file {
                 engine.set_current_file(source_file.clone());
             }
             let result = engine.register_implementations(program);
+            engine.clear_current_file();
+            result?;
+        }
+
+        // Phase 2.5: Register automatic implementations (Any, Inspect, Equality) for all struct types
+        // This runs after manual implementations so automatic ones can skip types with manual implementations
+        for program in &package.programs {
+            if let Some(source_file) = &program.debug_info.source_file {
+                engine.set_current_file(source_file.clone());
+            }
+            let result = engine.register_automatic_implementations(program);
             engine.clear_current_file();
             result?;
         }

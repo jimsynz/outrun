@@ -78,6 +78,7 @@ mod tests {
     mod test_acceptance_expressions;
     mod test_acceptance_pattern_matching;
     mod test_complex_arithmetic;
+    mod test_equality_auto_impl;
     mod test_function_dispatch;
     mod test_pipeline_integration;
 }

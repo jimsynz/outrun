@@ -25,13 +25,6 @@ impl Display for Outrun.Core.Boolean {
 }
 
 
-# Equality protocol implementation
-impl Equality for Outrun.Core.Boolean {
-    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        Outrun.Intrinsic.bool_eq(lhs: lhs, rhs: rhs)
-    }
-}
-
 # Logical operator protocol implementations
 impl LogicalAnd for Outrun.Core.Boolean {
     def and?(lhs: Self, rhs: Self): Boolean {

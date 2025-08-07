@@ -67,12 +67,6 @@ impl UnaryMinus for Outrun.Core.Integer64 {
 }
 
 # Comparison operations
-impl Equality for Outrun.Core.Integer64 {
-    def equal?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
-        Outrun.Intrinsic.i64_eq(lhs: lhs, rhs: rhs)
-    }
-}
-
 impl Comparison for Outrun.Core.Integer64 {
     def greater?(lhs: Self, rhs: Self): Outrun.Core.Boolean {
         Outrun.Intrinsic.i64_gt(lhs: lhs, rhs: rhs)
@@ -138,7 +132,7 @@ impl Display for Outrun.Core.Integer64 {
 
 # Integer protocol implementation
 impl Integer for Outrun.Core.Integer64 {
-    def to_string_radix(value: Self, radix: Integer): Outrun.Core.String {
+    def to_string_radix(value: Self, radix: Self): Outrun.Core.String {
         Outrun.Intrinsic.i64_to_string_radix(value: value, radix: radix)
     }
 

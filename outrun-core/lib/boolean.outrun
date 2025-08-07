@@ -26,7 +26,7 @@ impl Boolean for Status {
 }
 ```
 """)
-protocol Boolean when Self: LogicalAnd && Self: LogicalOr && Self: LogicalNot {
+protocol Boolean when Self: LogicalAnd && Self: LogicalOr && Self: LogicalNot && Self: Equality {
     @Doc(content: """
     Returns true if the value should be considered true in a boolean context.
 
