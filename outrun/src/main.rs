@@ -97,7 +97,11 @@ fn main() {
         Some(Commands::Parse { files }) => {
             handle_parse_command(files);
         }
-        Some(Commands::Typecheck { files, expr, core_lib }) => {
+        Some(Commands::Typecheck {
+            files,
+            expr,
+            core_lib,
+        }) => {
             // Debug span corruption issue
             if files.len() == 1 && files[0].to_string_lossy() == "debug-spans" {
                 outrun_typechecker::debug_spans::debug_minimal_typecheck();
@@ -519,9 +523,7 @@ fn extract_error_info(error: &outrun_typechecker::CompilerError) -> (Option<&Sou
                     ..
                 } => (
                     span1.as_ref(),
-                    format!(
-                        "Conflicting constraints: {constraint1} conflicts with {constraint2}"
-                    ),
+                    format!("Conflicting constraints: {constraint1} conflicts with {constraint2}"),
                 ),
                 _ => (None, "Constraint solving error".to_string()),
             },
@@ -556,7 +558,9 @@ fn extract_file_span_from_error(
 
     match error {
         CompilerError::Typecheck(boxed_error) => match boxed_error.as_ref() {
-            TypecheckError::DispatchError(DispatchError::NoImplementation { file_span, .. }) => file_span.as_ref(),
+            TypecheckError::DispatchError(DispatchError::NoImplementation {
+                file_span, ..
+            }) => file_span.as_ref(),
             _ => None,
         },
         _ => None,
@@ -835,7 +839,9 @@ fn handle_typecheck_command(files: Vec<PathBuf>, expr: Option<String>, core_lib:
     }
 
     if files.is_empty() {
-        eprintln!("Error: Must provide files to type check, use -e for expressions, or use --core-lib");
+        eprintln!(
+            "Error: Must provide files to type check, use -e for expressions, or use --core-lib"
+        );
         process::exit(1);
     }
 
@@ -922,7 +928,10 @@ fn typecheck_expression(expression: &str) -> Result<()> {
     match CompilationResult::compile_package(&mut package) {
         Ok(result) => {
             println!("✅ Type checking successful");
-            println!("📊 Registered {} implementations", result.type_registry.implementation_count());
+            println!(
+                "📊 Registered {} implementations",
+                result.type_registry.implementation_count()
+            );
         }
         Err(e) => {
             return Err(miette::miette!("Type checking failed: {e:?}"));

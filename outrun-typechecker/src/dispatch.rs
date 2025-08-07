@@ -116,8 +116,7 @@ impl FunctionRegistry {
 
     /// Get function info by module and name
     pub fn get_function(&self, module_name: &str, function_name: &str) -> Option<&FunctionInfo> {
-        self
-            .functions
+        self.functions
             .get(&(module_name.to_string(), function_name.to_string()))
     }
 
@@ -466,23 +465,30 @@ impl<'a> FunctionDispatcher<'a> {
             } => {
                 // Protocol type - find ALL concrete implementations that satisfy both constraints
                 let target_protocol_id = ModuleName::new(protocol_name);
-                
+
                 // Check if the source protocol requires the target protocol
-                if self.type_registry.protocol_requires(&source_protocol_name, &target_protocol_id) {
+                if self
+                    .type_registry
+                    .protocol_requires(&source_protocol_name, &target_protocol_id)
+                {
                     // Find all concrete types that implement both protocols
                     let mut matching_implementations = Vec::new();
-                    
+
                     // Get all implementations of the source protocol
                     for impl_info in self.type_registry.all_implementations() {
                         // Check if this implementation is for our source protocol
                         if impl_info.protocol_name == source_protocol_name {
                             let implementing_type = &impl_info.implementing_type;
-                            
+
                             // Check if this type also implements the target protocol
-                            if self.type_registry.get_implementation(implementing_type.as_str(), protocol_name).is_some() {
+                            if self
+                                .type_registry
+                                .get_implementation(implementing_type.as_str(), protocol_name)
+                                .is_some()
+                            {
                                 // Try to resolve the function for this concrete type
                                 let concrete_type = Type::concrete(implementing_type.as_str());
-                                
+
                                 // Use a nested dispatcher to avoid recursion issues
                                 let nested_dispatcher = FunctionDispatcher::new(
                                     self.type_registry,
@@ -490,18 +496,26 @@ impl<'a> FunctionDispatcher<'a> {
                                     self.monomorphisation_table,
                                     self.substitution,
                                 );
-                                
-                                if let Ok(DispatchResult::Resolved(resolved_func)) = 
-                                    nested_dispatcher.resolve_protocol_call(protocol_name, function_name, &concrete_type, span) {
+
+                                if let Ok(DispatchResult::Resolved(resolved_func)) =
+                                    nested_dispatcher.resolve_protocol_call(
+                                        protocol_name,
+                                        function_name,
+                                        &concrete_type,
+                                        span,
+                                    )
+                                {
                                     matching_implementations.push(*resolved_func);
                                 }
                             }
                         }
                     }
-                    
+
                     if !matching_implementations.is_empty() {
                         if matching_implementations.len() == 1 {
-                            return Ok(DispatchResult::Resolved(Box::new(matching_implementations.into_iter().next().unwrap())));
+                            return Ok(DispatchResult::Resolved(Box::new(
+                                matching_implementations.into_iter().next().unwrap(),
+                            )));
                         } else {
                             return Ok(DispatchResult::Ambiguous(matching_implementations));
                         }

@@ -201,8 +201,10 @@ mod tests {
 
     #[test]
     fn test_universal_call_resolution_single() {
-        let signature = crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
-        let clause_id = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
+        let signature =
+            crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
+        let clause_id =
+            ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
         let return_type = crate::types::Type::concrete("String");
 
         let resolution = UniversalCallResolution::single(clause_id, return_type.clone());
@@ -216,13 +218,18 @@ mod tests {
 
     #[test]
     fn test_universal_call_resolution_multi() {
-        let signature = crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
-        let clause_id1 = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
-        let clause_id2 = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::TypeCompatible {
-            target_type: crate::types::Type::concrete("String"),
-            implementing_type: crate::types::Type::concrete("String"),
-            constraint_context: crate::universal_dispatch::ConstraintContext::new(),
-        }]);
+        let signature =
+            crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
+        let clause_id1 =
+            ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
+        let clause_id2 = ClauseId::deterministic(
+            &signature,
+            &[crate::universal_dispatch::Guard::TypeCompatible {
+                target_type: crate::types::Type::concrete("String"),
+                implementing_type: crate::types::Type::concrete("String"),
+                constraint_context: crate::universal_dispatch::ConstraintContext::new(),
+            }],
+        );
         let return_type = crate::types::Type::concrete("Boolean");
 
         let resolution =
@@ -255,8 +262,10 @@ mod tests {
             type_info: None,
         };
 
-        let signature = crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
-        let clause_id = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
+        let signature =
+            crate::universal_dispatch::FunctionSignature::simple("test_function".to_string());
+        let clause_id =
+            ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::AlwaysTrue]);
         let return_type = crate::types::Type::concrete("Integer");
         let resolution = UniversalCallResolution::single(clause_id, return_type.clone());
 
@@ -306,16 +315,22 @@ mod tests {
             vec!["Option".to_string()],
             "some?".to_string(),
         );
-        let clause_id1 = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::TypeCompatible {
-            target_type: crate::types::Type::concrete("Some"),
-            implementing_type: crate::types::Type::concrete("Some"),
-            constraint_context: crate::universal_dispatch::ConstraintContext::new(),
-        }]); // Some<T> implementation
-        let clause_id2 = ClauseId::deterministic(&signature, &[crate::universal_dispatch::Guard::TypeCompatible {
-            target_type: crate::types::Type::concrete("None"),
-            implementing_type: crate::types::Type::concrete("None"),
-            constraint_context: crate::universal_dispatch::ConstraintContext::new(),
-        }]); // None<T> implementation
+        let clause_id1 = ClauseId::deterministic(
+            &signature,
+            &[crate::universal_dispatch::Guard::TypeCompatible {
+                target_type: crate::types::Type::concrete("Some"),
+                implementing_type: crate::types::Type::concrete("Some"),
+                constraint_context: crate::universal_dispatch::ConstraintContext::new(),
+            }],
+        ); // Some<T> implementation
+        let clause_id2 = ClauseId::deterministic(
+            &signature,
+            &[crate::universal_dispatch::Guard::TypeCompatible {
+                target_type: crate::types::Type::concrete("None"),
+                implementing_type: crate::types::Type::concrete("None"),
+                constraint_context: crate::universal_dispatch::ConstraintContext::new(),
+            }],
+        ); // None<T> implementation
         let return_type = crate::types::Type::concrete("Boolean");
         let resolution =
             UniversalCallResolution::multi(vec![clause_id1, clause_id2], return_type.clone());

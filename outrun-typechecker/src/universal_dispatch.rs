@@ -19,35 +19,40 @@ impl ClauseId {
     pub fn deterministic(signature: &FunctionSignature, guards: &[Guard]) -> Self {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash the function signature
         signature.module_path.hash(&mut hasher);
         signature.function_name.hash(&mut hasher);
-        
+
         // Hash the guards (we need a stable representation)
         for guard in guards {
             match guard {
                 Guard::AlwaysTrue => {
                     "AlwaysTrue".hash(&mut hasher);
                 }
-                Guard::TypeCompatible { target_type, implementing_type, .. } => {
+                Guard::TypeCompatible {
+                    target_type,
+                    implementing_type,
+                    ..
+                } => {
                     "TypeCompatible".hash(&mut hasher);
                     // Hash the type names for stability
                     format!("{:?}", target_type).hash(&mut hasher);
                     format!("{:?}", implementing_type).hash(&mut hasher);
                 }
-                Guard::ValueGuard { bound_variables, .. } => {
+                Guard::ValueGuard {
+                    bound_variables, ..
+                } => {
                     "ValueGuard".hash(&mut hasher);
                     bound_variables.hash(&mut hasher);
                 }
             }
         }
-        
+
         ClauseId(hasher.finish())
     }
-
 }
 
 /// Universal function signature for indexing all function types

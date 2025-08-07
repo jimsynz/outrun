@@ -182,7 +182,7 @@ impl CompilationResult {
         if let Some(context) = session_context {
             // Create a new engine and import the precompiled core library registries properly
             let mut engine = crate::inference::TypeInferenceEngine::new();
-            
+
             // Import the precompiled core library registries (including universal dispatch!)
             engine.import_dependency_registries_with_universal_dispatch(
                 precompiled_core.type_registry.clone(),

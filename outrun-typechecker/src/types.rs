@@ -638,7 +638,10 @@ impl Type {
                     span: *span,
                 }
             }
-            Self::Tuple { element_types, span } => {
+            Self::Tuple {
+                element_types,
+                span,
+            } => {
                 let substituted_elements = element_types
                     .iter()
                     .map(|elem| elem.substitute_type_variables(substitutions))
@@ -673,7 +676,7 @@ impl Type {
                 };
                 Some(resolved)
             }
-            Self::SelfType {..} => {
+            Self::SelfType { .. } => {
                 None // Self is unbound in protocol definitions
             }
             _ => None,
@@ -769,12 +772,16 @@ impl Type {
                     span: *span,
                 })
             }
-            Type::Tuple { element_types, span } => {
+            Type::Tuple {
+                element_types,
+                span,
+            } => {
                 // Recursively substitute in element types
                 let mut substituted_elements = Vec::new();
                 for elem_type in element_types {
                     substituted_elements.push(
-                        elem_type.substitute_type_parameters(substitutions, allow_self_substitution)?,
+                        elem_type
+                            .substitute_type_parameters(substitutions, allow_self_substitution)?,
                     );
                 }
 
@@ -941,7 +948,10 @@ impl Substitution {
                 span: *span,
             },
             Type::SelfType { .. } => ty.clone(), // Self is handled separately
-            Type::Tuple { element_types, span } => Type::Tuple {
+            Type::Tuple {
+                element_types,
+                span,
+            } => Type::Tuple {
                 element_types: element_types.iter().map(|elem| self.apply(elem)).collect(),
                 span: *span,
             },

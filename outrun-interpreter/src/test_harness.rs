@@ -335,7 +335,7 @@ impl InterpreterSession {
 
         // Process all items in the program
         let mut last_value = crate::Value::Boolean(true);
-        
+
         for item in &parsed_program.items {
             match &item.kind {
                 outrun_parser::ItemKind::Expression(expr) => {
@@ -357,21 +357,18 @@ impl InterpreterSession {
                 }
                 _ => {
                     return Err(TestHarnessError::Internal {
-                        message: format!(
-                            "Unsupported item type in test harness: {:?}",
-                            item.kind
-                        ),
+                        message: format!("Unsupported item type in test harness: {:?}", item.kind),
                     });
                 }
             }
         }
-        
+
         if parsed_program.items.is_empty() {
             return Err(TestHarnessError::Internal {
                 message: "No items found in parsed program".to_string(),
             });
         }
-        
+
         Ok(last_value)
     }
 

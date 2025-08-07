@@ -396,7 +396,12 @@ fn test_type_parameter_name_detection() {
     assert!(!engine.is_type_parameter_name("Option"));
 
     // Set up a generic parameter context (simulating entering a generic struct/function)
-    let generic_params = vec!["T".to_string(), "U".to_string(), "Key".to_string(), "Value".to_string()];
+    let generic_params = vec![
+        "T".to_string(),
+        "U".to_string(),
+        "Key".to_string(),
+        "Value".to_string(),
+    ];
     let generic_context = engine.create_generic_context_from_names(&generic_params);
     engine.set_generic_parameter_context(generic_context);
 
@@ -426,7 +431,6 @@ fn test_type_parameter_name_detection() {
     assert!(!engine.is_type_parameter_name("Value"));
 }
 
-
 #[test]
 fn test_context_aware_generic_parameter_scoping() {
     use crate::inference::TypeInferenceEngine;
@@ -436,7 +440,7 @@ fn test_context_aware_generic_parameter_scoping() {
     // Example 1: Demonstrate that context matters, not naming patterns
     // A name that looks conventional but isn't in scope
     assert!(!engine.is_type_parameter_name("T"));
-    
+
     // A name that doesn't look conventional but is a generic parameter
     let generic_params = vec!["MyGenericType".to_string(), "SomeOtherParam".to_string()];
     let generic_context = engine.create_generic_context_from_names(&generic_params);
@@ -448,7 +452,7 @@ fn test_context_aware_generic_parameter_scoping() {
 
     // Example 2: Demonstrate scope changes
     engine.clear_generic_parameter_context();
-    
+
     // Now add conventional names
     let generic_params = vec!["T".to_string(), "U".to_string(), "Result".to_string()];
     let generic_context = engine.create_generic_context_from_names(&generic_params);

@@ -114,7 +114,10 @@ impl DesugaringEngine {
     }
 
     /// Desugar all expressions within a block
-    pub fn desugar_block(&mut self, block: &mut outrun_parser::Block) -> Result<(), TypecheckError> {
+    pub fn desugar_block(
+        &mut self,
+        block: &mut outrun_parser::Block,
+    ) -> Result<(), TypecheckError> {
         for statement in &mut block.statements {
             match &mut statement.kind {
                 outrun_parser::StatementKind::Expression(expr) => {
@@ -374,9 +377,7 @@ impl DesugaringEngine {
             BinaryOperator::Greater => ("Comparison", "greater?", ("lhs", "rhs")),
             BinaryOperator::Less => ("Comparison", "less?", ("lhs", "rhs")),
             BinaryOperator::LessEqual => ("Comparison", "less_equal?", ("lhs", "rhs")),
-            BinaryOperator::GreaterEqual => {
-                ("Comparison", "greater_equal?", ("lhs", "rhs"))
-            }
+            BinaryOperator::GreaterEqual => ("Comparison", "greater_equal?", ("lhs", "rhs")),
 
             // Logical operators
             BinaryOperator::LogicalAnd => ("LogicalAnd", "and?", ("lhs", "rhs")),

@@ -13,18 +13,20 @@ fn test_equality_automatic_implementation() {
             u1 == u2
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     let compilation_result = CompilationResult::compile_package(&mut package).unwrap();
-    
+
     // Verify User automatically implements Equality
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Equality"),
-        &ModuleName::new("User")
-    ), "User should automatically implement Equality");
+    assert!(
+        compilation_result
+            .type_registry
+            .has_implementation(&ModuleName::new("Equality"), &ModuleName::new("User")),
+        "User should automatically implement Equality"
+    );
 }
 
 #[test]
@@ -45,19 +47,22 @@ fn test_equality_manual_override() {
             Equality.equal?(lhs: s1, rhs: s2)
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     let compilation_result = CompilationResult::compile_package(&mut package).unwrap();
-    
+
     // Verify SpecialNumber has manual implementation (not automatic)
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Equality"),
-        &ModuleName::new("SpecialNumber")
-    ), "SpecialNumber should implement Equality");
-    
+    assert!(
+        compilation_result.type_registry.has_implementation(
+            &ModuleName::new("Equality"),
+            &ModuleName::new("SpecialNumber")
+        ),
+        "SpecialNumber should implement Equality"
+    );
+
     // Verify the manual implementation takes precedence
     // (This would require interpreter integration to fully test the behavior)
 }
@@ -78,20 +83,27 @@ fn test_equality_with_built_in_types() {
             b1 == b2
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     let compilation_result = CompilationResult::compile_package(&mut package).unwrap();
-    
+
     // All built-in types should have Equality (either automatic or manual)
-    let built_in_types = ["Outrun.Core.Integer64", "Outrun.Core.String", "Outrun.Core.Boolean"];
+    let built_in_types = [
+        "Outrun.Core.Integer64",
+        "Outrun.Core.String",
+        "Outrun.Core.Boolean",
+    ];
     for type_name in &built_in_types {
-        assert!(compilation_result.type_registry.has_implementation(
-            &ModuleName::new("Equality"),
-            &ModuleName::new(*type_name)
-        ), "{} should implement Equality", type_name);
+        assert!(
+            compilation_result
+                .type_registry
+                .has_implementation(&ModuleName::new("Equality"), &ModuleName::new(*type_name)),
+            "{} should implement Equality",
+            type_name
+        );
     }
 }
 
@@ -109,20 +121,25 @@ fn test_equality_override_precedence() {
             }
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     // This should succeed without conflicts
     let compilation_result = CompilationResult::compile_package(&mut package);
-    assert!(compilation_result.is_ok(), "Manual Equality implementation should override automatic one");
-    
+    assert!(
+        compilation_result.is_ok(),
+        "Manual Equality implementation should override automatic one"
+    );
+
     let compilation_result = compilation_result.unwrap();
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Equality"),
-        &ModuleName::new("TestType")
-    ), "TestType should have Equality implementation");
+    assert!(
+        compilation_result
+            .type_registry
+            .has_implementation(&ModuleName::new("Equality"), &ModuleName::new("TestType")),
+        "TestType should have Equality implementation"
+    );
 }
 
 #[test]
@@ -133,18 +150,21 @@ fn test_float_keeps_specialized_equality() {
             f1 == f2
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     let compilation_result = CompilationResult::compile_package(&mut package).unwrap();
-    
+
     // Float64 should have Equality (specialized, not automatic)
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Equality"),
-        &ModuleName::new("Outrun.Core.Float64")
-    ), "Float64 should have specialized Equality implementation");
+    assert!(
+        compilation_result.type_registry.has_implementation(
+            &ModuleName::new("Equality"),
+            &ModuleName::new("Outrun.Core.Float64")
+        ),
+        "Float64 should have specialized Equality implementation"
+    );
 }
 
 #[test]
@@ -179,24 +199,33 @@ fn test_boolean_protocol_requires_equality() {
             }
         }
     "#;
-    
+
     let program = parse_program(program_source).unwrap();
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
-    
+
     let compilation_result = CompilationResult::compile_package(&mut package);
-    assert!(compilation_result.is_ok(), "CustomBoolean should satisfy Boolean protocol constraints including Equality");
-    
+    assert!(
+        compilation_result.is_ok(),
+        "CustomBoolean should satisfy Boolean protocol constraints including Equality"
+    );
+
     let compilation_result = compilation_result.unwrap();
-    
+
     // Verify all required implementations exist
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Equality"),
-        &ModuleName::new("CustomBoolean")
-    ), "CustomBoolean should automatically implement Equality");
-    
-    assert!(compilation_result.type_registry.has_implementation(
-        &ModuleName::new("Boolean"),
-        &ModuleName::new("CustomBoolean")
-    ), "CustomBoolean should implement Boolean protocol");
+    assert!(
+        compilation_result.type_registry.has_implementation(
+            &ModuleName::new("Equality"),
+            &ModuleName::new("CustomBoolean")
+        ),
+        "CustomBoolean should automatically implement Equality"
+    );
+
+    assert!(
+        compilation_result.type_registry.has_implementation(
+            &ModuleName::new("Boolean"),
+            &ModuleName::new("CustomBoolean")
+        ),
+        "CustomBoolean should implement Boolean protocol"
+    );
 }

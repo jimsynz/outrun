@@ -243,9 +243,7 @@ impl ExpressionEvaluator {
             }
 
             // Parenthesized expressions - just evaluate the inner expression
-            ExpressionKind::Parenthesized(inner) => {
-                self.evaluate(inner, context)
-            }
+            ExpressionKind::Parenthesized(inner) => self.evaluate(inner, context),
 
             // Struct construction - create struct values
             ExpressionKind::Struct(struct_literal) => {
@@ -326,15 +324,13 @@ impl ExpressionEvaluator {
     }
 
     /// Evaluate a block of statements/expressions
+    /// Returns the value of the last expression, or true for empty blocks
     fn evaluate_block(
         &self,
         block: &outrun_parser::Block,
         context: &mut InterpreterContext,
     ) -> Result<Value, EvaluationError> {
-        // For now, just evaluate statements in order and return the last expression
-        // TODO: Implement proper block evaluation with statement handling
-
-        let mut last_result = Value::boolean(true); // Default return value
+        let mut last_result = Value::boolean(true); // Default for empty blocks
 
         for statement in &block.statements {
             match &statement.kind {
@@ -347,9 +343,6 @@ impl ExpressionEvaluator {
                 }
             }
         }
-
-        // For now, Block doesn't have a final_expression field
-        // The last result from processing statements is returned
 
         Ok(last_result)
     }
@@ -434,8 +427,7 @@ impl ExpressionEvaluator {
         // Check if we have universal clause IDs from the typechecker
         if let Some(clause_ids) = &function_call.universal_clause_ids {
             // Convert u64 IDs to ClauseId structs
-            let clause_ids: Vec<ClauseId> = 
-                clause_ids.iter().map(|&id| ClauseId(id)).collect();
+            let clause_ids: Vec<ClauseId> = clause_ids.iter().map(|&id| ClauseId(id)).collect();
             // Universal dispatch for user functions and protocol implementations
             self.dispatch_clauses(&clause_ids, &function_call.arguments, context, span)
         } else {
@@ -443,7 +435,7 @@ impl ExpressionEvaluator {
             match &function_call.path {
                 outrun_parser::FunctionPath::Qualified { module, name } => {
                     let function_name = format!("{}.{}", module.name, name.name);
-                    
+
                     if function_name.starts_with("Outrun.Intrinsic.") {
                         // Direct intrinsic function call
                         let mut args = Vec::new();
@@ -467,7 +459,12 @@ impl ExpressionEvaluator {
                             .map_err(|e| EvaluationError::Intrinsic { source: e })
                     } else {
                         // Try to resolve protocol call without clause IDs as a fallback
-                        match self.try_resolve_protocol_call_fallback(&function_name, &function_call.arguments, context, span) {
+                        match self.try_resolve_protocol_call_fallback(
+                            &function_name,
+                            &function_call.arguments,
+                            context,
+                            span,
+                        ) {
                             Ok(value) => Ok(value),
                             Err(_) => {
                                 panic!(
@@ -481,9 +478,7 @@ impl ExpressionEvaluator {
                 outrun_parser::FunctionPath::Simple { name } => {
                     // Try to resolve simple function call as a protocol method
                     let function_name = &name.name;
-                    
 
-                    
                     // Try common protocol method patterns
                     let qualified_name = if function_name == "equal?" {
                         "Equality.equal?"
@@ -496,8 +491,13 @@ impl ExpressionEvaluator {
                             function_name
                         );
                     };
-                    
-                    match self.try_resolve_protocol_call_fallback(qualified_name, &function_call.arguments, context, span) {
+
+                    match self.try_resolve_protocol_call_fallback(
+                        qualified_name,
+                        &function_call.arguments,
+                        context,
+                        span,
+                    ) {
                         Ok(value) => Ok(value),
                         Err(_) => {
                             panic!(
@@ -629,7 +629,7 @@ impl ExpressionEvaluator {
         }
 
         // Universal clause dispatch - try each clause until one succeeds
-        
+
         // Try each clause in order until one succeeds
         for &clause_id in clause_ids {
             // Get clause info from universal registry
@@ -656,7 +656,6 @@ impl ExpressionEvaluator {
             span,
         })
     }
-
 
     /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
     fn dispatch_clauses_with_values(
@@ -730,28 +729,51 @@ impl ExpressionEvaluator {
                 // Check if the implementing type satisfies the target protocol
                 if let Some(type_registry) = &self.type_registry {
                     use outrun_typechecker::types::{ModuleName, Type};
-                    
+
                     let result = match (implementing_type, target_type) {
                         // Concrete to Concrete: check if they're the same type
-                        (Type::Concrete { name: impl_name, .. }, Type::Concrete { name: target_name, .. }) => {
-                            impl_name == target_name
-                        }
-                        
+                        (
+                            Type::Concrete {
+                                name: impl_name, ..
+                            },
+                            Type::Concrete {
+                                name: target_name, ..
+                            },
+                        ) => impl_name == target_name,
+
                         // Concrete to Protocol: check if concrete type implements protocol
-                        (Type::Concrete { name: impl_name, .. }, Type::Protocol { name: protocol_name, .. }) => {
-                            let impl_module_name = ModuleName::implementation(impl_name.as_str(), protocol_name.as_str());
-                            type_registry.get_module(impl_module_name.as_str()).is_some()
+                        (
+                            Type::Concrete {
+                                name: impl_name, ..
+                            },
+                            Type::Protocol {
+                                name: protocol_name,
+                                ..
+                            },
+                        ) => {
+                            let impl_module_name = ModuleName::implementation(
+                                impl_name.as_str(),
+                                protocol_name.as_str(),
+                            );
+                            type_registry
+                                .get_module(impl_module_name.as_str())
+                                .is_some()
                         }
-                        
+
                         // Protocol to Protocol: check if they're the same protocol
-                        (Type::Protocol { name: impl_name, .. }, Type::Protocol { name: target_name, .. }) => {
-                            impl_name == target_name
-                        }
-                        
+                        (
+                            Type::Protocol {
+                                name: impl_name, ..
+                            },
+                            Type::Protocol {
+                                name: target_name, ..
+                            },
+                        ) => impl_name == target_name,
+
                         // Other combinations
                         _ => false,
                     };
-                    
+
                     Ok(result)
                 } else {
                     // Fallback to simple equality check if no type registry available
@@ -816,14 +838,25 @@ impl ExpressionEvaluator {
                 })
             }
             FunctionBody::ProtocolImplementation {
-                implementation_name,
-                body: _,
+                implementation_name: _,
+                body,
             } => {
-                // TODO: Execute protocol implementation
-                Err(EvaluationError::UnsupportedExpression {
-                    expr_type: format!("protocol_implementation_{}", implementation_name),
-                    span,
-                })
+                // Execute protocol implementation body with named parameter binding
+                context.push_scope();
+
+                // Bind named arguments to their parameter names
+                if let Err(e) = self.bind_named_parameters(named_args, context) {
+                    context.pop_scope();
+                    return Err(e);
+                }
+
+                // Execute the protocol implementation body block
+                let result = self.evaluate_block(body, context);
+
+                // Clean up the scope
+                context.pop_scope();
+
+                result
             }
         }
     }
@@ -869,9 +902,9 @@ impl ExpressionEvaluator {
     ) -> Result<Value, EvaluationError> {
         // For now, create a simple struct representation using a map-like structure
         // TODO: This should integrate with the type system to create proper struct values
-        
+
         let mut fields = std::collections::HashMap::new();
-        
+
         for field in &struct_literal.fields {
             match field {
                 outrun_parser::StructLiteralField::Assignment { name, value } => {
@@ -880,13 +913,12 @@ impl ExpressionEvaluator {
                 }
                 outrun_parser::StructLiteralField::Shorthand(name) => {
                     // Shorthand: { x } means { x: x }
-                    let field_value = context
-                        .get_variable(&name.name)
-                        .cloned()
-                        .map_err(|_| EvaluationError::VariableNotFound {
+                    let field_value = context.get_variable(&name.name).cloned().map_err(|_| {
+                        EvaluationError::VariableNotFound {
                             name: name.name.clone(),
                             span,
-                        })?;
+                        }
+                    })?;
                     fields.insert(name.name.clone(), field_value);
                 }
                 outrun_parser::StructLiteralField::Spread(_) => {
@@ -898,15 +930,16 @@ impl ExpressionEvaluator {
                 }
             }
         }
-        
+
         // Create a struct value - for now use a simple representation
         // TODO: This should create proper typed struct values
-        let type_name = struct_literal.type_path
+        let type_name = struct_literal
+            .type_path
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        
+
         Ok(Value::Struct {
             type_name,
             fields,
@@ -974,7 +1007,8 @@ impl ExpressionEvaluator {
         // For LogicalNot.not with Boolean argument, call the intrinsic directly
         if protocol_name == "LogicalNot" && method_name == "not" && arg_values.len() == 1 {
             if let Value::Boolean(_) = arg_values[0] {
-                return self.intrinsics
+                return self
+                    .intrinsics
                     .execute_intrinsic("Outrun.Intrinsic.bool_not", &arg_values, span)
                     .map_err(|e| EvaluationError::Intrinsic { source: e });
             }
@@ -982,15 +1016,19 @@ impl ExpressionEvaluator {
 
         // For Equality.equal? with any arguments, call the generic equal intrinsic
         if protocol_name == "Equality" && method_name == "equal?" && arg_values.len() == 2 {
-            return self.intrinsics
+            return self
+                .intrinsics
                 .execute_intrinsic("Outrun.Intrinsic.equal", &arg_values, span)
                 .map_err(|e| EvaluationError::Intrinsic { source: e });
         }
 
         // Add more protocol-specific fallbacks here as needed
-        
+
         Err(EvaluationError::Runtime {
-            message: format!("Cannot resolve protocol call without clause IDs: {}", function_name),
+            message: format!(
+                "Cannot resolve protocol call without clause IDs: {}",
+                function_name
+            ),
             span,
         })
     }

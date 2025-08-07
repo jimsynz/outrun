@@ -674,7 +674,11 @@ impl TypeInferenceEngine {
     }
 
     /// Check if a type satisfies a protocol (legacy compatibility)
-    pub fn type_satisfies_protocol(&self, type_name: &ModuleName, protocol_name: &ModuleName) -> bool {
+    pub fn type_satisfies_protocol(
+        &self,
+        type_name: &ModuleName,
+        protocol_name: &ModuleName,
+    ) -> bool {
         // Simple implementation - check if there's an implementation module
         let impl_name = ModuleName::implementation(type_name.as_str(), protocol_name.as_str());
         self.type_registry.get_module(impl_name.as_str()).is_some()
@@ -789,7 +793,7 @@ impl TypeInferenceEngine {
         // Import type and function registries
         self.type_registry = dependency_type_registry;
         self.function_registry = dependency_function_registry;
-        
+
         // Import universal dispatch registry (this was the missing piece!)
         // TODO: In the future, we should merge registries instead of replacing them
         // For now, replace the registry to inherit all dependency clauses
@@ -2671,7 +2675,7 @@ impl TypeInferenceEngine {
         })
     }
 
-   /// 
+    ///
     /// Main iterative inference method (replaces recursive infer_expression)
     pub fn infer_expression(
         &mut self,
@@ -2736,7 +2740,9 @@ impl TypeInferenceEngine {
                     Type::Tuple { element_types, .. } => {
                         if element_types.len() == tuple_pattern.elements.len() {
                             // Match each tuple element pattern with its corresponding type
-                            for (element_pattern, element_type) in tuple_pattern.elements.iter().zip(element_types.iter()) {
+                            for (element_pattern, element_type) in
+                                tuple_pattern.elements.iter().zip(element_types.iter())
+                            {
                                 let element_bindings =
                                     self.extract_pattern_bindings(element_pattern, element_type)?;
                                 bindings.extend(element_bindings);
@@ -2752,13 +2758,14 @@ impl TypeInferenceEngine {
                         }
                     }
                     Type::Concrete { name, args, .. } => {
-                        if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len()
+                        if name.as_str().contains("Tuple")
+                            && args.len() == tuple_pattern.elements.len()
                         {
                             // Legacy support for Tuple<T1, T2, ...> representation
                             for (i, element_pattern) in tuple_pattern.elements.iter().enumerate() {
                                 if let Some(element_type) = args.get(i) {
-                                    let element_bindings =
-                                        self.extract_pattern_bindings(element_pattern, element_type)?;
+                                    let element_bindings = self
+                                        .extract_pattern_bindings(element_pattern, element_type)?;
                                     bindings.extend(element_bindings);
                                 }
                             }
@@ -2867,7 +2874,8 @@ impl TypeInferenceEngine {
                             }
                         }
 
-            ExpressionKind::List(list_literal) => {                            let element_count = list_literal.elements.len();
+                        ExpressionKind::List(list_literal) => {
+                            let element_count = list_literal.elements.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
@@ -2892,7 +2900,8 @@ impl TypeInferenceEngine {
                             }
                         }
 
-            ExpressionKind::Tuple(tuple_literal) => {                            let element_count = tuple_literal.elements.len();
+                        ExpressionKind::Tuple(tuple_literal) => {
+                            let element_count = tuple_literal.elements.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
@@ -2909,7 +2918,8 @@ impl TypeInferenceEngine {
                             }
                         }
 
-            ExpressionKind::Map(map_literal) => {                            let mut dep_count = 0;
+                        ExpressionKind::Map(map_literal) => {
+                            let mut dep_count = 0;
                             for entry in &map_literal.entries {
                                 match entry {
                                     outrun_parser::MapEntry::Assignment { .. } => dep_count += 2, // key + value
@@ -3077,7 +3087,8 @@ impl TypeInferenceEngine {
                             });
                         }
 
-            ExpressionKind::CaseExpression(case_expr) => {                            // case_expr has: expression (scrutinee) + clauses
+                        ExpressionKind::CaseExpression(case_expr) => {
+                            // case_expr has: expression (scrutinee) + clauses
                             let clause_count = case_expr.clauses.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
@@ -3120,7 +3131,8 @@ impl TypeInferenceEngine {
                             });
                         }
 
-            ExpressionKind::AnonymousFunction(anon_fn) => {                            // Anonymous functions have clauses with bodies
+                        ExpressionKind::AnonymousFunction(anon_fn) => {
+                            // Anonymous functions have clauses with bodies
                             let clause_count = anon_fn.clauses.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
@@ -3701,7 +3713,6 @@ impl TypeInferenceEngine {
         }
     }
 
-
     /// Core function body type checking logic using RefCell for interior mutability
     #[allow(clippy::result_large_err)]
     fn typecheck_function_body(
@@ -4110,8 +4121,12 @@ impl TypeInferenceEngine {
 
             // Tuple types must have same arity and compatible element types
             (
-                Type::Tuple { element_types: e1, .. },
-                Type::Tuple { element_types: e2, .. },
+                Type::Tuple {
+                    element_types: e1, ..
+                },
+                Type::Tuple {
+                    element_types: e2, ..
+                },
             ) => {
                 e1.len() == e2.len()
                     && e1
@@ -4125,7 +4140,6 @@ impl TypeInferenceEngine {
         }
     }
 
-
     /// Resolve simple function calls to clause lists
     fn resolve_simple_function_clauses(
         &mut self,
@@ -4136,7 +4150,8 @@ impl TypeInferenceEngine {
         // Use existing dispatcher logic but convert to universal result
         let function_context = self.create_function_context_from_inference_context(context);
         let dispatcher =
-            FunctionDispatcher::new(&self.type_registry, &self.function_registry, None, None)                .with_context(function_context);
+            FunctionDispatcher::new(&self.type_registry, &self.function_registry, None, None)
+                .with_context(function_context);
 
         match dispatcher.resolve_local_call(function_name, Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
@@ -4207,7 +4222,6 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ModuleName::new(module_name);
 
@@ -4235,10 +4249,8 @@ impl TypeInferenceEngine {
             None
         };
 
-
         let dispatcher =
             FunctionDispatcher::new(&self.type_registry, &self.function_registry, None, None);
-
 
         let result = match dispatcher.resolve_qualified_call(
             &qualified_name,
@@ -4303,7 +4315,8 @@ impl TypeInferenceEngine {
                                 vec![module_name.to_string()],
                                 function_name.to_string(),
                             );
-                            let clause_id = crate::universal_dispatch::ClauseId::deterministic(&signature, &[]);
+                            let clause_id =
+                                crate::universal_dispatch::ClauseId::deterministic(&signature, &[]);
                             return Ok(crate::typed_ast::UniversalCallResolution::single(
                                 clause_id,
                                 result.inferred_type,
@@ -4325,8 +4338,6 @@ impl TypeInferenceEngine {
             Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
         };
 
-
-
         result
     }
 
@@ -4336,12 +4347,12 @@ impl TypeInferenceEngine {
         resolved_func: &crate::dispatch::ResolvedFunction,
     ) -> crate::universal_dispatch::ClauseId {
         use crate::universal_dispatch::*;
-        
+
         let signature = FunctionSignature::new(
             vec![resolved_func.function_info.defining_scope.clone()],
             resolved_func.function_info.function_name.clone(),
         );
-        
+
         let mut guards = Vec::new();
         if let Some(implementing_type) = &resolved_func.implementing_type {
             guards.push(Guard::TypeCompatible {
@@ -4351,36 +4362,45 @@ impl TypeInferenceEngine {
             });
         }
         guards.push(Guard::AlwaysTrue);
-        
+
         // Check if this clause already exists in the registry
-        let existing_clauses = self.universal_dispatch_registry.get_clauses_for_function(&signature);
-        
+        let existing_clauses = self
+            .universal_dispatch_registry
+            .get_clauses_for_function(&signature);
+
         if !existing_clauses.is_empty() {
-            eprintln!("DEBUG: Found {} existing clauses for {}.{}", 
-                existing_clauses.len(), 
+            eprintln!(
+                "DEBUG: Found {} existing clauses for {}.{}",
+                existing_clauses.len(),
                 resolved_func.function_info.defining_scope,
-                resolved_func.function_info.function_name);
-            
+                resolved_func.function_info.function_name
+            );
+
             // Check if any existing clause matches our guards
             for &clause_id in existing_clauses {
                 if let Some(clause_info) = self.universal_dispatch_registry.get_clause(clause_id) {
-                    eprintln!("  Existing clause {}: guards={:?}", clause_id.0, clause_info.guards);
+                    eprintln!(
+                        "  Existing clause {}: guards={:?}",
+                        clause_id.0, clause_info.guards
+                    );
                     // For now, just use the first one
                     // TODO: Match guards properly
                     return clause_id;
                 }
             }
         }
-        
+
         // No existing clause found, create a new deterministic one
         let new_id = ClauseId::deterministic(&signature, &guards);
-        eprintln!("DEBUG: Creating new deterministic clause {} for {}.{}", 
+        eprintln!(
+            "DEBUG: Creating new deterministic clause {} for {}.{}",
             new_id.0,
             resolved_func.function_info.defining_scope,
-            resolved_func.function_info.function_name);
+            resolved_func.function_info.function_name
+        );
         new_id
     }
-    
+
     /// Register a function clause in the universal dispatch registry
     fn register_function_clause(
         &mut self,
@@ -4394,11 +4414,13 @@ impl TypeInferenceEngine {
             vec![resolved_func.function_info.defining_scope.clone()],
             resolved_func.function_info.function_name.clone(),
         );
-        
-        eprintln!("DEBUG: Registering clause {} for {}.{}", 
+
+        eprintln!(
+            "DEBUG: Registering clause {} for {}.{}",
             clause_id.0,
             resolved_func.function_info.defining_scope,
-            resolved_func.function_info.function_name);
+            resolved_func.function_info.function_name
+        );
 
         // Create guards based on function type
         let mut guards = Vec::new();
@@ -4651,13 +4673,19 @@ impl TypeInferenceEngine {
             // Check if this parameter has type Self (the protocol type)
             if matches!(param_type, Type::SelfType { .. }) {
                 // Get the actual argument type
-                if let Some(Some(Type::Protocol { name, args, .. } | Type::Concrete { name, args, .. })) = precomputed_arg_types.get(i) {
+                if let Some(Some(
+                    Type::Protocol { name, args, .. } | Type::Concrete { name, args, .. },
+                )) = precomputed_arg_types.get(i)
+                {
                     // Check if this is the protocol we're working with
                     if name.as_str() == module_name {
                         // Map generic parameters to their concrete types
-                        for (j, generic_param) in function_info.generic_parameters.iter().enumerate() {
+                        for (j, generic_param) in
+                            function_info.generic_parameters.iter().enumerate()
+                        {
                             if let Some(concrete_type) = args.get(j) {
-                                substitution_map.insert(generic_param.clone(), concrete_type.clone());
+                                substitution_map
+                                    .insert(generic_param.clone(), concrete_type.clone());
                             }
                         }
                     }
@@ -4738,7 +4766,10 @@ impl TypeInferenceEngine {
                 // Function types don't have generic parameters to substitute
                 Ok(target_type.clone())
             }
-            Type::Tuple { element_types, span } => {
+            Type::Tuple {
+                element_types,
+                span,
+            } => {
                 // Recursively substitute in element types
                 let substituted_elements: Result<Vec<_>, _> = element_types
                     .iter()
@@ -6469,7 +6500,10 @@ impl TypeInferenceEngine {
                     span,
                 })
             }
-            Type::Tuple { element_types, span } => {
+            Type::Tuple {
+                element_types,
+                span,
+            } => {
                 // Apply substitution to tuple element types
                 let substituted_elements: Result<Vec<Type>, TypecheckError> = element_types
                     .into_iter()
@@ -6612,7 +6646,6 @@ mod tests {
         engine.set_current_module(ModuleName::new("Http::Client"));
         assert_eq!(engine.current_module.as_str(), "Http::Client");
     }
-
 }
 
 impl TypeInferenceEngine {
@@ -6623,7 +6656,6 @@ impl TypeInferenceEngine {
         self.generic_parameter_context.contains_key(name)
     }
 }
-
 
 #[cfg(test)]
 mod debug_tests {

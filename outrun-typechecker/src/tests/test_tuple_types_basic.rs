@@ -10,10 +10,7 @@ use crate::Type;
 fn test_tuple_type_display() {
     // Test that tuple types display with structural syntax
     let tuple_type = Type::Tuple {
-        element_types: vec![
-            Type::concrete("Integer64"),
-            Type::concrete("String"),
-        ],
+        element_types: vec![Type::concrete("Integer64"), Type::concrete("String")],
         span: None,
     };
 
@@ -35,18 +32,12 @@ fn test_empty_tuple_display() {
 fn test_nested_tuple_display() {
     // Test nested tuple display
     let inner_tuple = Type::Tuple {
-        element_types: vec![
-            Type::concrete("Integer64"),
-            Type::concrete("Integer64"),
-        ],
+        element_types: vec![Type::concrete("Integer64"), Type::concrete("Integer64")],
         span: None,
     };
 
     let outer_tuple = Type::Tuple {
-        element_types: vec![
-            inner_tuple,
-            Type::concrete("String"),
-        ],
+        element_types: vec![inner_tuple, Type::concrete("String")],
         span: None,
     };
 
@@ -57,26 +48,17 @@ fn test_nested_tuple_display() {
 fn test_tuple_type_equality() {
     // Test structural equality of tuple types
     let tuple1 = Type::Tuple {
-        element_types: vec![
-            Type::concrete("Integer64"),
-            Type::concrete("String"),
-        ],
+        element_types: vec![Type::concrete("Integer64"), Type::concrete("String")],
         span: None,
     };
 
     let tuple2 = Type::Tuple {
-        element_types: vec![
-            Type::concrete("Integer64"),
-            Type::concrete("String"),
-        ],
+        element_types: vec![Type::concrete("Integer64"), Type::concrete("String")],
         span: None,
     };
 
     let tuple3 = Type::Tuple {
-        element_types: vec![
-            Type::concrete("String"),
-            Type::concrete("Integer64"),
-        ],
+        element_types: vec![Type::concrete("String"), Type::concrete("Integer64")],
         span: None,
     };
 
@@ -91,10 +73,7 @@ fn test_tuple_type_equality() {
 fn test_tuple_arity_differences() {
     // Test that tuples with different arities are not equal
     let pair = Type::Tuple {
-        element_types: vec![
-            Type::concrete("Integer64"),
-            Type::concrete("String"),
-        ],
+        element_types: vec![Type::concrete("Integer64"), Type::concrete("String")],
         span: None,
     };
 

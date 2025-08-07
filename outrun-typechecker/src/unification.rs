@@ -247,8 +247,12 @@ impl Unifier {
 
             // Tuple type unification
             (
-                Type::Tuple { element_types: e1, .. },
-                Type::Tuple { element_types: e2, .. },
+                Type::Tuple {
+                    element_types: e1, ..
+                },
+                Type::Tuple {
+                    element_types: e2, ..
+                },
             ) => {
                 if e1.len() != e2.len() {
                     return Err(UnificationError::ArityMismatch {

@@ -380,5 +380,3 @@ fn test_concurrent_typechecking_simulation() {
         "Total concurrent simulation should be fast"
     );
 }
-
-
