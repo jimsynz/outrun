@@ -617,32 +617,6 @@ impl ExpressionEvaluator {
         })
     }
 
-    /// Map argument names for compatibility between function call and clause implementation
-    /// This handles cases where the function call uses different parameter names than the clause
-    fn map_argument_names(
-        &self,
-        named_args: &[(String, Value)],
-        clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
-    ) -> Vec<(String, Value)> {
-        // For now, handle the common case of left/right vs lhs/rhs mapping
-        let mut mapped_args = Vec::new();
-        
-        for (arg_name, arg_value) in named_args {
-            let mapped_name = match arg_name.as_str() {
-                "left" => "lhs",
-                "right" => "rhs", 
-                other => other,
-            };
-            mapped_args.push((mapped_name.to_string(), arg_value.clone()));
-        }
-        
-        println!("🔄 Mapped arguments: {:?} -> {:?}", 
-            named_args.iter().map(|(n, v)| (n, v.display())).collect::<Vec<_>>(),
-            mapped_args.iter().map(|(n, v)| (n, v.display())).collect::<Vec<_>>()
-        );
-        
-        mapped_args
-    }
 
     /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
     fn dispatch_clauses_with_values(

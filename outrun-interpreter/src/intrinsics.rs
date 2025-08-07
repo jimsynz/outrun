@@ -94,6 +94,11 @@ impl IntrinsicsHandler {
         self.register("Outrun.Intrinsic.i64_pos", intrinsic_unary_plus);
         self.register("Outrun.Intrinsic.i64_neg", intrinsic_unary_minus);
 
+        // Boolean logical operations
+        self.register("Outrun.Intrinsic.bool_and", intrinsic_bool_and);
+        self.register("Outrun.Intrinsic.bool_or", intrinsic_bool_or);
+        self.register("Outrun.Intrinsic.bool_not", intrinsic_bool_not);
+
         // TODO: Remove these protocol bridges once proper dispatch is implemented
         // These are architectural hacks that bypass the protocol system
         // self.register("BinaryAddition.add", intrinsic_add_integer64);
@@ -645,6 +650,61 @@ fn intrinsic_unary_minus(args: &[Value], span: Span) -> Result<Value, IntrinsicE
         Value::Integer64(n) => Ok(Value::integer(-n)),
         v => Err(IntrinsicError::TypeMismatch {
             expected: "Integer64".to_string(),
+            found: v.type_name().to_string(),
+            span,
+        }),
+    }
+}
+
+// Boolean logical operations
+fn intrinsic_bool_and(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 2 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("bool_and expects 2 arguments, got {}", args.len()),
+            span,
+        });
+    }
+
+    match (&args[0], &args[1]) {
+        (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::boolean(*a && *b)),
+        (a, b) => Err(IntrinsicError::TypeMismatch {
+            expected: "Boolean, Boolean".to_string(),
+            found: format!("{}, {}", a.type_name(), b.type_name()),
+            span,
+        }),
+    }
+}
+
+fn intrinsic_bool_or(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 2 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("bool_or expects 2 arguments, got {}", args.len()),
+            span,
+        });
+    }
+
+    match (&args[0], &args[1]) {
+        (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::boolean(*a || *b)),
+        (a, b) => Err(IntrinsicError::TypeMismatch {
+            expected: "Boolean, Boolean".to_string(),
+            found: format!("{}, {}", a.type_name(), b.type_name()),
+            span,
+        }),
+    }
+}
+
+fn intrinsic_bool_not(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 1 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("bool_not expects 1 argument, got {}", args.len()),
+            span,
+        });
+    }
+
+    match &args[0] {
+        Value::Boolean(b) => Ok(Value::boolean(!b)),
+        v => Err(IntrinsicError::TypeMismatch {
+            expected: "Boolean".to_string(),
             found: v.type_name().to_string(),
             span,
         }),
