@@ -6,10 +6,10 @@
 //! ## Desugaring Rules
 //!
 //! **Binary Operators → Protocol Calls:**
-//! - `a + b` → `BinaryAddition.add(left: a, right: b)`
-//! - `a - b` → `BinarySubtraction.subtract(left: a, right: b)`
-//! - `a == b` → `Equality.equal?(left: a, right: b)`
-//! - `a != b` → `Equality.not_equal?(left: a, right: b)`
+//! - `a + b` → `BinaryAddition.add(lhs: a, rhs: b)`
+//! - `a - b` → `BinarySubtraction.subtract(lhs: a, rhs: b)`
+//! - `a == b` → `Equality.equal?(lhs: a, rhs: b)`
+//! - `a != b` → `Equality.not_equal?(lhs: a, rhs: b)`
 //!
 //! **Unary Operators → Protocol Calls:**
 //! - `+a` → `UnaryPlus.plus(value: a)`
@@ -367,26 +367,25 @@ impl DesugaringEngine {
             BinaryOperator::Subtract => ("BinarySubtraction", "subtract", ("lhs", "rhs")),
             BinaryOperator::Multiply => ("BinaryMultiplication", "multiply", ("lhs", "rhs")),
             BinaryOperator::Divide => ("BinaryDivision", "divide", ("lhs", "rhs")),
-            BinaryOperator::Modulo => ("BinaryModulo", "modulo", ("left", "right")),
+            BinaryOperator::Modulo => ("BinaryModulo", "modulo", ("lhs", "rhs")),
             BinaryOperator::Exponent => ("BinaryExponentiation", "power", ("base", "exponent")),
 
             // Comparison operators
-            BinaryOperator::Equal => ("Equality", "equal?", ("left", "right")),
-            BinaryOperator::Less => ("Comparison", "less_than?", ("left", "right")),
-            BinaryOperator::LessEqual => ("Comparison", "less_than_or_equal?", ("left", "right")),
-            BinaryOperator::Greater => ("Comparison", "greater_than?", ("left", "right")),
+            BinaryOperator::Greater => ("Comparison", "greater?", ("lhs", "rhs")),
+            BinaryOperator::Less => ("Comparison", "less?", ("lhs", "rhs")),
+            BinaryOperator::LessEqual => ("Comparison", "less_equal?", ("lhs", "rhs")),
             BinaryOperator::GreaterEqual => {
-                ("Comparison", "greater_than_or_equal?", ("left", "right"))
+                ("Comparison", "greater_equal?", ("lhs", "rhs"))
             }
 
             // Logical operators
-            BinaryOperator::LogicalAnd => ("LogicalAnd", "and?", ("left", "right")),
-            BinaryOperator::LogicalOr => ("LogicalOr", "or?", ("left", "right")),
+            BinaryOperator::LogicalAnd => ("LogicalAnd", "and?", ("lhs", "rhs")),
+            BinaryOperator::LogicalOr => ("LogicalOr", "or?", ("lhs", "rhs")),
 
             // Bitwise operators
-            BinaryOperator::BitwiseAnd => ("BitwiseAnd", "bitwise_and", ("left", "right")),
-            BinaryOperator::BitwiseOr => ("BitwiseOr", "bitwise_or", ("left", "right")),
-            BinaryOperator::BitwiseXor => ("BitwiseXor", "bitwise_xor", ("left", "right")),
+            BinaryOperator::BitwiseAnd => ("BitwiseAnd", "bitwise_and", ("lhs", "rhs")),
+            BinaryOperator::BitwiseOr => ("BitwiseOr", "bitwise_or", ("lhs", "rhs")),
+            BinaryOperator::BitwiseXor => ("BitwiseXor", "bitwise_xor", ("lhs", "rhs")),
             BinaryOperator::ShiftLeft => ("BitShift", "shift_left", ("value", "positions")),
             BinaryOperator::ShiftRight => ("BitShift", "shift_right", ("value", "positions")),
 
@@ -394,7 +393,8 @@ impl DesugaringEngine {
             BinaryOperator::Pipe => ("Pipe", "pipe_into", ("value", "function")),
             BinaryOperator::PipeMaybe => ("Maybe", "maybe_pipe", ("value", "function")),
 
-            BinaryOperator::NotEqual => ("Equality", "not_equal?", ("left", "right")),
+            BinaryOperator::Equal => ("Equality", "equal?", ("lhs", "rhs")),
+            BinaryOperator::NotEqual => ("Equality", "not_equal?", ("lhs", "rhs")),
 
             // Type annotation operator (not a protocol call)
             BinaryOperator::As => {

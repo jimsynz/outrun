@@ -369,10 +369,11 @@ impl CompilationResult {
             // Check for module conflicts before merging
             Self::check_module_conflicts(&dependency.defined_modules, &HashSet::new())?;
 
-            // Import dependency's registries into our engine
-            engine.import_dependency_registries(
+            // Import dependency's registries into our engine (including universal dispatch registry!)
+            engine.import_dependency_registries_with_universal_dispatch(
                 dependency.type_registry.clone(),
                 dependency.function_registry.clone(),
+                dependency.universal_dispatch.clone(),
             )?;
         }
 

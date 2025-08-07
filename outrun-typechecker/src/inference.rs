@@ -674,7 +674,7 @@ impl TypeInferenceEngine {
     }
 
     /// Check if a type satisfies a protocol (legacy compatibility)
-    fn type_satisfies_protocol(&self, type_name: &ModuleName, protocol_name: &ModuleName) -> bool {
+    pub fn type_satisfies_protocol(&self, type_name: &ModuleName, protocol_name: &ModuleName) -> bool {
         // Simple implementation - check if there's an implementation module
         let impl_name = ModuleName::implementation(type_name.as_str(), protocol_name.as_str());
         self.type_registry.get_module(impl_name.as_str()).is_some()
@@ -775,6 +775,25 @@ impl TypeInferenceEngine {
         // TODO: Implement proper registry merging when needed
         self.type_registry = dependency_type_registry;
         self.function_registry = dependency_function_registry;
+
+        Ok(())
+    }
+
+    /// Import dependency registries including universal dispatch registry for package composition
+    pub fn import_dependency_registries_with_universal_dispatch(
+        &mut self,
+        dependency_type_registry: std::rc::Rc<TypeRegistry>,
+        dependency_function_registry: std::rc::Rc<FunctionRegistry>,
+        dependency_universal_dispatch: crate::universal_dispatch::UniversalDispatchRegistry,
+    ) -> Result<(), crate::error::TypecheckError> {
+        // Import type and function registries
+        self.type_registry = dependency_type_registry;
+        self.function_registry = dependency_function_registry;
+        
+        // Import universal dispatch registry (this was the missing piece!)
+        // TODO: In the future, we should merge registries instead of replacing them
+        // For now, replace the registry to inherit all dependency clauses
+        self.universal_dispatch_registry = dependency_universal_dispatch;
 
         Ok(())
     }

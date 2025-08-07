@@ -198,6 +198,7 @@ impl InterpreterSession {
                     compilation.dispatch_table,
                     compilation.function_registry,
                     compilation.universal_dispatch,
+                    compilation.type_registry,
                 ));
                 // Use the desugared program from the compilation result, not the raw parsed expression
                 let desugared_program = compilation
@@ -307,6 +308,7 @@ impl InterpreterSession {
                                 core_compilation.dispatch_table.clone(),
                                 core_compilation.function_registry.clone(),
                                 core_compilation.universal_dispatch.clone(),
+                                core_compilation.type_registry.clone(),
                             ));
                             (true, parsed_program)
                         }

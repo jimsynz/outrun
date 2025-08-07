@@ -40,6 +40,10 @@ enum Commands {
         #[arg(value_name = "FILE")]
         files: Vec<PathBuf>,
 
+        /// Expression to type check (if not provided, reads from files)
+        #[arg(short = 'e', long = "expr", value_name = "EXPRESSION")]
+        expr: Option<String>,
+
         /// Type check only the core library (ignore files)
         #[arg(long)]
         core_lib: bool,
@@ -93,14 +97,14 @@ fn main() {
         Some(Commands::Parse { files }) => {
             handle_parse_command(files);
         }
-        Some(Commands::Typecheck { files, core_lib }) => {
+        Some(Commands::Typecheck { files, expr, core_lib }) => {
             // Debug span corruption issue
             if files.len() == 1 && files[0].to_string_lossy() == "debug-spans" {
                 outrun_typechecker::debug_spans::debug_minimal_typecheck();
                 return;
             }
 
-            handle_typecheck_command(files, core_lib);
+            handle_typecheck_command(files, expr, core_lib);
         }
         Some(Commands::Repl {
             show_types,
@@ -801,7 +805,7 @@ fn create_miette_report_with_source_context(
 //     }
 // }
 
-fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
+fn handle_typecheck_command(files: Vec<PathBuf>, expr: Option<String>, core_lib: bool) {
     if core_lib {
         // Type check the core library using new typechecker API
         match typecheck_core_library() {
@@ -816,8 +820,22 @@ fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
         return;
     }
 
+    // Handle expression type checking
+    if let Some(expression) = expr {
+        match typecheck_expression(&expression) {
+            Ok(()) => {
+                // Success message is printed by typecheck_expression
+            }
+            Err(e) => {
+                eprintln!("{e:?}");
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
     if files.is_empty() {
-        eprintln!("Error: Must provide files to type check or use --core-lib");
+        eprintln!("Error: Must provide files to type check, use -e for expressions, or use --core-lib");
         process::exit(1);
     }
 
@@ -848,6 +866,70 @@ fn handle_typecheck_command(files: Vec<PathBuf>, core_lib: bool) {
     if !success {
         process::exit(1);
     }
+}
+
+fn typecheck_expression(expression: &str) -> Result<()> {
+    let source = expression.to_string();
+    let source_name = "<expression>".to_string();
+
+    // Parse with outrun-parser using comprehensive diagnostics and source file tracking
+    let (maybe_ast, diagnostics) =
+        parse_program_with_diagnostics_and_source(&source, Some(source_name.clone()));
+
+    // Print parsing results
+    println!("🔍 PARSING RESULTS for {source_name}");
+    println!("{}", "=".repeat(60));
+
+    // Print any diagnostics (errors, warnings, info) with beautiful formatting
+    if diagnostics.has_diagnostics() {
+        for report in diagnostics.create_reports_with_filename(&source_name) {
+            eprintln!("{report:?}");
+        }
+
+        // Print summary
+        let summary = diagnostics.summary();
+        if summary.total > 0 {
+            eprintln!("\n📊 Parsing Diagnostics Summary: {summary}");
+        }
+
+        // Return error if there were actual errors (not just warnings/info)
+        if diagnostics.has_errors() {
+            return Err(miette::miette!(
+                "Parsing failed with {} error(s)",
+                diagnostics.error_count()
+            ));
+        }
+    }
+
+    // Check if parsing succeeded
+    let ast = match maybe_ast {
+        Some(ast) => {
+            println!("✅ Parsing successful");
+            ast
+        }
+        None => {
+            return Err(miette::miette!("Parsing failed - no AST produced"));
+        }
+    };
+
+    // Type check the parsed AST
+    println!("\n🔍 TYPE CHECKING RESULTS for {source_name}");
+    println!("{}", "=".repeat(60));
+
+    let mut package = outrun_typechecker::Package::new("expression".to_string());
+    package.add_program(ast);
+
+    match CompilationResult::compile_package(&mut package) {
+        Ok(result) => {
+            println!("✅ Type checking successful");
+            println!("📊 Registered {} implementations", result.type_registry.implementation_count());
+        }
+        Err(e) => {
+            return Err(miette::miette!("Type checking failed: {e:?}"));
+        }
+    }
+
+    Ok(())
 }
 
 fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
@@ -1006,7 +1088,7 @@ fn handle_eval_command(
         buffer
     };
 
-    // Create an interpreter session
+    // Create an interpreter session (this will properly compile and set up the universal dispatch registry)
     let mut session = match InterpreterSession::new() {
         Ok(s) => s,
         Err(e) => {

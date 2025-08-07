@@ -80,6 +80,8 @@ pub struct ExpressionEvaluator {
     intrinsics: crate::intrinsics::IntrinsicsHandler,
     /// Universal dispatch registry for clause-based function dispatch
     universal_registry: UniversalDispatchRegistry,
+    /// Type registry for protocol implementation checking
+    type_registry: Option<std::rc::Rc<outrun_typechecker::TypeRegistry>>,
 }
 
 impl ExpressionEvaluator {
@@ -91,6 +93,7 @@ impl ExpressionEvaluator {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
             universal_registry: UniversalDispatchRegistry::new(),
+            type_registry: None,
         }
     }
 
@@ -99,10 +102,12 @@ impl ExpressionEvaluator {
         _dispatch_table: DispatchTable,
         _function_registry: std::rc::Rc<FunctionRegistry>,
         universal_registry: UniversalDispatchRegistry,
+        type_registry: std::rc::Rc<outrun_typechecker::TypeRegistry>,
     ) -> Self {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
             universal_registry,
+            type_registry: Some(type_registry),
         }
     }
 
@@ -111,6 +116,7 @@ impl ExpressionEvaluator {
         Self {
             intrinsics: crate::intrinsics::IntrinsicsHandler::new(),
             universal_registry: UniversalDispatchRegistry::new(),
+            type_registry: None,
         }
     }
 
@@ -580,6 +586,8 @@ impl ExpressionEvaluator {
             };
         }
 
+        // Universal clause dispatch - try each clause until one succeeds
+        
         // Try each clause in order until one succeeds
         for &clause_id_raw in clause_ids {
             let clause_id = ClauseId(clause_id_raw);
@@ -607,6 +615,33 @@ impl ExpressionEvaluator {
             ),
             span,
         })
+    }
+
+    /// Map argument names for compatibility between function call and clause implementation
+    /// This handles cases where the function call uses different parameter names than the clause
+    fn map_argument_names(
+        &self,
+        named_args: &[(String, Value)],
+        clause_info: &outrun_typechecker::universal_dispatch::ClauseInfo,
+    ) -> Vec<(String, Value)> {
+        // For now, handle the common case of left/right vs lhs/rhs mapping
+        let mut mapped_args = Vec::new();
+        
+        for (arg_name, arg_value) in named_args {
+            let mapped_name = match arg_name.as_str() {
+                "left" => "lhs",
+                "right" => "rhs", 
+                other => other,
+            };
+            mapped_args.push((mapped_name.to_string(), arg_value.clone()));
+        }
+        
+        println!("🔄 Mapped arguments: {:?} -> {:?}", 
+            named_args.iter().map(|(n, v)| (n, v.display())).collect::<Vec<_>>(),
+            mapped_args.iter().map(|(n, v)| (n, v.display())).collect::<Vec<_>>()
+        );
+        
+        mapped_args
     }
 
     /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
@@ -678,9 +713,37 @@ impl ExpressionEvaluator {
                 implementing_type,
                 ..
             } => {
-                // For now, do simple type compatibility check
-                // TODO: Implement proper runtime type checking based on values
-                Ok(target_type == implementing_type)
+                // Check if the implementing type satisfies the target protocol
+                if let Some(type_registry) = &self.type_registry {
+                    use outrun_typechecker::types::{ModuleName, Type};
+                    
+                    let result = match (implementing_type, target_type) {
+                        // Concrete to Concrete: check if they're the same type
+                        (Type::Concrete { name: impl_name, .. }, Type::Concrete { name: target_name, .. }) => {
+                            impl_name == target_name
+                        }
+                        
+                        // Concrete to Protocol: check if concrete type implements protocol
+                        (Type::Concrete { name: impl_name, .. }, Type::Protocol { name: protocol_name, .. }) => {
+                            let impl_module_name = ModuleName::implementation(impl_name.as_str(), protocol_name.as_str());
+                            type_registry.get_module(impl_module_name.as_str()).is_some()
+                        }
+                        
+                        // Protocol to Protocol: check if they're the same protocol
+                        (Type::Protocol { name: impl_name, .. }, Type::Protocol { name: target_name, .. }) => {
+                            impl_name == target_name
+                        }
+                        
+                        // Other combinations
+                        _ => false,
+                    };
+                    
+                    Ok(result)
+                } else {
+                    // Fallback to simple equality check if no type registry available
+                    let result = target_type == implementing_type;
+                    Ok(result)
+                }
             }
             Guard::ValueGuard { expression, .. } => {
                 // TODO: Implement runtime value guard evaluation
