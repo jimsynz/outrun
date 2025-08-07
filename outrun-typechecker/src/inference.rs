@@ -432,6 +432,15 @@ impl FunctionSignatureAnalyzer {
                     }
                 }
             }
+            Type::Tuple { element_types, .. } => {
+                if let Some(index_str) = path.first() {
+                    if let Ok(index) = index_str.parse::<usize>() {
+                        if let Some(element_type) = element_types.get(index) {
+                            return Self::navigate_type_path(element_type, &path[1..]);
+                        }
+                    }
+                }
+            }
             _ => {} // Other types don't have navigable structure
         }
 
@@ -2695,34 +2704,54 @@ impl TypeInferenceEngine {
             }
             outrun_parser::Pattern::Tuple(tuple_pattern) => {
                 // For tuple patterns, extract element types from the tuple
-                if let Type::Concrete { name, args, .. } = scrutinee_type {
-                    if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len()
-                    {
-                        // Match each tuple element pattern with its corresponding type
-                        for (i, element_pattern) in tuple_pattern.elements.iter().enumerate() {
-                            if let Some(element_type) = args.get(i) {
+                match scrutinee_type {
+                    Type::Tuple { element_types, .. } => {
+                        if element_types.len() == tuple_pattern.elements.len() {
+                            // Match each tuple element pattern with its corresponding type
+                            for (element_pattern, element_type) in tuple_pattern.elements.iter().zip(element_types.iter()) {
                                 let element_bindings =
                                     self.extract_pattern_bindings(element_pattern, element_type)?;
                                 bindings.extend(element_bindings);
                             }
+                        } else {
+                            // Arity mismatch - assign fresh type variables for now
+                            for element_pattern in &tuple_pattern.elements {
+                                let element_type = Type::variable(self.fresh_type_var(), Level(0));
+                                let element_bindings =
+                                    self.extract_pattern_bindings(element_pattern, &element_type)?;
+                                bindings.extend(element_bindings);
+                            }
                         }
-                    } else {
-                        // If we can't match the tuple structure, assign fresh type variables
-                        // This handles cases where the scrutinee type isn't a concrete tuple
+                    }
+                    Type::Concrete { name, args, .. } => {
+                        if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len()
+                        {
+                            // Legacy support for Tuple<T1, T2, ...> representation
+                            for (i, element_pattern) in tuple_pattern.elements.iter().enumerate() {
+                                if let Some(element_type) = args.get(i) {
+                                    let element_bindings =
+                                        self.extract_pattern_bindings(element_pattern, element_type)?;
+                                    bindings.extend(element_bindings);
+                                }
+                            }
+                        } else {
+                            // If we can't match the tuple structure, assign fresh type variables
+                            for element_pattern in &tuple_pattern.elements {
+                                let element_type = Type::variable(self.fresh_type_var(), Level(0));
+                                let element_bindings =
+                                    self.extract_pattern_bindings(element_pattern, &element_type)?;
+                                bindings.extend(element_bindings);
+                            }
+                        }
+                    }
+                    _ => {
+                        // Non-tuple scrutinee type - assign fresh type variables
                         for element_pattern in &tuple_pattern.elements {
                             let element_type = Type::variable(self.fresh_type_var(), Level(0));
                             let element_bindings =
                                 self.extract_pattern_bindings(element_pattern, &element_type)?;
                             bindings.extend(element_bindings);
                         }
-                    }
-                } else {
-                    // For non-concrete types, assign fresh type variables to each element
-                    for element_pattern in &tuple_pattern.elements {
-                        let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                        let element_bindings =
-                            self.extract_pattern_bindings(element_pattern, &element_type)?;
-                        bindings.extend(element_bindings);
                     }
                 }
             }
@@ -3354,7 +3383,10 @@ impl TypeInferenceEngine {
                     .collect();
 
                 Ok(InferenceResult {
-                    inferred_type: Type::generic_concrete("Tuple", element_types),
+                    inferred_type: Type::Tuple {
+                        element_types,
+                        span: Some(expression.span),
+                    },
                     constraints: Vec::new(),
                     substitution: Substitution::new(),
                 })
@@ -4046,6 +4078,18 @@ impl TypeInferenceEngine {
                         .zip(p2.iter())
                         .all(|((n1, t1), (n2, t2))| n1 == n2 && self.types_are_compatible(t1, t2))
                     && self.types_are_compatible(r1, r2)
+            }
+
+            // Tuple types must have same arity and compatible element types
+            (
+                Type::Tuple { element_types: e1, .. },
+                Type::Tuple { element_types: e2, .. },
+            ) => {
+                e1.len() == e2.len()
+                    && e1
+                        .iter()
+                        .zip(e2.iter())
+                        .all(|(t1, t2)| self.types_are_compatible(t1, t2))
             }
 
             // Different categories are incompatible
@@ -6336,6 +6380,18 @@ impl TypeInferenceEngine {
                 Ok(Type::Protocol {
                     name: name.clone(),
                     args: substituted_args?,
+                    span,
+                })
+            }
+            Type::Tuple { element_types, span } => {
+                // Apply substitution to tuple element types
+                let substituted_elements: Result<Vec<Type>, TypecheckError> = element_types
+                    .into_iter()
+                    .map(|elem| Self::apply_substitution_static(elem, substitution))
+                    .collect();
+
+                Ok(Type::Tuple {
+                    element_types: substituted_elements?,
                     span,
                 })
             }

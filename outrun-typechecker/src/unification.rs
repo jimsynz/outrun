@@ -245,6 +245,32 @@ impl Unifier {
                 Ok(Substitution::new())
             }
 
+            // Tuple type unification
+            (
+                Type::Tuple { element_types: e1, .. },
+                Type::Tuple { element_types: e2, .. },
+            ) => {
+                if e1.len() != e2.len() {
+                    return Err(UnificationError::ArityMismatch {
+                        type_name: "Tuple".to_string(),
+                        expected_arity: e1.len(),
+                        found_arity: e2.len(),
+                        span: to_source_span(self.get_span_for_error(left, right)),
+                    });
+                }
+
+                // Queue element types for unification instead of recursing
+                for (i, (elem1, elem2)) in e1.iter().zip(e2.iter()).enumerate() {
+                    work_queue.push_back(UnifyTask {
+                        left: elem1.clone(),
+                        right: elem2.clone(),
+                        left_context: Some(format!("tuple element {}", i)),
+                        right_context: Some(format!("tuple element {}", i)),
+                    });
+                }
+                Ok(Substitution::new())
+            }
+
             // Self type unification (handled differently based on context)
             (Type::SelfType { .. }, Type::SelfType { .. }) => {
                 // Two Self types unify if in the same binding context

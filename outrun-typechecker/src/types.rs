@@ -570,6 +570,13 @@ impl Type {
                 return_path.push("return".to_string());
                 return_type.extract_self_positions_recursive(positions, &return_path);
             }
+            Self::Tuple { element_types, .. } => {
+                for (i, elem_type) in element_types.iter().enumerate() {
+                    let mut new_path = path.to_vec();
+                    new_path.push(i.to_string());
+                    elem_type.extract_self_positions_recursive(positions, &new_path);
+                }
+            }
             _ => {} // Other types don't contain Self
         }
     }
@@ -628,6 +635,16 @@ impl Type {
                 Self::Function {
                     params: substituted_params,
                     return_type: Box::new(substituted_return),
+                    span: *span,
+                }
+            }
+            Self::Tuple { element_types, span } => {
+                let substituted_elements = element_types
+                    .iter()
+                    .map(|elem| elem.substitute_type_variables(substitutions))
+                    .collect();
+                Self::Tuple {
+                    element_types: substituted_elements,
                     span: *span,
                 }
             }
