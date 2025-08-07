@@ -25,5 +25,3 @@ serde = { version = "1.0", features = ["derive"] } # Deserialize package manifes
 [dev-dependencies]
 proptest = "1.4"       # Property-based testing for type soundness
 
-[[example]]
-name = "error_reporting_demo"
