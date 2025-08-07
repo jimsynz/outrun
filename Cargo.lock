@@ -150,9 +150,9 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.71.1"
+version = "0.72.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+checksum = "4f72209734318d0b619a5e0f5129918b848c416e122a3c4ce054e03cb87b726f"
 dependencies = [
  "bitflags 2.9.1",
  "cexpr",
@@ -1029,9 +1029,9 @@ dependencies = [
 
 [[package]]
 name = "rustsat"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8024cc8ccecbbc460112d5915d9025e1e9b05141d9510c4566ce9f7b2395cb87"
+checksum = "8d66b9fbd8a3e08ad437829e0957568b2f7fffad2900f6bdc768739d2f922375"
 dependencies = [
  "anyhow",
  "cpu-time",
@@ -1044,9 +1044,9 @@ dependencies = [
 
 [[package]]
 name = "rustsat-cadical"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8b57abb5c9f9ffd8bd9b469fef157b98a3cc36d2a1a323a4912f496fc07f417"
+checksum = "4179739f9f8358f45bbde22c28089cf99deb0ec648ff5e92d047959b37da761d"
 dependencies = [
  "anyhow",
  "bindgen",
