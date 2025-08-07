@@ -149,10 +149,9 @@ pub enum FunctionBody {
     },
 }
 
-/// Reference to function argument by position or name
+/// Reference to function argument by name (Outrun uses named parameters only)
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArgumentRef {
-    Position(usize),
     Name(String),
 }
 

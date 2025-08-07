@@ -829,12 +829,40 @@ impl ExpressionEvaluator {
             }
             FunctionBody::StructConstructor {
                 struct_name,
-                field_mappings: _,
+                field_mappings,
             } => {
-                // TODO: Execute struct constructor
-                Err(EvaluationError::UnsupportedExpression {
-                    expr_type: format!("struct_constructor_{}", struct_name),
-                    span,
+                // Execute struct constructor by mapping arguments to struct fields
+                use std::collections::HashMap;
+                let mut fields = HashMap::new();
+
+                // Map each field using the field mappings (named parameters only)
+                for (field_name, arg_ref) in field_mappings {
+                    let value = match arg_ref {
+                        outrun_typechecker::universal_dispatch::ArgumentRef::Name(param_name) => {
+                            // Get argument by parameter name (the only valid approach in Outrun)
+                            if let Some((_, value)) =
+                                named_args.iter().find(|(name, _)| name == param_name)
+                            {
+                                value.clone()
+                            } else {
+                                return Err(EvaluationError::UnsupportedExpression {
+                                    expr_type: format!(
+                                        "struct_constructor_missing_param_{}",
+                                        param_name
+                                    ),
+                                    span,
+                                });
+                            }
+                        }
+                    };
+                    fields.insert(field_name.clone(), value);
+                }
+
+                // Create and return the struct value
+                Ok(Value::Struct {
+                    type_name: struct_name.clone(),
+                    fields,
+                    type_info: None,
                 })
             }
             FunctionBody::ProtocolImplementation {
