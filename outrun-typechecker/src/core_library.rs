@@ -27,7 +27,7 @@ pub fn collect_outrun_files(
     })?;
 
     // Sort by path for deterministic order
-    sorted_entries.sort_by(|a, b| a.path().cmp(&b.path()));
+    sorted_entries.sort_by_key(|a| a.path());
 
     for entry in sorted_entries {
         let path = entry.path();

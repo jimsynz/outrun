@@ -23,18 +23,6 @@ use outrun_parser::{
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-/// Literal values for static evaluation in clause elimination
-#[derive(Debug, Clone, PartialEq)]
-enum LiteralValue {
-    Integer(i64),
-    Float(f64),
-    String(String),
-    Boolean(bool),
-}
-
-/// Result type for function clause inference to reduce complexity
-type FunctionClauseInferenceResult = (Vec<(String, Type)>, Type, Vec<crate::types::Constraint>);
-
 /// Main type inference engine that orchestrates all typechecker components
 pub struct TypeInferenceEngine {
     /// Registry of function signatures (shared)
@@ -70,17 +58,6 @@ pub struct TypeInferenceEngine {
     /// Current generic parameter context for type resolution
     generic_parameter_context: HashMap<String, Type>,
 
-    /// Iterative inference support: All inference tasks indexed by ID
-    inference_tasks: HashMap<TaskId, InferenceTask>,
-    /// Iterative inference support: Queue of tasks ready for processing
-    ready_task_queue: std::collections::VecDeque<TaskId>,
-    /// Iterative inference support: Completed results indexed by task ID
-    task_results: HashMap<TaskId, InferenceResult>,
-    /// Iterative inference support: Mapping from expression pointers to task IDs
-    expression_to_task_map: HashMap<*mut Expression, TaskId>,
-    /// Iterative inference support: Counter for generating unique task IDs
-    next_task_id: u64,
-
     /// Call stack backtracking support for enhanced constraint resolution
     constraint_solver_with_backtracking: Option<crate::constraints::ConstraintSolver>,
 
@@ -101,9 +78,9 @@ pub enum TaskState {
     /// Task is currently being processed
     Processing,
     /// Task completed successfully with a result
-    Completed(InferenceResult),
+    Completed(Box<InferenceResult>),
     /// Task failed with an error
-    Failed(TypecheckError),
+    Failed(Box<TypecheckError>),
 }
 
 /// A single inference task in the iterative processing system
@@ -484,11 +461,6 @@ impl TypeInferenceEngine {
             },
             struct_registry: HashMap::new(),
             generic_parameter_context: HashMap::new(),
-            inference_tasks: HashMap::new(),
-            ready_task_queue: std::collections::VecDeque::new(),
-            task_results: HashMap::new(),
-            expression_to_task_map: HashMap::new(),
-            next_task_id: 0,
             constraint_solver_with_backtracking: None,
             inference_depth: 0,
         }
@@ -559,7 +531,7 @@ impl TypeInferenceEngine {
     /// Create a FileSpan using current file context
     pub fn create_file_span(&self, span: Option<outrun_parser::Span>) -> crate::error::FileSpan {
         crate::error::FileSpan {
-            span: span.unwrap_or_else(|| outrun_parser::Span {
+            span: span.unwrap_or(outrun_parser::Span {
                 start: 0,
                 end: 0,
                 start_line_col: None,
@@ -723,6 +695,7 @@ impl TypeInferenceEngine {
                     suggestions,
                     ..
                 } => {
+                    // TODO: replace with compiler-built-in warning system.
                     eprintln!("⚠️  Recursive protocol implementation detected:");
                     eprintln!("   Protocol: {}", protocol_name);
                     eprintln!("   Type: {}", implementing_type);
@@ -758,8 +731,6 @@ impl TypeInferenceEngine {
 
         // Store the constraint solver for use during type inference
         self.constraint_solver_with_backtracking = Some(constraint_solver);
-
-        eprintln!("🔧 Call stack backtracking system initialized (Phase 2 complete)");
     }
 
     /// Get mutable access to the constraint solver with backtracking (if initialized)
@@ -837,7 +808,7 @@ impl TypeInferenceEngine {
     /// Get a reference to the protocol registry for testing
     #[cfg(test)]
     pub fn get_protocol_registry(&self) -> &TypeRegistry {
-        &*self.type_registry
+        &self.type_registry
     }
 
     /// Get a reference to the protocol registry for dispatch table building
@@ -977,6 +948,7 @@ impl TypeInferenceEngine {
     }
 
     /// Recursively collect protocol requirements from constraint expressions
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_protocol_requirements_recursive(
         &self,
         constraint_expr: &outrun_parser::ConstraintExpression,
@@ -1172,7 +1144,7 @@ impl TypeInferenceEngine {
             if type_registry.get_module(&struct_name).is_none() {
                 type_registry
                     .register_module(struct_type_module)
-                    .map_err(|e| TypecheckError::TypeError(e))?;
+                    .map_err(TypecheckError::TypeError)?;
             }
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
@@ -1180,7 +1152,7 @@ impl TypeInferenceEngine {
             if new_type_registry.get_module(&struct_name).is_none() {
                 new_type_registry
                     .register_module(struct_type_module)
-                    .map_err(|e| TypecheckError::TypeError(e))?;
+                    .map_err(TypecheckError::TypeError)?;
             }
             self.type_registry = Rc::new(new_type_registry);
         }
@@ -1286,7 +1258,7 @@ impl TypeInferenceEngine {
                     template_visibility,
                     &available_generics,
                 ) {
-                    // Log template generation failure but don't fail compilation
+                    // TODO: Move to generic compiler warning system.
                     eprintln!(
                         "Warning: Failed to generate template for {}.{}: {}",
                         struct_name, function.name.name, e
@@ -1380,12 +1352,12 @@ impl TypeInferenceEngine {
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry
                 .register_module(protocol_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
             new_type_registry
                 .register_module(protocol_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
             self.type_registry = Rc::new(new_type_registry);
         }
 
@@ -1660,12 +1632,6 @@ impl TypeInferenceEngine {
             protocol_name: ModuleName::new(&protocol_name),
             protocol_args: vec![], // TODO: Extract from protocol spec if needed
         };
-        eprintln!("🔄 CONTEXT CHANGE: Entering impl block");
-        eprintln!("  📤 Old context: {:?}", old_self_context);
-        eprintln!(
-            "  📥 New context: {} implementing {}",
-            type_name, protocol_name
-        );
         self.current_self_context = new_context;
 
         // Collect impl block functions
@@ -1674,12 +1640,6 @@ impl TypeInferenceEngine {
         }
 
         // Restore previous contexts
-        eprintln!("🔄 CONTEXT RESTORE: Exiting impl block collection");
-        eprintln!(
-            "  📤 Current context: {} implementing {}",
-            type_name, protocol_name
-        );
-        eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
 
@@ -1777,7 +1737,7 @@ impl TypeInferenceEngine {
                     template_visibility,
                     &available_generics,
                 ) {
-                    // Log template generation failure but don't fail compilation
+                    // TODO: Replace with compiler generic warning system.
                     eprintln!(
                         "Warning: Failed to generate template for {}.{}: {}",
                         impl_scope, function.name.name, e
@@ -2145,7 +2105,7 @@ impl TypeInferenceEngine {
                     template_visibility,
                     &available_generics,
                 ) {
-                    // Log template generation failure but don't fail compilation
+                    // TODO: Replace with generic compiler warning system.
                     eprintln!(
                         "Warning: Failed to generate template for {}.{}: {}",
                         self.current_module.as_str(),
@@ -2290,12 +2250,12 @@ impl TypeInferenceEngine {
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry
                 .register_module(impl_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
             new_type_registry
                 .register_module(impl_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
             self.type_registry = Rc::new(new_type_registry);
         }
 
@@ -2382,12 +2342,12 @@ impl TypeInferenceEngine {
         if let Some(type_registry) = Rc::get_mut(&mut self.type_registry) {
             type_registry
                 .register_module(impl_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
         } else {
             let mut new_type_registry = (*self.type_registry).clone();
             new_type_registry
                 .register_module(impl_type_module)
-                .map_err(|e| TypecheckError::TypeError(e))?;
+                .map_err(TypecheckError::TypeError)?;
             self.type_registry = Rc::new(new_type_registry);
         }
 
@@ -2546,12 +2506,6 @@ impl TypeInferenceEngine {
         }
 
         // Restore previous contexts
-        eprintln!("🔄 CONTEXT RESTORE: Exiting impl block typechecking");
-        eprintln!(
-            "  📤 Current context: {} implementing {}",
-            type_name, protocol_name
-        );
-        eprintln!("  📥 Restoring context: {:?}", old_self_context);
         self.current_self_context = old_self_context;
         self.set_generic_parameter_context(old_generic_context);
 
@@ -2615,52 +2569,31 @@ impl TypeInferenceEngine {
         case_expr: &outrun_parser::CaseExpression,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!(
-            "🎯 DIRECT CASE: Processing case expression with {} clauses",
-            case_expr.clauses.len()
-        );
-
         // First, infer the scrutinee type
         let mut scrutinee_expr = case_expr.expression.clone();
         let scrutinee_result = self.infer_expression(&mut scrutinee_expr, context)?;
         let scrutinee_type = scrutinee_result.inferred_type;
-
-        eprintln!("🎯 DIRECT CASE: Scrutinee type = {:?}", scrutinee_type);
 
         let mut clause_result_types = Vec::new();
         let mut all_constraints = context.constraints.clone();
 
         // Process each clause with pattern bindings
         for clause in &case_expr.clauses {
-            eprintln!("🎯 DIRECT CASE: Processing clause with pattern");
-
             // Create a new context for this clause
             let mut clause_context = context.clone();
 
             // Extract pattern bindings
             let pattern_bindings =
                 self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
-            eprintln!("🎯 DIRECT CASE: Pattern bindings = {:?}", pattern_bindings);
-
             // Add pattern bindings to clause context
             for (name, binding_type) in pattern_bindings {
-                eprintln!(
-                    "🎯 DIRECT CASE: Adding binding {} -> {}",
-                    name, binding_type
-                );
                 clause_context.bindings.insert(name, binding_type);
             }
 
             // Process guard if present
             if let Some(guard_expr) = &clause.guard {
-                eprintln!("🎯 DIRECT CASE: Processing guard with bindings available");
                 let mut guard_expr_mut = guard_expr.clone();
-                let guard_result =
-                    self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
-                eprintln!(
-                    "🎯 DIRECT CASE: Guard result type = {:?}",
-                    guard_result.inferred_type
-                );
+                self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
             }
 
             // Process clause result
@@ -2694,8 +2627,6 @@ impl TypeInferenceEngine {
             .next()
             .unwrap_or_else(|| Type::variable(self.fresh_type_var(), Level(0)));
 
-        eprintln!("🎯 DIRECT CASE: Final result type = {:?}", result_type);
-
         Ok(InferenceResult {
             inferred_type: result_type,
             constraints: all_constraints,
@@ -2703,896 +2634,7 @@ impl TypeInferenceEngine {
         })
     }
 
-    // ITERATIVE INFERENCE INFRASTRUCTURE
-    // ============================================================================
-
-    /// Reset the iterative inference state for a new inference operation  
-    /// CRITICAL FIX: Only clear task state at top level (depth 0) to preserve dependencies
-    /// across nested inference calls within the same inference session
-    fn reset_iterative_state(&mut self) {
-        if self.inference_depth == 0 {
-            // DEBUG: Commented out for performance
-            // println!(
-            //     "🧹 CLEARING TASK STATE: {} tasks will be lost (depth={})",
-            //     self.inference_tasks.len(),
-            //     self.inference_depth
-            // );
-            self.inference_tasks.clear();
-            self.ready_task_queue.clear();
-            self.task_results.clear();
-            self.expression_to_task_map.clear();
-            self.next_task_id = 0;
-        } else {
-            println!(
-                "🔄 PRESERVING TASK STATE: {} tasks preserved at depth {}",
-                self.inference_tasks.len(),
-                self.inference_depth
-            );
-            // CRITICAL FIX: Ensure next_task_id is set to avoid ID collisions with preserved tasks
-            // Find the highest existing task ID and set next_task_id to the next available ID
-            if let Some(&max_task_id) = self.inference_tasks.keys().max() {
-                self.next_task_id = max_task_id + 1;
-                println!(
-                    "🔧 ADJUSTED next_task_id to {} to avoid collisions",
-                    self.next_task_id
-                );
-            }
-        }
-    }
-
-    /// Generate a unique task ID
-    fn generate_task_id(&mut self) -> TaskId {
-        let id = self.next_task_id;
-        self.next_task_id += 1;
-        id
-    }
-
-    /// Create a new inference task for an expression
-    fn create_task(&mut self, expression: *mut Expression, context: InferenceContext) -> TaskId {
-        // Check if this expression should not be reused
-        // Identifiers are context-dependent due to variable bindings
-        // Function calls should not be reused because they represent different operations
-        let should_not_reuse = unsafe {
-            matches!(
-                (*expression).kind,
-                outrun_parser::ExpressionKind::Identifier(_)
-                    | outrun_parser::ExpressionKind::FunctionCall(_)
-            )
-        };
-
-        // DEBUGGING: Check if task already exists for this expression
-        if !should_not_reuse {
-            if let Some(&existing_task_id) = self.expression_to_task_map.get(&expression) {
-                // CRITICAL FIX: Check if the Self context has changed since the task was created
-                // If the Self context is different, we must create a new task to avoid
-                // reusing cached SelfType instances with the wrong binding context
-                if let Some(existing_task) = self.inference_tasks.get(&existing_task_id) {
-                    if existing_task.context.self_binding == context.self_binding {
-                        return existing_task_id;
-                    }
-                    // Self context has changed - fall through to create new task
-                }
-            }
-        }
-        let task_id = self.generate_task_id();
-        println!(
-            "      ➕ Creating new task {} for expression at {:p}",
-            task_id, expression
-        );
-
-        let task = InferenceTask {
-            id: task_id,
-            expression,
-            context,
-            dependencies: Vec::new(),
-            dependents: Vec::new(),
-            state: TaskState::Pending,
-            completed_dependencies: Vec::new(),
-        };
-
-        self.inference_tasks.insert(task_id, task);
-
-        // DEBUG: Check if we're overwriting an existing mapping
-        if let Some(old_task_id) = self.expression_to_task_map.insert(expression, task_id) {
-            println!(
-                "      ⚠️  OVERWRITING: Expression had task {} -> now has task {}",
-                old_task_id, task_id
-            );
-        }
-
-        task_id
-    }
-
-    /// Add a dependency relationship between tasks
-    fn add_task_dependency(&mut self, dependent_task: TaskId, dependency_task: TaskId) {
-        // Add dependency to the dependent task
-        if let Some(dependent) = self.inference_tasks.get_mut(&dependent_task) {
-            // DEBUG: Check if this dependency is already present
-            if dependent.dependencies.contains(&dependency_task) {
-                println!(
-                    "      🔄 Task {} already has dependency {}, not adding duplicate",
-                    dependent_task, dependency_task
-                );
-                return;
-            }
-
-            dependent.dependencies.push(dependency_task);
-            println!(
-                "      ✅ Task {} now has {} dependencies: {:?}",
-                dependent_task,
-                dependent.dependencies.len(),
-                dependent.dependencies
-            );
-        } else {
-            println!("      ❌ Failed to find dependent task {}", dependent_task);
-        }
-
-        // Add dependent to the dependency task
-        if let Some(dependency) = self.inference_tasks.get_mut(&dependency_task) {
-            if !dependency.dependents.contains(&dependent_task) {
-                dependency.dependents.push(dependent_task);
-            }
-        } else {
-            println!(
-                "      ❌ Failed to find dependency task {}",
-                dependency_task
-            );
-        }
-    }
-
-    /// Mark tasks with no dependencies as ready
-    fn mark_ready_tasks(&mut self) {
-        let task_ids: Vec<TaskId> = self.inference_tasks.keys().cloned().collect();
-
-        for task_id in task_ids {
-            let task = self.inference_tasks.get_mut(&task_id).unwrap();
-            if task.dependencies.is_empty() && matches!(task.state, TaskState::Pending) {
-                task.state = TaskState::Ready;
-                self.ready_task_queue.push_back(task_id);
-            }
-        }
-    }
-
-    /// Complete a task and update its dependents
-    fn complete_task(&mut self, task_id: TaskId, result: InferenceResult) {
-        // Store the result
-        self.task_results.insert(task_id, result.clone());
-
-        // Update task state
-        if let Some(task) = self.inference_tasks.get_mut(&task_id) {
-            task.state = TaskState::Completed(result);
-
-            // Process dependents
-            let dependents = task.dependents.clone();
-            for dependent_id in dependents {
-                self.update_dependent_task(dependent_id, task_id);
-            }
-        }
-    }
-
-    /// Update a dependent task when one of its dependencies completes
-    fn update_dependent_task(&mut self, dependent_id: TaskId, completed_dependency: TaskId) {
-        if let Some(dependent_task) = self.inference_tasks.get_mut(&dependent_id) {
-            // CRITICAL FIX: Move completed dependency to completed_dependencies list instead of removing it
-            if dependent_task.dependencies.contains(&completed_dependency) {
-                dependent_task
-                    .dependencies
-                    .retain(|&dep| dep != completed_dependency);
-                dependent_task
-                    .completed_dependencies
-                    .push(completed_dependency);
-                println!("      📋 Task {} moved dependency {} to completed (remaining: {}, completed: {})", 
-                    dependent_id, completed_dependency, dependent_task.dependencies.len(), dependent_task.completed_dependencies.len());
-            }
-
-            // If no more dependencies, mark as ready
-            if dependent_task.dependencies.is_empty()
-                && matches!(dependent_task.state, TaskState::Pending)
-            {
-                dependent_task.state = TaskState::Ready;
-                self.ready_task_queue.push_back(dependent_id);
-            }
-        }
-    }
-
-    /// Process function call with pre-processed argument results from dependency tasks
-    /// Used by iterative inference to avoid recursive argument processing
-    fn infer_function_call_with_processed_args(
-        &mut self,
-        func_call: &mut outrun_parser::FunctionCall,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // DEBUG: Function call processing
-        let call_name = match &func_call.path {
-            outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-            outrun_parser::FunctionPath::Qualified { module, name } => {
-                format!("{}.{}", module.name, name.name)
-            }
-            _ => "dynamic".to_string(),
-        };
-
-        // Get dependency results for arguments
-        let task = &self.inference_tasks[&task_id];
-        println!(
-            "🔧 Processing function call: {} with {} dependencies (task_id: {})",
-            call_name,
-            task.dependencies.len(),
-            task_id
-        );
-        println!("    🔍 Task dependencies: {:?}", task.dependencies);
-
-        // DEBUG: Check if this task exists in the map and compare
-        if let Some(stored_task) = self.inference_tasks.get(&task_id) {
-            println!(
-                "    🔍 Stored task dependencies: {:?}",
-                stored_task.dependencies
-            );
-            if stored_task.dependencies != task.dependencies {
-                // println!("    ⚠️  MISMATCH: Retrieved task differs from stored task!");
-            }
-        } else {
-            println!("    ❌ Task {} not found in inference_tasks map!", task_id);
-        }
-
-        let mut arg_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                arg_results.push(result.clone());
-            }
-        }
-
-        // Update argument expressions with inferred types from results
-        for (_i, _result) in arg_results.iter().enumerate() {
-            if let Some(arg) = func_call.arguments.get_mut(_i) {
-                match arg {
-                    outrun_parser::Argument::Named { expression, .. } => {
-                        // TODO: Convert Type to ParsedTypeInfo when needed
-                        // expression.type_info = Some(result.inferred_type.clone());
-                        let _ = expression; // Suppress unused variable warning
-                    }
-                    outrun_parser::Argument::Spread { expression, .. } => {
-                        // TODO: Convert Type to ParsedTypeInfo when needed
-                        // expression.type_info = Some(result.inferred_type.clone());
-                        let _ = expression; // Suppress unused variable warning
-                    }
-                }
-            }
-        }
-
-        // CRITICAL FIX: Extract argument types from completed dependency results
-        let mut arg_types = Vec::new();
-        println!(
-            "    🔍 Extracting {} argument types from completed dependencies",
-            task.completed_dependencies.len()
-        );
-        for (i, dependency_id) in task.completed_dependencies.iter().enumerate() {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                println!("      ✅ Arg {}: {:?}", i, result.inferred_type);
-                arg_types.push(Some(result.inferred_type.clone()));
-            } else {
-                println!("      ❌ Arg {}: Missing dependency result", i);
-                arg_types.push(None);
-            }
-        }
-        // Use existing function call inference with processed arguments
-        // CRITICAL FIX: Pass the original func_call directly so modifications are preserved
-        // Skip recursive argument processing since dependencies are already processed
-        let mut mutable_context = context.clone();
-        self.infer_function_call_with_precomputed_args(func_call, &mut mutable_context, &arg_types)
-    }
-
-    /// Process list literal with pre-processed element results from dependency tasks
-    /// Used by iterative inference to avoid recursive element processing
-    fn infer_list_literal_with_processed_elements(
-        &mut self,
-        list_literal: &outrun_parser::ListLiteral,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for elements
-        let task = &self.inference_tasks[&task_id];
-        let mut element_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                element_results.push(result.clone());
-            }
-        }
-
-        // Create modified list literal with processed element types
-        let mut processed_literal = list_literal.clone();
-
-        // Update list element expressions with inferred types from results
-        for (_i, _result) in element_results.iter().enumerate() {
-            if let Some(element) = processed_literal.elements.get_mut(_i) {
-                if let outrun_parser::ListElement::Expression(expr) = element {
-                    // TODO: Convert Type to ParsedTypeInfo when needed
-                    // expr.type_info = Some(result.inferred_type.clone());
-                    let _ = expr; // Suppress unused variable warning
-                }
-            }
-        }
-
-        // Use existing recursive list literal inference with processed elements
-        let mut mutable_context = context.clone();
-        self.infer_list_literal(&processed_literal, &mut mutable_context)
-    }
-
-    /// Process tuple literal with pre-processed element results from dependency tasks
-    /// Used by iterative inference to avoid recursive element processing  
-    fn infer_tuple_literal_with_processed_elements(
-        &mut self,
-        tuple_literal: &outrun_parser::TupleLiteral,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for elements
-        let task = &self.inference_tasks[&task_id];
-        let mut element_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                element_results.push(result.clone());
-            }
-        }
-
-        // Create modified tuple literal with processed element types
-        let mut processed_literal = tuple_literal.clone();
-
-        // Update tuple element expressions with inferred types from results
-        for (_i, _result) in element_results.iter().enumerate() {
-            if let Some(element) = processed_literal.elements.get_mut(_i) {
-                // TODO: Convert Type to ParsedTypeInfo when needed
-                // element.type_info = Some(result.inferred_type.clone());
-                let _ = element; // Suppress unused variable warning
-            }
-        }
-
-        // Use existing recursive tuple literal inference with processed elements
-        let mut mutable_context = context.clone();
-        self.infer_tuple_literal(&processed_literal, &mut mutable_context)
-    }
-
-    /// Process map literal with pre-processed key-value pair results from dependency tasks
-    /// Used by iterative inference to avoid recursive key-value processing
-    fn infer_map_literal_with_processed_entries(
-        &mut self,
-        map_literal: &outrun_parser::MapLiteral,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for key-value pairs
-        let task = &self.inference_tasks[&task_id];
-        let mut entry_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                entry_results.push(result.clone());
-            }
-        }
-
-        // Create modified map literal with processed entry types
-        let mut processed_literal = map_literal.clone();
-
-        // Update map entry expressions with inferred types from results
-        let mut result_index = 0;
-        for entry in &mut processed_literal.entries {
-            match entry {
-                outrun_parser::MapEntry::Assignment { key, value } => {
-                    // Two results: key and value
-                    if let (Some(key_result), Some(value_result)) = (
-                        entry_results.get(result_index),
-                        entry_results.get(result_index + 1),
-                    ) {
-                        // TODO: Convert Type to ParsedTypeInfo when needed
-                        let _ = (key, value, key_result, value_result); // Suppress unused variable warnings
-                        result_index += 2;
-                    }
-                }
-                outrun_parser::MapEntry::Shorthand { value, .. } => {
-                    // One result: value only
-                    if let Some(value_result) = entry_results.get(result_index) {
-                        // TODO: Convert Type to ParsedTypeInfo when needed
-                        let _ = (value, value_result); // Suppress unused variable warnings
-                        result_index += 1;
-                    }
-                }
-                outrun_parser::MapEntry::Spread(_) => {
-                    // Spread entries don't have expressions, skip
-                }
-            }
-        }
-
-        // Use existing recursive map literal inference with processed entries
-        let mut mutable_context = context.clone();
-        self.infer_map_literal(&processed_literal, &mut mutable_context)
-    }
-
-    /// Process parenthesized expression with pre-processed inner result from dependency task
-    /// Used by iterative inference to avoid recursive inner expression processing
-    fn infer_parenthesized_expression_with_processed_inner(
-        &mut self,
-        task_id: TaskId,
-        _context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency result for inner expression
-        let task = &self.inference_tasks[&task_id];
-
-        if let Some(dependency_id) = task.completed_dependencies.first() {
-            if let Some(inner_result) = self.task_results.get(dependency_id) {
-                // Parenthesized expressions just pass through the inner type
-                Ok(InferenceResult {
-                    inferred_type: inner_result.inferred_type.clone(),
-                    constraints: inner_result.constraints.clone(),
-                    substitution: inner_result.substitution.clone(),
-                })
-            } else {
-                Err(TypecheckError::InferenceError(
-                    InferenceError::AmbiguousType {
-                        span: to_source_span(None),
-                        suggestions: vec![
-                            "Parenthesized expression inner dependency not completed".to_string(),
-                        ],
-                    },
-                ))
-            }
-        } else {
-            Err(TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["Parenthesized expression has no dependencies".to_string()],
-                },
-            ))
-        }
-    }
-
-    /// Process field access with pre-processed object result from dependency task
-    /// Used by iterative inference to avoid recursive object expression processing
-    fn infer_field_access_with_processed_object(
-        &mut self,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency result for object expression
-        let task = &self.inference_tasks[&task_id];
-
-        if let Some(dependency_id) = task.completed_dependencies.first() {
-            if let Some(object_result) = self.task_results.get(dependency_id) {
-                // Clone the object result to avoid borrowing conflicts
-                let object_type = object_result.inferred_type.clone();
-
-                // Get the field access expression to extract field name
-                let expression = unsafe { &*task.expression };
-
-                if let outrun_parser::ExpressionKind::FieldAccess(field_access) = &expression.kind {
-                    // Use existing field access type inference with processed object type
-                    let mut mutable_context = context.clone();
-                    self.infer_field_access_type(
-                        &object_type,
-                        &field_access.field.name,
-                        &mut mutable_context,
-                    )
-                } else {
-                    Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: to_source_span(None),
-                            suggestions: vec!["Expected field access expression".to_string()],
-                        },
-                    ))
-                }
-            } else {
-                Err(TypecheckError::InferenceError(
-                    InferenceError::AmbiguousType {
-                        span: to_source_span(None),
-                        suggestions: vec![
-                            "Field access object dependency not completed".to_string()
-                        ],
-                    },
-                ))
-            }
-        } else {
-            Err(TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["Field access has no dependencies".to_string()],
-                },
-            ))
-        }
-    }
-
-    /// Process anonymous function with pre-processed clause bodies/guards from dependency tasks
-    /// Used by iterative inference to avoid recursive clause processing
-    fn infer_anonymous_function_with_processed_clauses(
-        &mut self,
-        anonymous_fn: &outrun_parser::AnonymousFunction,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for clause bodies and guards
-        let task = &self.inference_tasks[&task_id];
-        let mut dependency_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                dependency_results.push(result.clone());
-            }
-        }
-
-        // Create modified anonymous function with processed clause types
-        let processed_fn = anonymous_fn.clone();
-
-        // For now, just use the results to verify dependencies are processed
-        // The actual type inference logic can delegate to existing implementation
-        let _ = dependency_results; // Suppress unused variable warning
-
-        // Use existing recursive anonymous function inference
-        let mut mutable_context = context.clone();
-        self.infer_anonymous_function(&processed_fn, &mut mutable_context)
-    }
-
-    /// Process struct literal with pre-processed field values from dependency tasks
-    /// Used by iterative inference to avoid recursive field processing
-    fn infer_struct_literal_with_processed_fields(
-        &mut self,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency results for field values
-        let task = &self.inference_tasks[&task_id];
-        let mut field_results = Vec::new();
-
-        for dependency_id in &task.completed_dependencies {
-            if let Some(result) = self.task_results.get(dependency_id) {
-                field_results.push(result.clone());
-            }
-        }
-
-        // Get the struct literal expression
-        let expression = unsafe { &*task.expression };
-
-        if let outrun_parser::ExpressionKind::Struct(struct_literal) = &expression.kind {
-            // Create modified struct literal with processed field types
-            let mut processed_literal = struct_literal.clone();
-
-            // Update struct field expressions with inferred types from results
-            let mut result_index = 0;
-            for field in &mut processed_literal.fields {
-                match field {
-                    outrun_parser::StructLiteralField::Assignment { value, .. } => {
-                        if let Some(field_result) = field_results.get(result_index) {
-                            // TODO: Convert Type to ParsedTypeInfo when needed
-                            let _ = (value, field_result); // Suppress unused variable warnings
-                            result_index += 1;
-                        }
-                    }
-                    outrun_parser::StructLiteralField::Shorthand(_) => {
-                        // Shorthand fields don't have expressions, skip
-                    }
-                    outrun_parser::StructLiteralField::Spread(_) => {
-                        // Spread fields don't have expressions, skip
-                    }
-                }
-            }
-
-            // Use existing recursive struct literal inference with processed fields
-            let mut mutable_context = context.clone();
-            // For now, assign a fresh type variable since struct literal inference is not yet implemented
-            let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-            Ok(InferenceResult {
-                inferred_type,
-                constraints: mutable_context.constraints.clone(),
-                substitution: mutable_context.substitution.clone(),
-            })
-        } else {
-            Err(TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["Expected struct literal expression".to_string()],
-                },
-            ))
-        }
-    }
-
-    /// Process if expression with pre-processed condition from dependency task
-    /// Used by iterative inference to avoid recursive condition processing
-    fn infer_if_expression_with_processed_branches(
-        &mut self,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Get dependency result for condition
-        let task = &self.inference_tasks[&task_id];
-
-        if let Some(dependency_id) = task.completed_dependencies.first() {
-            if let Some(condition_result) = self.task_results.get(dependency_id) {
-                // Get the if expression
-                let expression = unsafe { &*task.expression };
-
-                if let outrun_parser::ExpressionKind::IfExpression(if_expr) = &expression.kind {
-                    // println!("🔧 Implementing if expression type inference");
-
-                    // CRITICAL FIX: Collect dependency results first to avoid borrowing conflicts
-                    let mut dependency_results: Vec<Type> = Vec::new();
-                    for dependency_id in &task.completed_dependencies {
-                        if let Some(result) = self.task_results.get(dependency_id) {
-                            dependency_results.push(result.inferred_type.clone());
-                        }
-                    }
-
-                    // Extract branch types from dependency results
-                    // dependency_results[0] = condition, dependency_results[1] = then, dependency_results[2] = else (if present)
-                    let then_result = if dependency_results.len() > 1 {
-                        dependency_results[1].clone()
-                    } else {
-                        // Fallback: if no dependency result, use fresh type variable
-                        Type::variable(self.fresh_type_var(), Level(0))
-                    };
-                    println!("  Then branch type: {:?}", then_result);
-
-                    let else_result = if dependency_results.len() > 2 {
-                        Some(dependency_results[2].clone())
-                    } else if if_expr.else_block.is_some() {
-                        // Else block exists but no dependency result - use fresh type variable
-                        Some(Type::variable(self.fresh_type_var(), Level(0)))
-                    } else {
-                        // println!("  No else branch");
-                        None
-                    };
-
-                    if let Some(ref else_type) = else_result {
-                        println!("  Else branch type: {:?}", else_type);
-                    }
-
-                    // Determine the unified type
-                    let unified_type = match else_result {
-                        Some(else_result) => {
-                            // Both branches exist - they must have compatible types
-                            if self.types_are_compatible(&then_result, &else_result) {
-                                then_result // Use then branch type as the unified type
-                            } else {
-                                // println!("  ❌ Branch types are incompatible");
-                                return Err(TypecheckError::InferenceError(
-                                    InferenceError::AmbiguousType {
-                                        span: to_source_span(Some(expression.span)),
-                                        suggestions: vec![format!(
-                                        "If branches have incompatible types: then={:?}, else={:?}",
-                                        then_result, else_result
-                                    )],
-                                    },
-                                ));
-                            }
-                        }
-                        None => {
-                            // No else branch - the then block type must implement Default
-                            // println!("  🔧 No else branch - checking Default protocol requirement");
-
-                            // Check if the then block type implements Default protocol
-                            let default_protocol_id = crate::types::ModuleName::new("Default");
-
-                            // Extract the type ID from the then_result type
-                            let type_implements_default = match &then_result {
-                                Type::Concrete { name, .. } => {
-                                    self.type_satisfies_protocol(name, &default_protocol_id)
-                                }
-                                Type::Protocol { name, .. } => {
-                                    // For protocol types, check if the protocol itself satisfies Default
-                                    self.type_satisfies_protocol(name, &default_protocol_id)
-                                }
-                                Type::SelfType {
-                                    binding_context, ..
-                                } => {
-                                    // For Self types, check if the implementing type satisfies Default
-                                    match binding_context {
-                                        crate::types::SelfBindingContext::Implementation {
-                                            implementing_type,
-                                            ..
-                                        } => self.type_satisfies_protocol(
-                                            implementing_type,
-                                            &default_protocol_id,
-                                        ),
-                                        _ => false,
-                                    }
-                                }
-                                _ => false,
-                            };
-
-                            if type_implements_default {
-                                // println!("  ✅ Type implements Default protocol");
-                                then_result
-                            } else {
-                                // println!("  ❌ Type does not implement Default protocol");
-                                return Err(TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
-                                        "If expression without else block requires type {:?} to implement Default protocol",
-                                        then_result
-                                    )],
-                                }));
-                            }
-                        }
-                    };
-
-                    println!("  ✅ If expression unified type: {:?}", unified_type);
-
-                    Ok(InferenceResult {
-                        inferred_type: unified_type,
-                        constraints: context.constraints.clone(),
-                        substitution: context.substitution.clone(),
-                    })
-                } else {
-                    Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: to_source_span(None),
-                            suggestions: vec!["Expected if expression".to_string()],
-                        },
-                    ))
-                }
-            } else {
-                Err(TypecheckError::InferenceError(
-                    InferenceError::AmbiguousType {
-                        span: to_source_span(None),
-                        suggestions: vec![
-                            "If expression condition dependency not completed".to_string()
-                        ],
-                    },
-                ))
-            }
-        } else {
-            Err(TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: to_source_span(None),
-                    suggestions: vec!["If expression has no dependencies".to_string()],
-                },
-            ))
-        }
-    }
-
-    /// Process case expression with pre-processed scrutinee and guards from dependency tasks
-    /// Used by iterative inference to avoid recursive scrutinee processing
-    fn infer_case_expression_with_processed_clauses(
-        &mut self,
-        task_id: TaskId,
-        context: &InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!(
-            "🔥🔥🔥 CASE EXPRESSION PROCESSING STARTED for task {:?}",
-            task_id
-        );
-        eprintln!(
-            "🔥🔥🔥 CONTEXT BINDINGS: {:?}",
-            context.bindings.keys().collect::<Vec<_>>()
-        );
-        // Get the case expression
-        let task = &self.inference_tasks[&task_id];
-        let expression = unsafe { &*task.expression };
-
-        if let outrun_parser::ExpressionKind::CaseExpression(case_expr) = &expression.kind {
-            // Get scrutinee result from dependencies - clone to avoid borrow conflicts
-            let scrutinee_result = if let Some(dependency_id) = task.completed_dependencies.first()
-            {
-                self.task_results
-                    .get(dependency_id)
-                    .ok_or_else(|| {
-                        TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                            span: Some(self.create_file_span(None).to_source_span()),
-                            suggestions: vec!["Missing scrutinee result".to_string()],
-                        })
-                    })?
-                    .clone()
-            } else {
-                return Err(TypecheckError::InferenceError(
-                    InferenceError::AmbiguousType {
-                        span: Some(self.create_file_span(None).to_source_span()),
-                        suggestions: vec!["Case expression missing scrutinee".to_string()],
-                    },
-                ));
-            };
-
-            let scrutinee_type = scrutinee_result.inferred_type;
-            let mut result_constraints = context.constraints.clone();
-            let result_substitution = context.substitution.clone();
-            let mut clause_result_types = Vec::new();
-
-            // Process each case clause with proper scoping
-            for clause in &case_expr.clauses {
-                // Create a new context scope for this clause
-                let mut clause_context = context.clone();
-
-                // Extract pattern bindings and add them to the bindings map
-                let pattern_bindings =
-                    self.extract_pattern_bindings(&clause.pattern, &scrutinee_type)?;
-                eprintln!("🔍 Pattern bindings extracted: {:?}", pattern_bindings);
-                for (name, binding_type) in pattern_bindings {
-                    eprintln!("🔍 Adding pattern binding: {} -> {}", name, binding_type);
-                    clause_context.bindings.insert(name, binding_type);
-                }
-                eprintln!(
-                    "🔍 CLAUSE CONTEXT: Final bindings = {:?}",
-                    clause_context.bindings.keys().collect::<Vec<_>>()
-                );
-
-                // Process guard expression if present (with pattern bindings in scope)
-                if let Some(guard_expr) = &clause.guard {
-                    eprintln!(
-                        "🔍 PROCESSING GUARD: Guard expression with pattern bindings available"
-                    );
-                    eprintln!(
-                        "🔍 GUARD CONTEXT: Available bindings = {:?}",
-                        clause_context.bindings.keys().collect::<Vec<_>>()
-                    );
-
-                    let guard_result =
-                        self.infer_expression_impl(&mut guard_expr.clone(), &mut clause_context)?;
-
-                    // Guard must be Boolean - simplified constraint for now
-                    let _boolean_type = Type::concrete("Outrun.Core.Boolean");
-                    let fresh_var = self.fresh_type_var();
-                    result_constraints.push(Constraint::Implements {
-                        type_var: match guard_result.inferred_type {
-                            Type::Variable { var_id, .. } => var_id,
-                            _ => fresh_var,
-                        },
-                        protocol: crate::types::ModuleName::new("Boolean"),
-                        span: None,
-                    });
-
-                    // Merge constraints
-                    result_constraints.extend(guard_result.constraints);
-                    // Merge substitutions - simplified for now
-                    // TODO: Implement proper substitution merging
-                }
-
-                // Process clause result expression (with pattern bindings in scope)
-                let clause_result_expr = match &clause.result {
-                    outrun_parser::CaseResult::Expression(expr) => expr.as_ref(),
-                    outrun_parser::CaseResult::Block(_) => {
-                        // For blocks, assign a fresh type variable for now
-                        let fresh_var = self.fresh_type_var();
-                        let fresh_type = Type::variable(fresh_var, Level(0));
-                        clause_result_types.push(fresh_type);
-                        continue;
-                    }
-                };
-
-                let clause_result = self.infer_expression_recursive(
-                    &mut clause_result_expr.clone(),
-                    &mut clause_context,
-                )?;
-
-                clause_result_types.push(clause_result.inferred_type.clone());
-                result_constraints.extend(clause_result.constraints);
-                // Merge substitutions - simplified for now
-                // TODO: Implement proper substitution merging
-            }
-
-            // All clause results must have the same type
-            let case_result_type = if clause_result_types.is_empty() {
-                let fresh_var = self.fresh_type_var();
-                Type::variable(fresh_var, Level(0))
-            } else {
-                let first_type = clause_result_types[0].clone();
-                // For now, just return the first type - proper unification would be needed
-                // to ensure all clause types are compatible
-                first_type
-            };
-
-            Ok(InferenceResult {
-                inferred_type: case_result_type,
-                constraints: result_constraints,
-                substitution: result_substitution,
-            })
-        } else {
-            Err(TypecheckError::InferenceError(
-                InferenceError::AmbiguousType {
-                    span: Some(self.create_file_span(None).to_source_span()),
-                    suggestions: vec!["Expected case expression".to_string()],
-                },
-            ))
-        }
-    }
-
+   /// 
     /// Main iterative inference method (replaces recursive infer_expression)
     pub fn infer_expression(
         &mut self,
@@ -3601,24 +2643,11 @@ impl TypeInferenceEngine {
     ) -> Result<InferenceResult, TypecheckError> {
         // CRITICAL FIX: Track inference depth for proper task state management
         self.inference_depth += 1;
-        // DEBUG: Temporarily re-enabled to trace case expression issue
-        println!(
-            "🎯 INFER_EXPRESSION (depth={}) - Expression type: {:?} at span {:?}",
-            self.inference_depth,
-            std::mem::discriminant(&expression.kind),
-            expression.span
-        );
-
         // Execute main logic with proper cleanup
         let result = self.infer_expression_impl(expression, context);
 
         // CRITICAL FIX: Always decrement depth on exit (both success and error paths)
         self.inference_depth -= 1;
-        // DEBUG: Commented out for performance
-        // println!(
-        //     "✅ INFER_EXPRESSION COMPLETED (depth={})",
-        //     self.inference_depth
-        // );
 
         result
     }
@@ -3665,26 +2694,8 @@ impl TypeInferenceEngine {
                 }
             }
             outrun_parser::Pattern::Tuple(tuple_pattern) => {
-                // DEBUG: Add logging to understand tuple pattern matching
-                eprintln!(
-                    "🔍 TUPLE PATTERN: Processing tuple pattern with {} elements",
-                    tuple_pattern.elements.len()
-                );
-                eprintln!("🔍 SCRUTINEE TYPE: {:?}", scrutinee_type);
-
                 // For tuple patterns, extract element types from the tuple
                 if let Type::Concrete { name, args, .. } = scrutinee_type {
-                    eprintln!(
-                        "🔍 CONCRETE TYPE: name='{}', args.len()={}",
-                        name.as_str(),
-                        args.len()
-                    );
-                    eprintln!(
-                        "🔍 TUPLE CHECK: contains_Tuple={}, lengths_match={}",
-                        name.as_str().contains("Tuple"),
-                        args.len() == tuple_pattern.elements.len()
-                    );
-
                     if name.as_str().contains("Tuple") && args.len() == tuple_pattern.elements.len()
                     {
                         // Match each tuple element pattern with its corresponding type
@@ -3720,126 +2731,6 @@ impl TypeInferenceEngine {
         Ok(bindings)
     }
 
-    /// Recursive inference method for processing expressions within case clauses
-    /// This is needed because the iterative system can't handle nested inference
-    fn infer_expression_recursive(
-        &mut self,
-        expression: &mut outrun_parser::Expression,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // For now, use a simplified recursive approach
-        // In a full implementation, this would need to handle all expression types
-        match &expression.kind {
-            outrun_parser::ExpressionKind::Identifier(name) => {
-                if let Some(var_type) = context.bindings.get(&name.name) {
-                    eprintln!(
-                        "🔍 process_single_task Identifier: {} -> {}",
-                        name.name, var_type
-                    );
-                    Ok(InferenceResult {
-                        inferred_type: var_type.clone(),
-                        constraints: vec![],
-                        substitution: Substitution::new(),
-                    })
-                } else {
-                    eprintln!(
-                        "🔍 process_single_task Identifier: {} -> NOT FOUND in context bindings",
-                        name.name
-                    );
-                    eprintln!(
-                        "🔍 Available bindings: {:?}",
-                        context.bindings.keys().collect::<Vec<_>>()
-                    );
-                    Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: Some(self.create_file_span(None).to_source_span()),
-                            suggestions: vec![format!("Unknown identifier: {}", name.name)],
-                        },
-                    ))
-                }
-            }
-            outrun_parser::ExpressionKind::Boolean(_) => {
-                let boolean_type = Type::concrete("Outrun.Core.Boolean");
-                Ok(InferenceResult {
-                    inferred_type: boolean_type,
-                    constraints: vec![],
-                    substitution: Substitution::new(),
-                })
-            }
-            outrun_parser::ExpressionKind::FunctionCall(func_call) => {
-                // Handle function calls - this is where protocol dispatch happens
-                self.infer_function_call_recursive(func_call, context)
-            }
-            _ => {
-                // For other expression types, assign a fresh type variable
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: vec![],
-                    substitution: Substitution::new(),
-                })
-            }
-        }
-    }
-
-    /// Recursive function call inference for case clause processing
-    fn infer_function_call_recursive(
-        &mut self,
-        func_call: &outrun_parser::FunctionCall,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        eprintln!(
-            "🔍 infer_function_call_recursive called with: {:?}",
-            func_call.path
-        );
-
-        // For now, just handle common cases and fall back to a generic approach
-        match &func_call.path {
-            outrun_parser::FunctionPath::Simple { name } => {
-                if name.name.ends_with('?') {
-                    // Guard function - must return Boolean
-                    let boolean_type = Type::concrete("Outrun.Core.Boolean");
-                    return Ok(InferenceResult {
-                        inferred_type: boolean_type,
-                        constraints: vec![],
-                        substitution: Substitution::new(),
-                    });
-                }
-            }
-            outrun_parser::FunctionPath::Qualified { module, name } => {
-                eprintln!(
-                    "🔍 Handling qualified function call: {:?}.{}",
-                    module, name.name
-                );
-
-                // Handle common protocol calls
-                if name.name.ends_with('?') {
-                    // Guard function - must return Boolean
-                    let boolean_type = Type::concrete("Outrun.Core.Boolean");
-                    return Ok(InferenceResult {
-                        inferred_type: boolean_type,
-                        constraints: vec![],
-                        substitution: Substitution::new(),
-                    });
-                }
-
-
-            }
-            outrun_parser::FunctionPath::Expression { .. } => {
-                // Expression-based function calls - not handled for now
-            }
-        }
-
-        // For other function calls, assign a fresh type variable
-        eprintln!("🔍 Falling back to fresh type variable for function call");
-        let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-        Ok(InferenceResult {
-            inferred_type,
-            constraints: vec![],
-            substitution: Substitution::new(),
-        })
-    }
-
     /// Implementation of inference logic using stack-based continuations
     fn infer_expression_impl(
         &mut self,
@@ -3850,7 +2741,6 @@ impl TypeInferenceEngine {
 
         // Special case: Handle case expressions directly to avoid task system issues with pattern bindings
         if let ExpressionKind::CaseExpression(case_expr) = &expression.kind {
-            eprintln!("🎯 DIRECT CASE EXPRESSION PROCESSING: Bypassing task system for pattern binding support");
             return self.infer_case_expression_direct(case_expr, context);
         }
 
@@ -3920,8 +2810,7 @@ impl TypeInferenceEngine {
                             }
                         }
 
-                        ExpressionKind::List(list_literal) => {
-                            let element_count = list_literal.elements.len();
+            ExpressionKind::List(list_literal) => {                            let element_count = list_literal.elements.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
@@ -3938,15 +2827,7 @@ impl TypeInferenceEngine {
                                             context: context.clone(),
                                         });
                                     }
-                                    outrun_parser::ListElement::Spread(identifier) => {
-                                        // Create a temporary identifier expression for the spread
-                                        let identifier_expr = Expression {
-                                            kind: outrun_parser::ExpressionKind::Identifier(
-                                                identifier.clone(),
-                                            ),
-                                            span: identifier.span,
-                                            type_info: None,
-                                        };
+                                    outrun_parser::ListElement::Spread(_identifier) => {
                                         // For now, skip spread elements - they need special handling
                                         // TODO: Implement proper spread element type inference
                                     }
@@ -3954,8 +2835,7 @@ impl TypeInferenceEngine {
                             }
                         }
 
-                        ExpressionKind::Tuple(tuple_literal) => {
-                            let element_count = tuple_literal.elements.len();
+            ExpressionKind::Tuple(tuple_literal) => {                            let element_count = tuple_literal.elements.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
                                 expression,
@@ -3972,8 +2852,7 @@ impl TypeInferenceEngine {
                             }
                         }
 
-                        ExpressionKind::Map(map_literal) => {
-                            let mut dep_count = 0;
+            ExpressionKind::Map(map_literal) => {                            let mut dep_count = 0;
                             for entry in &map_literal.entries {
                                 match entry {
                                     outrun_parser::MapEntry::Assignment { .. } => dep_count += 2, // key + value
@@ -4141,8 +3020,7 @@ impl TypeInferenceEngine {
                             });
                         }
 
-                        ExpressionKind::CaseExpression(case_expr) => {
-                            // case_expr has: expression (scrutinee) + clauses
+            ExpressionKind::CaseExpression(case_expr) => {                            // case_expr has: expression (scrutinee) + clauses
                             let clause_count = case_expr.clauses.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
@@ -4185,8 +3063,7 @@ impl TypeInferenceEngine {
                             });
                         }
 
-                        ExpressionKind::AnonymousFunction(anon_fn) => {
-                            // Anonymous functions have clauses with bodies
+            ExpressionKind::AnonymousFunction(anon_fn) => {                            // Anonymous functions have clauses with bodies
                             let clause_count = anon_fn.clauses.len();
 
                             work_stack.push(WorkItem::ContinueWithResults {
@@ -4312,7 +3189,7 @@ impl TypeInferenceEngine {
                 constraints: Vec::new(),
                 substitution: Substitution::new(),
             }),
-            ExpressionKind::Sigil(sigil_literal) => {
+            ExpressionKind::Sigil(_) => {
                 // Sigil literals need special handling - they're processed by sigil protocols
                 // For now, return a generic type - this should be enhanced later
                 Ok(InferenceResult {
@@ -4429,7 +3306,7 @@ impl TypeInferenceEngine {
                 )
             }
 
-            ExpressionKind::List(list_literal) => {
+            ExpressionKind::List(_) => {
                 // All elements have been processed, infer list type from element types
                 if dependency_results.is_empty() {
                     // Empty list - use generic List<T> with fresh type variable
@@ -4469,7 +3346,7 @@ impl TypeInferenceEngine {
                 }
             }
 
-            ExpressionKind::Tuple(tuple_literal) => {
+            ExpressionKind::Tuple(_) => {
                 // Tuple type is the product of all element types
                 let element_types: Vec<Type> = dependency_results
                     .iter()
@@ -4483,15 +3360,11 @@ impl TypeInferenceEngine {
                 })
             }
 
-            ExpressionKind::Map(map_literal) => {
+            ExpressionKind::Map(_) => {
                 // Map type is Outrun.Core.Map<K, V> where K and V are inferred from entries
                 if dependency_results.is_empty() {
                     // Empty map - check if we have an expected type
                     if let Some(expected_type) = &context.expected_type {
-                        eprintln!(
-                            "🗺️ ITERATIVE: Empty map with expected type: {:?}",
-                            expected_type
-                        );
                         // Use the expected type directly
                         Ok(InferenceResult {
                             inferred_type: expected_type.clone(),
@@ -4499,7 +3372,6 @@ impl TypeInferenceEngine {
                             substitution: Substitution::new(),
                         })
                     } else {
-                        eprintln!("🗺️ ITERATIVE: Empty map without expected type - creating fresh variables");
                         // Empty map without type hint gets fresh type variables
                         let key_type = Type::variable(self.fresh_type_var(), Level(0));
                         let value_type = Type::variable(self.fresh_type_var(), Level(0));
@@ -4578,11 +3450,6 @@ impl TypeInferenceEngine {
 
                     if let Some(expected_name) = expected_name {
                         if expected_name == struct_name {
-                            // println!("🚨🚨🚨 STRUCT LITERAL BIDIRECTIONAL INFERENCE 🚨🚨🚨");
-                            println!("  Struct name: {}", struct_name);
-                            println!("  Expected type: {:?}", expected_type);
-                            // println!("  Using expected type with generic parameters!");
-
                             // Use the expected type which includes generic parameters
                             return Ok(InferenceResult {
                                 inferred_type: expected_type.clone(),
@@ -4593,10 +3460,6 @@ impl TypeInferenceEngine {
                     }
 
                     // Expected type doesn't match, fall back to concrete type
-                    println!(
-                        "🔍 Struct literal: expected type {} doesn't match struct {}",
-                        expected_type, struct_name
-                    );
                     Ok(InferenceResult {
                         inferred_type: Type::concrete(&struct_name),
                         constraints: Vec::new(),
@@ -4687,9 +3550,8 @@ impl TypeInferenceEngine {
                 })
             }
 
-            ExpressionKind::CaseExpression(case_expr) => {
+            ExpressionKind::CaseExpression(_) => {
                 // dependency_results[0] = scrutinee, [1..] = clause results
-                let scrutinee_type = &dependency_results[0].inferred_type;
 
                 if dependency_results.len() < 2 {
                     return Err(TypecheckError::InferenceError(
@@ -4729,7 +3591,7 @@ impl TypeInferenceEngine {
                 })
             }
 
-            ExpressionKind::AnonymousFunction(anon_fn) => {
+            ExpressionKind::AnonymousFunction(_) => {
                 // Anonymous functions create function types
                 // For now, create a generic function type
                 // TODO: Infer proper parameter and return types from clauses
@@ -4779,551 +3641,6 @@ impl TypeInferenceEngine {
         }
     }
 
-    /// Collect all inference tasks through non-recursive tree traversal
-    fn collect_inference_tasks(
-        &mut self,
-        root_expression: &mut Expression,
-        root_context: InferenceContext,
-    ) -> Result<TaskId, TypecheckError> {
-        use outrun_parser::ExpressionKind;
-
-        // DEBUG: Track task creation
-        let start_tasks = self.inference_tasks.len();
-        println!(
-            "🔍 Starting task collection (current tasks: {})",
-            start_tasks
-        );
-
-        // Create root task
-        let root_task_id = self.create_task(root_expression as *mut Expression, root_context);
-
-        // Use work stack for non-recursive traversal (similar to desugaring pattern)
-        let mut work_stack: Vec<&mut Expression> = vec![root_expression];
-
-        while let Some(current_expr) = work_stack.pop() {
-            let current_task_id = *self
-                .expression_to_task_map
-                .get(&(current_expr as *mut Expression))
-                .expect("Expression should have corresponding task");
-
-            // Add child expressions based on expression type and create dependencies
-            match &mut current_expr.kind {
-                ExpressionKind::FunctionCall(function_call) => {
-                    // DEBUG: Function call task collection
-                    let call_name = match &function_call.path {
-                        outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-                        outrun_parser::FunctionPath::Qualified { module, name } => {
-                            format!("{}.{}", module.name, name.name)
-                        }
-                        _ => "dynamic".to_string(),
-                    };
-                    println!(
-                        "🔧 Task collection for function call: {} with {} arguments (task_id: {})",
-                        call_name,
-                        function_call.arguments.len(),
-                        current_task_id
-                    );
-
-                    // Function call depends on all its arguments
-                    for (i, argument) in function_call.arguments.iter_mut().enumerate() {
-                        if let outrun_parser::Argument::Named {
-                            name, expression, ..
-                        } = argument
-                        {
-                            println!(
-                                "  📋 Creating dependency for argument {}: {} (type: {:?})",
-                                i, name.name, expression.kind
-                            );
-
-                            // Create task for argument expression
-                            let arg_context =
-                                self.inference_tasks[&current_task_id].context.clone();
-                            let arg_task_id =
-                                self.create_task(expression as *mut Expression, arg_context);
-
-                            // Function call depends on its argument
-                            println!(
-                                "    ➕ Adding dependency: {} -> {}",
-                                current_task_id, arg_task_id
-                            );
-                            self.add_task_dependency(current_task_id, arg_task_id);
-
-                            // Add argument to work stack for further processing
-                            work_stack.push(expression);
-                        }
-                    }
-                }
-                ExpressionKind::List(list_literal) => {
-                    // List depends on all its elements
-                    for element in &mut list_literal.elements {
-                        if let outrun_parser::ListElement::Expression(expr) = element {
-                            let elem_context =
-                                self.inference_tasks[&current_task_id].context.clone();
-                            let elem_task_id =
-                                self.create_task(expr.as_mut() as *mut Expression, elem_context);
-
-                            self.add_task_dependency(current_task_id, elem_task_id);
-                            work_stack.push(expr);
-                        }
-                    }
-                }
-                ExpressionKind::Tuple(tuple_literal) => {
-                    // Tuple depends on all its elements
-                    for element in &mut tuple_literal.elements {
-                        let elem_context = self.inference_tasks[&current_task_id].context.clone();
-                        let elem_task_id =
-                            self.create_task(element as *mut Expression, elem_context);
-
-                        self.add_task_dependency(current_task_id, elem_task_id);
-                        work_stack.push(element);
-                    }
-                }
-                ExpressionKind::Map(map_literal) => {
-                    // Map depends on all its key-value pairs
-                    for entry in &mut map_literal.entries {
-                        match entry {
-                            outrun_parser::MapEntry::Assignment { key, value } => {
-                                let key_context =
-                                    self.inference_tasks[&current_task_id].context.clone();
-                                let value_context =
-                                    self.inference_tasks[&current_task_id].context.clone();
-
-                                let key_task_id =
-                                    self.create_task(key.as_mut() as *mut Expression, key_context);
-                                let value_task_id = self
-                                    .create_task(value.as_mut() as *mut Expression, value_context);
-
-                                self.add_task_dependency(current_task_id, key_task_id);
-                                self.add_task_dependency(current_task_id, value_task_id);
-
-                                work_stack.push(key);
-                                work_stack.push(value);
-                            }
-                            outrun_parser::MapEntry::Shorthand { value, .. } => {
-                                let value_context =
-                                    self.inference_tasks[&current_task_id].context.clone();
-                                let value_task_id = self
-                                    .create_task(value.as_mut() as *mut Expression, value_context);
-
-                                self.add_task_dependency(current_task_id, value_task_id);
-                                work_stack.push(value);
-                            }
-                            outrun_parser::MapEntry::Spread(_) => {
-                                // Spread entries don't have expressions to process for now
-                            }
-                        }
-                    }
-                }
-                ExpressionKind::AnonymousFunction(anon_fn) => {
-                    // Anonymous function depends on its clause bodies and guards
-                    for clause in &mut anon_fn.clauses {
-                        // Process guard expression if present
-                        if let Some(ref mut guard) = clause.guard {
-                            let guard_context =
-                                self.inference_tasks[&current_task_id].context.clone();
-                            let guard_task_id =
-                                self.create_task(guard as *mut Expression, guard_context);
-
-                            self.add_task_dependency(current_task_id, guard_task_id);
-                            work_stack.push(guard);
-                        }
-
-                        // Process body expression if it's an expression
-                        if let outrun_parser::AnonymousBody::Expression(ref mut body_expr) =
-                            clause.body
-                        {
-                            let body_context =
-                                self.inference_tasks[&current_task_id].context.clone();
-                            let body_task_id = self
-                                .create_task(body_expr.as_mut() as *mut Expression, body_context);
-
-                            self.add_task_dependency(current_task_id, body_task_id);
-                            work_stack.push(body_expr);
-                        }
-                    }
-                }
-                ExpressionKind::Parenthesized(inner_expr) => {
-                    // Parenthesized expression depends on its inner expression
-                    let inner_context = self.inference_tasks[&current_task_id].context.clone();
-                    let inner_task_id =
-                        self.create_task(inner_expr.as_mut() as *mut Expression, inner_context);
-
-                    self.add_task_dependency(current_task_id, inner_task_id);
-                    work_stack.push(inner_expr);
-                }
-                ExpressionKind::FieldAccess(field_access) => {
-                    // Field access depends on its object expression
-                    let object_context = self.inference_tasks[&current_task_id].context.clone();
-                    let object_task_id = self.create_task(
-                        field_access.object.as_mut() as *mut Expression,
-                        object_context,
-                    );
-
-                    self.add_task_dependency(current_task_id, object_task_id);
-                    work_stack.push(&mut field_access.object);
-                }
-                ExpressionKind::Struct(struct_literal) => {
-                    // Struct literal depends on all its field values
-                    for field in &mut struct_literal.fields {
-                        match field {
-                            outrun_parser::StructLiteralField::Assignment { value, .. } => {
-                                let field_context =
-                                    self.inference_tasks[&current_task_id].context.clone();
-                                let field_task_id = self
-                                    .create_task(value.as_mut() as *mut Expression, field_context);
-
-                                self.add_task_dependency(current_task_id, field_task_id);
-                                work_stack.push(value);
-                            }
-                            outrun_parser::StructLiteralField::Shorthand(_) => {
-                                // Shorthand fields don't have expressions to process
-                            }
-                            outrun_parser::StructLiteralField::Spread(_) => {
-                                // Spread fields don't have expressions to process for now
-                            }
-                        }
-                    }
-                }
-                ExpressionKind::IfExpression(if_expr) => {
-                    // If expression depends on condition and both branches
-                    let condition_context = self.inference_tasks[&current_task_id].context.clone();
-                    let condition_task_id = self.create_task(
-                        if_expr.condition.as_mut() as *mut Expression,
-                        condition_context,
-                    );
-
-                    self.add_task_dependency(current_task_id, condition_task_id);
-                    work_stack.push(&mut if_expr.condition);
-
-                    // CRITICAL FIX: Process then and else blocks for proper if expression type inference
-                    // The then block is required
-                    if let Some(then_expr) = if_expr.then_block.statements.last_mut() {
-                        if let outrun_parser::StatementKind::Expression(expr) = &mut then_expr.kind
-                        {
-                            let then_context =
-                                self.inference_tasks[&current_task_id].context.clone();
-                            let then_task_id =
-                                self.create_task(expr.as_mut() as *mut Expression, then_context);
-
-                            self.add_task_dependency(current_task_id, then_task_id);
-                            work_stack.push(expr.as_mut());
-                        }
-                    }
-
-                    // The else block is optional
-                    if let Some(else_block) = &mut if_expr.else_block {
-                        if let Some(else_expr) = else_block.statements.last_mut() {
-                            if let outrun_parser::StatementKind::Expression(expr) =
-                                &mut else_expr.kind
-                            {
-                                let else_context =
-                                    self.inference_tasks[&current_task_id].context.clone();
-                                let else_task_id = self
-                                    .create_task(expr.as_mut() as *mut Expression, else_context);
-
-                                self.add_task_dependency(current_task_id, else_task_id);
-                                work_stack.push(expr.as_mut());
-                            }
-                        }
-                    }
-                }
-                ExpressionKind::CaseExpression(case_expr) => {
-                    eprintln!("🔥 CASE EXPRESSION ENCOUNTERED during task collection");
-                    // println!("  📋 Setting up case expression task dependencies (ONLY scrutinee)");
-                    // IMPORTANT: For case expressions, we only process the scrutinee upfront
-                    // Guard expressions and clause results will be processed later with pattern bindings in scope
-
-                    let scrutinee_context = self.inference_tasks[&current_task_id].context.clone();
-                    let scrutinee_task_id = self.create_task(
-                        case_expr.expression.as_mut() as *mut Expression,
-                        scrutinee_context,
-                    );
-
-                    self.add_task_dependency(current_task_id, scrutinee_task_id);
-                    work_stack.push(&mut case_expr.expression);
-                    println!(
-                        "    ✅ Added scrutinee dependency: task {:?} depends on task {:?}",
-                        current_task_id, scrutinee_task_id
-                    );
-
-                    // NOTE: We deliberately DO NOT process guard expressions here
-                    // They will be processed in infer_case_expression_with_processed_clauses
-                    // with the proper pattern bindings in scope
-                }
-                // Simple literals and identifiers have no dependencies
-                ExpressionKind::Boolean(_)
-                | ExpressionKind::Integer(_)
-                | ExpressionKind::Float(_)
-                | ExpressionKind::String(_)
-                | ExpressionKind::Atom(_)
-                | ExpressionKind::Sigil(_)
-                | ExpressionKind::Identifier(_)
-                | ExpressionKind::QualifiedIdentifier(_)
-                | ExpressionKind::TypeIdentifier(_)
-                | ExpressionKind::MacroInjection(_)
-                | ExpressionKind::FunctionCapture(_) => {
-                    // No child expressions to process
-                }
-                // Binary/Unary operations should be desugared before reaching here
-                ExpressionKind::BinaryOp(_) | ExpressionKind::UnaryOp(_) => {
-                    // These should not appear in type inference after desugaring
-                }
-            }
-        }
-
-        // DEBUG: Report task collection results
-        let end_tasks = self.inference_tasks.len();
-        let created_tasks = end_tasks - start_tasks;
-        println!(
-            "🔍 Task collection complete: created {} tasks (total: {})",
-            created_tasks, end_tasks
-        );
-        println!(
-            "🔍 Expression map size: {}",
-            self.expression_to_task_map.len()
-        );
-
-        Ok(root_task_id)
-    }
-
-    /// Process a single task (this replaces the recursive logic in each expression case)
-    fn process_single_task(&mut self, task_id: TaskId) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::ExpressionKind;
-
-        let task = self.inference_tasks.get_mut(&task_id).unwrap();
-        task.state = TaskState::Processing;
-
-        let expression = unsafe { &mut *task.expression };
-        let context = task.context.clone(); // Clone to avoid borrow issues
-
-        // Debug: Check context during task processing
-        if let ExpressionKind::FunctionCall(func_call) = &expression.kind {
-            let func_name = match &func_call.path {
-                outrun_parser::FunctionPath::Simple { name } => name.name.clone(),
-                outrun_parser::FunctionPath::Qualified { module, name } => {
-                    format!("{}.{}", module.name, name.name)
-                }
-                outrun_parser::FunctionPath::Expression { .. } => "dynamic".to_string(),
-            };
-            if func_name.contains("list_head") {
-                eprintln!(
-                    "🔍 TASK PROCESSING: Processing {} call (task {})",
-                    func_name, task_id
-                );
-                eprintln!("  📋 Current self context: {:?}", self.current_self_context);
-                eprintln!("  📋 Task context: {:?}", context.self_binding);
-            }
-        }
-
-        // STRICT CHECK: No binary or unary operations should reach type inference
-        // If they do, it indicates a bug in the desugaring phase
-        match &expression.kind {
-            ExpressionKind::BinaryOp(binary_op) => {
-                eprintln!(
-                    "🚨 DESUGARING BUG: Binary operation {:?} at span {:?} was not desugared!",
-                    binary_op.operator, expression.span
-                );
-                eprintln!("   This indicates the desugaring engine missed this expression.");
-                eprintln!("   All binary operations should be converted to protocol calls before type inference.");
-                eprintln!("   DEBUGGING INFO:");
-                eprintln!("     - Operator: {:?}", binary_op.operator);
-                eprintln!(
-                    "     - Span: start={}, end={}",
-                    expression.span.start, expression.span.end
-                );
-                eprintln!("     - Line info: {:?}", expression.span.start_line_col);
-                eprintln!("   IMPORTANT: This is occurring during core library precompilation!");
-                eprintln!("   The user test code contains no subtract operations.");
-                eprintln!("   The subtract operation is likely being generated during:");
-                eprintln!("     1. Macro expansion creating new AST nodes");
-                eprintln!("     2. Some AST transformation step");
-                eprintln!("     3. An AST node type not being traversed by desugaring");
-
-                let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec![format!("Binary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", binary_op.operator)],
-                });
-                let task_error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec![format!("Binary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", binary_op.operator)],
-                });
-                let task = self.inference_tasks.get_mut(&task_id).unwrap();
-                task.state = TaskState::Failed(task_error);
-                return Err(error);
-            }
-            ExpressionKind::UnaryOp(unary_op) => {
-                eprintln!(
-                    "🚨 DESUGARING BUG: Unary operation {:?} at span {:?} was not desugared!",
-                    unary_op.operator, expression.span
-                );
-                eprintln!("   This indicates the desugaring engine missed this expression.");
-                eprintln!("   All unary operations should be converted to protocol calls before type inference.");
-
-                let error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec![format!("Unary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", unary_op.operator)],
-                });
-                let task_error = TypecheckError::InferenceError(InferenceError::AmbiguousType {
-                    span: to_source_span(Some(expression.span)),
-                    suggestions: vec![format!("Unary operation '{:?}' was not desugared. This is a bug in the desugaring phase.", unary_op.operator)],
-                });
-                let task = self.inference_tasks.get_mut(&task_id).unwrap();
-                task.state = TaskState::Failed(task_error);
-                return Err(error);
-            }
-            _ => {} // OK - no undesugared operations
-        }
-
-        let result = match &mut expression.kind {
-            ExpressionKind::Boolean(_) => {
-                let inferred_type = Type::concrete("Outrun.Core.Boolean");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Integer(_) => {
-                let inferred_type = Type::concrete("Outrun.Core.Integer64");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Float(_) => {
-                let inferred_type = Type::concrete("Outrun.Core.Float64");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::String(_) => {
-                let inferred_type = Type::concrete("Outrun.Core.String");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Atom(_) => {
-                let inferred_type = Type::concrete("Outrun.Core.Atom");
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Identifier(identifier) => {
-                // Variable lookup - use existing method
-                let mut mutable_context = context;
-                self.infer_variable(identifier, &mut mutable_context)
-            }
-            ExpressionKind::FunctionCall(function_call) => {
-                // Function call - all arguments should be processed by now
-                // Get results for arguments and call existing function call logic
-                self.infer_function_call_with_processed_args(function_call, task_id, &context)
-            }
-            ExpressionKind::List(list_literal) => {
-                // List literal - all elements should be processed by now
-                self.infer_list_literal_with_processed_elements(list_literal, task_id, &context)
-            }
-            ExpressionKind::Tuple(tuple_literal) => {
-                // Tuple literal - all elements should be processed by now
-                self.infer_tuple_literal_with_processed_elements(tuple_literal, task_id, &context)
-            }
-            ExpressionKind::Map(map_literal) => {
-                // Map literal - all key-value pairs should be processed by now
-                self.infer_map_literal_with_processed_entries(map_literal, task_id, &context)
-            }
-            ExpressionKind::Parenthesized(_) => {
-                // Parenthesized expression - dependency should be processed by now
-                self.infer_parenthesized_expression_with_processed_inner(task_id, &context)
-            }
-            ExpressionKind::QualifiedIdentifier(qualified_id) => {
-                // Qualified identifier - no dependencies, can process directly
-                let mut mutable_context = context;
-                self.infer_qualified_identifier(qualified_id, &mut mutable_context)
-            }
-            ExpressionKind::FieldAccess(_) => {
-                // Field access - object expression should be processed by now
-                self.infer_field_access_with_processed_object(task_id, &context)
-            }
-            ExpressionKind::AnonymousFunction(anonymous_fn) => {
-                // Anonymous function - all clause bodies/guards should be processed by now
-                self.infer_anonymous_function_with_processed_clauses(
-                    anonymous_fn,
-                    task_id,
-                    &context,
-                )
-            }
-            ExpressionKind::Sigil(_) => {
-                // Sigil literals have concrete type based on sigil type
-                let inferred_type = Type::concrete("Outrun.Core.String"); // Most sigils are strings
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::Struct(_) => {
-                // Struct literals - all field values should be processed by now
-                self.infer_struct_literal_with_processed_fields(task_id, &context)
-            }
-            ExpressionKind::TypeIdentifier(type_id) => {
-                // Type identifiers reference types directly
-                let inferred_type = Type::concrete(&type_id.name);
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::IfExpression(_) => {
-                // If expressions - condition and branches should be processed by now
-                self.infer_if_expression_with_processed_branches(task_id, &context)
-            }
-            ExpressionKind::CaseExpression(_) => {
-                // Case expressions - scrutinee and clause results should be processed by now
-                eprintln!(
-                    "🔥 MAIN CASE EXPRESSION PROCESSING: Task {:?} reached case expression handler",
-                    task_id
-                );
-                self.infer_case_expression_with_processed_clauses(task_id, &context)
-            }
-            ExpressionKind::MacroInjection(_) => {
-                // Macro injections - assign fresh type variable for now
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::FunctionCapture(_) => {
-                // Function captures - assign function type for now
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-            ExpressionKind::BinaryOp(_) => {
-                unreachable!(
-                    "Binary operations should have been caught by desugaring bug check above"
-                )
-            }
-            ExpressionKind::UnaryOp(_) => {
-                unreachable!(
-                    "Unary operations should have been caught by desugaring bug check above"
-                )
-            }
-        };
-
-        result
-    }
 
     /// Core function body type checking logic using RefCell for interior mutability
     #[allow(clippy::result_large_err)]
@@ -5332,24 +3649,11 @@ impl TypeInferenceEngine {
         scope: &str,
         function: &FunctionDefinition,
     ) -> Result<(), TypecheckError> {
-        eprintln!(
-            "🔍 FUNCTION TYPECHECK: Starting {}.{}",
-            scope, function.name.name
-        );
-        eprintln!("  📋 Current self context: {:?}", self.current_self_context);
-
         // Convert the declared return type for bidirectional inference
         let declared_return_type = self.convert_type_annotation(&function.return_type)?;
 
-        eprintln!(
-            "🎯 Function {}.{} declared return type: {:?}",
-            scope, function.name.name, declared_return_type
-        );
-        eprintln!("🎯 Current self context: {:?}", self.current_self_context);
-
         // Resolve Self type if the return type is Self
         let resolved_return_type = if matches!(&declared_return_type, Type::SelfType { .. }) {
-            eprintln!("🎯 Resolving Self type in return position");
             // Use the Type's resolve_self method
             declared_return_type
                 .resolve_self()
@@ -5357,11 +3661,6 @@ impl TypeInferenceEngine {
         } else {
             declared_return_type.clone()
         };
-
-        eprintln!(
-            "🎯 Resolved return type for expected: {:?}",
-            resolved_return_type
-        );
 
         // Create a new inference context for this function with expected return type
         let mut function_context = InferenceContext {
@@ -5385,36 +3684,10 @@ impl TypeInferenceEngine {
         // Type check the function body using RefCell for mutability
         let body_type = self.typecheck_block_readonly(&function.body, &mut function_context)?;
 
-        // declared_return_type was already converted above for bidirectional inference
-
-        // CRITICAL DEBUG: Log detailed type information for any ceil function
-        if function.name.name == "ceil" {
-            println!(
-                "🚨 CRITICAL DEBUG: {}.{} function body type checking",
-                scope, function.name.name
-            );
-            println!("  Declared return type: {:?}", declared_return_type);
-            println!("  Inferred body type: {:?}", body_type);
-            println!(
-                "  Function parameters: {:?}",
-                function
-                    .parameters
-                    .iter()
-                    .map(|p| (&p.name.name, &p.type_annotation))
-                    .collect::<Vec<_>>()
-            );
-            println!("  Symbol table: {:?}", self.symbol_table);
-        }
-
         // Verify that the body type matches the declared return type
         // WORKAROUND: Use never type compatibility check
         // TODO: Replace with proper attribute system when macro system is implemented
         if !self.types_are_compatible_with_never(&declared_return_type, &body_type) {
-            // CRITICAL DEBUG: Log the failing function
-            println!("🚨 TYPE MISMATCH ERROR in {}.{}", scope, function.name.name);
-            println!("  Expected: {:?}", declared_return_type);
-            println!("  Found: {:?}", body_type);
-
             self.symbol_table = old_symbol_table; // Restore before error
             return Err(TypecheckError::UnificationError(
                 OriginalUnificationError::TypeMismatch {
@@ -5536,10 +3809,6 @@ impl TypeInferenceEngine {
                         let mut expr_mut = expr_cell.borrow_mut();
                         // Only pass expected type to the last expression in the block
                         if is_last {
-                            eprintln!(
-                                "🎯 BLOCK: Inferring last expression with expected type: {:?}",
-                                context.expected_type
-                            );
                             self.infer_expression(&mut expr_mut, context)?
                         } else {
                             // For non-last expressions, create a context without expected type
@@ -5740,31 +4009,19 @@ impl TypeInferenceEngine {
 
             // Self types need special handling based on context
             (Type::SelfType { .. }, other) => {
-                eprintln!("🔍 types_are_compatible: SelfType vs {}", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = found_type.resolve_self() {
-                    eprintln!(
-                        "🔍 types_are_compatible: Self resolved to {}, checking compatibility",
-                        resolved_self
-                    );
                     self.types_are_compatible(&resolved_self, other)
                 } else {
-                    eprintln!("🔍 types_are_compatible: Self could not be resolved");
                     // Self is unbound (e.g., in protocol definition context)
                     false
                 }
             }
             (other, Type::SelfType { .. }) => {
-                eprintln!("🔍 types_are_compatible: {} vs SelfType", other);
                 // Resolve Self to its concrete type and check compatibility
                 if let Some(resolved_self) = expected_type.resolve_self() {
-                    eprintln!(
-                        "🔍 types_are_compatible: Self resolved to {}, checking compatibility",
-                        resolved_self
-                    );
                     self.types_are_compatible(other, &resolved_self)
                 } else {
-                    eprintln!("🔍 types_are_compatible: Self could not be resolved");
                     // Self is unbound (e.g., in protocol definition context)
                     false
                 }
@@ -5796,309 +4053,6 @@ impl TypeInferenceEngine {
         }
     }
 
-    /// Infer the type of an expression
-    #[allow(clippy::result_large_err)]
-
-    /// Infer the type of a variable (identifier lookup)
-    #[allow(clippy::result_large_err)]
-    fn infer_variable(
-        &mut self,
-        identifier: &outrun_parser::Identifier,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        let var_name = &identifier.name;
-
-        // First check local context bindings
-        if let Some(var_type) = context.lookup_variable(var_name) {
-            return Ok(InferenceResult {
-                inferred_type: var_type.clone(),
-                constraints: context.constraints.clone(),
-                substitution: context.substitution.clone(),
-            });
-        }
-
-        // Then check the symbol table
-        if let Some(var_type) = self.symbol_table.get(var_name) {
-            return Ok(InferenceResult {
-                inferred_type: var_type.clone(),
-                constraints: context.constraints.clone(),
-                substitution: context.substitution.clone(),
-            });
-        }
-
-        // Variable not found - create enhanced error with suggestions
-        self.update_error_context();
-        Err(TypecheckError::InferenceError(
-            InferenceError::undefined_variable_with_suggestions(
-                var_name.clone(),
-                Some(identifier.span),
-                &self.error_context,
-            ),
-        ))
-    }
-
-    /// Phase 3: Static Clause Elimination
-    /// Eliminate clauses that can never match based on static type and value analysis
-    fn eliminate_impossible_clauses(
-        &mut self,
-        clauses: &[crate::universal_dispatch::ClauseId],
-        arguments: &[outrun_parser::Argument],
-        context: &mut InferenceContext,
-    ) -> Result<Vec<crate::universal_dispatch::ClauseId>, TypecheckError> {
-        if clauses.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // Step 1: Infer argument types once for all clauses
-        let arg_types = self.infer_argument_types(arguments, context)?;
-
-        // Step 2: Filter clauses that could possibly match
-        let mut viable_clauses = Vec::new();
-
-        for &clause_id in clauses {
-            if let Some(clause) = self.universal_dispatch_registry.get_clause(clause_id) {
-                // Conservative elimination: only eliminate clauses we're 100% sure can't match
-                match self.clause_could_possibly_match(clause, &arg_types, context) {
-                    Ok(true) => {
-                        viable_clauses.push(clause_id);
-                    }
-                    Ok(false) => {
-                        // Clause can never match - eliminated!
-                    }
-                    Err(_) => {
-                        // If we can't determine, conservatively keep the clause
-                        viable_clauses.push(clause_id);
-                    }
-                }
-            } else {
-                // Clause not found - keep it to avoid breaking things
-                viable_clauses.push(clause_id);
-            }
-        }
-
-        // Preserve source order of viable clauses
-        Ok(viable_clauses)
-    }
-
-    /// Check if a clause could possibly match the given argument types
-    fn clause_could_possibly_match(
-        &self,
-        clause: &crate::universal_dispatch::ClauseInfo,
-        arg_types: &[Type],
-        context: &InferenceContext,
-    ) -> Result<bool, TypecheckError> {
-        // Analyze each guard in the clause
-        for guard in &clause.guards {
-            match guard {
-                crate::universal_dispatch::Guard::TypeCompatible {
-                    target_type,
-                    implementing_type,
-                    ..
-                } => {
-                    // Static type compatibility check
-                    if !self.types_could_be_compatible(target_type, implementing_type)? {
-                        return Ok(false); // Clause can never match due to type incompatibility
-                    }
-                }
-                crate::universal_dispatch::Guard::ValueGuard { expression, .. } => {
-                    // Try to evaluate guard expression statically
-                    match self.evaluate_guard_statically(expression, arg_types, context) {
-                        Ok(Some(false)) => {
-                            return Ok(false); // Guard always fails
-                        }
-                        Ok(Some(true)) => {
-                            // Guard always passes - continue checking other guards
-                        }
-                        Ok(None) | Err(_) => {
-                            // Can't determine statically - assume it could match
-                        }
-                    }
-                }
-                crate::universal_dispatch::Guard::AlwaysTrue => {
-                    // Always matches - continue
-                }
-            }
-        }
-
-        Ok(true) // Clause could potentially match
-    }
-
-    /// Check if two types could potentially be compatible
-    fn types_could_be_compatible(
-        &self,
-        type1: &Type,
-        type2: &Type,
-    ) -> Result<bool, TypecheckError> {
-        // Use existing type compatibility logic but in a more permissive way
-        // This is a conservative check - we only eliminate obvious impossibilities
-
-        match (type1, type2) {
-            // Same concrete types are always compatible
-            (Type::Concrete { name: id1, .. }, Type::Concrete { name: id2, .. }) => {
-                Ok(self.type_ids_are_equivalent(id1, id2))
-            }
-            // Variables could unify with anything
-            (Type::Variable { .. }, _) | (_, Type::Variable { .. }) => Ok(true),
-            // Self types could resolve to anything
-            (Type::SelfType { .. }, _) | (_, Type::SelfType { .. }) => Ok(true),
-            // Protocol types could be implemented by concrete types
-            (Type::Protocol { .. }, Type::Concrete { .. }) => Ok(true),
-            (Type::Concrete { .. }, Type::Protocol { .. }) => Ok(true),
-            // Same protocol types could be compatible
-            (Type::Protocol { name: id1, .. }, Type::Protocol { name: id2, .. }) => Ok(id1 == id2),
-            // Function types - basic compatibility check
-            (Type::Function { .. }, Type::Function { .. }) => Ok(true),
-            // Different concrete types are incompatible
-            _ => Ok(false),
-        }
-    }
-
-    /// Try to evaluate a guard expression statically
-    fn evaluate_guard_statically(
-        &self,
-        expression: &outrun_parser::Expression,
-        _arg_types: &[Type],
-        _context: &InferenceContext,
-    ) -> Result<Option<bool>, TypecheckError> {
-        // Static evaluation of common guard patterns
-        match &expression.kind {
-            // Literal boolean values
-            outrun_parser::ExpressionKind::Boolean(bool_lit) => Ok(Some(bool_lit.value)),
-            // Function calls (desugared operators)
-            outrun_parser::ExpressionKind::FunctionCall(func_call) => {
-                match &func_call.path {
-                    outrun_parser::FunctionPath::Qualified { module, name } => {
-                        // Handle common comparison operators with literal values
-                        if module.name == "Equality" && name.name == "not_equal?" {
-                            // Check for patterns like "x != 0" where one argument is literal
-                            self.evaluate_static_not_equal(&func_call.arguments)
-                        } else if module.name == "Equality" && name.name == "equal?" {
-                            // Check for patterns like "x == 0" where one argument is literal
-                            self.evaluate_static_equal(&func_call.arguments)
-                        } else {
-                            // Can't evaluate other function calls statically
-                            Ok(None)
-                        }
-                    }
-                    _ => Ok(None),
-                }
-            }
-            _ => Ok(None), // Can't evaluate other expression types statically
-        }
-    }
-
-    /// Evaluate static "not equal" comparisons
-    fn evaluate_static_not_equal(
-        &self,
-        arguments: &[outrun_parser::Argument],
-    ) -> Result<Option<bool>, TypecheckError> {
-        if arguments.len() != 2 {
-            return Ok(None);
-        }
-
-        let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
-
-        match (left_lit, right_lit) {
-            (Some(left), Some(right)) => {
-                // Both sides are literals - can evaluate statically
-                Ok(Some(left != right))
-            }
-            _ => Ok(None), // Can't evaluate if not both literals
-        }
-    }
-
-    /// Evaluate static "equal" comparisons
-    fn evaluate_static_equal(
-        &self,
-        arguments: &[outrun_parser::Argument],
-    ) -> Result<Option<bool>, TypecheckError> {
-        if arguments.len() != 2 {
-            return Ok(None);
-        }
-
-        let (left_lit, right_lit) = self.extract_literal_arguments(arguments)?;
-
-        match (left_lit, right_lit) {
-            (Some(left), Some(right)) => {
-                // Both sides are literals - can evaluate statically
-                Ok(Some(left == right))
-            }
-            _ => Ok(None), // Can't evaluate if not both literals
-        }
-    }
-
-    /// Extract literal values from function arguments for static evaluation
-    fn extract_literal_arguments(
-        &self,
-        arguments: &[outrun_parser::Argument],
-    ) -> Result<(Option<LiteralValue>, Option<LiteralValue>), TypecheckError> {
-        let mut literals = Vec::new();
-
-        for arg in arguments {
-            let expr = match arg {
-                outrun_parser::Argument::Named { expression, .. } => expression,
-                outrun_parser::Argument::Spread { expression, .. } => expression,
-            };
-
-            literals.push(self.extract_literal_value(expr));
-        }
-
-        Ok((
-            literals.first().cloned().flatten(),
-            literals.get(1).cloned().flatten(),
-        ))
-    }
-
-    /// Extract a literal value from an expression for static evaluation
-    fn extract_literal_value(&self, expr: &outrun_parser::Expression) -> Option<LiteralValue> {
-        match &expr.kind {
-            outrun_parser::ExpressionKind::Integer(int_lit) => {
-                Some(LiteralValue::Integer(int_lit.value))
-            }
-            outrun_parser::ExpressionKind::Float(float_lit) => {
-                Some(LiteralValue::Float(float_lit.value))
-            }
-            outrun_parser::ExpressionKind::String(str_lit) => {
-                // For now, only handle simple string literals (not interpolated)
-                if str_lit.parts.len() == 1 {
-                    if let outrun_parser::StringPart::Text { content, .. } = &str_lit.parts[0] {
-                        Some(LiteralValue::String(content.clone()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            outrun_parser::ExpressionKind::Boolean(bool_lit) => {
-                Some(LiteralValue::Boolean(bool_lit.value))
-            }
-            _ => None,
-        }
-    }
-
-    /// Infer types of function call arguments
-    fn infer_argument_types(
-        &mut self,
-        arguments: &[outrun_parser::Argument],
-        context: &mut InferenceContext,
-    ) -> Result<Vec<Type>, TypecheckError> {
-        let mut arg_types = Vec::new();
-
-        for argument in arguments {
-            let expr = match argument {
-                outrun_parser::Argument::Named { expression, .. } => expression,
-                outrun_parser::Argument::Spread { expression, .. } => expression,
-            };
-
-            // Create a mutable clone for type inference
-            let mut expr_clone = expr.clone();
-            let result = self.infer_expression(&mut expr_clone, context)?;
-            arg_types.push(result.inferred_type);
-        }
-
-        Ok(arg_types)
-    }
 
     /// Resolve simple function calls to clause lists
     fn resolve_simple_function_clauses(
@@ -6107,15 +4061,10 @@ impl TypeInferenceEngine {
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        println!(
-            "🔥🔥🔥 RESOLVE_SIMPLE_FUNCTION_CLAUSES: {} 🔥🔥🔥",
-            function_name
-        );
         // Use existing dispatcher logic but convert to universal result
         let function_context = self.create_function_context_from_inference_context(context);
         let dispatcher =
-            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None)
-                .with_context(function_context);
+            FunctionDispatcher::new(&self.type_registry, &self.function_registry, None, None)                .with_context(function_context);
 
         match dispatcher.resolve_local_call(function_name, Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
@@ -6186,46 +4135,13 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        let qualified_start = std::time::Instant::now();
-        // DEBUG: Commented out for performance
-        // println!(
-        //     "🔥🔥🔥 RESOLVE_QUALIFIED_FUNCTION_CLAUSES: {}.{} ({} arg types) 🔥🔥🔥",
-        //     module_name,
-        //     function_name,
-        //     precomputed_arg_types.len()
-        // );
-
-        // Special debugging for Option.some? calls
-        if module_name == "Option" && function_name == "some?" {
-            // println!("              🚨 CRITICAL: Option.some? call detected!");
-            println!(
-                "                Precomputed arg types: {:?}",
-                precomputed_arg_types
-            );
-            for (i, arg_type) in precomputed_arg_types.iter().enumerate() {
-                println!("                  Arg {}: {:?}", i, arg_type);
-            }
-        }
-
-        // CRITICAL DEBUG: Log every Option.unwrap call
-        if module_name == "Option" && function_name == "unwrap" {
-            // println!("              🚨 CRITICAL: Option.unwrap call detected!");
-            println!(
-                "                Precomputed arg types: {:?}",
-                precomputed_arg_types
-            );
-        }
 
         let qualified_name = format!("{}.{}", module_name, function_name);
         let protocol_id = crate::types::ModuleName::new(module_name);
 
         // Check if this is a protocol call
-        let target_type_start = std::time::Instant::now();
+
         let target_type = if self.type_registry.has_protocol(&protocol_id) {
-            // DEBUG: Commented out for performance
-            // println!(
-            //     "                🎯 Protocol call - resolving target type with precomputed args"
-            // );
             let resolved_target = self.resolve_protocol_call_target_type(
                 &qualified_name,
                 function_call,
@@ -6244,22 +4160,14 @@ impl TypeInferenceEngine {
                 }
             })
         } else {
-            // println!("                📦 Non-protocol call");
             None
         };
-        let target_type_time = target_type_start.elapsed();
-        if target_type_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Target type resolution with precomputed args: {:.2?}",
-                target_type_time
-            );
-        }
 
-        let dispatcher_start = std::time::Instant::now();
+
         let dispatcher =
-            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None);
+            FunctionDispatcher::new(&self.type_registry, &self.function_registry, None, None);
 
-        let resolve_start = std::time::Instant::now();
+
         let result = match dispatcher.resolve_qualified_call(
             &qualified_name,
             target_type.as_ref(),
@@ -6341,216 +4249,7 @@ impl TypeInferenceEngine {
             Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
         };
 
-        let resolve_time = resolve_start.elapsed();
-        if resolve_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Dispatcher resolve (precomputed): {:.2?}",
-                resolve_time
-            );
-        }
 
-        let dispatcher_time = dispatcher_start.elapsed();
-        if dispatcher_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Dispatcher total (precomputed): {:.2?}",
-                dispatcher_time
-            );
-        }
-
-        let qualified_time = qualified_start.elapsed();
-        if qualified_time.as_millis() > 1 {
-            println!("              🏁 resolve_qualified_function_clauses_with_precomputed_args total: {:.2?}", qualified_time);
-        }
-
-        result
-    }
-
-    /// Resolve qualified function calls to clause lists
-    fn resolve_qualified_function_clauses(
-        &mut self,
-        module_name: &str,
-        function_name: &str,
-        function_call: &outrun_parser::FunctionCall,
-        context: &mut InferenceContext,
-    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        let qualified_start = std::time::Instant::now();
-        println!(
-            "              🔧 resolve_qualified_function_clauses: {}.{}",
-            module_name, function_name
-        );
-
-        // CRITICAL DEBUG: Log every Option.unwrap call
-        if module_name == "Option" && function_name == "unwrap" {
-            // println!("              🚨 CRITICAL: Option.unwrap call detected (NON-PRECOMPUTED)!");
-            println!(
-                "                Function call arguments: {:?}",
-                function_call.arguments.len()
-            );
-        }
-
-        let qualified_name = format!("{}.{}", module_name, function_name);
-        let protocol_id = crate::types::ModuleName::new(module_name);
-
-        // Check if this is a protocol call
-        let target_type_start = std::time::Instant::now();
-        let target_type = if self.type_registry.has_protocol(&protocol_id) {
-            // println!("                🎯 Protocol call - resolving target type");
-            let resolved_target = self.resolve_protocol_call_target_type(
-                &qualified_name,
-                function_call,
-                context,
-                None,
-            )?;
-            // If we resolved a SelfType to a concrete type through constraint analysis,
-            // we need to substitute it before passing to the dispatcher
-            resolved_target.map(|t| {
-                if t.is_self_type() {
-                    // This is still a SelfType - the constraint system couldn't resolve it
-                    t
-                } else {
-                    // This is the concrete type that Self resolved to
-                    t
-                }
-            })
-        } else {
-            // println!("                📦 Non-protocol call");
-            None
-        };
-        let target_type_time = target_type_start.elapsed();
-        if target_type_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Target type resolution: {:.2?}",
-                target_type_time
-            );
-        }
-
-        let dispatcher_start = std::time::Instant::now();
-        let dispatcher =
-            FunctionDispatcher::new(&*self.type_registry, &self.function_registry, None, None);
-
-        let resolve_start = std::time::Instant::now();
-        let result = match dispatcher.resolve_qualified_call(
-            &qualified_name,
-            target_type.as_ref(),
-            Some(function_call.span),
-        ) {
-            Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
-                let clause_id = crate::universal_dispatch::ClauseId::new();
-
-                // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
-                let return_type = if self.type_registry.has_protocol(&protocol_id) {
-                    // For non-precomputed version, we need to infer argument types first
-                    let arg_types: Vec<Option<Type>> = function_call
-                        .arguments
-                        .iter()
-                        .map(|arg| match arg {
-                            outrun_parser::Argument::Named { expression, .. } => {
-                                let mut expr_clone = expression.clone();
-                                match self.infer_expression(&mut expr_clone, context) {
-                                    Ok(result) => Some(result.inferred_type),
-                                    Err(_) => None,
-                                }
-                            }
-                            _ => None,
-                        })
-                        .collect();
-
-                    self.substitute_protocol_generics_in_return_type(
-                        &resolved_func.function_info.return_type,
-                        &qualified_name,
-                        target_type.as_ref(),
-                        &arg_types,
-                        function_call,
-                        context,
-                    )?
-                } else {
-                    resolved_func.function_info.return_type.clone()
-                };
-
-                self.register_function_clause(clause_id, &resolved_func);
-
-                Ok(crate::typed_ast::UniversalCallResolution::single(
-                    clause_id,
-                    return_type,
-                ))
-            }
-            Ok(crate::dispatch::DispatchResult::Ambiguous(candidates)) => {
-                let mut clause_ids = Vec::new();
-                let return_type = if !candidates.is_empty() {
-                    candidates[0].function_info.return_type.clone()
-                } else {
-                    Type::variable(self.fresh_type_var(), Level(0))
-                };
-
-                for candidate in candidates {
-                    let clause_id = crate::universal_dispatch::ClauseId::new();
-                    self.register_function_clause(clause_id, &candidate);
-                    clause_ids.push(clause_id);
-                }
-
-                Ok(crate::typed_ast::UniversalCallResolution::multi(
-                    clause_ids,
-                    return_type,
-                ))
-            }
-            Ok(crate::dispatch::DispatchResult::NotFound) => {
-                // Check for lazy intrinsic registration
-                if module_name == "Outrun.Intrinsic" {
-                    match self.try_lazy_intrinsic_registration(
-                        function_name,
-                        &function_call.arguments,
-                        function_call.span,
-                        context,
-                    ) {
-                        Ok(result) => {
-                            // Create single clause for lazily registered intrinsic
-                            let clause_id = crate::universal_dispatch::ClauseId::new();
-                            // Register intrinsic clause (simplified for now)
-                            Ok(crate::typed_ast::UniversalCallResolution::single(
-                                clause_id,
-                                result.inferred_type,
-                            ))
-                        }
-                        Err(error) => Err(error),
-                    }
-                } else {
-                    Err(TypecheckError::DispatchError(
-                        crate::error::DispatchError::NoImplementation {
-                            protocol_name: module_name.to_string(),
-                            type_name: function_name.to_string(),
-                            file_span: Some(self.create_file_span(Some(function_call.span))),
-                            similar_implementations: Vec::new(),
-                            suggestions: Vec::new(),
-                        },
-                    ))
-                }
-            }
-            Err(dispatch_error) => Err(TypecheckError::DispatchError(dispatch_error)),
-        };
-
-        let resolve_time = resolve_start.elapsed();
-        if resolve_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Dispatcher resolve: {:.2?}",
-                resolve_time
-            );
-        }
-
-        let dispatcher_time = dispatcher_start.elapsed();
-        if dispatcher_time.as_millis() > 1 {
-            println!(
-                "                ⏱️  Dispatcher total: {:.2?}",
-                dispatcher_time
-            );
-        }
-
-        let qualified_time = qualified_start.elapsed();
-        if qualified_time.as_millis() > 1 {
-            println!(
-                "              🏁 resolve_qualified_function_clauses total: {:.2?}",
-                qualified_time
-            );
-        }
 
         result
     }
@@ -6660,77 +4359,6 @@ impl TypeInferenceEngine {
         })
     }
 
-    /// Infer the type of a function call using universal dispatch
-    /// Uses iterative system - arguments must be processed by task system first
-    #[allow(clippy::result_large_err)]
-    fn infer_function_call(
-        &mut self,
-        function_call: &mut outrun_parser::FunctionCall,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // DEBUG: Track function call operations
-        let func_call_start = std::time::Instant::now();
-        // println!("          🔍 infer_function_call_skip_args (NO RECURSION)");
-
-        // Phase 2: Universal Interpreter Simplification
-        // ALL function calls now go through the universal dispatch system
-
-        let resolve_start = std::time::Instant::now();
-        // Extract precomputed argument types from task results to avoid recursion
-        // This is the key fix - use already-computed dependency results instead of recomputing
-        let universal_resolution = self.resolve_universal_function_call(function_call, context)?;
-        let resolve_time = resolve_start.elapsed();
-        if resolve_time.as_millis() > 1 {
-            println!(
-                "            ⏱️  Universal resolution (no recursion): {:.2?}",
-                resolve_time
-            );
-        }
-
-        // Set the resolved function key for interpreter dispatch (LEGACY)
-        // For now, use the first clause ID as the key (will be enhanced in Phase 3)
-        if let Some(first_clause) = universal_resolution.possible_clauses.first() {
-            function_call.resolved_function_key = Some(format!("clause_{}", first_clause.0));
-        }
-
-        // Set the universal clause IDs for universal dispatch system
-        function_call.universal_clause_ids = Some(
-            universal_resolution
-                .possible_clauses
-                .iter()
-                .map(|clause_id| clause_id.0)
-                .collect(),
-        );
-
-        // SKIP ARGUMENT PROCESSING - arguments already processed by iterative system
-        println!(
-            "            ⚡ SKIPPING recursive argument processing - already done by task system!"
-        );
-
-        // For now, return the resolved return type
-        // In Phase 3, this will be enhanced with full constraint solving
-        let result_start = std::time::Instant::now();
-        let result = Ok(InferenceResult {
-            inferred_type: universal_resolution.return_type,
-            constraints: context.constraints.clone(),
-            substitution: context.substitution.clone(),
-        });
-        let result_time = result_start.elapsed();
-        if result_time.as_millis() > 1 {
-            println!("            ⏱️  Result construction: {:.2?}", result_time);
-        }
-
-        let func_total_time = func_call_start.elapsed();
-        if func_total_time.as_millis() > 1 {
-            println!(
-                "          🏁 infer_function_call_skip_args total: {:.2?}",
-                func_total_time
-            );
-        }
-
-        result
-    }
-
     /// Universal function call resolution - converts any function call into clause lists
     /// Uses iterative system to avoid recursive argument processing  
     fn resolve_universal_function_call_with_precomputed_args(
@@ -6749,8 +4377,6 @@ impl TypeInferenceEngine {
                 // Qualified function call - resolve to module/protocol clauses
                 let _qualified_name = format!("{}.{}", module.name, name.name);
                 let module_name = &module.name;
-                let protocol_id = crate::types::ModuleName::new(module_name);
-
                 // Check if this is a protocol call - pass precomputed args to avoid recursion!
 
                 self.resolve_qualified_function_clauses_with_precomputed_args(
@@ -6759,51 +4385,6 @@ impl TypeInferenceEngine {
                     function_call,
                     context,
                     precomputed_arg_types,
-                )
-            }
-            outrun_parser::FunctionPath::Expression { .. } => {
-                // Dynamic function call - not yet supported
-                return Err(TypecheckError::InferenceError(
-                    crate::error::InferenceError::AmbiguousType {
-                        span: crate::error::to_source_span(Some(function_call.span)),
-                        suggestions: vec!["Dynamic function calls not yet supported".to_string()],
-                    },
-                ));
-            }
-        }?;
-
-        Ok(initial_resolution)
-    }
-
-    fn resolve_universal_function_call(
-        &mut self,
-        function_call: &outrun_parser::FunctionCall,
-        context: &mut InferenceContext,
-    ) -> Result<crate::typed_ast::UniversalCallResolution, TypecheckError> {
-        // println!("            🚀 resolve_universal_function_call (no recursion)");
-
-        // Get initial clause resolution
-        let initial_resolution = match &function_call.path {
-            outrun_parser::FunctionPath::Simple { name } => {
-                // Simple function call - resolve to local context clauses
-                self.resolve_simple_function_clauses(&name.name, function_call, context)
-            }
-            outrun_parser::FunctionPath::Qualified { module, name } => {
-                // Qualified function call - resolve to module/protocol clauses
-                let _qualified_name = format!("{}.{}", module.name, name.name);
-                let module_name = &module.name;
-                let protocol_id = crate::types::ModuleName::new(module_name);
-
-                // Check if this is a protocol call - log it but proceed normally
-                if self.type_registry.has_protocol(&protocol_id) {
-                    // println!("              ⚡ Protocol call detected - will skip recursive resolution inside resolve_qualified_function_clauses!");
-                }
-
-                self.resolve_qualified_function_clauses(
-                    module_name,
-                    &name.name,
-                    function_call,
-                    context,
                 )
             }
             outrun_parser::FunctionPath::Expression { .. } => {
@@ -6859,10 +4440,8 @@ impl TypeInferenceEngine {
 
         // Get argument types - use precomputed if available, otherwise infer recursively
         let inferred_argument_types = if let Some(precomputed) = precomputed_arg_types {
-            // println!("              ⚡ Using precomputed argument types - NO RECURSION!");
             precomputed.to_vec()
         } else {
-            // println!("              🔄 Inferring argument types recursively");
             let mut types = Vec::new();
             for argument in &function_call.arguments {
                 match argument {
@@ -6909,7 +4488,7 @@ impl TypeInferenceEngine {
         qualified_name: &str,
         _target_type: Option<&Type>,
         precomputed_arg_types: &[Option<Type>],
-        function_call: &outrun_parser::FunctionCall,
+        _function_call: &outrun_parser::FunctionCall,
         _context: &mut InferenceContext,
     ) -> Result<Type, TypecheckError> {
         // Get the protocol definition to understand generic parameters
@@ -6938,26 +4517,19 @@ impl TypeInferenceEngine {
         let mut substitution_map = std::collections::HashMap::new();
 
         // Look for Self-typed parameters to extract generic type arguments
-        for (i, (param_name, param_type)) in function_info.parameters.iter().enumerate() {
+        for (i, (_param_name, param_type)) in function_info.parameters.iter().enumerate() {
             // Check if this parameter has type Self (the protocol type)
             if matches!(param_type, Type::SelfType { .. }) {
                 // Get the actual argument type
-                if let Some(Some(arg_type)) = precomputed_arg_types.get(i) {
-                    // Extract generic arguments from the concrete type
-                    // For example, from Option<Integer>, extract that T = Integer
-                    match arg_type {
-                        Type::Protocol { name, args, .. } | Type::Concrete { name, args, .. } => {
-                            // Check if this is the protocol we're working with
-                            if name.as_str() == module_name {
-                                // Map generic parameters to their concrete types
-                                for (j, generic_param) in function_info.generic_parameters.iter().enumerate() {
-                                    if let Some(concrete_type) = args.get(j) {
-                                        substitution_map.insert(generic_param.clone(), concrete_type.clone());
-                                    }
-                                }
+                if let Some(Some(Type::Protocol { name, args, .. } | Type::Concrete { name, args, .. })) = precomputed_arg_types.get(i) {
+                    // Check if this is the protocol we're working with
+                    if name.as_str() == module_name {
+                        // Map generic parameters to their concrete types
+                        for (j, generic_param) in function_info.generic_parameters.iter().enumerate() {
+                            if let Some(concrete_type) = args.get(j) {
+                                substitution_map.insert(generic_param.clone(), concrete_type.clone());
                             }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -6981,6 +4553,7 @@ impl TypeInferenceEngine {
     }
 
     /// Helper method to substitute a specific generic parameter in a type
+    #[allow(clippy::only_used_in_recursion)]
     fn substitute_generic_parameter_in_type(
         &self,
         target_type: &Type,
@@ -7005,7 +4578,7 @@ impl TypeInferenceEngine {
                 Ok(Type::Protocol {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: span.clone(),
+                    span: *span,
                 })
             }
             Type::Concrete { name, args, span } => {
@@ -7020,7 +4593,7 @@ impl TypeInferenceEngine {
                 Ok(Type::Concrete {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: span.clone(),
+                    span: *span,
                 })
             }
             Type::Variable { .. } => {
@@ -7045,21 +4618,11 @@ impl TypeInferenceEngine {
     fn substitute_local_function_generics(
         &mut self,
         return_type: &Type,
-        function_name: &str,
+        _function_name: &str,
         function_parameters: &[(String, Type)],
         function_call: &outrun_parser::FunctionCall,
         context: &mut InferenceContext,
     ) -> Result<Type, TypecheckError> {
-        println!(
-            "🚨🚨🚨 LOCAL FUNCTION GENERIC SUBSTITUTION for: {} 🚨🚨🚨",
-            function_name
-        );
-        println!("                Original return type: {:?}", return_type);
-        println!(
-            "                Function parameters: {:?}",
-            function_parameters
-        );
-
         // Get the argument types by inferring them from the function call
         let mut argument_types = Vec::new();
         for argument in &function_call.arguments {
@@ -7075,28 +4638,16 @@ impl TypeInferenceEngine {
             argument_types.push(arg_result.inferred_type);
         }
 
-        println!(
-            "                Inferred argument types: {:?}",
-            argument_types
-        );
-
         // Build a map of generic parameter substitutions
         let mut substitutions = std::collections::HashMap::new();
 
         // Match parameter types with argument types to find generic substitutions
-        for (i, (param_name, param_type)) in function_parameters.iter().enumerate() {
+        for (i, (_param_name, param_type)) in function_parameters.iter().enumerate() {
             if let Some(arg_type) = argument_types.get(i) {
-                println!(
-                    "                  Matching param {}: {} (type: {:?}) with arg type: {:?}",
-                    i, param_name, param_type, arg_type
-                );
-
                 // Find generic parameter substitutions by matching param_type with arg_type
                 self.extract_generic_substitutions(param_type, arg_type, &mut substitutions)?;
             }
         }
-
-        println!("                Found substitutions: {:?}", substitutions);
 
         // Apply all substitutions to the return type
         let mut result_type = return_type.clone();
@@ -7108,16 +4659,13 @@ impl TypeInferenceEngine {
             )?;
         }
 
-        println!(
-            "                ✅ Final substituted return type: {:?}",
-            result_type
-        );
         Ok(result_type)
     }
 
     /// Extract generic parameter substitutions by matching a parameter type with an argument type
     /// For example, matching Option<T> with Option<Integer> would extract T -> Integer
     #[allow(clippy::result_large_err)]
+    #[allow(clippy::only_used_in_recursion)]
     fn extract_generic_substitutions(
         &self,
         param_type: &Type,
@@ -8437,288 +5985,6 @@ impl TypeInferenceEngine {
         }
     }
 
-    /// Infer the type of a list literal
-    #[allow(clippy::result_large_err)]
-    fn infer_list_literal(
-        &mut self,
-        list_literal: &outrun_parser::ListLiteral,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::ListElement;
-
-        // Handle empty list - require type hint or assign fresh type variable
-        if list_literal.elements.is_empty() {
-            if let Some(expected_type) = &context.expected_type {
-                // Use expected type if available
-                Ok(InferenceResult {
-                    inferred_type: expected_type.clone(),
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            } else {
-                // Empty list without type hint gets fresh type variable
-                let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                let list_type = Type::Concrete {
-                    name: crate::types::ModuleName::new("Outrun.Core.List"),
-                    args: vec![element_type],
-                    span: None,
-                };
-                Ok(InferenceResult {
-                    inferred_type: list_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-        } else {
-            // Non-empty list - infer element types
-            let mut element_types = Vec::new();
-            let mut all_constraints = context.constraints.clone();
-
-            for element in &list_literal.elements {
-                match element {
-                    ListElement::Expression(expr) => {
-                        let element_result =
-                            self.infer_expression(&mut (**expr).clone(), context)?;
-                        element_types.push(element_result.inferred_type);
-                        all_constraints.extend(element_result.constraints);
-                    }
-                    ListElement::Spread(_spread_id) => {
-                        // Spread elements require the spread variable to be a List<T>
-                        // For now, we'll create a type variable for the spread
-                        // TODO: Implement proper spread inference
-                        let spread_element_type = Type::variable(self.fresh_type_var(), Level(0));
-                        element_types.push(spread_element_type);
-                    }
-                }
-            }
-
-            // Check if all elements have the same type (homogeneous list)
-            if element_types.is_empty() {
-                // This shouldn't happen given our check above, but handle it defensively
-                let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                let list_type = Type::Concrete {
-                    name: crate::types::ModuleName::new("Outrun.Core.List"),
-                    args: vec![element_type],
-                    span: None,
-                };
-                return Ok(InferenceResult {
-                    inferred_type: list_type,
-                    constraints: all_constraints,
-                    substitution: context.substitution.clone(),
-                });
-            }
-
-            // Take the first element as the expected type
-            let first_element_type = element_types[0].clone();
-
-            // Create constraints that all other elements must match the first
-            for element_type in element_types.iter().skip(1) {
-                let constraint = Constraint::Equality {
-                    left: Box::new(first_element_type.clone()),
-                    right: Box::new(element_type.clone()),
-                    span: None,
-                };
-                all_constraints.push(constraint);
-            }
-
-            // Create the List<ElementType> type
-            let list_type = Type::Concrete {
-                name: crate::types::ModuleName::new("Outrun.Core.List"),
-                args: vec![first_element_type],
-                span: None,
-            };
-
-            Ok(InferenceResult {
-                inferred_type: list_type,
-                constraints: all_constraints,
-                substitution: context.substitution.clone(),
-            })
-        }
-    }
-
-    /// Infer the type of a tuple literal
-    #[allow(clippy::result_large_err)]
-    fn infer_tuple_literal(
-        &mut self,
-        tuple_literal: &outrun_parser::TupleLiteral,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Handle empty tuple
-        if tuple_literal.elements.is_empty() {
-            let tuple_type = Type::Concrete {
-                name: crate::types::ModuleName::new("Outrun.Core.Tuple"),
-                args: vec![], // Empty tuple has no type arguments
-                span: None,
-            };
-            return Ok(InferenceResult {
-                inferred_type: tuple_type,
-                constraints: context.constraints.clone(),
-                substitution: context.substitution.clone(),
-            });
-        }
-
-        // Infer types of all tuple elements
-        let mut element_types = Vec::new();
-        let mut all_constraints = context.constraints.clone();
-
-        for element_expr in &tuple_literal.elements {
-            let element_result = self.infer_expression(&mut element_expr.clone(), context)?;
-            element_types.push(element_result.inferred_type);
-            all_constraints.extend(element_result.constraints);
-        }
-
-        // Create Tuple<T1, T2, ..., Tn> type
-        let tuple_type = Type::Concrete {
-            name: crate::types::ModuleName::new("Outrun.Core.Tuple"),
-            args: element_types,
-            span: None,
-        };
-
-        Ok(InferenceResult {
-            inferred_type: tuple_type,
-            constraints: all_constraints,
-            substitution: context.substitution.clone(),
-        })
-    }
-
-    /// Infer the type of a map literal
-    #[allow(clippy::result_large_err)]
-    fn infer_map_literal(
-        &mut self,
-        map_literal: &outrun_parser::MapLiteral,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::MapEntry;
-
-        // Handle empty map
-        if map_literal.entries.is_empty() {
-            if let Some(expected_type) = &context.expected_type {
-                eprintln!(
-                    "🗺️ Empty map literal with expected type: {:?}",
-                    expected_type
-                );
-                // Use expected type if available
-                Ok(InferenceResult {
-                    inferred_type: expected_type.clone(),
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            } else {
-                eprintln!(
-                    "🗺️ Empty map literal without expected type - creating fresh type variables"
-                );
-                // Empty map without type hint gets fresh type variables
-                let key_type = Type::variable(self.fresh_type_var(), Level(0));
-                let value_type = Type::variable(self.fresh_type_var(), Level(0));
-                let map_type = Type::Concrete {
-                    name: crate::types::ModuleName::new("Outrun.Core.Map"),
-                    args: vec![key_type, value_type],
-                    span: None,
-                };
-                eprintln!("🗺️ Created map type with fresh variables: {:?}", map_type);
-                Ok(InferenceResult {
-                    inferred_type: map_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-        } else {
-            // Non-empty map - infer key and value types
-            let mut key_types = Vec::new();
-            let mut value_types = Vec::new();
-            let mut all_constraints = context.constraints.clone();
-
-            for entry in &map_literal.entries {
-                match entry {
-                    MapEntry::Assignment { key, value } => {
-                        // Infer key type
-                        let key_result = self.infer_expression(&mut (**key).clone(), context)?;
-                        key_types.push(key_result.inferred_type);
-                        all_constraints.extend(key_result.constraints);
-
-                        // Infer value type
-                        let value_result =
-                            self.infer_expression(&mut (**value).clone(), context)?;
-                        value_types.push(value_result.inferred_type);
-                        all_constraints.extend(value_result.constraints);
-                    }
-                    MapEntry::Shorthand { name: _, value } => {
-                        // Shorthand syntax: {name} where name is both key and value
-                        // Key is atom (symbol), value is expression
-                        key_types.push(Type::concrete("Outrun.Core.Atom"));
-
-                        let value_result =
-                            self.infer_expression(&mut (**value).clone(), context)?;
-                        value_types.push(value_result.inferred_type);
-                        all_constraints.extend(value_result.constraints);
-                    }
-                    MapEntry::Spread(_spread_id) => {
-                        // Spread entries require the spread variable to be a Map<K, V>
-                        // TODO: Implement proper spread inference
-                        let spread_key_type = Type::variable(self.fresh_type_var(), Level(0));
-                        let spread_value_type = Type::variable(self.fresh_type_var(), Level(0));
-                        key_types.push(spread_key_type);
-                        value_types.push(spread_value_type);
-                    }
-                }
-            }
-
-            // Check if all keys and values have consistent types
-            if key_types.is_empty() || value_types.is_empty() {
-                // This shouldn't happen, but handle defensively
-                let key_type = Type::variable(self.fresh_type_var(), Level(0));
-                let value_type = Type::variable(self.fresh_type_var(), Level(0));
-                let map_type = Type::Concrete {
-                    name: crate::types::ModuleName::new("Outrun.Core.Map"),
-                    args: vec![key_type, value_type],
-                    span: None,
-                };
-                return Ok(InferenceResult {
-                    inferred_type: map_type,
-                    constraints: all_constraints,
-                    substitution: context.substitution.clone(),
-                });
-            }
-
-            // Take the first key and value types as expected
-            let first_key_type = key_types[0].clone();
-            let first_value_type = value_types[0].clone();
-
-            // Create constraints that all other keys must match the first key type
-            for key_type in key_types.iter().skip(1) {
-                let constraint = Constraint::Equality {
-                    left: Box::new(first_key_type.clone()),
-                    right: Box::new(key_type.clone()),
-                    span: None,
-                };
-                all_constraints.push(constraint);
-            }
-
-            // Create constraints that all other values must match the first value type
-            for value_type in value_types.iter().skip(1) {
-                let constraint = Constraint::Equality {
-                    left: Box::new(first_value_type.clone()),
-                    right: Box::new(value_type.clone()),
-                    span: None,
-                };
-                all_constraints.push(constraint);
-            }
-
-            // Create Map<KeyType, ValueType> type
-            let map_type = Type::Concrete {
-                name: crate::types::ModuleName::new("Outrun.Core.Map"),
-                args: vec![first_key_type, first_value_type],
-                span: None,
-            };
-
-            Ok(InferenceResult {
-                inferred_type: map_type,
-                constraints: all_constraints,
-                substitution: context.substitution.clone(),
-            })
-        }
-    }
-
     /// Infer the type of an anonymous function
     #[allow(clippy::result_large_err)]
     fn infer_qualified_identifier(
@@ -8753,261 +6019,6 @@ impl TypeInferenceEngine {
                 substitution: context.substitution.clone(),
             })
         }
-    }
-
-    fn infer_anonymous_function(
-        &mut self,
-        anonymous_fn: &outrun_parser::AnonymousFunction,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Anonymous functions must have at least one clause
-        if anonymous_fn.clauses.is_empty() {
-            return Err(TypecheckError::InferenceError(
-                crate::error::InferenceError::AmbiguousType {
-                    span: crate::error::to_source_span(Some(anonymous_fn.span)),
-                    suggestions: vec![
-                        "Anonymous function must have at least one clause".to_string()
-                    ],
-                },
-            ));
-        }
-
-        // Infer function type from the first clause
-        let first_clause = &anonymous_fn.clauses[0];
-        let (param_types, return_type, first_constraints) =
-            self.infer_function_clause_types(first_clause, context)?;
-
-        // Create the function type from the first clause
-        let function_type = Type::Function {
-            params: param_types.clone(),
-            return_type: Box::new(return_type.clone()),
-            span: Some(anonymous_fn.span),
-        };
-
-        // Validate that all remaining clauses have consistent signatures
-        let mut all_constraints = first_constraints;
-        for (clause_index, clause) in anonymous_fn.clauses.iter().enumerate().skip(1) {
-            let validation_result = self.validate_function_clause_consistency(
-                clause,
-                &param_types,
-                &return_type,
-                context,
-                clause_index + 1,
-            )?;
-            all_constraints.extend(validation_result.constraints);
-        }
-
-        Ok(InferenceResult {
-            inferred_type: function_type,
-            constraints: all_constraints,
-            substitution: context.substitution.clone(),
-        })
-    }
-
-    /// Infer parameter and return types from a function clause
-    #[allow(clippy::result_large_err)]
-    fn infer_function_clause_types(
-        &mut self,
-        clause: &outrun_parser::AnonymousClause,
-        context: &mut InferenceContext,
-    ) -> Result<FunctionClauseInferenceResult, TypecheckError> {
-        let mut local_context = context.clone();
-        let mut constraints = context.constraints.clone();
-
-        // Extract parameter types from the clause parameters
-        let param_types = self.extract_anonymous_function_parameters(&clause.parameters)?;
-
-        // Bind parameters in local scope for body type inference
-        for (param_name, param_type) in &param_types {
-            local_context.bind_variable(param_name.clone(), param_type.clone());
-        }
-
-        // Infer the return type from the body
-        let body_result = self.infer_anonymous_function_body(&clause.body, &mut local_context)?;
-        let return_type = body_result.inferred_type;
-        constraints.extend(body_result.constraints);
-
-        // Handle guards if present
-        if let Some(guard_expr) = &clause.guard {
-            let guard_result =
-                self.infer_expression(&mut guard_expr.clone(), &mut local_context)?;
-            constraints.extend(guard_result.constraints);
-
-            // Guards must return Boolean
-            let boolean_constraint = crate::types::Constraint::Equality {
-                left: Box::new(Type::concrete("Outrun.Core.Boolean")),
-                right: Box::new(guard_result.inferred_type),
-                span: Some(guard_expr.span),
-            };
-            constraints.push(boolean_constraint);
-        }
-
-        Ok((param_types, return_type, constraints))
-    }
-
-    /// Extract parameter types from anonymous function parameters
-    #[allow(clippy::result_large_err)]
-    fn extract_anonymous_function_parameters(
-        &mut self,
-        parameters: &outrun_parser::AnonymousParameters,
-    ) -> Result<Vec<(String, Type)>, TypecheckError> {
-        use outrun_parser::AnonymousParameters;
-
-        match parameters {
-            AnonymousParameters::None { .. } => Ok(vec![]),
-            AnonymousParameters::Single { parameter, .. } => {
-                let param_name = parameter.name.name.clone();
-                let param_type = self.convert_type_annotation(&parameter.type_annotation)?;
-                Ok(vec![(param_name, param_type)])
-            }
-            AnonymousParameters::Multiple { parameters, .. } => {
-                let mut param_types = Vec::new();
-                for param in parameters {
-                    let param_name = param.name.name.clone();
-                    let param_type = self.convert_type_annotation(&param.type_annotation)?;
-                    param_types.push((param_name, param_type));
-                }
-                Ok(param_types)
-            }
-        }
-    }
-
-    /// Infer the return type from an anonymous function body
-    #[allow(clippy::result_large_err)]
-    fn infer_anonymous_function_body(
-        &mut self,
-        body: &outrun_parser::AnonymousBody,
-        context: &mut InferenceContext,
-    ) -> Result<InferenceResult, TypecheckError> {
-        use outrun_parser::AnonymousBody;
-
-        match body {
-            AnonymousBody::Expression(expr) => {
-                // Single expression body
-                self.infer_expression(&mut (**expr).clone(), context)
-            }
-            AnonymousBody::Block(_block) => {
-                // Block body - for now, return a fresh type variable
-                // TODO: Implement proper block inference
-                let inferred_type = Type::variable(self.fresh_type_var(), Level(0));
-                Ok(InferenceResult {
-                    inferred_type,
-                    constraints: context.constraints.clone(),
-                    substitution: context.substitution.clone(),
-                })
-            }
-        }
-    }
-
-    /// Validate that a function clause has consistent signature with the first clause
-    #[allow(clippy::result_large_err)]
-    fn validate_function_clause_consistency(
-        &mut self,
-        clause: &outrun_parser::AnonymousClause,
-        expected_param_types: &[(String, Type)],
-        expected_return_type: &Type,
-        context: &mut InferenceContext,
-        clause_number: usize,
-    ) -> Result<InferenceResult, TypecheckError> {
-        // Extract parameter types from this clause
-        let clause_param_types = self.extract_anonymous_function_parameters(&clause.parameters)?;
-
-        // Check parameter count consistency
-        if clause_param_types.len() != expected_param_types.len() {
-            return Err(TypecheckError::InferenceError(
-                crate::error::InferenceError::FunctionCallError {
-                    message: format!(
-                        "Function clause {} has {} parameters, but first clause has {}",
-                        clause_number,
-                        clause_param_types.len(),
-                        expected_param_types.len()
-                    ),
-                    function_name: None,
-                    expected_signature: Some(format!(
-                        "({}) -> {}",
-                        expected_param_types
-                            .iter()
-                            .map(|(name, ty)| format!("{}: {}", name, ty))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        expected_return_type
-                    )),
-                    actual_arguments: Some(format!(
-                        "({})",
-                        clause_param_types
-                            .iter()
-                            .map(|(name, ty)| format!("{}: {}", name, ty))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )),
-                    span: crate::error::to_source_span(Some(clause.span)),
-                    suggestions: vec![
-                        "All function clauses must have the same parameter signature".to_string(),
-                        "Consider adding or removing parameters to match the first clause"
-                            .to_string(),
-                    ],
-                },
-            ));
-        }
-
-        // Create constraints for parameter type consistency
-        let mut constraints = context.constraints.clone();
-        for ((expected_name, expected_type), (clause_name, clause_type)) in
-            expected_param_types.iter().zip(clause_param_types.iter())
-        {
-            // Parameter names should be consistent (warning, not error)
-            if expected_name != clause_name {
-                // For now, we allow different parameter names in different clauses
-                // In a full implementation, we might want to warn about this
-            }
-
-            // Parameter types must be identical
-            let param_constraint = crate::types::Constraint::Equality {
-                left: Box::new(expected_type.clone()),
-                right: Box::new(clause_type.clone()),
-                span: Some(clause.span),
-            };
-            constraints.push(param_constraint);
-        }
-
-        // Create local context with parameter bindings
-        let mut local_context = context.clone();
-        for (param_name, param_type) in &clause_param_types {
-            local_context.bind_variable(param_name.clone(), param_type.clone());
-        }
-
-        // Infer return type from clause body
-        let body_result = self.infer_anonymous_function_body(&clause.body, &mut local_context)?;
-        constraints.extend(body_result.constraints);
-
-        // Return type must be consistent
-        let return_constraint = crate::types::Constraint::Equality {
-            left: Box::new(expected_return_type.clone()),
-            right: Box::new(body_result.inferred_type.clone()),
-            span: Some(clause.span),
-        };
-        constraints.push(return_constraint);
-
-        // Handle guards if present
-        if let Some(guard_expr) = &clause.guard {
-            let guard_result =
-                self.infer_expression(&mut guard_expr.clone(), &mut local_context)?;
-            constraints.extend(guard_result.constraints);
-
-            // Guards must return Boolean
-            let guard_constraint = crate::types::Constraint::Equality {
-                left: Box::new(Type::concrete("Outrun.Core.Boolean")),
-                right: Box::new(guard_result.inferred_type),
-                span: Some(guard_expr.span),
-            };
-            constraints.push(guard_constraint);
-        }
-
-        Ok(InferenceResult {
-            inferred_type: body_result.inferred_type,
-            constraints,
-            substitution: local_context.substitution,
-        })
     }
 
     /// Convert a parser type annotation to a typechecker type
@@ -9291,7 +6302,7 @@ impl TypeInferenceEngine {
                     Ok(Type::Concrete {
                         name: name.clone(),
                         args: substituted_args?,
-                        span: span.clone(),
+                        span,
                     })
                 }
             }
@@ -9305,7 +6316,7 @@ impl TypeInferenceEngine {
                 Ok(Type::Protocol {
                     name: name.clone(),
                     args: substituted_args?,
-                    span: span.clone(),
+                    span,
                 })
             }
             // Other types don't need substitution
@@ -9440,334 +6451,17 @@ mod tests {
         assert_eq!(engine.current_module.as_str(), "Http::Client");
     }
 
-    #[test]
-    fn test_function_call_inference_integration() {
-        let mut engine = TypeInferenceEngine::new();
-        let mut context = InferenceContext::new();
+}
 
-        // Create a mock function call AST node
-        use outrun_parser::{FunctionCall, FunctionPath, Identifier, Span};
-
-        let mut function_call = FunctionCall {
-            path: FunctionPath::Simple {
-                name: Identifier {
-                    name: "test_function".to_string(),
-                    span: Span::new(0, 13),
-                },
-            },
-            arguments: vec![], // No arguments for simplicity
-            span: Span::new(0, 15),
-            resolved_function_key: None,
-            universal_clause_ids: None,
-        };
-
-        // Test function call inference (should handle dispatch errors gracefully)
-        let result = engine.infer_function_call(&mut function_call, &mut context);
-
-        // This should return an error since no function is registered
-        assert!(result.is_err());
-        match result {
-            Err(crate::error::TypecheckError::DispatchError(_)) => {
-                // Expected - no function registered
-            }
-            _ => panic!("Expected dispatch error for unregistered function"),
-        }
-    }
-
-    #[test]
-    fn test_list_literal_homogeneous_inference() {
-        let mut engine = TypeInferenceEngine::new();
-        let mut context = InferenceContext::new();
-
-        // Create mock list literal: [1, 2, 3]
-        use outrun_parser::{
-            Expression, ExpressionKind, IntegerFormat, IntegerLiteral, ListElement, ListLiteral,
-            Span,
-        };
-
-        let list_literal = ListLiteral {
-            elements: vec![
-                ListElement::Expression(Box::new(Expression {
-                    kind: ExpressionKind::Integer(IntegerLiteral {
-                        value: 1,
-                        format: IntegerFormat::Decimal,
-                        raw_text: "1".to_string(),
-                        span: Span::new(1, 2),
-                    }),
-                    span: Span::new(1, 2),
-                    type_info: None,
-                })),
-                ListElement::Expression(Box::new(Expression {
-                    kind: ExpressionKind::Integer(IntegerLiteral {
-                        value: 2,
-                        format: IntegerFormat::Decimal,
-                        raw_text: "2".to_string(),
-                        span: Span::new(4, 5),
-                    }),
-                    span: Span::new(4, 5),
-                    type_info: None,
-                })),
-                ListElement::Expression(Box::new(Expression {
-                    kind: ExpressionKind::Integer(IntegerLiteral {
-                        value: 3,
-                        format: IntegerFormat::Decimal,
-                        raw_text: "3".to_string(),
-                        span: Span::new(7, 8),
-                    }),
-                    span: Span::new(7, 8),
-                    type_info: None,
-                })),
-            ],
-            span: Span::new(0, 9),
-        };
-
-        let result = engine
-            .infer_list_literal(&list_literal, &mut context)
-            .unwrap();
-
-        // Should infer List<Outrun.Core.Integer64>
-        match &result.inferred_type {
-            Type::Concrete { name, args, .. } => {
-                assert_eq!(name.as_str(), "Outrun.Core.List");
-                assert_eq!(args.len(), 1);
-                match &args[0] {
-                    Type::Concrete { name, .. } => {
-                        assert_eq!(name.as_str(), "Outrun.Core.Integer64");
-                    }
-                    _ => panic!("Expected Integer64 element type"),
-                }
-            }
-            _ => panic!("Expected List<Integer64> type"),
-        }
-    }
-
-    #[test]
-    fn test_empty_list_inference() {
-        let mut engine = TypeInferenceEngine::new();
-        let mut context = InferenceContext::new();
-
-        // Create empty list literal: []
-        use outrun_parser::{ListLiteral, Span};
-
-        let list_literal = ListLiteral {
-            elements: vec![],
-            span: Span::new(0, 2),
-        };
-
-        let result = engine
-            .infer_list_literal(&list_literal, &mut context)
-            .unwrap();
-
-        // Should infer List<T> where T is a type variable
-        match &result.inferred_type {
-            Type::Concrete { name, args, .. } => {
-                assert_eq!(name.as_str(), "Outrun.Core.List");
-                assert_eq!(args.len(), 1);
-                match &args[0] {
-                    Type::Variable { .. } => {
-                        // Expected - fresh type variable for element type
-                    }
-                    _ => panic!("Expected type variable for empty list element type"),
-                }
-            }
-            _ => panic!("Expected List<T> type"),
-        }
-    }
-
-    #[test]
-    fn test_tuple_literal_inference() {
-        let mut engine = TypeInferenceEngine::new();
-        let mut context = InferenceContext::new();
-
-        // Create tuple literal: (1, "hello", true)
-        use outrun_parser::{
-            BooleanLiteral, Expression, ExpressionKind, IntegerFormat, IntegerLiteral, Span,
-            StringFormat, StringLiteral, TupleLiteral,
-        };
-
-        let tuple_literal = TupleLiteral {
-            elements: vec![
-                Expression {
-                    kind: ExpressionKind::Integer(IntegerLiteral {
-                        value: 1,
-                        format: IntegerFormat::Decimal,
-                        raw_text: "1".to_string(),
-                        span: Span::new(1, 2),
-                    }),
-                    span: Span::new(1, 2),
-                    type_info: None,
-                },
-                Expression {
-                    kind: ExpressionKind::String(StringLiteral {
-                        parts: vec![outrun_parser::StringPart::Text {
-                            content: "hello".to_string(),
-                            raw_content: "hello".to_string(),
-                        }],
-                        format: StringFormat::Basic,
-                        span: Span::new(4, 11),
-                    }),
-                    span: Span::new(4, 11),
-                    type_info: None,
-                },
-                Expression {
-                    kind: ExpressionKind::Boolean(BooleanLiteral {
-                        value: true,
-                        span: Span::new(13, 17),
-                    }),
-                    span: Span::new(13, 17),
-                    type_info: None,
-                },
-            ],
-            span: Span::new(0, 18),
-        };
-
-        let result = engine
-            .infer_tuple_literal(&tuple_literal, &mut context)
-            .unwrap();
-
-        // Should infer Tuple<Outrun.Core.Integer64, Outrun.Core.String, Outrun.Core.Boolean>
-        match &result.inferred_type {
-            Type::Concrete { name, args, .. } => {
-                assert_eq!(name.as_str(), "Outrun.Core.Tuple");
-                assert_eq!(args.len(), 3);
-
-                // Check first element is Integer64
-                match &args[0] {
-                    Type::Concrete { name, .. } => {
-                        assert_eq!(name.as_str(), "Outrun.Core.Integer64")
-                    }
-                    _ => panic!("Expected Integer64 first element"),
-                }
-
-                // Check second element is String
-                match &args[1] {
-                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.String"),
-                    _ => panic!("Expected String second element"),
-                }
-
-                // Check third element is Boolean
-                match &args[2] {
-                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.Boolean"),
-                    _ => panic!("Expected Boolean third element"),
-                }
-            }
-            _ => panic!("Expected Tuple<Integer64, String, Boolean> type"),
-        }
-    }
-
-    #[test]
-    fn test_map_literal_inference() {
-        let mut engine = TypeInferenceEngine::new();
-        let mut context = InferenceContext::new();
-
-        // Create map literal: {"key1": 42, "key2": 24}
-        use outrun_parser::{
-            Expression, ExpressionKind, IntegerFormat, IntegerLiteral, MapEntry, MapLiteral, Span,
-            StringFormat, StringLiteral, StringPart,
-        };
-
-        let map_literal = MapLiteral {
-            entries: vec![
-                MapEntry::Assignment {
-                    key: Box::new(Expression {
-                        kind: ExpressionKind::String(StringLiteral {
-                            parts: vec![StringPart::Text {
-                                content: "key1".to_string(),
-                                raw_content: "key1".to_string(),
-                            }],
-                            format: StringFormat::Basic,
-                            span: Span::new(1, 7),
-                        }),
-                        span: Span::new(1, 7),
-                        type_info: None,
-                    }),
-                    value: Box::new(Expression {
-                        kind: ExpressionKind::Integer(IntegerLiteral {
-                            value: 42,
-                            format: IntegerFormat::Decimal,
-                            raw_text: "42".to_string(),
-                            span: Span::new(9, 11),
-                        }),
-                        span: Span::new(9, 11),
-                        type_info: None,
-                    }),
-                },
-                MapEntry::Assignment {
-                    key: Box::new(Expression {
-                        kind: ExpressionKind::String(StringLiteral {
-                            parts: vec![StringPart::Text {
-                                content: "key2".to_string(),
-                                raw_content: "key2".to_string(),
-                            }],
-                            format: StringFormat::Basic,
-                            span: Span::new(13, 19),
-                        }),
-                        span: Span::new(13, 19),
-                        type_info: None,
-                    }),
-                    value: Box::new(Expression {
-                        kind: ExpressionKind::Integer(IntegerLiteral {
-                            value: 24,
-                            format: IntegerFormat::Decimal,
-                            raw_text: "24".to_string(),
-                            span: Span::new(21, 23),
-                        }),
-                        span: Span::new(21, 23),
-                        type_info: None,
-                    }),
-                },
-            ],
-            span: Span::new(0, 24),
-        };
-
-        let result = engine
-            .infer_map_literal(&map_literal, &mut context)
-            .unwrap();
-
-        // Should infer Map<Outrun.Core.String, Outrun.Core.Integer64>
-        match &result.inferred_type {
-            Type::Concrete { name, args, .. } => {
-                assert_eq!(name.as_str(), "Outrun.Core.Map");
-                assert_eq!(args.len(), 2);
-
-                // Check key type is String
-                match &args[0] {
-                    Type::Concrete { name, .. } => assert_eq!(name.as_str(), "Outrun.Core.String"),
-                    _ => panic!("Expected String key type"),
-                }
-
-                // Check value type is Integer64
-                match &args[1] {
-                    Type::Concrete { name, .. } => {
-                        assert_eq!(name.as_str(), "Outrun.Core.Integer64")
-                    }
-                    _ => panic!("Expected Integer64 value type"),
-                }
-            }
-            _ => panic!("Expected Map<String, Integer64> type"),
-        }
+impl TypeInferenceEngine {
+    /// Check if a type name is a generic parameter in the current context
+    /// This uses the actual compiler context to determine if a name refers to a generic parameter,
+    /// providing 100% accuracy without relying on heuristics or naming patterns.
+    pub fn is_type_parameter_name(&self, name: &str) -> bool {
+        self.generic_parameter_context.contains_key(name)
     }
 }
 
-/// Helper function to check if a string looks like a type parameter name
-/// Type parameters typically follow patterns like: T, U, K, V, or start with T (T1, TKey, etc.)
-pub fn is_type_parameter_name(name: &str) -> bool {
-    // Single uppercase letter (most common type parameters)
-    if name.len() == 1 && name.chars().next().unwrap().is_ascii_uppercase() {
-        return true;
-    }
-
-    // Starts with T (common type parameter convention)
-    if name.starts_with('T') && name.len() > 1 {
-        // But not if it's a concrete type like "Type"
-        return name != "Type";
-    }
-
-    // Common type parameter names (but exclude concrete types)
-    matches!(name, "Key" | "Value" | "Input" | "Output" | "Result" | "Error") &&
-    // Exclude common concrete types that might match these patterns
-    !matches!(name, "Type" | "String" | "Integer" | "Boolean" | "List" | "Map" | "Option" | "Either")
-}
 
 #[cfg(test)]
 mod debug_tests {

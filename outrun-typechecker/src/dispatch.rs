@@ -116,18 +116,9 @@ impl FunctionRegistry {
 
     /// Get function info by module and name
     pub fn get_function(&self, module_name: &str, function_name: &str) -> Option<&FunctionInfo> {
-        let result = self
+        self
             .functions
-            .get(&(module_name.to_string(), function_name.to_string()));
-        if module_name == "Outrun.Intrinsic" && function_name == "list_head" {
-            eprintln!(
-                "🔍 Function registry lookup: {}.{} -> {:?}",
-                module_name,
-                function_name,
-                result.map(|f| &f.return_type)
-            );
-        }
-        result
+            .get(&(module_name.to_string(), function_name.to_string()))
     }
 
     /// Get all functions in a module
@@ -231,7 +222,7 @@ impl<'a> FunctionDispatcher<'a> {
     /// Create a FileSpan using current file context
     fn create_file_span(&self, span: Option<Span>) -> crate::error::FileSpan {
         crate::error::FileSpan {
-            span: span.unwrap_or_else(|| Span {
+            span: span.unwrap_or(Span {
                 start: 0,
                 end: 0,
                 start_line_col: None,
@@ -359,7 +350,6 @@ impl<'a> FunctionDispatcher<'a> {
             Type::Concrete { name, ref args, .. } => {
                 // Look up protocol implementation for this concrete type
                 // For generic types, we need to try both generic and non-generic protocol names
-                let protocol_name_module = ModuleName::new(protocol_name);
 
                 // First try exact match with current protocol name
                 let mut impl_info = self

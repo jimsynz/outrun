@@ -1,6 +1,6 @@
 //! REPL (Read-Eval-Print Loop) implementation for Outrun
 //!
-//! This module provides an interactive REPL that works with the 
+//! This module provides an interactive REPL that works with the
 //! interpreter and typechecker v3 system. Features:
 //! - Interactive expression evaluation with persistent variable bindings
 //! - Pattern matching support for let bindings and case expressions
@@ -393,10 +393,9 @@ impl ReplSession {
 
             "/clear" => {
                 // Reset interpreter session (clears all variables)
-                self.session =
-                    InterpreterSession::new().map_err(|e| ReplError::Internal {
-                        message: format!("Failed to reset interpreter session: {e}"),
-                    })?;
+                self.session = InterpreterSession::new().map_err(|e| ReplError::Internal {
+                    message: format!("Failed to reset interpreter session: {e}"),
+                })?;
                 Ok(ReplResult::Command {
                     message: "Variables cleared".to_string(),
                 })

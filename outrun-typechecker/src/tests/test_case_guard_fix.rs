@@ -12,7 +12,7 @@ def test_simple_case(input: Boolean): Boolean {
 }
 "#;
 
-    let mut program = parse_program(source).expect("Failed to parse test program");
+    let program = parse_program(source).expect("Failed to parse test program");
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
 
@@ -46,7 +46,7 @@ def test_pattern_binding_scope(input: Option<Integer>): Integer {
 }
 "#;
 
-    let mut program = parse_program(source).expect("Failed to parse test program");
+    let program = parse_program(source).expect("Failed to parse test program");
     let mut package = Package::new("test_package".to_string());
     package.add_program(program);
 

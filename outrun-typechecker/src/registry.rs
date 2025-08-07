@@ -159,7 +159,7 @@ impl TypeRegistry {
         implementing_type: ModuleName,
         implementing_args: Vec<Type>,
         protocol_name: ModuleName,
-        protocol_args: Vec<Type>,
+        _protocol_args: Vec<Type>,
         defining_module: ModuleName,
         span: Option<Span>,
     ) -> Result<(), ImplementationError> {
@@ -396,7 +396,6 @@ pub type ProtocolRegistry = TypeRegistry;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Type;
 
     fn create_test_registry() -> TypeRegistry {
         let mut registry = TypeRegistry::new();

@@ -15,7 +15,7 @@ fn test_map_protocol_registration_step_by_step() {
         }
     "#;
 
-    let mut program = parse_program(map_protocol_source).expect("Failed to parse Map protocol");
+    let program = parse_program(map_protocol_source).expect("Failed to parse Map protocol");
     let mut engine = TypeInferenceEngine::bootstrap();
 
     println!(
@@ -24,7 +24,7 @@ fn test_map_protocol_registration_step_by_step() {
     );
 
     // Phase 2: Register protocols and structs
-    match engine.register_protocols_and_structs(&mut program) {
+    match engine.register_protocols_and_structs(&program) {
         Ok(_) => {
             // println!("✅ Protocol registration succeeded");
 
@@ -65,7 +65,7 @@ fn test_map_protocol_reference_count_issue() {
         }
     "#;
 
-    let mut program = parse_program(source).expect("Failed to parse test program");
+    let program = parse_program(source).expect("Failed to parse test program");
     let mut engine = TypeInferenceEngine::bootstrap();
 
     // Create multiple references to the type registry to force Rc::get_mut to fail
@@ -78,7 +78,7 @@ fn test_map_protocol_reference_count_issue() {
     );
 
     // Phase 2: Register protocols and structs (this should trigger the Rc::get_mut failure)
-    match engine.register_protocols_and_structs(&mut program) {
+    match engine.register_protocols_and_structs(&program) {
         Ok(_) => {
             // println!("✅ Phase 2 succeeded");
 
@@ -138,7 +138,7 @@ fn test_map_protocol_with_implementation() {
 
     // Phase 2: Register protocols and structs
     // println!("=== Phase 2: Register protocols and structs ===");
-    match engine.register_protocols_and_structs(&mut program) {
+    match engine.register_protocols_and_structs(&program) {
         Ok(_) => {
             // println!("✅ Phase 2 succeeded");
 
@@ -161,7 +161,7 @@ fn test_map_protocol_with_implementation() {
 
     // Phase 3: Register implementations
     // println!("=== Phase 3: Register implementations ===");
-    match engine.register_implementations(&mut program) {
+    match engine.register_implementations(&program) {
         Ok(_) => {
             // println!("✅ Phase 3 succeeded");
         }
@@ -173,7 +173,7 @@ fn test_map_protocol_with_implementation() {
 
     // Phase 4: Register functions (this is where convert_type_annotation is called)
     // println!("=== Phase 4: Register functions ===");
-    match engine.register_functions(&mut program) {
+    match engine.register_functions(&program) {
         Ok(_) => {
             // println!("✅ Phase 4 succeeded");
         }

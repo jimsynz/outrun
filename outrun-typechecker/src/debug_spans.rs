@@ -25,7 +25,7 @@ struct Test {
             }
             program
         }
-        Err(e) => {
+        Err(_) => {
             // println!("❌ Parsing failed: {e}");
             return;
         }
@@ -39,7 +39,7 @@ struct Test {
         Ok(()) => {
             // println!("✅ Phase 2: Struct registration successful");
         }
-        Err(e) => {
+        Err(_) => {
             // println!("❌ Phase 2: Struct registration failed: {e}");
             // println!("Error details: {e:#?}");
             return;
@@ -51,7 +51,7 @@ struct Test {
         Ok(()) => {
             // println!("✅ Phase 3: Implementation registration successful");
         }
-        Err(e) => {
+        Err(_) => {
             // println!("❌ Phase 3: Implementation registration failed: {e}");
             // println!("Error details: {e:#?}");
             return;
@@ -64,7 +64,7 @@ struct Test {
         Ok(()) => {
             // println!("✅ Type checking successful without core library!");
         }
-        Err(e) => {
+        Err(_) => {
             // println!("❌ Type checking failed: {e}");
             // println!("Error details: {e:#?}");
         }

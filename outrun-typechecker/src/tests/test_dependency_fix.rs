@@ -1,7 +1,7 @@
 #[cfg(test)]
-mod test_dependency_fix {
+mod tests {
     use crate::*;
-    use outrun_parser::{parse_program, Program};
+    use outrun_parser::parse_program;
 
     /// Test that demonstrates the task dependency fix is working
     #[test]
@@ -12,7 +12,7 @@ mod test_dependency_fix {
             }
         "#;
 
-        let mut program = parse_program(source).expect("Failed to parse test program");
+        let program = parse_program(source).expect("Failed to parse test program");
         let mut package = Package::new("test_package".to_string());
         package.add_program(program);
 
@@ -50,7 +50,7 @@ mod test_dependency_fix {
             }
         "#;
 
-        let mut program = parse_program(source).expect("Failed to parse test program");
+        let program = parse_program(source).expect("Failed to parse test program");
         let mut package = Package::new("test_nested".to_string());
         package.add_program(program);
 

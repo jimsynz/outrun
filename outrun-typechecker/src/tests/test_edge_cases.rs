@@ -4,7 +4,7 @@
 //! and edge case scenarios correctly without panicking or producing
 //! incorrect results.
 
-use crate::{typecheck_package, typecheck_program, Package, TypeInferenceEngine};
+use crate::{typecheck_package, Package, TypeInferenceEngine};
 use outrun_parser::parse_program;
 
 /// Typecheck a program without loading the core library (for edge case testing)

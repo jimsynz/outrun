@@ -385,32 +385,92 @@ fn test_constraint_generation_with_non_generic_function() {
 
 #[test]
 fn test_type_parameter_name_detection() {
-    use crate::inference::is_type_parameter_name;
+    use crate::inference::TypeInferenceEngine;
 
-    // Test single uppercase letters (common type parameters)
-    assert!(is_type_parameter_name("T"));
-    assert!(is_type_parameter_name("U"));
-    assert!(is_type_parameter_name("K"));
-    assert!(is_type_parameter_name("V"));
+    // Test context-aware type parameter detection
+    let mut engine = TypeInferenceEngine::bootstrap();
 
-    // Test T-prefixed names
-    assert!(is_type_parameter_name("T1"));
-    assert!(is_type_parameter_name("TKey"));
-    assert!(is_type_parameter_name("TValue"));
+    // Initially, no generic parameters are in scope
+    assert!(!engine.is_type_parameter_name("T"));
+    assert!(!engine.is_type_parameter_name("String"));
+    assert!(!engine.is_type_parameter_name("Option"));
 
-    // Test common type parameter names
-    assert!(is_type_parameter_name("Key"));
-    assert!(is_type_parameter_name("Value"));
-    assert!(is_type_parameter_name("Input"));
-    assert!(is_type_parameter_name("Output"));
-    assert!(is_type_parameter_name("Result"));
-    assert!(is_type_parameter_name("Error"));
+    // Set up a generic parameter context (simulating entering a generic struct/function)
+    let generic_params = vec!["T".to_string(), "U".to_string(), "Key".to_string(), "Value".to_string()];
+    let generic_context = engine.create_generic_context_from_names(&generic_params);
+    engine.set_generic_parameter_context(generic_context);
 
-    // Test concrete type names (should not be type parameters)
-    assert!(!is_type_parameter_name("String"));
-    assert!(!is_type_parameter_name("Integer64"));
-    assert!(!is_type_parameter_name("Boolean"));
-    assert!(!is_type_parameter_name("Option"));
-    assert!(!is_type_parameter_name("List"));
-    assert!(!is_type_parameter_name("Map"));
+    // Now these names should be recognized as generic parameters
+    assert!(engine.is_type_parameter_name("T"));
+    assert!(engine.is_type_parameter_name("U"));
+    assert!(engine.is_type_parameter_name("Key"));
+    assert!(engine.is_type_parameter_name("Value"));
+
+    // But concrete types should still not be recognized as generic parameters
+    assert!(!engine.is_type_parameter_name("String"));
+    assert!(!engine.is_type_parameter_name("Integer64"));
+    assert!(!engine.is_type_parameter_name("Boolean"));
+    assert!(!engine.is_type_parameter_name("Option"));
+    assert!(!engine.is_type_parameter_name("List"));
+    assert!(!engine.is_type_parameter_name("Map"));
+
+    // Names not in the current generic context should not be recognized
+    assert!(!engine.is_type_parameter_name("Z"));
+    assert!(!engine.is_type_parameter_name("SomeOtherName"));
+
+    // Clear the context and verify nothing is recognized as a generic parameter
+    engine.clear_generic_parameter_context();
+    assert!(!engine.is_type_parameter_name("T"));
+    assert!(!engine.is_type_parameter_name("U"));
+    assert!(!engine.is_type_parameter_name("Key"));
+    assert!(!engine.is_type_parameter_name("Value"));
+}
+
+
+#[test]
+fn test_context_aware_generic_parameter_scoping() {
+    use crate::inference::TypeInferenceEngine;
+
+    let mut engine = TypeInferenceEngine::bootstrap();
+
+    // Example 1: Demonstrate that context matters, not naming patterns
+    // A name that looks conventional but isn't in scope
+    assert!(!engine.is_type_parameter_name("T"));
+    
+    // A name that doesn't look conventional but is a generic parameter
+    let generic_params = vec!["MyGenericType".to_string(), "SomeOtherParam".to_string()];
+    let generic_context = engine.create_generic_context_from_names(&generic_params);
+    engine.set_generic_parameter_context(generic_context);
+
+    assert!(engine.is_type_parameter_name("MyGenericType")); // Unconventional name, but IS a generic parameter
+    assert!(engine.is_type_parameter_name("SomeOtherParam")); // Another unconventional name
+    assert!(!engine.is_type_parameter_name("T")); // Conventional name, but NOT in scope
+
+    // Example 2: Demonstrate scope changes
+    engine.clear_generic_parameter_context();
+    
+    // Now add conventional names
+    let generic_params = vec!["T".to_string(), "U".to_string(), "Result".to_string()];
+    let generic_context = engine.create_generic_context_from_names(&generic_params);
+    engine.set_generic_parameter_context(generic_context);
+
+    assert!(engine.is_type_parameter_name("T")); // Now T IS in scope
+    assert!(engine.is_type_parameter_name("U")); // U is in scope
+    assert!(engine.is_type_parameter_name("Result")); // Result is a generic parameter in this context
+    assert!(!engine.is_type_parameter_name("MyGenericType")); // No longer in scope
+
+    // Example 3: Concrete types are never confused with generic parameters
+    assert!(!engine.is_type_parameter_name("String"));
+    assert!(!engine.is_type_parameter_name("Integer64"));
+    assert!(!engine.is_type_parameter_name("Boolean"));
+    assert!(!engine.is_type_parameter_name("Option"));
+    assert!(!engine.is_type_parameter_name("List"));
+    assert!(!engine.is_type_parameter_name("Map"));
+
+    // Example 4: Clear context and verify nothing is recognized
+    engine.clear_generic_parameter_context();
+    assert!(!engine.is_type_parameter_name("T"));
+    assert!(!engine.is_type_parameter_name("U"));
+    assert!(!engine.is_type_parameter_name("Result"));
+    assert!(!engine.is_type_parameter_name("MyGenericType"));
 }

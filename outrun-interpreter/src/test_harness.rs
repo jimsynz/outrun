@@ -44,7 +44,7 @@ fn expression_contains_operators(expr: &Expression) -> bool {
                         false
                     }
                 })
-                || if_expr.else_block.as_ref().map_or(false, |block| {
+                || if_expr.else_block.as_ref().is_some_and(|block| {
                     block.statements.iter().any(|stmt| {
                         if let outrun_parser::StatementKind::Expression(e) = &stmt.kind {
                             expression_contains_operators(e)
@@ -76,7 +76,7 @@ fn expression_contains_operators(expr: &Expression) -> bool {
                         || clause
                             .guard
                             .as_ref()
-                            .map_or(false, |g| expression_contains_operators(g))
+                            .is_some_and(expression_contains_operators)
                 })
         }
 
@@ -176,7 +176,7 @@ impl InterpreterSession {
         if self.core_compilation.is_none() {
             self.core_compilation = Some(CompilationResult::precompile_core_library()?);
         }
-        
+
         let core_compilation = self.core_compilation.as_ref().unwrap();
 
         // Try to compile the expression first. If it fails with an undefined variable error,
@@ -207,26 +207,35 @@ impl InterpreterSession {
                         message: "No programs found in compilation result".to_string(),
                     })?
                     .clone();
-                
+
                 // Extract type information from let bindings if present
                 for item in &desugared_program.items {
                     if let outrun_parser::ItemKind::LetBinding(let_binding) = &item.kind {
-                        if let outrun_parser::Pattern::Identifier(identifier) = &let_binding.pattern {
+                        if let outrun_parser::Pattern::Identifier(identifier) = &let_binding.pattern
+                        {
                             if let Some(ref type_info) = let_binding.expression.type_info {
                                 // Store the type for this variable
-                                let type_obj = outrun_typechecker::types::Type::concrete(&type_info.resolved_type);
-                                self.session_variable_types.insert(identifier.name.clone(), type_obj);
+                                let type_obj = outrun_typechecker::types::Type::concrete(
+                                    &type_info.resolved_type,
+                                );
+                                self.session_variable_types
+                                    .insert(identifier.name.clone(), type_obj);
                             } else {
                                 // Try to infer type from the expression if it's a literal
-                                if let outrun_parser::ExpressionKind::Integer(_) = &let_binding.expression.kind {
-                                    let type_obj = outrun_typechecker::types::Type::concrete("Outrun.Core.Integer64");
-                                    self.session_variable_types.insert(identifier.name.clone(), type_obj);
+                                if let outrun_parser::ExpressionKind::Integer(_) =
+                                    &let_binding.expression.kind
+                                {
+                                    let type_obj = outrun_typechecker::types::Type::concrete(
+                                        "Outrun.Core.Integer64",
+                                    );
+                                    self.session_variable_types
+                                        .insert(identifier.name.clone(), type_obj);
                                 }
                             }
                         }
                     }
                 }
-                
+
                 (false, desugared_program)
             }
             Err(CompilerError::Typecheck(boxed_err)) => {

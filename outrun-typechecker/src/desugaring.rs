@@ -118,7 +118,7 @@ impl DesugaringEngine {
         for statement in &mut block.statements {
             match &mut statement.kind {
                 outrun_parser::StatementKind::Expression(expr) => {
-                    self.desugar_expression(&mut **expr)?;
+                    self.desugar_expression(expr)?;
                 }
                 outrun_parser::StatementKind::LetBinding(let_binding) => {
                     // CRITICAL FIX: Desugar expressions in let binding statements

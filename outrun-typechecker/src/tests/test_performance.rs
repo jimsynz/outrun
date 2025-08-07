@@ -7,7 +7,7 @@
 //! - Many variable bindings
 //! - Complex type hierarchies
 
-use crate::{typecheck_package, typecheck_program, Package, TypeInferenceEngine};
+use crate::{typecheck_package, Package, TypeInferenceEngine};
 use outrun_parser::parse_program;
 use std::time::Instant;
 

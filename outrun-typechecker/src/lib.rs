@@ -159,7 +159,7 @@ impl CompilationResult {
     ) -> Result<CompilationResult, CompilerError> {
         Self::compile_repl_expression_with_context(expression_source, precompiled_core, None)
     }
-    
+
     /// Compile a REPL expression with optional session context (variables from previous evaluations)
     /// This enables proper compilation of expressions that reference session variables
     pub fn compile_repl_expression_with_context(
@@ -182,15 +182,15 @@ impl CompilationResult {
                 precompiled_core.function_registry.clone(),
                 precompiled_core.type_registry.clone(),
             );
-            
+
             // Bind session variables
             for (var_name, var_type) in context {
                 engine.bind_variable(var_name, var_type.clone());
             }
-            
+
             // Create desugaring engine
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
-            
+
             // Compile with the pre-configured engine
             Self::compile_package_internal(&mut expr_package, engine, desugaring_engine)
         } else {
@@ -516,7 +516,7 @@ impl CompilationResult {
 
         // Phase 8: Build dispatch table for runtime function resolution
         let dispatch_table = build_dispatch_table(
-            &*engine.type_registry_rc(),
+            &engine.type_registry_rc(),
             engine.function_registry(),
             Some(&monomorphisation_table),
         );

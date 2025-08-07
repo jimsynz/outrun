@@ -4,10 +4,9 @@
 //! Extends existing error patterns from the parser.
 
 use crate::error::{to_source_span, UnificationError};
-use crate::registry::TypeRegistry;
+
 use crate::types::{Level, Substitution, Type, TypeVarId};
 use outrun_parser::Span;
-use std::sync::{Arc, RwLock};
 
 /// A unification task for iterative processing
 #[derive(Debug, Clone)]
@@ -25,9 +24,6 @@ pub struct Unifier {
     current_level: Level,
     /// Enable occurs check (prevents infinite types)
     occurs_check: bool,
-    /// WORKAROUND: Type registry for never type support
-    /// TODO: Replace with proper attribute system when macro system is implemented
-    type_registry: Option<Arc<RwLock<TypeRegistry>>>,
 }
 
 impl Unifier {
@@ -36,7 +32,6 @@ impl Unifier {
         Self {
             current_level: Level(0),
             occurs_check: true,
-            type_registry: None,
         }
     }
 
@@ -45,7 +40,6 @@ impl Unifier {
         Self {
             current_level: level,
             occurs_check: true,
-            type_registry: None,
         }
     }
 

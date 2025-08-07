@@ -1144,6 +1144,7 @@ impl ConstraintSolver {
     }
 
     /// Helper methods for type analysis
+    #[allow(clippy::only_used_in_recursion)]
     fn type_involves_variable(&self, ty: &Type, var_id: TypeVarId) -> bool {
         match ty {
             Type::Variable {
@@ -1169,6 +1170,7 @@ impl ConstraintSolver {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn type_involves_protocol(&self, ty: &Type, protocol_name: &crate::types::ModuleName) -> bool {
         match ty {
             Type::Protocol { name, args, .. } => {
@@ -1195,6 +1197,7 @@ impl ConstraintSolver {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn type_involves_self(&self, ty: &Type) -> bool {
         match ty {
             Type::SelfType { .. } => true,
@@ -1306,6 +1309,7 @@ impl ConstraintSolver {
     }
 
     /// Recursively collect generic parameters from a type annotation
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_generic_parameters_from_type(
         &self,
         type_annotation: &outrun_parser::TypeAnnotation,
@@ -1411,6 +1415,7 @@ impl ConstraintSolver {
     }
 
     /// Convert a type annotation to a type template
+    #[allow(clippy::only_used_in_recursion)]
     fn convert_type_to_template(
         &self,
         type_annotation: &outrun_parser::TypeAnnotation,
@@ -1494,23 +1499,6 @@ impl ConstraintSolver {
         }
     }
 
-    /// Extract protocol constraints from a function signature
-    fn extract_protocol_constraints(
-        &self,
-        _signature: &outrun_parser::FunctionSignature,
-    ) -> Result<Vec<ProtocolConstraintTemplate>, String> {
-        let constraints = Vec::new();
-
-        // For now, this is a simplified implementation
-        // In a full implementation, this would parse constraint clauses
-        // like "where T: Display + Clone"
-
-        // TODO: Parse constraint expressions from function signature
-        // This would involve extending the parser to capture constraint clauses
-
-        Ok(constraints)
-    }
-
     /// Get all generated public function templates
     pub fn get_public_function_templates(
         &self,
@@ -1570,14 +1558,9 @@ impl ConstraintSolver {
             concrete_type_substitutions,
         )?;
 
-        let substituted_return_type = self.substitute_types_in_type_template(
-            &template.return_type,
-            concrete_type_substitutions,
-        )?;
-
         // Generate type compatibility guards for the substituted types
         let mut guards = Vec::new();
-        for (i, param_template) in substituted_parameter_types.iter().enumerate() {
+        for param_template in substituted_parameter_types.iter() {
             if let TypeTemplate::Concrete { type_name, .. } = &param_template.type_template {
                 guards.push(crate::universal_dispatch::Guard::TypeCompatible {
                     target_type: self.parse_concrete_type_name(type_name)?,
@@ -1632,6 +1615,7 @@ impl ConstraintSolver {
     }
 
     /// Substitute generic types with concrete types in a type template
+    #[allow(clippy::only_used_in_recursion)]
     fn substitute_types_in_type_template(
         &self,
         type_template: &TypeTemplate,

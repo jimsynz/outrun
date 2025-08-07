@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use miette::{Diagnostic, IntoDiagnostic, MietteHandlerOpts, NamedSource, Result, SourceSpan};
 use outrun_parser::parse_program_with_diagnostics_and_source;
-use outrun_typechecker::{CompilationResult, core_library, package};
+use outrun_typechecker::{CompilationResult, core_library};
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -63,11 +63,16 @@ enum Commands {
         /// Expression to evaluate (if not provided, reads from stdin)
         #[arg(short = 'e', long = "expr", value_name = "EXPRESSION")]
         expression: Option<String>,
-        
+
         /// Read expression from a file
-        #[arg(short = 'f', long = "file", value_name = "FILE", conflicts_with = "expression")]
+        #[arg(
+            short = 'f',
+            long = "file",
+            value_name = "FILE",
+            conflicts_with = "expression"
+        )]
         file: Option<PathBuf>,
-        
+
         /// Show type information with results
         #[arg(long, short = 't')]
         show_types: bool,
@@ -990,7 +995,7 @@ fn handle_eval_command(
     verbose: bool,
 ) {
     use outrun_interpreter::InterpreterSession;
-    
+
     // Get the expression to evaluate
     let expr_code = if let Some(expr) = expression {
         // Use -e flag expression
@@ -1025,8 +1030,11 @@ fn handle_eval_command(
 
     // Split the input into lines and evaluate each one
     // This allows for multiple expressions like "let x = 5\nx * 2"
-    let lines: Vec<&str> = expr_code.lines().filter(|line| !line.trim().is_empty()).collect();
-    
+    let lines: Vec<&str> = expr_code
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+
     for (i, line) in lines.iter().enumerate() {
         match session.evaluate(line) {
             Ok(value) => {

@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod test_generic_substitution {
+mod tests {
     use crate::*;
     use outrun_parser::parse_program;
 
@@ -20,8 +20,12 @@ mod test_generic_substitution {
         package.add_program(program);
 
         let result = CompilationResult::compile_package(&mut package);
-        assert!(result.is_ok(), "Compilation should succeed: {:?}", result.err());
-        
+        assert!(
+            result.is_ok(),
+            "Compilation should succeed: {:?}",
+            result.err()
+        );
+
         // The important thing is that compilation succeeds - this means
         // Option.unwrap correctly infers its return type based on the
         // generic type argument
@@ -54,12 +58,13 @@ mod test_generic_substitution {
         package.add_program(program);
 
         let result = CompilationResult::compile_package(&mut package);
-        
+
         // This test might fail if we don't support user-defined generics yet,
         // but it demonstrates that our solution should work for any protocol
         if result.is_ok() {
             let compilation = result.unwrap();
-            let func = compilation.function_registry
+            let func = compilation
+                .function_registry
                 .get_function("test_package", "test_box_integer");
             if let Some(f) = func {
                 assert_eq!(f.return_type, Type::protocol("Integer"));
