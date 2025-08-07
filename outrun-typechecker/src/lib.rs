@@ -167,6 +167,9 @@ impl CompilationResult {
         precompiled_core: &CompilationResult,
         session_context: Option<&std::collections::HashMap<String, crate::types::Type>>,
     ) -> Result<CompilationResult, CompilerError> {
+        eprintln!("DEBUG: compile_repl_expression_with_context called");
+        eprintln!("  Expression: {}", expression_source);
+        eprintln!("  Has context: {}", session_context.is_some());
         // Parse the REPL expression as a program
         let program =
             outrun_parser::parse_program(expression_source).map_err(CompilerError::Parse)?;
@@ -177,11 +180,15 @@ impl CompilationResult {
 
         // If we have session context, we need to use compile_package_internal with a pre-configured engine
         if let Some(context) = session_context {
-            // Create engine with the pre-compiled core library
-            let mut engine = crate::inference::TypeInferenceEngine::with_registries(
-                precompiled_core.function_registry.clone(),
+            // Create a new engine and import the precompiled core library registries properly
+            let mut engine = crate::inference::TypeInferenceEngine::new();
+            
+            // Import the precompiled core library registries (including universal dispatch!)
+            engine.import_dependency_registries_with_universal_dispatch(
                 precompiled_core.type_registry.clone(),
-            );
+                precompiled_core.function_registry.clone(),
+                precompiled_core.universal_dispatch.clone(),
+            )?;
 
             // Bind session variables
             for (var_name, var_type) in context {

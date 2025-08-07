@@ -114,7 +114,7 @@ impl DesugaringEngine {
     }
 
     /// Desugar all expressions within a block
-    fn desugar_block(&mut self, block: &mut outrun_parser::Block) -> Result<(), TypecheckError> {
+    pub fn desugar_block(&mut self, block: &mut outrun_parser::Block) -> Result<(), TypecheckError> {
         for statement in &mut block.statements {
             match &mut statement.kind {
                 outrun_parser::StatementKind::Expression(expr) => {

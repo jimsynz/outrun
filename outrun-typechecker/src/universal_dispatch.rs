@@ -13,18 +13,41 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ClauseId(pub u64);
 
-impl Default for ClauseId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ClauseId {
-    pub fn new() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        ClauseId(COUNTER.fetch_add(1, Ordering::SeqCst))
+    /// Create a deterministic clause ID based on function signature and guards
+    /// This ensures the same function clause always gets the same unique clause ID
+    pub fn deterministic(signature: &FunctionSignature, guards: &[Guard]) -> Self {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash the function signature
+        signature.module_path.hash(&mut hasher);
+        signature.function_name.hash(&mut hasher);
+        
+        // Hash the guards (we need a stable representation)
+        for guard in guards {
+            match guard {
+                Guard::AlwaysTrue => {
+                    "AlwaysTrue".hash(&mut hasher);
+                }
+                Guard::TypeCompatible { target_type, implementing_type, .. } => {
+                    "TypeCompatible".hash(&mut hasher);
+                    // Hash the type names for stability
+                    format!("{:?}", target_type).hash(&mut hasher);
+                    format!("{:?}", implementing_type).hash(&mut hasher);
+                }
+                Guard::ValueGuard { bound_variables, .. } => {
+                    "ValueGuard".hash(&mut hasher);
+                    bound_variables.hash(&mut hasher);
+                }
+            }
+        }
+        
+        ClauseId(hasher.finish())
     }
+
 }
 
 /// Universal function signature for indexing all function types
@@ -426,10 +449,12 @@ mod tests {
     fn test_clause_registration() {
         let mut registry = UniversalDispatchRegistry::new();
 
+        let function_signature = FunctionSignature::simple("test_function".to_string());
+        let guards = vec![Guard::AlwaysTrue];
         let clause = ClauseInfo {
-            clause_id: ClauseId::new(),
-            function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![Guard::AlwaysTrue],
+            clause_id: ClauseId::deterministic(&function_signature, &guards),
+            function_signature: function_signature.clone(),
+            guards,
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,
@@ -450,14 +475,16 @@ mod tests {
     fn test_type_pattern_extraction() {
         let registry = UniversalDispatchRegistry::new();
 
+        let function_signature = FunctionSignature::simple("test_function".to_string());
+        let guards = vec![Guard::TypeCompatible {
+            target_type: Type::concrete("String"),
+            implementing_type: Type::concrete("String"),
+            constraint_context: ConstraintContext::new(),
+        }];
         let clause = ClauseInfo {
-            clause_id: ClauseId::new(),
-            function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![Guard::TypeCompatible {
-                target_type: Type::concrete("String"),
-                implementing_type: Type::concrete("String"),
-                constraint_context: ConstraintContext::new(),
-            }],
+            clause_id: ClauseId::deterministic(&function_signature, &guards),
+            function_signature: function_signature.clone(),
+            guards,
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,
@@ -473,14 +500,16 @@ mod tests {
         let registry = UniversalDispatchRegistry::new();
 
         // Create a clause that should match String types
+        let function_signature = FunctionSignature::simple("test_function".to_string());
+        let guards = vec![Guard::TypeCompatible {
+            target_type: Type::concrete("String"),
+            implementing_type: Type::concrete("String"),
+            constraint_context: ConstraintContext::new(),
+        }];
         let string_clause = ClauseInfo {
-            clause_id: ClauseId::new(),
-            function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![Guard::TypeCompatible {
-                target_type: Type::concrete("String"),
-                implementing_type: Type::concrete("String"),
-                constraint_context: ConstraintContext::new(),
-            }],
+            clause_id: ClauseId::deterministic(&function_signature, &guards),
+            function_signature: function_signature.clone(),
+            guards,
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,
@@ -504,10 +533,12 @@ mod tests {
         let registry = UniversalDispatchRegistry::new();
 
         // Create a clause with AlwaysTrue guard
+        let function_signature = FunctionSignature::simple("test_function".to_string());
+        let guards = vec![Guard::AlwaysTrue];
         let always_clause = ClauseInfo {
-            clause_id: ClauseId::new(),
-            function_signature: FunctionSignature::simple("test_function".to_string()),
-            guards: vec![Guard::AlwaysTrue],
+            clause_id: ClauseId::deterministic(&function_signature, &guards),
+            function_signature: function_signature.clone(),
+            guards,
             body: FunctionBody::IntrinsicFunction("test_intrinsic".to_string()),
             estimated_cost: 1,
             priority: 0,

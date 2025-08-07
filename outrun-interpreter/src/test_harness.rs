@@ -575,6 +575,10 @@ impl InterpreterSession {
         self.context = InterpreterContext::new();
         // Reset the session package
         self.session_package = Package::new("test_session".to_string());
+        // Clear session variable types to force use of standard compilation
+        self.session_variable_types.clear();
+        // Clear cached evaluator to force recompilation with correct dispatch table
+        self.evaluator = None;
     }
 
     /// Get the current context (for advanced testing scenarios)

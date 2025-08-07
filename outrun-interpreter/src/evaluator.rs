@@ -242,6 +242,11 @@ impl ExpressionEvaluator {
                 self.evaluate_unary_operation(unary_op, context, span)
             }
 
+            // Parenthesized expressions - just evaluate the inner expression
+            ExpressionKind::Parenthesized(inner) => {
+                self.evaluate(inner, context)
+            }
+
             // For now, return errors for unsupported expressions
             _ => Err(EvaluationError::UnsupportedExpression {
                 expr_type: self.expression_type_name(kind).to_string(),
@@ -423,53 +428,85 @@ impl ExpressionEvaluator {
     ) -> Result<Value, EvaluationError> {
         // Check if we have universal clause IDs from the typechecker
         if let Some(clause_ids) = &function_call.universal_clause_ids {
+            // Convert u64 IDs to ClauseId structs
+            let clause_ids: Vec<outrun_typechecker::universal_dispatch::ClauseId> = 
+                clause_ids.iter().map(|&id| outrun_typechecker::universal_dispatch::ClauseId(id)).collect();
             // Universal dispatch for user functions and protocol implementations
-            self.dispatch_clauses(clause_ids, &function_call.arguments, context, span)
+            self.dispatch_clauses(&clause_ids, &function_call.arguments, context, span)
         } else {
-            // No clause IDs - check if this is an intrinsic function
-            let function_name = match &function_call.path {
+            // No clause IDs - handle different function path types
+            match &function_call.path {
                 outrun_parser::FunctionPath::Qualified { module, name } => {
-                    format!("{}.{}", module.name, name.name)
+                    let function_name = format!("{}.{}", module.name, name.name);
+                    
+                    if function_name.starts_with("Outrun.Intrinsic.") {
+                        // Direct intrinsic function call
+                        let mut args = Vec::new();
+                        for arg in &function_call.arguments {
+                            let arg_value = match arg {
+                                outrun_parser::Argument::Named { expression, .. } => {
+                                    self.evaluate(expression, context)?
+                                }
+                                outrun_parser::Argument::Spread { .. } => {
+                                    return Err(EvaluationError::UnsupportedExpression {
+                                        expr_type: "spread_argument".to_string(),
+                                        span,
+                                    });
+                                }
+                            };
+                            args.push(arg_value);
+                        }
+
+                        self.intrinsics
+                            .execute_intrinsic(&function_name, &args, span)
+                            .map_err(|e| EvaluationError::Intrinsic { source: e })
+                    } else {
+                        // Try to resolve protocol call without clause IDs as a fallback
+                        match self.try_resolve_protocol_call_fallback(&function_name, &function_call.arguments, context, span) {
+                            Ok(value) => Ok(value),
+                            Err(_) => {
+                                panic!(
+                                    "BUG: Non-intrinsic function call missing universal_clause_ids: {}",
+                                    function_name
+                                )
+                            }
+                        }
+                    }
                 }
                 outrun_parser::FunctionPath::Simple { name } => {
-                    panic!(
-                        "BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}",
-                        name.name
-                    );
+                    // Try to resolve simple function call as a protocol method
+                    let function_name = &name.name;
+                    
+
+                    
+                    // Try common protocol method patterns
+                    let qualified_name = if function_name == "equal?" {
+                        "Equality.equal?"
+                    } else if function_name == "not" {
+                        "LogicalNot.not"
+                    } else {
+                        // For other simple calls, panic as before
+                        panic!(
+                            "BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}",
+                            function_name
+                        );
+                    };
+                    
+                    match self.try_resolve_protocol_call_fallback(qualified_name, &function_call.arguments, context, span) {
+                        Ok(value) => Ok(value),
+                        Err(_) => {
+                            panic!(
+                                "BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}",
+                                function_name
+                            )
+                        }
+                    }
                 }
                 outrun_parser::FunctionPath::Expression { .. } => {
                     panic!(
                         "BUG: Expression function calls must have universal_clause_ids populated by typechecker"
                     );
                 }
-            };
-
-            if function_name.starts_with("Outrun.Intrinsic.") {
-                // Direct intrinsic function call
-                let mut args = Vec::new();
-                for arg in &function_call.arguments {
-                    let arg_value = match arg {
-                        outrun_parser::Argument::Named { expression, .. } => {
-                            self.evaluate(expression, context)?
-                        }
-                        outrun_parser::Argument::Spread { .. } => {
-                            return Err(EvaluationError::UnsupportedExpression {
-                                expr_type: "spread_argument".to_string(),
-                                span,
-                            });
-                        }
-                    };
-                    args.push(arg_value);
-                }
-
-                self.intrinsics
-                    .execute_intrinsic(&function_name, &args, span)
-                    .map_err(|e| EvaluationError::Intrinsic { source: e })
-            } else {
-                panic!(
-                    "BUG: Non-intrinsic function call missing universal_clause_ids: {}",
-                    function_name
-                );
             }
         }
     }
@@ -557,7 +594,7 @@ impl ExpressionEvaluator {
     /// Universal clause-based dispatch - the future of function dispatch
     fn dispatch_clauses(
         &self,
-        clause_ids: &[u64],
+        clause_ids: &[outrun_typechecker::universal_dispatch::ClauseId],
         arguments: &[outrun_parser::Argument],
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
@@ -589,9 +626,7 @@ impl ExpressionEvaluator {
         // Universal clause dispatch - try each clause until one succeeds
         
         // Try each clause in order until one succeeds
-        for &clause_id_raw in clause_ids {
-            let clause_id = ClauseId(clause_id_raw);
-
+        for &clause_id in clause_ids {
             // Get clause info from universal registry
             if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
                 // Evaluate all guards for this clause
@@ -836,6 +871,69 @@ impl ExpressionEvaluator {
             ExpressionKind::IfExpression(_) => "if_expression",
             _ => "unsupported_expression",
         }
+    }
+
+    /// Fallback method to resolve protocol calls without clause IDs
+    /// This handles cases where desugared operators in protocol function bodies
+    /// don't have clause IDs assigned during typechecking
+    fn try_resolve_protocol_call_fallback(
+        &self,
+        function_name: &str,
+        arguments: &[outrun_parser::Argument],
+        context: &mut InterpreterContext,
+        span: outrun_parser::Span,
+    ) -> Result<Value, EvaluationError> {
+        // Parse the function name to extract protocol and method
+        let parts: Vec<&str> = function_name.split('.').collect();
+        if parts.len() != 2 {
+            return Err(EvaluationError::Runtime {
+                message: format!("Invalid function name format: {}", function_name),
+                span,
+            });
+        }
+
+        let protocol_name = parts[0];
+        let method_name = parts[1];
+
+        // Evaluate arguments to determine types for dispatch
+        let mut arg_values = Vec::new();
+        for arg in arguments {
+            match arg {
+                outrun_parser::Argument::Named { expression, .. } => {
+                    let arg_value = self.evaluate(expression, context)?;
+                    arg_values.push(arg_value);
+                }
+                outrun_parser::Argument::Spread { .. } => {
+                    return Err(EvaluationError::UnsupportedExpression {
+                        expr_type: "spread_argument".to_string(),
+                        span,
+                    });
+                }
+            }
+        }
+
+        // For LogicalNot.not with Boolean argument, call the intrinsic directly
+        if protocol_name == "LogicalNot" && method_name == "not" && arg_values.len() == 1 {
+            if let Value::Boolean(_) = arg_values[0] {
+                return self.intrinsics
+                    .execute_intrinsic("Outrun.Intrinsic.bool_not", &arg_values, span)
+                    .map_err(|e| EvaluationError::Intrinsic { source: e });
+            }
+        }
+
+        // For Equality.equal? with any arguments, call the generic equal intrinsic
+        if protocol_name == "Equality" && method_name == "equal?" && arg_values.len() == 2 {
+            return self.intrinsics
+                .execute_intrinsic("Outrun.Intrinsic.equal", &arg_values, span)
+                .map_err(|e| EvaluationError::Intrinsic { source: e });
+        }
+
+        // Add more protocol-specific fallbacks here as needed
+        
+        Err(EvaluationError::Runtime {
+            message: format!("Cannot resolve protocol call without clause IDs: {}", function_name),
+            span,
+        })
     }
 }
 

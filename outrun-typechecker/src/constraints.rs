@@ -1635,7 +1635,10 @@ impl ConstraintSolver {
 
         // Create the clause with intrinsic function body (simplified for now)
         let clause = crate::universal_dispatch::ClauseInfo {
-            clause_id: crate::universal_dispatch::ClauseId::new(),
+            clause_id: crate::universal_dispatch::ClauseId::deterministic(
+                &template.function_signature,
+                &guards,
+            ),
             function_signature: template.function_signature.clone(),
             guards,
             body: crate::universal_dispatch::FunctionBody::IntrinsicFunction(format!(

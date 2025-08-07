@@ -4140,8 +4140,8 @@ impl TypeInferenceEngine {
 
         match dispatcher.resolve_local_call(function_name, Some(function_call.span)) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
-                // Single resolved function - create single clause
-                let clause_id = crate::universal_dispatch::ClauseId::new();
+                // Single resolved function - create deterministic clause
+                let clause_id = self.create_clause_id_for_function(&resolved_func);
 
                 // CRITICAL FIX: Apply generic parameter substitution for local function calls
                 // This resolves the issue where local functions returning Option<T> don't get
@@ -4172,7 +4172,7 @@ impl TypeInferenceEngine {
                 };
 
                 for candidate in candidates {
-                    let clause_id = crate::universal_dispatch::ClauseId::new();
+                    let clause_id = self.create_clause_id_for_function(&candidate);
                     self.register_function_clause(clause_id, &candidate);
                     clause_ids.push(clause_id);
                 }
@@ -4246,7 +4246,7 @@ impl TypeInferenceEngine {
             Some(function_call.span),
         ) {
             Ok(crate::dispatch::DispatchResult::Resolved(resolved_func)) => {
-                let clause_id = crate::universal_dispatch::ClauseId::new();
+                let clause_id = self.create_clause_id_for_function(&resolved_func);
 
                 // CRITICAL FIX: Substitute generic parameters in return type for protocol calls
                 let return_type = if self.type_registry.has_protocol(&protocol_id) {
@@ -4278,7 +4278,7 @@ impl TypeInferenceEngine {
                 };
 
                 for candidate in candidates {
-                    let clause_id = crate::universal_dispatch::ClauseId::new();
+                    let clause_id = self.create_clause_id_for_function(&candidate);
                     self.register_function_clause(clause_id, &candidate);
                     clause_ids.push(clause_id);
                 }
@@ -4299,7 +4299,11 @@ impl TypeInferenceEngine {
                     ) {
                         Ok(result) => {
                             // Convert InferenceResult to UniversalCallResolution
-                            let clause_id = crate::universal_dispatch::ClauseId::new();
+                            let signature = crate::universal_dispatch::FunctionSignature::new(
+                                vec![module_name.to_string()],
+                                function_name.to_string(),
+                            );
+                            let clause_id = crate::universal_dispatch::ClauseId::deterministic(&signature, &[]);
                             return Ok(crate::typed_ast::UniversalCallResolution::single(
                                 clause_id,
                                 result.inferred_type,
@@ -4326,6 +4330,57 @@ impl TypeInferenceEngine {
         result
     }
 
+    /// Create a deterministic clause ID for a resolved function
+    fn create_clause_id_for_function(
+        &self,
+        resolved_func: &crate::dispatch::ResolvedFunction,
+    ) -> crate::universal_dispatch::ClauseId {
+        use crate::universal_dispatch::*;
+        
+        let signature = FunctionSignature::new(
+            vec![resolved_func.function_info.defining_scope.clone()],
+            resolved_func.function_info.function_name.clone(),
+        );
+        
+        let mut guards = Vec::new();
+        if let Some(implementing_type) = &resolved_func.implementing_type {
+            guards.push(Guard::TypeCompatible {
+                target_type: Type::concrete(implementing_type.as_str()),
+                implementing_type: Type::concrete(implementing_type.as_str()),
+                constraint_context: ConstraintContext::new(),
+            });
+        }
+        guards.push(Guard::AlwaysTrue);
+        
+        // Check if this clause already exists in the registry
+        let existing_clauses = self.universal_dispatch_registry.get_clauses_for_function(&signature);
+        
+        if !existing_clauses.is_empty() {
+            eprintln!("DEBUG: Found {} existing clauses for {}.{}", 
+                existing_clauses.len(), 
+                resolved_func.function_info.defining_scope,
+                resolved_func.function_info.function_name);
+            
+            // Check if any existing clause matches our guards
+            for &clause_id in existing_clauses {
+                if let Some(clause_info) = self.universal_dispatch_registry.get_clause(clause_id) {
+                    eprintln!("  Existing clause {}: guards={:?}", clause_id.0, clause_info.guards);
+                    // For now, just use the first one
+                    // TODO: Match guards properly
+                    return clause_id;
+                }
+            }
+        }
+        
+        // No existing clause found, create a new deterministic one
+        let new_id = ClauseId::deterministic(&signature, &guards);
+        eprintln!("DEBUG: Creating new deterministic clause {} for {}.{}", 
+            new_id.0,
+            resolved_func.function_info.defining_scope,
+            resolved_func.function_info.function_name);
+        new_id
+    }
+    
     /// Register a function clause in the universal dispatch registry
     fn register_function_clause(
         &mut self,
@@ -4334,13 +4389,16 @@ impl TypeInferenceEngine {
     ) {
         use crate::universal_dispatch::*;
 
-        // DEBUG: Add extensive logging for function clause registration
-
         // Create function signature from resolved function
         let signature = FunctionSignature::new(
             vec![resolved_func.function_info.defining_scope.clone()],
             resolved_func.function_info.function_name.clone(),
         );
+        
+        eprintln!("DEBUG: Registering clause {} for {}.{}", 
+            clause_id.0,
+            resolved_func.function_info.defining_scope,
+            resolved_func.function_info.function_name);
 
         // Create guards based on function type
         let mut guards = Vec::new();
