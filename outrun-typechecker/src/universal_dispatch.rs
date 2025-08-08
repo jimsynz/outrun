@@ -9,6 +9,59 @@ use crate::types::Type;
 use outrun_parser::{Expression, Span};
 use std::collections::HashMap;
 
+/// Result of merging dispatch registries
+#[derive(Debug, Clone, PartialEq)]
+pub struct DispatchMergeResult {
+    pub added_clauses: usize,
+    pub identical_clauses: usize,
+    pub conflicts: Vec<DispatchConflict>,
+}
+
+impl DispatchMergeResult {
+    pub fn new() -> Self {
+        Self {
+            added_clauses: 0,
+            identical_clauses: 0,
+            conflicts: Vec::new(),
+        }
+    }
+
+    pub fn has_conflicts(&self) -> bool {
+        !self.conflicts.is_empty()
+    }
+}
+
+impl Default for DispatchMergeResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Information about a dispatch conflict during merging
+#[derive(Debug, Clone, PartialEq)]
+pub struct DispatchConflict {
+    pub clause_id: ClauseId,
+    pub function_signature: FunctionSignature,
+    pub resolution: DispatchConflictResolution,
+}
+
+/// How a dispatch conflict was resolved
+#[derive(Debug, Clone, PartialEq)]
+pub enum DispatchConflictResolution {
+    LocalTakesPrecedence,
+    DependencyTakesPrecedence,
+    Error,
+}
+
+/// Statistics about a dispatch registry
+#[derive(Debug, Clone, PartialEq)]
+pub struct DispatchRegistryStats {
+    pub total_clauses: usize,
+    pub dispatch_functions: usize,
+    pub type_optimizations: usize,
+    pub average_clauses_per_function: f64,
+}
+
 /// Universal clause identifier - unique ID for every function clause
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ClauseId(pub u64);
@@ -184,6 +237,19 @@ pub struct ClauseExecutionStats {
     pub total_guard_evaluations: u64,
     pub average_guard_evaluations: f64,
     pub average_execution_time: Option<f64>,
+}
+
+impl ClauseExecutionStats {
+    pub fn new() -> Self {
+        Self {
+            call_count: 0,
+            success_count: 0,
+            success_rate: 0.0,
+            total_guard_evaluations: 0,
+            average_guard_evaluations: 0.0,
+            average_execution_time: None,
+        }
+    }
 }
 
 impl Default for ClauseExecutionStats {
@@ -428,6 +494,84 @@ impl UniversalDispatchRegistry {
             (Type::Function { .. }, Type::Function { .. }) => true,
             // If we can't determine, err on the side of keeping the clause
             _ => true,
+        }
+    }
+
+    /// Merge another UniversalDispatchRegistry into this one
+    ///
+    /// Merging Strategy:
+    /// - Clauses from current registry take precedence
+    /// - Dependency clauses are added if they don't conflict
+    /// - Clause IDs are preserved to maintain deterministic dispatch
+    pub fn merge_with_dependency(
+        &mut self,
+        dependency: &UniversalDispatchRegistry,
+    ) -> DispatchMergeResult {
+        let mut result = DispatchMergeResult::new();
+
+        // Merge clauses
+        for (clause_id, clause_info) in &dependency.clauses {
+            if self.clauses.contains_key(clause_id) {
+                // Clause ID already exists - check if identical
+                if let Some(existing_clause) = self.clauses.get(clause_id) {
+                    if self.clauses_are_identical(existing_clause, clause_info) {
+                        result.identical_clauses += 1;
+                    } else {
+                        result.conflicts.push(DispatchConflict {
+                            clause_id: *clause_id,
+                            function_signature: clause_info.function_signature.clone(),
+                            resolution: DispatchConflictResolution::LocalTakesPrecedence,
+                        });
+                    }
+                }
+            } else {
+                // New clause from dependency - add it
+                self.clauses.insert(*clause_id, clause_info.clone());
+                result.added_clauses += 1;
+
+                // Update dispatch index
+                self.dispatch_index
+                    .entry(clause_info.function_signature.clone())
+                    .or_default()
+                    .push(*clause_id);
+
+                // Update type index if applicable
+                if let Some(type_pattern) = self.extract_type_pattern(clause_info) {
+                    self.type_index
+                        .entry((clause_info.function_signature.clone(), type_pattern))
+                        .or_default()
+                        .push(*clause_id);
+                }
+
+                // Initialize statistics
+                self.statistics
+                    .insert(*clause_id, ClauseExecutionStats::new());
+            }
+        }
+
+        result
+    }
+
+    /// Check if two clauses are functionally identical
+    fn clauses_are_identical(&self, clause1: &ClauseInfo, clause2: &ClauseInfo) -> bool {
+        // Compare all relevant fields except statistics
+        clause1.function_signature == clause2.function_signature
+            && clause1.guards == clause2.guards
+            && clause1.body == clause2.body
+            && clause1.priority == clause2.priority
+    }
+
+    /// Get statistics about the registry for debugging
+    pub fn get_dispatch_stats(&self) -> DispatchRegistryStats {
+        DispatchRegistryStats {
+            total_clauses: self.clauses.len(),
+            dispatch_functions: self.dispatch_index.len(),
+            type_optimizations: self.type_index.len(),
+            average_clauses_per_function: if self.dispatch_index.is_empty() {
+                0.0
+            } else {
+                self.clauses.len() as f64 / self.dispatch_index.len() as f64
+            },
         }
     }
 }

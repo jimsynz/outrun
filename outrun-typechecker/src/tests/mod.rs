@@ -41,6 +41,7 @@ pub mod test_protocol_concrete_compatibility;
 pub mod test_protocol_registration_order;
 pub mod test_protocol_registration_timing;
 pub mod test_protocol_return_types;
+pub mod test_registry_merging;
 pub mod test_self_type_resolution;
 pub mod test_tuple_type_inference;
 pub mod test_tuple_types_basic;

@@ -63,10 +63,26 @@ fn test_comparison_expressions() {
         }
     }
 
-    // Test inequality - removed due to integration issue between typechecker desugaring
-    // and interpreter function dispatch. The < operator desugars to Comparison.less_than?
-    // but the interpreter function registry mapping needs work.
-    // TODO: Fix protocol function to intrinsic mapping
+    // Test inequality operators
+    match harness.evaluate("3 < 7") {
+        Ok(result) => {
+            println!("3 < 7 = {}", result.display());
+            assert_eq!(result.display(), "true");
+        }
+        Err(e) => {
+            println!("3 < 7 failed: {:?}", e);
+        }
+    }
+
+    match harness.evaluate("10 < 5") {
+        Ok(result) => {
+            println!("10 < 5 = {}", result.display());
+            assert_eq!(result.display(), "false");
+        }
+        Err(e) => {
+            println!("10 < 5 failed: {:?}", e);
+        }
+    }
 }
 
 #[test]

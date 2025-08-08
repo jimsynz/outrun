@@ -774,11 +774,23 @@ impl TypeInferenceEngine {
         dependency_function_registry: std::rc::Rc<FunctionRegistry>,
     ) -> Result<(), crate::error::TypecheckError> {
         // Merge the dependency registries into our existing ones while preserving orphan rules
+        // Uses intelligent registry merging with conflict detection and proper precedence
+        if let Some(type_registry_mut) = std::rc::Rc::get_mut(&mut self.type_registry) {
+            if let Err(e) = type_registry_mut.merge_with_dependency(&dependency_type_registry) {
+                return Err(crate::error::TypecheckError::TypeError(e));
+            }
+        } else {
+            // Fallback to replacement if we can't get mutable reference
+            self.type_registry = dependency_type_registry;
+        }
 
-        // For now, we'll use a simple approach - replace our registries with the dependencies
-        // TODO: Implement proper registry merging when needed
-        self.type_registry = dependency_type_registry;
-        self.function_registry = dependency_function_registry;
+        // Merge function registry with proper precedence (local over dependencies)
+        if let Some(function_registry_mut) = std::rc::Rc::get_mut(&mut self.function_registry) {
+            function_registry_mut.merge_from_dependency(&dependency_function_registry);
+        } else {
+            // Fallback to replacement if we can't get mutable reference
+            self.function_registry = dependency_function_registry;
+        }
 
         Ok(())
     }
@@ -794,10 +806,20 @@ impl TypeInferenceEngine {
         self.type_registry = dependency_type_registry;
         self.function_registry = dependency_function_registry;
 
-        // Import universal dispatch registry (this was the missing piece!)
-        // TODO: In the future, we should merge registries instead of replacing them
-        // For now, replace the registry to inherit all dependency clauses
-        self.universal_dispatch_registry = dependency_universal_dispatch;
+        // Import universal dispatch registry with intelligent merging
+        // Preserves clause IDs and maintains deterministic dispatch order
+        let merge_result = self
+            .universal_dispatch_registry
+            .merge_with_dependency(&dependency_universal_dispatch);
+
+        // Log merging statistics for debugging
+        if merge_result.added_clauses > 0 || merge_result.has_conflicts() {
+            println!(
+                "Universal dispatch merge: {} clauses added, {} conflicts",
+                merge_result.added_clauses,
+                merge_result.conflicts.len()
+            );
+        }
 
         Ok(())
     }

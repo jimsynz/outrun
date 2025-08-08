@@ -52,6 +52,16 @@ pub enum TypeError {
         span: Option<SourceSpan>,
     },
 
+    #[error("Module '{module_name}' has conflicting definitions between packages '{existing_package}' and '{conflicting_package}'")]
+    #[diagnostic(code(outrun::types::module_conflict))]
+    ModuleConflict {
+        module_name: String,
+        existing_package: String,
+        conflicting_package: String,
+        #[label("conflicting definition here")]
+        span: Option<SourceSpan>,
+    },
+
     #[error("Type '{type_name}' has conflicting generic arity: expected {expected_arity}, found {found_arity}")]
     #[diagnostic(code(outrun::types::arity_conflict))]
     ArityConflict {

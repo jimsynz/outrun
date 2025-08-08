@@ -11,6 +11,50 @@ use crate::types::{ModuleName, Substitution, Type};
 use outrun_parser::Span;
 use std::collections::HashMap;
 
+/// Result of merging function registries with conflict information
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionMergeResult {
+    pub added_functions: usize,
+    pub identical_functions: usize,
+    pub conflicts: Vec<FunctionConflict>,
+}
+
+impl FunctionMergeResult {
+    pub fn new() -> Self {
+        Self {
+            added_functions: 0,
+            identical_functions: 0,
+            conflicts: Vec::new(),
+        }
+    }
+
+    pub fn has_conflicts(&self) -> bool {
+        !self.conflicts.is_empty()
+    }
+}
+
+impl Default for FunctionMergeResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Information about a function conflict during merging
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionConflict {
+    pub module_name: String,
+    pub function_name: String,
+    pub resolution: ConflictResolution,
+}
+
+/// How a conflict was resolved
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConflictResolution {
+    LocalTakesPrecedence,
+    DependencyTakesPrecedence,
+    Error,
+}
+
 /// Function visibility in Outrun
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FunctionVisibility {
@@ -134,19 +178,65 @@ impl FunctionRegistry {
             .collect()
     }
 
-    /// Merge another function registry into this one
+    /// Merge another function registry into this one with proper precedence
     /// Used for composing packages with pre-compiled dependencies
+    ///
+    /// Merging Strategy:
+    /// - Current package functions take precedence over dependencies
+    /// - Dependencies only add functions that don't exist locally
+    /// - This preserves local overrides and customizations
     pub fn merge_from_dependency(&mut self, dependency_registry: &FunctionRegistry) {
-        // Merge all functions from the dependency registry
-        // Functions from dependencies take precedence since they are pre-compiled
         for ((module_name, function_name), function_info) in &dependency_registry.functions {
-            // Add the function, potentially overriding local definitions
-            // This allows dependencies to provide implementations that user code depends on
-            self.functions.insert(
-                (module_name.clone(), function_name.clone()),
-                function_info.clone(),
-            );
+            let key = (module_name.clone(), function_name.clone());
+
+            // Only add if we don't already have this function
+            // This gives current package precedence over dependencies
+            self.functions.entry(key).or_insert_with(|| function_info.clone());
+            // If we already have the function, keep our version (local precedence)
         }
+    }
+
+    /// Merge with intelligent conflict detection and reporting
+    /// Returns information about conflicts and merging results
+    pub fn merge_with_conflict_detection(
+        &mut self,
+        dependency_registry: &FunctionRegistry,
+    ) -> FunctionMergeResult {
+        let mut result = FunctionMergeResult::new();
+
+        for ((module_name, function_name), function_info) in &dependency_registry.functions {
+            let key = (module_name.clone(), function_name.clone());
+
+            match self.functions.get(&key) {
+                Some(existing_info) => {
+                    if self.functions_are_identical(existing_info, function_info) {
+                        // Identical functions - no conflict
+                        result.identical_functions += 1;
+                    } else {
+                        // Different implementations - local takes precedence
+                        result.conflicts.push(FunctionConflict {
+                            module_name: module_name.clone(),
+                            function_name: function_name.clone(),
+                            resolution: ConflictResolution::LocalTakesPrecedence,
+                        });
+                    }
+                }
+                None => {
+                    // New function from dependency
+                    self.functions.insert(key, function_info.clone());
+                    result.added_functions += 1;
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Check if two function infos are identical
+    fn functions_are_identical(&self, func1: &FunctionInfo, func2: &FunctionInfo) -> bool {
+        // For now, use structural equality
+        // In the future, we might want more sophisticated comparison
+        func1 == func2
     }
 
     /// Get total number of registered functions

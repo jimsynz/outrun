@@ -8,6 +8,16 @@ use crate::types::{ConcreteTypeDefinition, ModuleName, ProtocolDefinition, Type,
 use outrun_parser::Span;
 use std::collections::{HashMap, HashSet};
 
+/// Statistics about a registry for debugging and monitoring
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegistryStats {
+    pub total_modules: usize,
+    pub local_modules: usize,
+    pub protocol_modules: usize,
+    pub struct_modules: usize,
+    pub implementation_modules: usize,
+}
+
 /// Information about a protocol implementation (legacy compatibility)
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplementationInfo {
@@ -381,6 +391,114 @@ impl TypeRegistry {
     pub fn is_never_type(&self, _type_name: &str) -> bool {
         // TODO: Implement proper never type detection
         false
+    }
+
+    /// Merge another TypeRegistry into this one with intelligent conflict resolution
+    ///
+    /// Merging Strategy:
+    /// - Current package definitions take precedence over dependencies
+    /// - Identical definitions are allowed (deduplicated)
+    /// - Conflicting definitions (same name, different content) cause errors
+    /// - Package self-redefinition is allowed (for hot reloading)
+    pub fn merge_with_dependency(
+        &mut self,
+        dependency: &TypeRegistry,
+    ) -> Result<(), crate::error::TypeError> {
+        for (module_name, dependency_module) in &dependency.modules {
+            match self.modules.get(module_name) {
+                Some(existing_module) => {
+                    // Module already exists - check for conflicts
+                    if self.modules_are_identical(existing_module, dependency_module) {
+                        // Identical definitions - allow (deduplicate)
+                        continue;
+                    } else if self.is_package_self_redefinition(module_name, dependency) {
+                        // Package redefining its own module - allow for hot reloading
+                        println!(
+                            "⚠️  package {} redefined module {}",
+                            self.get_package_name(module_name),
+                            module_name.as_str()
+                        );
+                        continue;
+                    } else {
+                        // Conflicting definitions from different packages
+                        return Err(crate::error::TypeError::ModuleConflict {
+                            module_name: module_name.as_str().to_string(),
+                            existing_package: self.get_package_name(module_name),
+                            conflicting_package: dependency.get_package_name(module_name),
+                            span: None,
+                        });
+                    }
+                }
+                None => {
+                    // New module from dependency - add it
+                    self.modules
+                        .insert(module_name.clone(), dependency_module.clone());
+                }
+            }
+        }
+
+        // Merge local modules set (dependencies don't override local status)
+        // Local modules from current package remain local
+        for local_module in &dependency.local_modules {
+            if !self.local_modules.contains(local_module) {
+                // Only add if it's not conflicting with our local modules
+                self.local_modules.insert(local_module.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if two modules have identical definitions
+    fn modules_are_identical(&self, module1: &TypeModule, module2: &TypeModule) -> bool {
+        // For now, use structural equality
+        // In the future, we might want more sophisticated comparison
+        module1 == module2
+    }
+
+    /// Check if this is a package redefining its own module (allowed for hot reloading)
+    fn is_package_self_redefinition(
+        &self,
+        module_name: &ModuleName,
+        dependency: &TypeRegistry,
+    ) -> bool {
+        // If both registries consider this module "local", it's self-redefinition
+        self.local_modules.contains(module_name) && dependency.local_modules.contains(module_name)
+    }
+
+    /// Get the package name that owns a module (simplified heuristic)
+    fn get_package_name(&self, module_name: &ModuleName) -> String {
+        // Extract package name from module name
+        // For now, use the first component before the first dot
+        let name = module_name.as_str();
+        if let Some(dot_pos) = name.find('.') {
+            name[..dot_pos].to_string()
+        } else {
+            "current".to_string()
+        }
+    }
+
+    /// Get statistics about the registry for debugging
+    pub fn get_merge_stats(&self) -> RegistryStats {
+        RegistryStats {
+            total_modules: self.modules.len(),
+            local_modules: self.local_modules.len(),
+            protocol_modules: self
+                .modules
+                .values()
+                .filter(|m| matches!(m, TypeModule::Protocol { .. }))
+                .count(),
+            struct_modules: self
+                .modules
+                .values()
+                .filter(|m| matches!(m, TypeModule::Struct { .. }))
+                .count(),
+            implementation_modules: self
+                .modules
+                .values()
+                .filter(|m| matches!(m, TypeModule::Implementation { .. }))
+                .count(),
+        }
     }
 }
 
