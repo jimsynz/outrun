@@ -459,10 +459,11 @@ impl ExhaustivenessChecker {
         case_expr: &CaseExpression,
         scrutinee_type: &Type,
         type_checker: F,
-    ) -> Result<(), TypecheckError> 
+    ) -> Result<(), TypecheckError>
     where
         F: Fn(&Type, &Type) -> bool,
-    {        // Special case for Boolean types - simple heuristic check
+    {
+        // Special case for Boolean types - simple heuristic check
         if self.is_boolean_type(scrutinee_type, &type_checker) {
             return self.check_boolean_exhaustiveness(case_expr);
         }
@@ -751,8 +752,7 @@ impl ExhaustivenessChecker {
         if !has_wildcard {
             return Err(TypecheckError::ExhaustivenessError(
                 ExhaustivenessError::MissingPattern {
-                    missing_pattern: "_ (wildcard required for infinite String domain)"
-                        .to_string(),
+                    missing_pattern: "_ (wildcard required for infinite String domain)".to_string(),
                     span: to_source_span(Some(case_expr.span)),
                 },
             ));
@@ -762,10 +762,7 @@ impl ExhaustivenessChecker {
     }
 
     /// Simple exhaustiveness check for Atom types
-    fn check_atom_exhaustiveness(
-        &self,
-        case_expr: &CaseExpression,
-    ) -> Result<(), TypecheckError> {
+    fn check_atom_exhaustiveness(&self, case_expr: &CaseExpression) -> Result<(), TypecheckError> {
         let mut _has_atom_literals = false;
         let mut has_wildcard = false;
 
@@ -792,8 +789,7 @@ impl ExhaustivenessChecker {
         if !has_wildcard {
             return Err(TypecheckError::ExhaustivenessError(
                 ExhaustivenessError::MissingPattern {
-                    missing_pattern: "_ (wildcard required for infinite Atom domain)"
-                        .to_string(),
+                    missing_pattern: "_ (wildcard required for infinite Atom domain)".to_string(),
                     span: to_source_span(Some(case_expr.span)),
                 },
             ));
@@ -803,10 +799,7 @@ impl ExhaustivenessChecker {
     }
 
     /// Simple exhaustiveness check for Float types
-    fn check_float_exhaustiveness(
-        &self,
-        case_expr: &CaseExpression,
-    ) -> Result<(), TypecheckError> {
+    fn check_float_exhaustiveness(&self, case_expr: &CaseExpression) -> Result<(), TypecheckError> {
         let mut _has_float_literals = false;
         let mut has_wildcard = false;
 
@@ -833,8 +826,7 @@ impl ExhaustivenessChecker {
         if !has_wildcard {
             return Err(TypecheckError::ExhaustivenessError(
                 ExhaustivenessError::MissingPattern {
-                    missing_pattern: "_ (wildcard required for infinite Float domain)"
-                        .to_string(),
+                    missing_pattern: "_ (wildcard required for infinite Float domain)".to_string(),
                     span: to_source_span(Some(case_expr.span)),
                 },
             ));

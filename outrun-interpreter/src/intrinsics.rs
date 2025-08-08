@@ -99,11 +99,6 @@ impl IntrinsicsHandler {
         self.register("Outrun.Intrinsic.bool_or", intrinsic_bool_or);
         self.register("Outrun.Intrinsic.bool_not", intrinsic_bool_not);
 
-        // TODO: Remove these protocol bridges once proper dispatch is implemented
-        // These are architectural hacks that bypass the protocol system
-        // self.register("BinaryAddition.add", intrinsic_add_integer64);
-        // Protocol functions should use proper dispatch, not direct intrinsic mapping
-
         // Float arithmetic - using actual core library names
         self.register("Outrun.Intrinsic.f64_add", intrinsic_add_float64);
         self.register("Outrun.Intrinsic.f64_sub", intrinsic_subtract_float64);

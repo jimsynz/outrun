@@ -79,12 +79,16 @@ def test_struct(u: User): Integer {
 
     match result {
         Ok(_) => {
-            panic!("❌ Struct case without wildcard should not compile (missing other combinations)");
+            panic!(
+                "❌ Struct case without wildcard should not compile (missing other combinations)"
+            );
         }
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("struct") || error_string.contains("field"),
+                error_string.contains("wildcard")
+                    || error_string.contains("struct")
+                    || error_string.contains("field"),
                 "Expected struct exhaustiveness error, got: {}",
                 error_string
             );
@@ -120,7 +124,10 @@ def test_struct(u: User): Integer {
             // This might fail due to other issues, but exhaustiveness should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ Struct case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ Struct case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
@@ -181,7 +188,9 @@ def test_tuple(x: (Boolean, Boolean)): Integer {
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("tuple") || error_string.contains("elements"),
+                error_string.contains("wildcard")
+                    || error_string.contains("tuple")
+                    || error_string.contains("elements"),
                 "Expected tuple exhaustiveness error, got: {}",
                 error_string
             );
@@ -215,7 +224,10 @@ def test_tuple(x: (Boolean, Integer)): Integer {
             // This might fail due to other issues, but exhaustiveness should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ Tuple case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ Tuple case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
@@ -276,7 +288,9 @@ def test_float(x: Float): Integer {
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("infinite") || error_string.contains("Float"),
+                error_string.contains("wildcard")
+                    || error_string.contains("infinite")
+                    || error_string.contains("Float"),
                 "Expected float exhaustiveness error, got: {}",
                 error_string
             );
@@ -310,7 +324,10 @@ def test_float(x: Float): Integer {
             // This might fail due to other issues, but exhaustiveness should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ Float case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ Float case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
@@ -641,7 +658,9 @@ def test_integer(x: Integer): String {
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("infinite") || error_string.contains("Integer"),
+                error_string.contains("wildcard")
+                    || error_string.contains("infinite")
+                    || error_string.contains("Integer"),
                 "Expected integer exhaustiveness error, got: {}",
                 error_string
             );
@@ -676,7 +695,10 @@ def test_integer(x: Integer): String {
             // The exhaustiveness checking should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ Integer case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ Integer case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
@@ -737,7 +759,9 @@ def test_string(x: String): Integer {
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("infinite") || error_string.contains("String"),
+                error_string.contains("wildcard")
+                    || error_string.contains("infinite")
+                    || error_string.contains("String"),
                 "Expected string exhaustiveness error, got: {}",
                 error_string
             );
@@ -772,7 +796,10 @@ def test_string(x: String): Integer {
             // The exhaustiveness checking should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ String case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ String case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
@@ -866,7 +893,9 @@ def test_atom(x: Atom): Integer {
         Err(e) => {
             let error_string = format!("{:?}", e);
             assert!(
-                error_string.contains("wildcard") || error_string.contains("infinite") || error_string.contains("Atom"),
+                error_string.contains("wildcard")
+                    || error_string.contains("infinite")
+                    || error_string.contains("Atom"),
                 "Expected atom exhaustiveness error, got: {}",
                 error_string
             );
@@ -900,7 +929,10 @@ def test_atom(x: Atom): Integer {
             // This might fail due to other issues, but exhaustiveness should pass
             let error_string = format!("{:?}", e);
             if error_string.contains("exhaustive") || error_string.contains("wildcard") {
-                panic!("❌ Atom case with identifier pattern should be exhaustive: {:?}", e);
+                panic!(
+                    "❌ Atom case with identifier pattern should be exhaustive: {:?}",
+                    e
+                );
             } else {
                 println!("✅ Exhaustiveness passed (other error expected): {:?}", e);
             }
