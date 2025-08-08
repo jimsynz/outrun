@@ -3666,14 +3666,68 @@ impl TypeInferenceEngine {
                         ));
                     }
                 } else {
-                    // No else branch - result is Option<then_type>
-                    Type::generic_concrete("Option", vec![then_type.clone()])
+                    // No else branch - require Default implementation for then_type
+                    then_type.clone()
                 };
+
+                // Collect constraints from all dependency results
+                let mut all_constraints = Vec::new();
+                let mut combined_substitution = Substitution::new();
+                
+                for dep_result in dependency_results.iter() {
+                    all_constraints.extend(dep_result.constraints.clone());
+                    combined_substitution = combined_substitution.compose(&dep_result.substitution);
+                }
+
+                // If no else branch, add Default constraint for then_type
+                if else_type.is_none() {
+                    match then_type {
+                        Type::Variable { var_id, .. } => {
+                            // For type variables, generate T: Default constraint
+                            all_constraints.push(Constraint::Implements {
+                                type_var: *var_id,
+                                protocol: ModuleName::new("Default"),
+                                span: Some(if_expr.condition.span),
+                            });
+                        }
+                        Type::Concrete { .. } => {
+                            // For concrete types, we could check Default implementation here,
+                            // but it's better to let the constraint solver handle it uniformly.
+                            // Create a fresh type variable and constrain it to be equal to the concrete type
+                            // and implement Default.
+                            let fresh_var_id = self.fresh_type_var();
+                            let fresh_var = Type::variable(fresh_var_id, Level(0));
+                                all_constraints.push(Constraint::Equality {
+                                    left: Box::new(fresh_var),
+                                    right: Box::new(then_type.clone()),
+                                    span: Some(if_expr.condition.span),
+                                });
+                            all_constraints.push(Constraint::Implements {
+                                type_var: fresh_var_id,
+                                protocol: ModuleName::new("Default"),
+                                span: Some(if_expr.condition.span),
+                            });
+                        }
+                        _ => {
+                            // For other types (generic, protocol, etc.), we'll need more sophisticated handling
+                            // For now, let's be conservative and require an explicit else branch
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "If expression without else branch requires the then-type to implement Default. Type {} may not implement Default, consider adding an else branch.",
+                                        then_type
+                                    )],
+                                },
+                            ));
+                        }
+                    }
+                }
 
                 Ok(InferenceResult {
                     inferred_type: result_type,
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
+                    constraints: all_constraints,
+                    substitution: combined_substitution,
                 })
             }
 
