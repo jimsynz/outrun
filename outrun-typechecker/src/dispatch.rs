@@ -191,7 +191,9 @@ impl FunctionRegistry {
 
             // Only add if we don't already have this function
             // This gives current package precedence over dependencies
-            self.functions.entry(key).or_insert_with(|| function_info.clone());
+            self.functions
+                .entry(key)
+                .or_insert_with(|| function_info.clone());
             // If we already have the function, keep our version (local precedence)
         }
     }

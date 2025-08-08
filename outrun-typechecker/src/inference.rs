@@ -16,9 +16,9 @@ use crate::{
     types::{Constraint, Level, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId},
 };
 use outrun_parser::{
-    ConstDefinition, Expression, FunctionDefinition, FunctionSignature, ImplBlock, Item, Program,
-    ProtocolDefinition, ProtocolFunction, StaticFunctionDefinition, StructDefinition,
-    TypeAnnotation, TypeSpec,
+    CaseExpression, ConstDefinition, Expression, FunctionDefinition, FunctionSignature, ImplBlock,
+    Item, Program, ProtocolDefinition, ProtocolFunction, StaticFunctionDefinition,
+    StructDefinition, TypeAnnotation, TypeSpec,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -63,6 +63,9 @@ pub struct TypeInferenceEngine {
 
     /// Depth tracking for nested inference calls to prevent premature task state clearing
     inference_depth: u32,
+
+    /// Exhaustiveness checker for pattern matching and guards
+    exhaustiveness_checker: crate::exhaustiveness::ExhaustivenessChecker,
 }
 
 /// Unique identifier for inference tasks in the iterative system
@@ -454,6 +457,9 @@ impl TypeInferenceEngine {
         function_registry: Rc<FunctionRegistry>,
         type_registry: Rc<TypeRegistry>,
     ) -> Self {
+        let mut exhaustiveness_checker = crate::exhaustiveness::ExhaustivenessChecker::new();
+        exhaustiveness_checker.set_type_registry(type_registry.clone());
+
         Self {
             function_registry,
             type_registry,
@@ -472,6 +478,7 @@ impl TypeInferenceEngine {
             generic_parameter_context: HashMap::new(),
             constraint_solver_with_backtracking: None,
             inference_depth: 0,
+            exhaustiveness_checker,
         }
     }
 
@@ -682,6 +689,19 @@ impl TypeInferenceEngine {
         // Simple implementation - check if there's an implementation module
         let impl_name = ModuleName::implementation(type_name.as_str(), protocol_name.as_str());
         self.type_registry.get_module(impl_name.as_str()).is_some()
+    }
+
+    /// Check case exhaustiveness using proper type compatibility from the inference engine
+    fn check_case_exhaustiveness_with_proper_types(
+        &mut self,
+        case_expr: &CaseExpression,
+        scrutinee_type: &Type,
+    ) -> Result<(), TypecheckError> {
+        // PERFORMANCE FIX: Use the type registry directly instead of creating temporary engines
+        // The exhaustiveness checker already has access to the type registry and can use
+        // has_implementation() to check type compatibility efficiently
+        self.exhaustiveness_checker
+            .check_case_exhaustiveness_with_registry(case_expr, scrutinee_type)
     }
 
     /// Analyze recursive type patterns and emit compiler warnings
@@ -2021,8 +2041,6 @@ impl TypeInferenceEngine {
             let constraint_vars =
                 self.extract_type_variables_from_constraint_expression(constraints);
 
-            // DEBUG: Temporarily removed for cleaner output
-
             // Check each constrained variable exists in the available type variables or is Self
             for constrained_var in constraint_vars {
                 if constrained_var == "Self" {
@@ -2689,6 +2707,10 @@ impl TypeInferenceEngine {
             .into_iter()
             .next()
             .unwrap_or_else(|| Type::variable(self.fresh_type_var(), Level(0)));
+
+        // Check exhaustiveness of patterns using proper type compatibility
+        // We need to extract the type compatibility logic to avoid borrowing issues
+        self.check_case_exhaustiveness_with_proper_types(case_expr, &scrutinee_type)?;
 
         Ok(InferenceResult {
             inferred_type: result_type,
@@ -3796,6 +3818,21 @@ impl TypeInferenceEngine {
         // Type check guard clause if present
         if let Some(guard) = &function.guard {
             self.typecheck_guard_clause_readonly(guard, &mut function_context)?;
+
+            // Check guard exhaustiveness (simplified - single guard case)
+            let param_types: Vec<(String, Type)> = function
+                .parameters
+                .iter()
+                .map(|param| {
+                    let param_type = self
+                        .convert_type_annotation(&param.type_annotation)
+                        .unwrap_or_else(|_| Type::concrete("Unknown"));
+                    (param.name.name.clone(), param_type)
+                })
+                .collect();
+
+            self.exhaustiveness_checker
+                .check_guard_exhaustiveness(&[guard.clone()], &param_types)?;
         }
 
         // Restore the previous symbol table
@@ -4017,7 +4054,7 @@ impl TypeInferenceEngine {
 
     /// Check if two types are compatible for assignment/unification
     /// This includes protocol compatibility and type variable resolution
-    fn types_are_compatible(&self, found_type: &Type, expected_type: &Type) -> bool {
+    pub fn types_are_compatible(&self, found_type: &Type, expected_type: &Type) -> bool {
         use crate::types::Type;
 
         match (found_type, expected_type) {
@@ -4391,13 +4428,6 @@ impl TypeInferenceEngine {
             .get_clauses_for_function(&signature);
 
         if !existing_clauses.is_empty() {
-            eprintln!(
-                "DEBUG: Found {} existing clauses for {}.{}",
-                existing_clauses.len(),
-                resolved_func.function_info.defining_scope,
-                resolved_func.function_info.function_name
-            );
-
             // Check if any existing clause matches our guards
             for &clause_id in existing_clauses {
                 if let Some(clause_info) = self.universal_dispatch_registry.get_clause(clause_id) {
@@ -4413,14 +4443,7 @@ impl TypeInferenceEngine {
         }
 
         // No existing clause found, create a new deterministic one
-        let new_id = ClauseId::deterministic(&signature, &guards);
-        eprintln!(
-            "DEBUG: Creating new deterministic clause {} for {}.{}",
-            new_id.0,
-            resolved_func.function_info.defining_scope,
-            resolved_func.function_info.function_name
-        );
-        new_id
+        ClauseId::deterministic(&signature, &guards)
     }
 
     /// Register a function clause in the universal dispatch registry
@@ -4435,13 +4458,6 @@ impl TypeInferenceEngine {
         let signature = FunctionSignature::new(
             vec![resolved_func.function_info.defining_scope.clone()],
             resolved_func.function_info.function_name.clone(),
-        );
-
-        eprintln!(
-            "DEBUG: Registering clause {} for {}.{}",
-            clause_id.0,
-            resolved_func.function_info.defining_scope,
-            resolved_func.function_info.function_name
         );
 
         // Create guards based on function type
@@ -4499,8 +4515,6 @@ impl TypeInferenceEngine {
         context: &mut InferenceContext,
         precomputed_arg_types: &[Option<Type>],
     ) -> Result<InferenceResult, TypecheckError> {
-        // DEBUG: Track function call operations for performance monitoring (disabled for production)
-
         // Phase 2: Universal Interpreter Simplification
         // ALL function calls now go through the universal dispatch system
 

@@ -14,6 +14,7 @@ pub mod test_edge_cases;
 pub mod test_equality_auto_impl_override;
 pub mod test_error_reporting;
 pub mod test_exact_string_failure;
+pub mod test_exhaustiveness;
 pub mod test_function_body_typechecking;
 pub mod test_function_call_resolution_bug;
 pub mod test_function_inference_demo;
