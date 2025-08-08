@@ -350,6 +350,12 @@ impl DesugaringEngine {
                             }
                         }
                     }
+                    ExpressionKind::String(string_literal) => {
+                        // Transform string interpolation into String.concat calls
+                        if let Some(desugared_call) = self.desugar_string_interpolation(string_literal)? {
+                            current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
+                        }
+                    }
                     // Other expressions don't need transformation, just traversal
                     _ => {}
                 }
@@ -498,6 +504,195 @@ impl DesugaringEngine {
             resolved_function_key: None,
             universal_clause_ids: None,
         })
+    }
+
+    /// Transform string interpolation into String.concat and Display.to_string calls
+    /// Returns None if the string has no interpolations (no transformation needed)
+    fn desugar_string_interpolation(
+        &mut self,
+        string_literal: &outrun_parser::StringLiteral,
+    ) -> Result<Option<FunctionCall>, TypecheckError> {
+        // Check if there are any interpolations
+        let has_interpolations = string_literal.parts.iter().any(|part| {
+            matches!(part, outrun_parser::StringPart::Interpolation { .. })
+        });
+
+        if !has_interpolations {
+            // No interpolations, no transformation needed
+            return Ok(None);
+        }
+
+        // Build a list of expressions to concatenate
+        let mut concat_parts = Vec::new();
+
+        for part in &string_literal.parts {
+            match part {
+                outrun_parser::StringPart::Text { content, .. } => {
+                    // Create a string literal expression for the text part
+                    concat_parts.push(Expression {
+                        kind: ExpressionKind::String(outrun_parser::StringLiteral {
+                            parts: vec![outrun_parser::StringPart::Text {
+                                content: content.clone(),
+                                raw_content: content.clone(), // Use processed content as raw for simplicity
+                            }],
+                            format: outrun_parser::StringFormat::Basic,
+                            span: string_literal.span,
+                        }),
+                        span: string_literal.span,
+                        type_info: None,
+                    });
+                }
+                outrun_parser::StringPart::Interpolation { expression, span } => {
+                    // Create Display.to_string(value: expression) call
+                    let display_call = Expression {
+                        kind: ExpressionKind::FunctionCall(FunctionCall {
+                            path: FunctionPath::Qualified {
+                                module: TypeIdentifier {
+                                    name: "Display".to_string(),
+                                    span: *span,
+                                },
+                                name: Identifier {
+                                    name: "to_string".to_string(),
+                                    span: *span,
+                                },
+                            },
+                            arguments: vec![Argument::Named {
+                                name: Identifier {
+                                    name: "value".to_string(),
+                                    span: expression.span,
+                                },
+                                expression: *expression.clone(),
+                                format: ArgumentFormat::Explicit,
+                                span: expression.span,
+                            }],
+                            span: *span,
+                            resolved_function_key: None,
+                            universal_clause_ids: None,
+                        }),
+                        span: *span,
+                        type_info: None,
+                    };
+                    concat_parts.push(display_call);
+                }
+            }
+        }
+
+        // Build nested String.concat calls
+        // For ["Hello ", Display.to_string(name), ", you have ", Display.to_string(count), " messages"]
+        // Build: String.concat(lhs: String.concat(lhs: String.concat(lhs: "Hello ", rhs: Display.to_string(name)), rhs: ", you have "), rhs: String.concat(lhs: Display.to_string(count), rhs: " messages"))
+        
+        if concat_parts.is_empty() {
+            // Edge case: empty string with only interpolations that were empty
+            return Ok(None);
+        }
+
+        if concat_parts.len() == 1 {
+            // Single part, just return it (shouldn't happen with interpolations, but handle gracefully)
+            return Ok(Some(FunctionCall {
+                path: FunctionPath::Qualified {
+                    module: TypeIdentifier {
+                        name: "String".to_string(),
+                        span: string_literal.span,
+                    },
+                    name: Identifier {
+                        name: "concat".to_string(),
+                        span: string_literal.span,
+                    },
+                },
+                arguments: vec![
+                    Argument::Named {
+                        name: Identifier {
+                            name: "lhs".to_string(),
+                            span: string_literal.span,
+                        },
+                        expression: concat_parts[0].clone(),
+                        format: ArgumentFormat::Explicit,
+                        span: string_literal.span,
+                    },
+                    Argument::Named {
+                        name: Identifier {
+                            name: "rhs".to_string(),
+                            span: string_literal.span,
+                        },
+                        expression: Expression {
+                            kind: ExpressionKind::String(outrun_parser::StringLiteral {
+                                parts: vec![outrun_parser::StringPart::Text {
+                                    content: "".to_string(),
+                                    raw_content: "".to_string(),
+                                }],
+                                format: outrun_parser::StringFormat::Basic,
+                                span: string_literal.span,
+                            }),
+                            span: string_literal.span,
+                            type_info: None,
+                        },
+                        format: ArgumentFormat::Explicit,
+                        span: string_literal.span,
+                    },
+                ],
+                span: string_literal.span,
+                resolved_function_key: None,
+                universal_clause_ids: None,
+            }));
+        }
+
+        // Build left-associative nested concat calls
+        let mut result = concat_parts[0].clone();
+        
+        for part in concat_parts.into_iter().skip(1) {
+            result = Expression {
+                kind: ExpressionKind::FunctionCall(FunctionCall {
+                    path: FunctionPath::Qualified {
+                        module: TypeIdentifier {
+                            name: "String".to_string(),
+                            span: string_literal.span,
+                        },
+                        name: Identifier {
+                            name: "concat".to_string(),
+                            span: string_literal.span,
+                        },
+                    },
+                    arguments: vec![
+                        Argument::Named {
+                            name: Identifier {
+                                name: "lhs".to_string(),
+                                span: string_literal.span,
+                            },
+                            expression: result,
+                            format: ArgumentFormat::Explicit,
+                            span: string_literal.span,
+                        },
+                        Argument::Named {
+                            name: Identifier {
+                                name: "rhs".to_string(),
+                                span: string_literal.span,
+                            },
+                            expression: part,
+                            format: ArgumentFormat::Explicit,
+                            span: string_literal.span,
+                        },
+                    ],
+                    span: string_literal.span,
+                    resolved_function_key: None,
+                    universal_clause_ids: None,
+                }),
+                span: string_literal.span,
+                type_info: None,
+            };
+        }
+
+        // Extract the function call from the final expression
+        if let ExpressionKind::FunctionCall(func_call) = result.kind {
+            // Record the transformation for debugging
+            self.transformations.push(format!(
+                "String interpolation → String.concat + Display.to_string calls"
+            ));
+            
+            Ok(Some(func_call))
+        } else {
+            // This shouldn't happen, but handle gracefully
+            Ok(None)
+        }
     }
 }
 
@@ -749,5 +944,107 @@ mod tests {
 
         // Should have recorded multiple transformations
         assert_eq!(engine.transformations.len(), 2);
+    }
+
+    #[test]
+    fn test_string_interpolation_desugaring() {
+        use outrun_parser::parse_expression;
+
+        let mut engine = DesugaringEngine::new();
+
+        // Parse "Hello #{name}!"
+        let mut expr = parse_expression(r#""Hello #{name}!""#).unwrap();
+
+        // Desugar the expression
+        engine.desugar_expression(&mut expr).unwrap();
+
+        // Should become String.concat(lhs: String.concat(lhs: "Hello ", rhs: Display.to_string(value: name)), rhs: "!")
+        match expr.kind {
+            ExpressionKind::FunctionCall(func_call) => {
+                // Check outer function is String.concat
+                match &func_call.path {
+                    FunctionPath::Qualified { module, name } => {
+                        assert_eq!(module.name, "String");
+                        assert_eq!(name.name, "concat");
+                    }
+                    _ => panic!("Expected qualified function path for String.concat"),
+                }
+
+                // Check arguments
+                assert_eq!(func_call.arguments.len(), 2);
+                
+                // Check lhs argument (should be another String.concat call)
+                match &func_call.arguments[0] {
+                    Argument::Named { name, expression, .. } => {
+                        assert_eq!(name.name, "lhs");
+                        match &expression.kind {
+                            ExpressionKind::FunctionCall(inner_call) => {
+                                // Should be String.concat(lhs: "Hello ", rhs: Display.to_string(value: name))
+                                match &inner_call.path {
+                                    FunctionPath::Qualified { module, name } => {
+                                        assert_eq!(module.name, "String");
+                                        assert_eq!(name.name, "concat");
+                                    }
+                                    _ => panic!("Expected String.concat for inner call"),
+                                }
+                            }
+                            _ => panic!("Expected function call for lhs argument"),
+                        }
+                    }
+                    _ => panic!("Expected named argument for lhs"),
+                }
+
+                // Check rhs argument (should be "!")
+                match &func_call.arguments[1] {
+                    Argument::Named { name, expression, .. } => {
+                        assert_eq!(name.name, "rhs");
+                        match &expression.kind {
+                            ExpressionKind::String(string_lit) => {
+                                assert_eq!(string_lit.parts.len(), 1);
+                                match &string_lit.parts[0] {
+                                    outrun_parser::StringPart::Text { content, .. } => {
+                                        assert_eq!(content, "!");
+                                    }
+                                    _ => panic!("Expected text part for '!'"),
+                                }
+                            }
+                            _ => panic!("Expected string literal for rhs argument"),
+                        }
+                    }
+                    _ => panic!("Expected named argument for rhs"),
+                }
+            }
+            _ => panic!("Expected function call after desugaring string interpolation"),
+        }
+
+        // Check transformation was recorded
+        assert_eq!(engine.transformations.len(), 1);
+        assert!(engine.transformations[0].contains("String interpolation → String.concat"));
+    }
+
+    #[test]
+    fn test_string_without_interpolation_unchanged() {
+        use outrun_parser::parse_expression;
+
+        let mut engine = DesugaringEngine::new();
+
+        // Parse "Hello world" (no interpolation)
+        let mut expr = parse_expression(r#""Hello world""#).unwrap();
+        let original_expr = expr.clone();
+
+        // Desugar the expression
+        engine.desugar_expression(&mut expr).unwrap();
+
+        // Should remain unchanged (no interpolations to desugar)
+        match (&original_expr.kind, &expr.kind) {
+            (ExpressionKind::String(orig), ExpressionKind::String(new)) => {
+                assert_eq!(orig.parts.len(), new.parts.len());
+                assert_eq!(orig.parts[0], new.parts[0]);
+            }
+            _ => panic!("String without interpolation should remain unchanged"),
+        }
+
+        // No transformations should be recorded
+        assert_eq!(engine.transformations.len(), 0);
     }
 }

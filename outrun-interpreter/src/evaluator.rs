@@ -195,13 +195,14 @@ impl ExpressionEvaluator {
             ExpressionKind::Boolean(literal) => Ok(Value::boolean(literal.value)),
 
             ExpressionKind::String(literal) => {
-                // Handle string content with basic interpolation support
                 let content = literal
                     .parts
                     .iter()
                     .filter_map(|part| match part {
                         outrun_parser::StringPart::Text { content, .. } => Some(content.clone()),
-                        outrun_parser::StringPart::Interpolation { .. } => None, // Skip for now
+                        outrun_parser::StringPart::Interpolation { .. } => {
+                            unreachable!("String interpolation should have been desugared before interpretation")
+                        }
                     })
                     .collect::<Vec<_>>()
                     .join("");

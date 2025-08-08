@@ -3292,11 +3292,22 @@ impl TypeInferenceEngine {
                 constraints: Vec::new(),
                 substitution: Substitution::new(),
             }),
-            ExpressionKind::String(_) => Ok(InferenceResult {
-                inferred_type: Type::concrete("Outrun.Core.String"),
-                constraints: Vec::new(),
-                substitution: Substitution::new(),
-            }),
+            ExpressionKind::String(string_literal) => {
+                // Check if this string has interpolations - if so, it should have been desugared
+                let has_interpolations = string_literal.parts.iter().any(|part| {
+                    matches!(part, outrun_parser::StringPart::Interpolation { .. })
+                });
+                
+                if has_interpolations {
+                    unreachable!("String interpolation should be desugared before type checking");
+                }
+                
+                Ok(InferenceResult {
+                    inferred_type: Type::concrete("Outrun.Core.String"),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            }
             ExpressionKind::Atom(_) => Ok(InferenceResult {
                 inferred_type: Type::concrete("Outrun.Core.Atom"),
                 constraints: Vec::new(),
@@ -4430,11 +4441,7 @@ impl TypeInferenceEngine {
         if !existing_clauses.is_empty() {
             // Check if any existing clause matches our guards
             for &clause_id in existing_clauses {
-                if let Some(clause_info) = self.universal_dispatch_registry.get_clause(clause_id) {
-                    eprintln!(
-                        "  Existing clause {}: guards={:?}",
-                        clause_id.0, clause_info.guards
-                    );
+                if let Some(_) = self.universal_dispatch_registry.get_clause(clause_id) {
                     // For now, just use the first one
                     // TODO: Match guards properly
                     return clause_id;

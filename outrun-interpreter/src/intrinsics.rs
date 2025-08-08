@@ -125,6 +125,15 @@ impl IntrinsicsHandler {
         // String operations
         self.register("Outrun.Intrinsic.string_concat", intrinsic_string_concat);
         self.register("Outrun.Intrinsic.string_length", intrinsic_string_length);
+        
+        // Integer to string conversion
+        self.register("Outrun.Intrinsic.i64_to_string_radix", intrinsic_i64_to_string_radix);
+        
+        // Float to string conversion
+        self.register("Outrun.Intrinsic.f64_to_string", intrinsic_f64_to_string);
+        
+        // Atom to string conversion
+        self.register("Outrun.Intrinsic.atom_to_string", intrinsic_atom_to_string);
     }
 
     /// Register a single intrinsic function with its implementation
@@ -700,6 +709,88 @@ fn intrinsic_bool_not(args: &[Value], span: Span) -> Result<Value, IntrinsicErro
         Value::Boolean(b) => Ok(Value::boolean(!b)),
         v => Err(IntrinsicError::TypeMismatch {
             expected: "Boolean".to_string(),
+            found: v.type_name().to_string(),
+            span,
+        }),
+    }
+}
+
+fn intrinsic_i64_to_string_radix(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 2 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("i64_to_string_radix expects 2 arguments, got {}", args.len()),
+            span,
+        });
+    }
+
+    let (value, radix) = match (&args[0], &args[1]) {
+        (Value::Integer64(v), Value::Integer64(r)) => (*v, *r),
+        (Value::Integer64(_), v) => {
+            return Err(IntrinsicError::TypeMismatch {
+                expected: "Integer64".to_string(),
+                found: v.type_name().to_string(),
+                span,
+            });
+        }
+        (v, _) => {
+            return Err(IntrinsicError::TypeMismatch {
+                expected: "Integer64".to_string(),
+                found: v.type_name().to_string(),
+                span,
+            });
+        }
+    };
+
+    // Convert integer to string with given radix
+    let result = match radix {
+        10 => value.to_string(),
+        16 => format!("{:x}", value),
+        8 => format!("{:o}", value),
+        2 => format!("{:b}", value),
+        _ => {
+            return Err(IntrinsicError::InvalidOperation {
+                message: format!("Unsupported radix: {}. Supported radixes are 2, 8, 10, 16", radix),
+                span,
+            });
+        }
+    };
+
+    Ok(Value::string(result))
+}
+
+fn intrinsic_f64_to_string(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 1 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("f64_to_string expects 1 argument, got {}", args.len()),
+            span,
+        });
+    }
+
+    match &args[0] {
+        Value::Float64(f) => Ok(Value::string(f.to_string())),
+        v => Err(IntrinsicError::TypeMismatch {
+            expected: "Float64".to_string(),
+            found: v.type_name().to_string(),
+            span,
+        }),
+    }
+}
+
+fn intrinsic_atom_to_string(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if args.len() != 1 {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("atom_to_string expects 1 argument, got {}", args.len()),
+            span,
+        });
+    }
+
+    match &args[0] {
+        Value::Atom(atom_name) => {
+            // Atoms are displayed with a leading colon
+            Ok(Value::string(format!(":{}", atom_name)))
+        }
+        v => Err(IntrinsicError::TypeMismatch {
+            expected: "Atom".to_string(),
             found: v.type_name().to_string(),
             span,
         }),
