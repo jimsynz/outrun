@@ -520,17 +520,20 @@ impl CompilationResult {
             result?;
         }
 
-        // Phase 7: Create monomorphisation table for generic functions
+        // Phase 7: Solve accumulated constraints from type inference
+        engine.solve_accumulated_constraints()?;
+
+        // Phase 8: Create monomorphisation table for generic functions
         let monomorphisation_table = MonomorphisationTable::new();
 
-        // Phase 8: Build dispatch table for runtime function resolution
+        // Phase 9: Build dispatch table for runtime function resolution
         let dispatch_table = build_dispatch_table(
             &engine.type_registry_rc(),
             engine.function_registry(),
             Some(&monomorphisation_table),
         );
 
-        // Phase 9: Collect module information for conflict prevention and orphan rule checking
+        // Phase 10: Collect module information for conflict prevention and orphan rule checking
         let (local_modules, defined_modules) = Self::collect_module_info(&package.programs);
 
         Ok(CompilationResult {

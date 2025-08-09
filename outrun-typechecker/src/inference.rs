@@ -66,6 +66,9 @@ pub struct TypeInferenceEngine {
 
     /// Exhaustiveness checker for pattern matching and guards
     exhaustiveness_checker: crate::exhaustiveness::ExhaustivenessChecker,
+
+    /// Accumulated constraints from type inference to be solved in Phase 7
+    accumulated_constraints: Vec<Constraint>,
 }
 
 /// Unique identifier for inference tasks in the iterative system
@@ -479,6 +482,7 @@ impl TypeInferenceEngine {
             constraint_solver_with_backtracking: None,
             inference_depth: 0,
             exhaustiveness_checker,
+            accumulated_constraints: Vec::new(),
         }
     }
 
@@ -780,6 +784,55 @@ impl TypeInferenceEngine {
         self.constraint_solver_with_backtracking.as_ref()
     }
 
+    /// Accumulate constraints from inference results for later solving
+    fn accumulate_constraints(&mut self, constraints: Vec<Constraint>) {
+        self.accumulated_constraints.extend(constraints);
+    }
+
+    /// Phase 7: Solve all accumulated constraints from type inference
+    pub fn solve_accumulated_constraints(&mut self) -> Result<(), TypecheckError> {
+        if self.accumulated_constraints.is_empty() {
+            return Ok(());
+        }
+
+        // Initialize constraint solver if not already done
+        if self.constraint_solver_with_backtracking.is_none() {
+            // Clone the type registry from Rc to owned
+            let type_registry = (*self.type_registry).clone();
+            let constraint_solver =
+                crate::constraints::ConstraintSolver::with_registry(type_registry);
+            self.constraint_solver_with_backtracking = Some(constraint_solver);
+        }
+
+        // Solve all accumulated constraints
+        if let Some(solver) = &mut self.constraint_solver_with_backtracking {
+            let substitution = crate::types::Substitution::new();
+            match solver.solve(&self.accumulated_constraints, &substitution) {
+                Ok(_) => {
+                    // Clear accumulated constraints after successful solving
+                    self.accumulated_constraints.clear();
+                    Ok(())
+                }
+                Err(constraint_error) => {
+                    // Convert constraint error to TypecheckError
+                    Err(TypecheckError::ConstraintError(
+                        crate::error::ConstraintError::Unsatisfiable {
+                            constraint: format!("{:?}", constraint_error),
+                            span: None,
+                        },
+                    ))
+                }
+            }
+        } else {
+            Err(TypecheckError::InferenceError(
+                crate::error::InferenceError::AmbiguousType {
+                    span: None,
+                    suggestions: vec!["Constraint solver not initialized".to_string()],
+                },
+            ))
+        }
+    }
+
     /// Get the universal dispatch registry containing all registered clauses
     pub fn universal_dispatch_registry(
         &self,
@@ -948,6 +1001,9 @@ impl TypeInferenceEngine {
 
         // Phase 6: Type check all function bodies with complete context
         self.typecheck_function_bodies(program)?;
+
+        // Phase 7: Solve accumulated constraints from type inference
+        self.solve_accumulated_constraints()?;
 
         Ok(())
     }
@@ -2734,6 +2790,11 @@ impl TypeInferenceEngine {
         // CRITICAL FIX: Always decrement depth on exit (both success and error paths)
         self.inference_depth -= 1;
 
+        // Accumulate constraints for Phase 7 solving
+        if let Ok(ref inference_result) = result {
+            self.accumulate_constraints(inference_result.constraints.clone());
+        }
+
         result
     }
 
@@ -3294,14 +3355,15 @@ impl TypeInferenceEngine {
             }),
             ExpressionKind::String(string_literal) => {
                 // Check if this string has interpolations - if so, it should have been desugared
-                let has_interpolations = string_literal.parts.iter().any(|part| {
-                    matches!(part, outrun_parser::StringPart::Interpolation { .. })
-                });
-                
+                let has_interpolations = string_literal
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, outrun_parser::StringPart::Interpolation { .. }));
+
                 if has_interpolations {
                     unreachable!("String interpolation should be desugared before type checking");
                 }
-                
+
                 Ok(InferenceResult {
                     inferred_type: Type::concrete("Outrun.Core.String"),
                     constraints: Vec::new(),
@@ -3673,7 +3735,7 @@ impl TypeInferenceEngine {
                 // Collect constraints from all dependency results
                 let mut all_constraints = Vec::new();
                 let mut combined_substitution = Substitution::new();
-                
+
                 for dep_result in dependency_results.iter() {
                     all_constraints.extend(dep_result.constraints.clone());
                     combined_substitution = combined_substitution.compose(&dep_result.substitution);
@@ -3690,23 +3752,24 @@ impl TypeInferenceEngine {
                                 span: Some(if_expr.condition.span),
                             });
                         }
-                        Type::Concrete { .. } => {
-                            // For concrete types, we could check Default implementation here,
-                            // but it's better to let the constraint solver handle it uniformly.
-                            // Create a fresh type variable and constrain it to be equal to the concrete type
-                            // and implement Default.
-                            let fresh_var_id = self.fresh_type_var();
-                            let fresh_var = Type::variable(fresh_var_id, Level(0));
-                                all_constraints.push(Constraint::Equality {
-                                    left: Box::new(fresh_var),
-                                    right: Box::new(then_type.clone()),
-                                    span: Some(if_expr.condition.span),
-                                });
-                            all_constraints.push(Constraint::Implements {
-                                type_var: fresh_var_id,
-                                protocol: ModuleName::new("Default"),
-                                span: Some(if_expr.condition.span),
-                            });
+                        Type::Concrete { name, args, .. } => {
+                            // For concrete types, directly check if they implement Default
+                            if !self.type_registry.has_implementation_with_args(
+                                &ModuleName::new("Default"),
+                                name,
+                                args,
+                            ) {
+                                return Err(TypecheckError::InferenceError(
+                                    InferenceError::AmbiguousType {
+                                        span: to_source_span(Some(expression.span)),
+                                        suggestions: vec![format!(
+                                            "If expression without else branch requires the then-type to implement Default. Type {} does not implement Default, consider adding an else branch or implementing Default for this type.",
+                                            then_type
+                                        )],
+                                    },
+                                ));
+                            }
+                            // No constraints needed - we've already verified the implementation exists
                         }
                         _ => {
                             // For other types (generic, protocol, etc.), we'll need more sophisticated handling

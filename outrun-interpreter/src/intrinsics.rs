@@ -125,13 +125,16 @@ impl IntrinsicsHandler {
         // String operations
         self.register("Outrun.Intrinsic.string_concat", intrinsic_string_concat);
         self.register("Outrun.Intrinsic.string_length", intrinsic_string_length);
-        
+
         // Integer to string conversion
-        self.register("Outrun.Intrinsic.i64_to_string_radix", intrinsic_i64_to_string_radix);
-        
+        self.register(
+            "Outrun.Intrinsic.i64_to_string_radix",
+            intrinsic_i64_to_string_radix,
+        );
+
         // Float to string conversion
         self.register("Outrun.Intrinsic.f64_to_string", intrinsic_f64_to_string);
-        
+
         // Atom to string conversion
         self.register("Outrun.Intrinsic.atom_to_string", intrinsic_atom_to_string);
     }
@@ -718,7 +721,10 @@ fn intrinsic_bool_not(args: &[Value], span: Span) -> Result<Value, IntrinsicErro
 fn intrinsic_i64_to_string_radix(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
     if args.len() != 2 {
         return Err(IntrinsicError::InvalidOperation {
-            message: format!("i64_to_string_radix expects 2 arguments, got {}", args.len()),
+            message: format!(
+                "i64_to_string_radix expects 2 arguments, got {}",
+                args.len()
+            ),
             span,
         });
     }
@@ -749,7 +755,10 @@ fn intrinsic_i64_to_string_radix(args: &[Value], span: Span) -> Result<Value, In
         2 => format!("{:b}", value),
         _ => {
             return Err(IntrinsicError::InvalidOperation {
-                message: format!("Unsupported radix: {}. Supported radixes are 2, 8, 10, 16", radix),
+                message: format!(
+                    "Unsupported radix: {}. Supported radixes are 2, 8, 10, 16",
+                    radix
+                ),
                 span,
             });
         }

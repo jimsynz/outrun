@@ -352,7 +352,9 @@ impl DesugaringEngine {
                     }
                     ExpressionKind::String(string_literal) => {
                         // Transform string interpolation into String.concat calls
-                        if let Some(desugared_call) = self.desugar_string_interpolation(string_literal)? {
+                        if let Some(desugared_call) =
+                            self.desugar_string_interpolation(string_literal)?
+                        {
                             current_expr.kind = ExpressionKind::FunctionCall(desugared_call);
                         }
                     }
@@ -513,9 +515,10 @@ impl DesugaringEngine {
         string_literal: &outrun_parser::StringLiteral,
     ) -> Result<Option<FunctionCall>, TypecheckError> {
         // Check if there are any interpolations
-        let has_interpolations = string_literal.parts.iter().any(|part| {
-            matches!(part, outrun_parser::StringPart::Interpolation { .. })
-        });
+        let has_interpolations = string_literal
+            .parts
+            .iter()
+            .any(|part| matches!(part, outrun_parser::StringPart::Interpolation { .. }));
 
         if !has_interpolations {
             // No interpolations, no transformation needed
@@ -580,7 +583,7 @@ impl DesugaringEngine {
         // Build nested String.concat calls
         // For ["Hello ", Display.to_string(name), ", you have ", Display.to_string(count), " messages"]
         // Build: String.concat(lhs: String.concat(lhs: String.concat(lhs: "Hello ", rhs: Display.to_string(name)), rhs: ", you have "), rhs: String.concat(lhs: Display.to_string(count), rhs: " messages"))
-        
+
         if concat_parts.is_empty() {
             // Edge case: empty string with only interpolations that were empty
             return Ok(None);
@@ -638,7 +641,7 @@ impl DesugaringEngine {
 
         // Build left-associative nested concat calls
         let mut result = concat_parts[0].clone();
-        
+
         for part in concat_parts.into_iter().skip(1) {
             result = Expression {
                 kind: ExpressionKind::FunctionCall(FunctionCall {
@@ -687,7 +690,7 @@ impl DesugaringEngine {
             self.transformations.push(format!(
                 "String interpolation → String.concat + Display.to_string calls"
             ));
-            
+
             Ok(Some(func_call))
         } else {
             // This shouldn't happen, but handle gracefully
@@ -972,10 +975,12 @@ mod tests {
 
                 // Check arguments
                 assert_eq!(func_call.arguments.len(), 2);
-                
+
                 // Check lhs argument (should be another String.concat call)
                 match &func_call.arguments[0] {
-                    Argument::Named { name, expression, .. } => {
+                    Argument::Named {
+                        name, expression, ..
+                    } => {
                         assert_eq!(name.name, "lhs");
                         match &expression.kind {
                             ExpressionKind::FunctionCall(inner_call) => {
@@ -996,7 +1001,9 @@ mod tests {
 
                 // Check rhs argument (should be "!")
                 match &func_call.arguments[1] {
-                    Argument::Named { name, expression, .. } => {
+                    Argument::Named {
+                        name, expression, ..
+                    } => {
                         assert_eq!(name.name, "rhs");
                         match &expression.kind {
                             ExpressionKind::String(string_lit) => {
