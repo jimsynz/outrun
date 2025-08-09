@@ -104,8 +104,12 @@ pub enum TestHarnessError {
         source: Box<outrun_typechecker::TypecheckError>,
     },
 
-    #[error("Compiler error: {source}")]
-    Compiler { source: Box<CompilerError> },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Compiler {
+        #[from]
+        source: Box<CompilerError>
+    },
 
     #[error("Assertion failed: expected {expected}, but got {actual}")]
     AssertionFailed { expected: String, actual: String },
@@ -172,6 +176,12 @@ impl InterpreterSession {
 
     /// Execute an Outrun expression and return the result using the full pipeline
     pub fn evaluate(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
+        let (value, _type_info) = self.evaluate_with_type_info(expression_code)?;
+        Ok(value)
+    }
+
+    /// Execute an Outrun expression and return both the result and type information
+    pub fn evaluate_with_type_info(&mut self, expression_code: &str) -> Result<(Value, Option<String>), TestHarnessError> {
         // Precompile core library on first use
         if self.core_compilation.is_none() {
             self.core_compilation = Some(CompilationResult::precompile_core_library()?);
@@ -335,6 +345,7 @@ impl InterpreterSession {
 
         // Process all items in the program
         let mut last_value = crate::Value::Boolean(true);
+        let mut last_type_info: Option<String> = None;
 
         for item in &parsed_program.items {
             match &item.kind {
@@ -342,18 +353,26 @@ impl InterpreterSession {
                     // Evaluate the expression with our interpreter
                     let evaluator = self.evaluator.as_ref().unwrap(); // Should always be Some by this point
                     last_value = evaluator.evaluate(expr, &mut self.context)?;
+                    
+                    // Extract type information from the expression
+                    last_type_info = expr.type_info.as_ref().map(|ti| ti.resolved_type.clone());
                 }
                 outrun_parser::ItemKind::LetBinding(let_binding) => {
                     // Handle let bindings - works whether we skip typecheck or not
                     last_value = self.evaluate_let_binding(let_binding)?;
+                    
+                    // Extract type information from the let binding expression
+                    last_type_info = let_binding.expression.type_info.as_ref().map(|ti| ti.resolved_type.clone());
                 }
                 outrun_parser::ItemKind::StructDefinition(_) => {
                     // Struct definitions are handled during compilation, nothing to do at runtime
                     last_value = crate::Value::Boolean(true);
+                    last_type_info = Some("Outrun.Core.Boolean".to_string());
                 }
                 outrun_parser::ItemKind::ImplBlock(_) => {
                     // Implementation blocks are handled during compilation, nothing to do at runtime
                     last_value = crate::Value::Boolean(true);
+                    last_type_info = Some("Outrun.Core.Boolean".to_string());
                 }
                 _ => {
                     return Err(TestHarnessError::Internal {
@@ -369,7 +388,7 @@ impl InterpreterSession {
             });
         }
 
-        Ok(last_value)
+        Ok((last_value, last_type_info))
     }
 
     /// Evaluate a let binding and return the bound value

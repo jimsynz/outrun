@@ -881,18 +881,8 @@ impl TypeInferenceEngine {
 
         // Import universal dispatch registry with intelligent merging
         // Preserves clause IDs and maintains deterministic dispatch order
-        let merge_result = self
-            .universal_dispatch_registry
+        self.universal_dispatch_registry
             .merge_with_dependency(&dependency_universal_dispatch);
-
-        // Log merging statistics for debugging
-        if merge_result.added_clauses > 0 || merge_result.has_conflicts() {
-            println!(
-                "Universal dispatch merge: {} clauses added, {} conflicts",
-                merge_result.added_clauses,
-                merge_result.conflicts.len()
-            );
-        }
 
         Ok(())
     }
@@ -2793,6 +2783,10 @@ impl TypeInferenceEngine {
         // Accumulate constraints for Phase 7 solving
         if let Ok(ref inference_result) = result {
             self.accumulate_constraints(inference_result.constraints.clone());
+
+            // CRITICAL FIX: Set type information on the expression for REPL and interpreter integration
+            let type_info = crate::types::TypeInfo::new(inference_result.inferred_type.clone());
+            expression.type_info = Some(type_info.to_parsed_type_info());
         }
 
         result
@@ -3498,7 +3492,10 @@ impl TypeInferenceEngine {
                     // Empty list - use generic List<T> with fresh type variable
                     let element_type = Type::variable(self.fresh_type_var(), Level(0));
                     Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete("List", vec![element_type]),
+                        inferred_type: Type::generic_concrete(
+                            "Outrun.Core.List",
+                            vec![element_type],
+                        ),
                         constraints: Vec::new(),
                         substitution: Substitution::new(),
                     })
@@ -3523,7 +3520,7 @@ impl TypeInferenceEngine {
 
                     Ok(InferenceResult {
                         inferred_type: Type::generic_concrete(
-                            "List",
+                            "Outrun.Core.List",
                             vec![first_element_type.clone()],
                         ),
                         constraints: Vec::new(),
@@ -3549,7 +3546,7 @@ impl TypeInferenceEngine {
                 })
             }
 
-            ExpressionKind::Map(_) => {
+            ExpressionKind::Map(map_literal) => {
                 // Map type is Outrun.Core.Map<K, V> where K and V are inferred from entries
                 if dependency_results.is_empty() {
                     // Empty map - check if we have an expected type
@@ -3574,37 +3571,98 @@ impl TypeInferenceEngine {
                         })
                     }
                 } else {
-                    // Non-empty map - infer key and value types from first entry
-                    // dependency_results are in pairs: [key1, value1, key2, value2, ...]
-                    let first_key_type = &dependency_results[0].inferred_type;
-                    let first_value_type = &dependency_results[1].inferred_type;
+                    // Non-empty map - need to process entries correctly based on their types
+                    // dependency_results contains results in the order they were processed:
+                    // - Assignment entries contribute 2 results: [key, value]
+                    // - Shorthand entries contribute 1 result: [value] (key is inferred as Atom)
 
-                    // Check that all keys and values have compatible types
-                    for chunk in dependency_results.chunks(2).skip(1) {
-                        if chunk.len() == 2 {
-                            if !self.types_are_compatible(first_key_type, &chunk[0].inferred_type) {
-                                return Err(TypecheckError::InferenceError(
-                                    InferenceError::AmbiguousType {
-                                        span: to_source_span(Some(expression.span)),
-                                        suggestions: vec![format!(
-                                            "Map key has type {}, but expected {}",
-                                            chunk[0].inferred_type, first_key_type
-                                        )],
-                                    },
-                                ));
+                    let mut result_index = 0;
+                    let mut key_types = Vec::new();
+                    let mut value_types = Vec::new();
+
+                    for entry in &map_literal.entries {
+                        match entry {
+                            outrun_parser::MapEntry::Assignment { .. } => {
+                                // Assignment entry: key and value both from dependency_results
+                                if result_index + 1 < dependency_results.len() {
+                                    key_types.push(
+                                        dependency_results[result_index].inferred_type.clone(),
+                                    );
+                                    value_types.push(
+                                        dependency_results[result_index + 1].inferred_type.clone(),
+                                    );
+                                    result_index += 2;
+                                } else {
+                                    return Err(TypecheckError::InferenceError(
+                                        InferenceError::AmbiguousType {
+                                            span: to_source_span(Some(expression.span)),
+                                            suggestions: vec!["Internal error: insufficient dependency results for assignment entry".to_string()],
+                                        },
+                                    ));
+                                }
                             }
-                            if !self.types_are_compatible(first_value_type, &chunk[1].inferred_type)
-                            {
-                                return Err(TypecheckError::InferenceError(
-                                    InferenceError::AmbiguousType {
-                                        span: to_source_span(Some(expression.span)),
-                                        suggestions: vec![format!(
-                                            "Map value has type {}, but expected {}",
-                                            chunk[1].inferred_type, first_value_type
-                                        )],
-                                    },
-                                ));
+                            outrun_parser::MapEntry::Shorthand { .. } => {
+                                // Shorthand entry: key is Atom, value from dependency_results
+                                if result_index < dependency_results.len() {
+                                    key_types.push(Type::concrete("Outrun.Core.Atom"));
+                                    value_types.push(
+                                        dependency_results[result_index].inferred_type.clone(),
+                                    );
+                                    result_index += 1;
+                                } else {
+                                    return Err(TypecheckError::InferenceError(
+                                        InferenceError::AmbiguousType {
+                                            span: to_source_span(Some(expression.span)),
+                                            suggestions: vec!["Internal error: insufficient dependency results for shorthand entry".to_string()],
+                                        },
+                                    ));
+                                }
                             }
+                            outrun_parser::MapEntry::Spread(_) => {
+                                // Skip spread entries for now
+                                continue;
+                            }
+                        }
+                    }
+
+                    if key_types.is_empty() || value_types.is_empty() {
+                        return Err(TypecheckError::InferenceError(
+                            InferenceError::AmbiguousType {
+                                span: to_source_span(Some(expression.span)),
+                                suggestions: vec!["Map has no processable entries".to_string()],
+                            },
+                        ));
+                    }
+
+                    // Check that all keys have compatible types
+                    let first_key_type = &key_types[0];
+                    for (i, key_type) in key_types.iter().enumerate().skip(1) {
+                        if !self.types_are_compatible(first_key_type, key_type) {
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "Map key {} has type {}, but expected {}",
+                                        i, key_type, first_key_type
+                                    )],
+                                },
+                            ));
+                        }
+                    }
+
+                    // Check that all values have compatible types
+                    let first_value_type = &value_types[0];
+                    for (i, value_type) in value_types.iter().enumerate().skip(1) {
+                        if !self.types_are_compatible(first_value_type, value_type) {
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(expression.span)),
+                                    suggestions: vec![format!(
+                                        "Map value {} has type {}, but expected {}",
+                                        i, value_type, first_value_type
+                                    )],
+                                },
+                            ));
                         }
                     }
 
@@ -5114,13 +5172,29 @@ impl TypeInferenceEngine {
             let first_type = &candidate_self_types[0];
             for candidate in &candidate_self_types[1..] {
                 if !self.types_are_compatible(first_type, candidate) {
-                    return Err(TypecheckError::InferenceError(
+                    // Check if this is a division-related Option type mismatch
+                    let is_division_option_mismatch = match candidate {
+                        crate::types::Type::Protocol { name, args, .. } => {
+                            name.as_str() == "Option" && !args.is_empty()
+                        }
+                        _ => false,
+                    };
+
+                    let error = if is_division_option_mismatch {
+                        InferenceError::DivisionOptionMismatch {
+                            first_self_type: first_type.clone(),
+                            conflicting_self_type: candidate.clone(),
+                            span: None, // TODO: Add span information
+                        }
+                    } else {
                         InferenceError::SelfTypeUnificationFailure {
                             first_self_type: first_type.clone(),
                             conflicting_self_type: candidate.clone(),
                             span: None, // TODO: Add span information
-                        },
-                    ));
+                        }
+                    };
+
+                    return Err(TypecheckError::InferenceError(error));
                 }
             }
             Ok(Some(first_type.clone()))
@@ -5495,7 +5569,7 @@ impl TypeInferenceEngine {
 
             "i64_div" if arguments.len() == 2 => {
                 let integer64_type = Type::concrete_with_span("Outrun.Core.Integer64", call_span);
-                let option_type = Type::generic_concrete("Option", vec![integer64_type.clone()]);
+                let option_type = Type::protocol_with_args("Option", vec![integer64_type.clone()]);
                 (
                     option_type,
                     vec![
@@ -5507,7 +5581,7 @@ impl TypeInferenceEngine {
 
             "i64_mod" if arguments.len() == 2 => {
                 let integer64_type = Type::concrete_with_span("Outrun.Core.Integer64", call_span);
-                let option_type = Type::generic_concrete("Option", vec![integer64_type.clone()]);
+                let option_type = Type::protocol_with_args("Option", vec![integer64_type.clone()]);
                 (
                     option_type,
                     vec![
@@ -5728,7 +5802,7 @@ impl TypeInferenceEngine {
 
             "f64_div" if arguments.len() == 2 => {
                 let float64_type = Type::concrete_with_span("Outrun.Core.Float64", call_span);
-                let option_type = Type::generic_concrete("Option", vec![float64_type.clone()]);
+                let option_type = Type::protocol_with_args("Option", vec![float64_type.clone()]);
                 (
                     option_type,
                     vec![
@@ -5740,7 +5814,7 @@ impl TypeInferenceEngine {
 
             "f64_mod" if arguments.len() == 2 => {
                 let float64_type = Type::concrete_with_span("Outrun.Core.Float64", call_span);
-                let option_type = Type::generic_concrete("Option", vec![float64_type.clone()]);
+                let option_type = Type::protocol_with_args("Option", vec![float64_type.clone()]);
                 (
                     option_type,
                     vec![

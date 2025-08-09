@@ -121,7 +121,7 @@ pub struct ReplSession {
 /// REPL configuration options
 #[derive(Debug, Clone)]
 pub struct ReplConfig {
-    /// Show type information with results (simplified - no actual type checking)
+    /// Show type information with results (full type checking integrated)
     pub show_types: bool,
 
     /// Show detailed error information
@@ -143,7 +143,7 @@ pub struct ReplConfig {
 impl Default for ReplConfig {
     fn default() -> Self {
         Self {
-            show_types: false, // Simplified - no type checking yet
+            show_types: false, // Type checking available - use '/types on' to enable display
             verbose_errors: false,
             max_display_items: 20,
             prompt: "outrun> ".to_string(),
@@ -173,7 +173,10 @@ pub struct ReplStats {
 #[derive(Debug)]
 pub enum ReplResult {
     /// Successfully evaluated expression
-    Value { value: Value },
+    Value { 
+        value: Value,
+        type_name: Option<String>,
+    },
 
     /// Executed a REPL command
     Command { message: String },
@@ -365,12 +368,12 @@ impl ReplSession {
         }
 
         // Use the interpreter session to evaluate with full pipeline integration
-        let value = self.session.evaluate(trimmed)?;
+        let (value, type_name) = self.session.evaluate_with_type_info(trimmed)?;
 
         // Update statistics
         self.stats.expressions_evaluated += 1;
 
-        Ok(ReplResult::Value { value })
+        Ok(ReplResult::Value { value, type_name })
     }
 
     /// Execute a REPL command
@@ -415,7 +418,7 @@ impl ReplSession {
                 Some(&"on") => {
                     self.config.show_types = true;
                     Ok(ReplResult::Command {
-                        message: "Type display enabled (note: no type checking yet)".to_string(),
+                        message: "Type display enabled - will show type information with results".to_string(),
                     })
                 }
                 Some(&"off") => {
@@ -426,7 +429,7 @@ impl ReplSession {
                 }
                 _ => Ok(ReplResult::Command {
                     message: format!(
-                        "Type display is {} (note: no type checking yet)",
+                        "Type display is {} - use '/types on' to show type information",
                         if self.config.show_types { "on" } else { "off" }
                     ),
                 }),
@@ -441,9 +444,19 @@ impl ReplSession {
     /// Display the result of evaluation
     fn display_result(&self, result: ReplResult) {
         match result {
-            ReplResult::Value { value } => {
+            ReplResult::Value { value, type_name } => {
                 // Display the value
                 println!("{}", value.display());
+                
+                // Show type information if enabled
+                if self.config.show_types {
+                    if let Some(type_name) = type_name {
+                        println!(":: {}", type_name);
+                    } else {
+                        // Fallback to the basic type name if no type info available
+                        println!(":: {}", value.type_name());
+                    }
+                }
             }
 
             ReplResult::Command { message } => {
@@ -499,9 +512,9 @@ impl ReplSession {
 
     /// Print welcome message
     fn print_welcome(&self) {
-        println!("🌆 Outrun REPL v2.0 (Simplified) 🌃");
-        println!("Using new interpreter system - Type /help for commands, /quit to exit");
-        println!("Note: Type checking not yet integrated - expressions evaluated directly");
+        println!("🌆 Outrun REPL v3.0 🌃");
+        println!("Full type checking integration - Type /help for commands, /quit to exit");
+        println!("Use /types on to show type information with results");
         println!();
     }
 
@@ -522,25 +535,27 @@ impl ReplSession {
 
     /// Get help message
     fn help_message(&self) -> String {
-        r#"Outrun REPL Commands (Simplified):
+        r#"Outrun REPL Commands:
   /help, /h           Show this help message
   /vars, /variables   List all variables with their values
   /clear              Clear all variables and reset the session
   /stats              Show session statistics
   /config             Show current configuration
-  /types [on|off]     Toggle type display (note: no type checking yet)
+  /types [on|off]     Toggle type display - shows type information with results
   /quit, /q, /exit    Exit the REPL
 
 Examples:
   42                  # Evaluate an integer literal
-  let x = 42          # Bind a variable
+  let x = 42          # Bind a variable (with type checking)
   "hello"             # String literal
   [1, 2, 3]           # List literal
   true                # Boolean literal
   case x { 42 -> "answer"; _ -> "other" }  # Case expression
 
-Note: This is a simplified REPL using the new interpreter.
-Type checking integration is planned for future versions.
+Type System:
+  All expressions are type-checked before evaluation
+  Use '/types on' to see inferred types
+  Type errors are caught at compile-time, not runtime
 
 Multi-line input:
   let list = [         # Type [ and press Enter
@@ -590,7 +605,7 @@ Use Ctrl+C to interrupt, Ctrl+D to exit."#
     fn format_config(&self) -> String {
         format!(
             r#"REPL Configuration:
-  Show types: {} (note: no type checking yet)
+  Show types: {} (full type checking integrated)
   Verbose errors: {}
   Max display items: {}
   Prompt: "{}"

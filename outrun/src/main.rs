@@ -50,7 +50,7 @@ enum Commands {
     },
     /// Start an interactive REPL session for evaluating Outrun expressions
     Repl {
-        /// Show type information with results (note: no type checking yet)
+        /// Show type information with results (full type checking integrated)
         #[arg(long, short = 't')]
         show_types: bool,
 
@@ -1125,10 +1125,12 @@ fn handle_eval_command(
                 }
             }
             Err(e) => {
+                // Use miette's beautiful error reporting for evaluation errors
+                let report = miette::Report::new(e).with_source_code(miette::NamedSource::new("<expression>", line.to_string()));
                 if verbose {
-                    eprintln!("Error evaluating expression: {e:?}");
+                    eprintln!("{report:?}");
                 } else {
-                    eprintln!("Error: {e}");
+                    eprintln!("{report:?}");
                 }
                 process::exit(1);
             }

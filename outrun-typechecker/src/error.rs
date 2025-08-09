@@ -96,8 +96,8 @@ pub enum TypecheckError {
     #[diagnostic(code(outrun::typecheck::exhaustiveness_failed))]
     ExhaustivenessError(#[from] ExhaustivenessError),
 
-    #[error("Type inference failed")]
-    #[diagnostic(code(outrun::typecheck::inference_failed))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     InferenceError(#[from] InferenceError),
 
     #[error("Protocol dispatch failed")]
@@ -442,15 +442,28 @@ pub enum InferenceError {
         found_span: Option<SourceSpan>,
     },
 
-    #[error("Self type unification failure: conflicting Self types {first_self_type} and {conflicting_self_type}")]
-    #[diagnostic(
-        code(outrun::typecheck::inference::self_unification_failure),
-        help("All occurrences of Self in a function signature must resolve to the same concrete type")
+    #[error(
+        "Type mismatch: cannot use {conflicting_self_type} where {first_self_type} is expected"
     )]
+    #[diagnostic(code(outrun::typecheck::inference::self_unification_failure))]
     SelfTypeUnificationFailure {
         first_self_type: Type,
         conflicting_self_type: Type,
-        #[label("Self types must be consistent across function signature")]
+        #[label("expected {first_self_type}, found {conflicting_self_type}")]
+        span: Option<SourceSpan>,
+    },
+
+    #[error(
+        "Type mismatch: cannot use {conflicting_self_type} where {first_self_type} is expected"
+    )]
+    #[diagnostic(
+        code(outrun::typecheck::inference::division_option_mismatch),
+        help("Division operations return Option<T> for safety. Use pattern matching to handle the result: case division_result {{ Option.some(value: result) -> ..., Option.none() -> ... }}")
+    )]
+    DivisionOptionMismatch {
+        first_self_type: Type,
+        conflicting_self_type: Type,
+        #[label("expected {first_self_type}, found {conflicting_self_type}")]
         span: Option<SourceSpan>,
     },
 
@@ -490,6 +503,7 @@ pub enum CompilerError {
     Parse(#[from] ParseError),
 
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Typecheck(Box<TypecheckError>),
 
     #[error(

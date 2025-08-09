@@ -167,9 +167,6 @@ impl CompilationResult {
         precompiled_core: &CompilationResult,
         session_context: Option<&std::collections::HashMap<String, crate::types::Type>>,
     ) -> Result<CompilationResult, CompilerError> {
-        eprintln!("DEBUG: compile_repl_expression_with_context called");
-        eprintln!("  Expression: {}", expression_source);
-        eprintln!("  Has context: {}", session_context.is_some());
         // Parse the REPL expression as a program
         let program =
             outrun_parser::parse_program(expression_source).map_err(CompilerError::Parse)?;

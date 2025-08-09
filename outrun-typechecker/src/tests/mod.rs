@@ -27,6 +27,8 @@ pub mod test_if_expressions;
 pub mod test_implementation_tracking;
 pub mod test_integration_comprehensive;
 pub mod test_intrinsic_compatibility;
+pub mod test_list_literal_types;
+pub mod test_map_literal_types;
 pub mod test_map_protocol_classification;
 pub mod test_monomorphisation_table;
 pub mod test_not_equal_protocol;
