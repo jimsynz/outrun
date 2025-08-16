@@ -245,9 +245,12 @@ impl ExpressionEvaluator {
                 self.evaluate_function_call(function_call, context, span)
             }
 
-            // Unary operations - these should have universal_clause_ids populated by typechecker
-            ExpressionKind::UnaryOp(unary_op) => {
-                self.evaluate_unary_operation(unary_op, context, span)
+            // Unary operations should be desugared to function calls by the typechecker
+            ExpressionKind::UnaryOp(_) => {
+                Err(EvaluationError::Runtime {
+                    message: "UnaryOp should have been desugared to FunctionCall by typechecker".to_string(),
+                    span,
+                })
             }
 
             // Parenthesized expressions - just evaluate the inner expression
@@ -568,85 +571,6 @@ impl ExpressionEvaluator {
         }
     }
 
-    /// Evaluate a unary operation using universal dispatch
-    fn evaluate_unary_operation(
-        &self,
-        unary_op: &outrun_parser::UnaryOperation,
-        context: &mut InterpreterContext,
-        span: outrun_parser::Span,
-    ) -> Result<Value, EvaluationError> {
-        // Evaluate the operand first
-        let operand_value = self.evaluate(&unary_op.operand, context)?;
-
-        // Map unary operators to protocol function names
-        let protocol_function = match unary_op.operator {
-            outrun_parser::UnaryOperator::Minus => "UnaryMinus.minus",
-            outrun_parser::UnaryOperator::Plus => "UnaryPlus.plus",
-            outrun_parser::UnaryOperator::LogicalNot => "LogicalNot.not",
-            _ => {
-                return Err(EvaluationError::Runtime {
-                    message: format!("Unsupported unary operator: {:?}", unary_op.operator),
-                    span,
-                });
-            }
-        };
-
-        // Find the clauses for this protocol function in the universal registry
-        let matching_clauses =
-            self.find_clauses_for_protocol_function(protocol_function, &operand_value);
-
-        if matching_clauses.is_empty() {
-            return Err(EvaluationError::Runtime {
-                message: format!(
-                    "No implementation found for {} on type {}",
-                    protocol_function,
-                    self.get_runtime_type_name(&operand_value)
-                ),
-                span,
-            });
-        }
-
-        // Use the universal dispatch system with pre-evaluated values
-        self.dispatch_clauses_with_values(&matching_clauses, &[operand_value], context, span)
-    }
-
-    /// Find clause IDs for a protocol function that can handle the given argument type
-    fn find_clauses_for_protocol_function(
-        &self,
-        protocol_function: &str,
-        argument_value: &Value,
-    ) -> Vec<ClauseId> {
-        // Parse the protocol function name (e.g., "UnaryMinus.minus")
-        let parts: Vec<&str> = protocol_function.split('.').collect();
-        if parts.len() != 2 {
-            return vec![];
-        }
-
-        let protocol_name = parts[0];
-        let function_name = parts[1];
-        let argument_type = self.get_runtime_type_name(argument_value);
-
-        // Look for implementation signatures that match the pattern:
-        // "impl ProtocolName for TypeName"
-        let mut matching_clauses = Vec::new();
-
-        for sig in self.universal_registry.get_all_function_signatures() {
-            // Check if this signature matches our protocol and function
-            if sig.function_name == function_name {
-                // Check if the module path contains the protocol implementation pattern
-                if let Some(module) = sig.module_path.first() {
-                    let expected_impl_pattern =
-                        format!("impl {} for {}", protocol_name, argument_type);
-                    if module == &expected_impl_pattern {
-                        let clause_ids = self.universal_registry.get_clauses_for_function(sig);
-                        matching_clauses.extend(clause_ids.iter().copied());
-                    }
-                }
-            }
-        }
-
-        matching_clauses
-    }
 
     /// Universal clause-based dispatch - the future of function dispatch
     fn dispatch_clauses(
@@ -739,46 +663,6 @@ impl ExpressionEvaluator {
         })
     }
 
-    /// Universal clause-based dispatch with pre-evaluated values (for unary/binary operations)
-    fn dispatch_clauses_with_values(
-        &self,
-        clause_ids: &[ClauseId],
-        args: &[Value],
-        context: &mut InterpreterContext,
-        span: outrun_parser::Span,
-    ) -> Result<Value, EvaluationError> {
-        // Try each clause in order until one succeeds
-        for &clause_id in clause_ids {
-            // Get clause info from universal registry
-            if let Some(clause_info) = self.universal_registry.get_clause(clause_id) {
-                // Evaluate all guards for this clause
-                if self.evaluate_all_guards(&clause_info.guards, args, context)? {
-                    // All guards passed - execute this clause
-                    // Convert positional args to named args (temporary hack for unary ops)
-                    let named_args: Vec<(String, Value)> = args
-                        .iter()
-                        .enumerate()
-                        .map(|(i, value)| (format!("arg_{}", i), value.clone()))
-                        .collect();
-                    return self.execute_clause_body_with_named_args(
-                        clause_info,
-                        &named_args,
-                        context,
-                        span,
-                    );
-                }
-            }
-        }
-
-        // No clause matched
-        Err(EvaluationError::Runtime {
-            message: format!(
-                "No matching clause found for unary operation. Tried {} clauses.",
-                clause_ids.len()
-            ),
-            span,
-        })
-    }
 
     /// Universal guard evaluation system
     fn evaluate_all_guards(
@@ -987,21 +871,6 @@ impl ExpressionEvaluator {
         Ok(())
     }
 
-    /// Get the runtime type name for dispatch table lookup
-    fn get_runtime_type_name(&self, value: &Value) -> String {
-        match value {
-            Value::Integer64(_) => "Outrun.Core.Integer64".to_string(),
-            Value::Float64(_) => "Outrun.Core.Float64".to_string(),
-            Value::Boolean(_) => "Outrun.Core.Boolean".to_string(),
-            Value::String(_) => "Outrun.Core.String".to_string(),
-            Value::Atom(_) => "Outrun.Core.Atom".to_string(),
-            Value::List { .. } => "Outrun.Core.List".to_string(), // TODO: Handle generic types properly
-            Value::Map { .. } => "Outrun.Core.Map".to_string(), // TODO: Handle generic types properly
-            Value::Tuple { .. } => "Outrun.Core.Tuple".to_string(), // TODO: Handle generic types properly
-            Value::Struct { type_name, .. } => type_name.clone(),
-            Value::Function { .. } => "Function".to_string(), // TODO: Handle function types properly
-        }
-    }
 
     /// Evaluate a struct literal to create a struct value
     fn evaluate_struct_literal(
