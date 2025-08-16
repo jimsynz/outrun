@@ -178,7 +178,12 @@ impl ExpressionEvaluator {
             Some(expression.span),
         )?;
 
-        let result = self.evaluate_expression_kind(&expression.kind, expression.span, context);
+        let result = self.evaluate_expression_kind(
+            &expression.kind,
+            expression.span,
+            expression.type_info.as_ref(),
+            context,
+        );
 
         // Pop call frame
         context.pop_call_frame();
@@ -191,6 +196,7 @@ impl ExpressionEvaluator {
         &self,
         kind: &ExpressionKind,
         span: outrun_parser::Span,
+        type_info: Option<&outrun_parser::ParsedTypeInfo>,
         context: &mut InterpreterContext,
     ) -> Result<Value, EvaluationError> {
         match kind {
@@ -233,11 +239,13 @@ impl ExpressionEvaluator {
             }
 
             // List literals - convert to List values
-            ExpressionKind::List(list_literal) => self.evaluate_list_literal(list_literal, context),
+            ExpressionKind::List(list_literal) => {
+                self.evaluate_list_literal(list_literal, context, type_info)
+            }
 
             // Tuple literals - convert to Tuple values
             ExpressionKind::Tuple(tuple_literal) => {
-                self.evaluate_tuple_literal(tuple_literal, context)
+                self.evaluate_tuple_literal(tuple_literal, context, type_info)
             }
 
             // Function calls - dispatch through intrinsics system
@@ -258,7 +266,7 @@ impl ExpressionEvaluator {
 
             // Struct construction - create struct values
             ExpressionKind::Struct(struct_literal) => {
-                self.evaluate_struct_literal(struct_literal, context, span)
+                self.evaluate_struct_literal(struct_literal, context, span, type_info)
             }
 
             // For now, return errors for unsupported expressions
@@ -381,6 +389,7 @@ impl ExpressionEvaluator {
         &self,
         list_literal: &outrun_parser::ListLiteral,
         context: &mut InterpreterContext,
+        type_info: Option<&outrun_parser::ParsedTypeInfo>,
     ) -> Result<Value, EvaluationError> {
         // Start with empty list
         let mut result_list = crate::value::List::Empty;
@@ -426,9 +435,13 @@ impl ExpressionEvaluator {
             }
         }
 
+        // Extract element type information from the list type if available
+        let element_type_info = type_info.cloned();
+        // TODO: Properly extract generic type parameter T from List<T>
+        
         Ok(Value::List {
             list: std::rc::Rc::new(result_list),
-            element_type_info: None,
+            element_type_info,
         })
     }
 
@@ -455,16 +468,29 @@ impl ExpressionEvaluator {
         &self,
         tuple_literal: &outrun_parser::TupleLiteral,
         context: &mut InterpreterContext,
+        type_info: Option<&outrun_parser::ParsedTypeInfo>,
     ) -> Result<Value, EvaluationError> {
         // Evaluate all elements
         let mut elements = Vec::new();
+        let mut element_type_info = Vec::new();
+        
         for element in &tuple_literal.elements {
             let element_value = self.evaluate(element, context)?;
             elements.push(element_value);
+            // Extract type info for each element if available
+            element_type_info.push(element.type_info.clone());
         }
 
-        // Create a proper Tuple value
-        Ok(Value::tuple(elements))
+        // If we don't have per-element type info, use None for all
+        if element_type_info.iter().all(|ti| ti.is_none()) && type_info.is_some() {
+            // TODO: Extract individual element types from tuple type
+            element_type_info = vec![None; elements.len()];
+        }
+
+        Ok(Value::Tuple {
+            elements,
+            element_type_info,
+        })
     }
 
     /// Universal dispatch method - handles ALL function types through clause-based dispatch
@@ -878,9 +904,8 @@ impl ExpressionEvaluator {
         struct_literal: &outrun_parser::StructLiteral,
         context: &mut InterpreterContext,
         span: outrun_parser::Span,
+        type_info: Option<&outrun_parser::ParsedTypeInfo>,
     ) -> Result<Value, EvaluationError> {
-        // For now, create a simple struct representation using a map-like structure
-        // TODO: This should integrate with the type system to create proper struct values
 
         let mut fields = std::collections::HashMap::new();
 
@@ -958,7 +983,7 @@ impl ExpressionEvaluator {
         Ok(Value::Struct {
             type_name,
             fields,
-            type_info: None, // TODO: Get type info from typechecker
+            type_info: type_info.cloned(),
         })
     }
 
