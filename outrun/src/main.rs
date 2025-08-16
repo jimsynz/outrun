@@ -8,6 +8,10 @@ use std::path::PathBuf;
 use std::process;
 use thiserror::Error;
 
+// UI formatting constants
+const MAJOR_SEPARATOR_WIDTH: usize = 60;
+const MINOR_SEPARATOR_WIDTH: usize = 40;
+
 mod repl;
 mod sexpr;
 
@@ -290,7 +294,7 @@ fn format_ast_clean(ast: &outrun_parser::Program) -> String {
 
 fn typecheck_core_library() -> Result<()> {
     println!("🔬 TYPE CHECKING CORE LIBRARY:");
-    println!("{}", "=".repeat(60));
+    println!("{}", "=".repeat(MAJOR_SEPARATOR_WIDTH));
 
     // Use the new typechecker API to precompile core library
     match CompilationResult::precompile_core_library() {
@@ -299,7 +303,7 @@ fn typecheck_core_library() -> Result<()> {
 
             // Print compilation summary
             println!("\n📊 CORE LIBRARY COMPILATION SUMMARY:");
-            println!("{}", "-".repeat(40));
+            println!("{}", "-".repeat(MINOR_SEPARATOR_WIDTH));
 
             // Access the compilation result details
             println!(
@@ -327,7 +331,7 @@ fn typecheck_core_library() -> Result<()> {
         }
         Err(error) => {
             println!("❌ Core library type checking failed!");
-            println!("{}", "-".repeat(40));
+            println!("{}", "-".repeat(MINOR_SEPARATOR_WIDTH));
 
             // Try to create a beautiful miette report with source context
             if let Err(report_error) = create_miette_report_with_source_context(&error) {
@@ -829,7 +833,7 @@ fn typecheck_expression(expression: &str) -> Result<()> {
 
     // Print parsing results
     println!("🔍 PARSING RESULTS for {source_name}");
-    println!("{}", "=".repeat(60));
+    println!("{}", "=".repeat(MAJOR_SEPARATOR_WIDTH));
 
     // Print any diagnostics (errors, warnings, info) with beautiful formatting
     if diagnostics.has_diagnostics() {
@@ -865,7 +869,7 @@ fn typecheck_expression(expression: &str) -> Result<()> {
 
     // Type check the parsed AST
     println!("\n🔍 TYPE CHECKING RESULTS for {source_name}");
-    println!("{}", "=".repeat(60));
+    println!("{}", "=".repeat(MAJOR_SEPARATOR_WIDTH));
 
     let mut package = outrun_typechecker::Package::new("expression".to_string());
     package.add_program(ast);
@@ -916,7 +920,7 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
 
     // Print parsing results
     println!("🔍 PARSING RESULTS for {source_name}");
-    println!("{}", "=".repeat(60));
+    println!("{}", "=".repeat(MAJOR_SEPARATOR_WIDTH));
 
     // Print any diagnostics (errors, warnings, info) with beautiful formatting
     if diagnostics.has_diagnostics() {
@@ -945,12 +949,12 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
     if let Some(ast) = maybe_ast {
         // Print AST
         println!("\n📄 PARSED AST:");
-        println!("{}", "-".repeat(40));
+        println!("{}", "-".repeat(MINOR_SEPARATOR_WIDTH));
         print_ast(&ast);
 
         // Now try to type check it using new CompilationResult API
         println!("\n🔬 TYPE CHECKING RESULTS:");
-        println!("{}", "=".repeat(60));
+        println!("{}", "=".repeat(MAJOR_SEPARATOR_WIDTH));
 
         // Use new typechecker API with CompilationResult
         let mut package = outrun_typechecker::Package::new(source_name.clone());
@@ -960,7 +964,7 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
             Ok(result) => {
                 println!("✅ Type checking successful!");
                 println!("\n📊 TYPE CHECKING SUMMARY:");
-                println!("{}", "-".repeat(40));
+                println!("{}", "-".repeat(MINOR_SEPARATOR_WIDTH));
                 println!(
                     "• Function Registry: {} entries",
                     result.function_registry.function_count()
@@ -973,7 +977,7 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
             }
             Err(error) => {
                 println!("❌ Type checking failed!");
-                println!("{}", "-".repeat(40));
+                println!("{}", "-".repeat(MINOR_SEPARATOR_WIDTH));
 
                 // Try to create a beautiful miette report with source context
                 if let Err(report_error) = create_miette_report_with_source_context(&error) {

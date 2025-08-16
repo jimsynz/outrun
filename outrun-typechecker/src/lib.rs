@@ -68,7 +68,8 @@ pub use universal_dispatch::{
     UniversalDispatchRegistry,
 };
 
-/// A collection of parsed programs representing a complete Outrun package
+/// A collection of parsed programs representing a complete Outrun package.
+/// Contains all source files and metadata needed for compilation.
 pub struct Package {
     pub programs: Vec<outrun_parser::Program>,
     pub package_name: String,
@@ -100,7 +101,9 @@ impl Package {
     }
 }
 
-/// Complete result of typechecking a package - reusable and composable
+/// Complete result of typechecking a package - reusable and composable.
+/// Contains all type information, function registries, and dispatch tables needed
+/// for execution or as dependencies for other packages.
 #[derive(Debug, Clone)]
 pub struct CompilationResult {
     /// Complete type registry with protocols, structs, and implementations

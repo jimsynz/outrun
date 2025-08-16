@@ -69,6 +69,13 @@ pub enum EvaluationError {
         #[from]
         source: crate::pattern::PatternMatchError,
     },
+
+    #[error("Missing type information: {expression} - {reason}")]
+    MissingTypeInformation {
+        expression: String,
+        reason: String,
+        span: outrun_parser::Span,
+    },
 }
 
 /// Expression evaluator for the new interpreter system
@@ -467,12 +474,15 @@ impl ExpressionEvaluator {
                             span,
                         ) {
                             Ok(value) => Ok(value),
-                            Err(_) => {
-                                panic!(
-                                    "BUG: Non-intrinsic function call missing universal_clause_ids: {}",
+                            Err(_) => Err(EvaluationError::MissingTypeInformation {
+                                expression: format!(
+                                    "Non-intrinsic function call: {}",
                                     function_name
-                                )
-                            }
+                                ),
+                                reason: "universal_clause_ids not populated by typechecker"
+                                    .to_string(),
+                                span,
+                            }),
                         }
                     }
                 }
@@ -486,11 +496,12 @@ impl ExpressionEvaluator {
                     } else if function_name == "not" {
                         "LogicalNot.not"
                     } else {
-                        // For other simple calls, panic as before
-                        panic!(
-                            "BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}",
-                            function_name
-                        );
+                        // For other simple calls, return error
+                        return Err(EvaluationError::MissingTypeInformation {
+                            expression: format!("Simple function call: {}", function_name),
+                            reason: "universal_clause_ids not populated by typechecker".to_string(),
+                            span,
+                        });
                     };
 
                     match self.try_resolve_protocol_call_fallback(
@@ -500,18 +511,19 @@ impl ExpressionEvaluator {
                         span,
                     ) {
                         Ok(value) => Ok(value),
-                        Err(_) => {
-                            panic!(
-                                "BUG: Simple function calls must have universal_clause_ids populated by typechecker: {}",
-                                function_name
-                            )
-                        }
+                        Err(_) => Err(EvaluationError::MissingTypeInformation {
+                            expression: format!("Simple function call: {}", function_name),
+                            reason: "universal_clause_ids not populated by typechecker".to_string(),
+                            span,
+                        }),
                     }
                 }
                 outrun_parser::FunctionPath::Expression { .. } => {
-                    panic!(
-                        "BUG: Expression function calls must have universal_clause_ids populated by typechecker"
-                    );
+                    Err(EvaluationError::MissingTypeInformation {
+                        expression: "Expression function call".to_string(),
+                        reason: "universal_clause_ids not populated by typechecker".to_string(),
+                        span,
+                    })
                 }
             }
         }

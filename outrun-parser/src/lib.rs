@@ -18,10 +18,15 @@ pub use parser::*;
 pub use parser::Rule;
 
 // Main parsing functions
+
+/// Parse an Outrun program from source text.
+/// Returns the parsed AST or an error with source location information.
 pub fn parse_program(input: &str) -> Result<Program, ParseError> {
     parser::OutrunParser::parse_program(input)
 }
 
+/// Parse an Outrun program with source file tracking for better error messages.
+/// The source_file parameter is used in error reports and debug information.
 pub fn parse_program_with_source(
     input: &str,
     source_file: Option<String>,
@@ -29,6 +34,8 @@ pub fn parse_program_with_source(
     parser::OutrunParser::parse_program_with_source(input, source_file)
 }
 
+/// Parse a single Outrun expression.
+/// Useful for REPL evaluation and testing individual expressions.
 pub fn parse_expression(input: &str) -> Result<Expression, ParseError> {
     parser::OutrunParser::parse_expression(input)
 }
@@ -126,5 +133,8 @@ fn convert_parse_error_to_diagnostic(parse_error: ParseError) -> DiagnosticError
 }
 
 // Version and metadata
+
+/// Parser version from Cargo.toml
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Parser package name from Cargo.toml
 pub const NAME: &str = env!("CARGO_PKG_NAME");
