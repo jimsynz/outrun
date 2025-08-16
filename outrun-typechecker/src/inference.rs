@@ -3031,8 +3031,12 @@ impl TypeInferenceEngine {
                                         });
                                     }
                                     outrun_parser::ListElement::Spread(_identifier) => {
-                                        // For now, skip spread elements - they need special handling
-                                        // TODO: Implement proper spread element type inference
+                                        // TODO: Implement spread element type inference for lists
+                                        // Requirements:
+                                        // 1. Look up the identifier in the symbol table
+                                        // 2. Verify it has type List<T> for some T
+                                        // 3. Extract T and ensure it's compatible with other list elements
+                                        // 4. Include it in the unified element type for the list
                                     }
                                 }
                             }
@@ -3091,9 +3095,13 @@ impl TypeInferenceEngine {
                                             context: context.clone(),
                                         });
                                     }
-                                    outrun_parser::MapEntry::Spread(_) => {
-                                        // Skip spread elements for now
-                                        // TODO: Implement proper spread element type inference
+                                    outrun_parser::MapEntry::Spread(_identifier) => {
+                                        // TODO: Implement spread element type inference for maps
+                                        // Requirements:
+                                        // 1. Look up the identifier in the symbol table
+                                        // 2. Verify it has type Map<K, V> for some K, V
+                                        // 3. Ensure K and V are compatible with the map being constructed
+                                        // 4. Merge the spread map's entries into the new map
                                     }
                                 }
                             }
@@ -3133,9 +3141,20 @@ impl TypeInferenceEngine {
                                         // Shorthand fields don't have expressions to evaluate
                                         // The identifier itself is the value
                                     }
-                                    outrun_parser::StructLiteralField::Spread(_) => {
-                                        // Skip spread elements for now
-                                        // TODO: Implement proper spread element type inference
+                                    outrun_parser::StructLiteralField::Spread(_identifier) => {
+                                        // TODO: Implement spread element type inference for structs
+                                        // Requirements:
+                                        // 1. Look up the identifier in the symbol table
+                                        // 2. Verify it's either:
+                                        //    a) A struct type (same or different struct)
+                                        //    b) A Map<Atom, V> where V is a protocol that all field types implement
+                                        //       (e.g., if struct has String and Integer fields, V would need to be
+                                        //       a protocol like Display that both String and Integer implement)
+                                        // 3. Extract fields/entries from the spread value
+                                        // 4. For Map spreads, verify each atom key corresponds to a valid field
+                                        //    and that the value type is assignable to that field's type
+                                        // 5. Merge fields, with explicit fields overriding spread fields
+                                        // 6. Type-check the resulting field set against the target struct type
                                     }
                                 }
                             }
