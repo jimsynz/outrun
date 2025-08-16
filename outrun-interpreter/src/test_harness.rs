@@ -128,6 +128,43 @@ pub enum TestHarnessError {
 
     #[error("Internal error: {message}")]
     Internal { message: String },
+
+    #[error("Session compilation failed: {source}. Session state preserved.")]
+    SessionCompilationFailed {
+        source: Box<CompilerError>,
+    },
+
+    #[error("Type definition conflict: {conflict_type}. Use different name or clear session.")]
+    TypeDefinitionConflict {
+        conflict_type: String,
+        existing_definition: String,
+        suggested_resolution: String,
+    },
+
+    #[error("Session state corruption detected: {issue}. Session has been automatically reset.")]
+    SessionStateCorruption {
+        issue: String,
+        recovery_action: String,
+    },
+
+    #[error("Memory limit exceeded in session: {current_size} bytes. Consider clearing session state.")]
+    SessionMemoryLimit {
+        current_size: usize,
+        limit: usize,
+        suggested_action: String,
+    },
+
+    #[error("Session validation failed: {validation_error}. Session state may be inconsistent.")]
+    SessionValidationFailed {
+        validation_error: String,
+        session_state_summary: String,
+    },
+
+    #[error("Compilation dependency cycle detected: {cycle_description}. Cannot proceed with evaluation.")]
+    DependencyCycle {
+        cycle_description: String,
+        affected_types: Vec<String>,
+    },
 }
 
 impl From<outrun_typechecker::TypecheckError> for TestHarnessError {
@@ -158,6 +195,10 @@ pub struct InterpreterSession {
     session_package: Package,
     /// Type information for session variables (for proper compilation with operators)
     session_variable_types: std::collections::HashMap<String, outrun_typechecker::types::Type>,
+    /// Current session compilation result (persists type definitions)
+    session_compilation: Option<CompilationResult>,
+    /// Persistent struct definitions for registry tracking
+    session_struct_definitions: std::collections::HashSet<String>,
 }
 
 impl InterpreterSession {
@@ -171,6 +212,8 @@ impl InterpreterSession {
             core_compilation: None,
             session_package: Package::new("test_session".to_string()),
             session_variable_types: std::collections::HashMap::new(),
+            session_compilation: None,
+            session_struct_definitions: std::collections::HashSet::new(),
         })
     }
 
@@ -190,161 +233,94 @@ impl InterpreterSession {
             self.core_compilation = Some(CompilationResult::precompile_core_library()?);
         }
 
+        // Parse first (fast operation, fails quickly on syntax errors)
+        let parsed_program = parse_program(expression_code)?;
+
+        // Create temporary session package with new program  
+        let mut candidate_package = Package::new(self.session_package.package_name.clone());
+        for program in &self.session_package.programs {
+            candidate_package.add_program(program.clone());
+        }
+        candidate_package.add_program(parsed_program.clone());
+
+        // Prepare core library dependency
         let core_compilation = self.core_compilation.as_ref().unwrap();
+        let dependencies = vec![core_compilation.clone()];
 
-        // Try to compile the expression first. If it fails with an undefined variable error,
-        // and we have that variable in our context, skip typechecking and evaluate directly
-        let compilation_result = if self.session_variable_types.is_empty() {
-            CompilationResult::compile_repl_expression(expression_code, core_compilation)
-        } else {
-            CompilationResult::compile_repl_expression_with_context(
-                expression_code,
-                core_compilation,
-                Some(&self.session_variable_types),
-            )
+        // Before attempting recompilation, detect type redefinitions and invalidate variables
+        let redefined_types = Self::detect_type_redefinitions(&candidate_package, &self.session_compilation)?;
+        
+        if !redefined_types.is_empty() {
+            // Check which session variables are affected
+            let affected_variables = Self::find_affected_variables(&redefined_types, &self.session_variable_types)?;
+            
+            if !affected_variables.is_empty() {
+                // Warn user and invalidate affected variables
+                self.warn_and_invalidate_variables(&affected_variables)?;
+            }
+        }
+
+        // CRITICAL: Use recompile_package for hot-reload behavior
+        // This allows redefinition with content-aware warnings
+        let compilation_result = match CompilationResult::recompile_package(
+            &mut candidate_package,
+            self.session_compilation.as_ref(), // Previous compilation for change detection  
+            dependencies
+        ) {
+            Ok(result) => result,
+            Err(compiler_error) => {
+                // Compilation failed - session state remains unchanged
+                // Try fallback approach for simple variable references
+                return self.try_simple_variable_fallback(expression_code, &parsed_program, &compiler_error);
+            }
         };
 
-        let (_should_skip_typecheck, parsed_program) = match compilation_result {
-            Ok(compilation) => {
-                // Compilation succeeded - use it normally
-                self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
-                    compilation.dispatch_table,
-                    compilation.function_registry,
-                    compilation.universal_dispatch,
-                    compilation.type_registry,
-                ));
-                // Use the desugared program from the compilation result, not the raw parsed expression
-                let desugared_program = compilation
-                    .programs
-                    .first()
-                    .ok_or_else(|| TestHarnessError::Internal {
-                        message: "No programs found in compilation result".to_string(),
-                    })?
-                    .clone();
+        // Compilation succeeded - commit to session state
+        self.session_package = candidate_package;
+        self.session_compilation = Some(compilation_result.clone());
 
-                // Extract type information from let bindings if present
-                for item in &desugared_program.items {
-                    if let outrun_parser::ItemKind::LetBinding(let_binding) = &item.kind {
-                        if let outrun_parser::Pattern::Identifier(identifier) = &let_binding.pattern
-                        {
-                            if let Some(ref type_info) = let_binding.expression.type_info {
-                                // Store the type for this variable
-                                let type_obj = outrun_typechecker::types::Type::concrete(
-                                    &type_info.resolved_type,
-                                );
-                                self.session_variable_types
-                                    .insert(identifier.name.clone(), type_obj);
-                            } else {
-                                // Try to infer type from the expression if it's a literal
-                                if let outrun_parser::ExpressionKind::Integer(_) =
-                                    &let_binding.expression.kind
-                                {
-                                    let type_obj = outrun_typechecker::types::Type::concrete(
-                                        "Outrun.Core.Integer64",
-                                    );
-                                    self.session_variable_types
-                                        .insert(identifier.name.clone(), type_obj);
-                                }
-                            }
+        // Update evaluator with new registries
+        self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+            compilation_result.dispatch_table,
+            compilation_result.function_registry,
+            compilation_result.universal_dispatch,
+            compilation_result.type_registry,
+        ));
+
+        // Phase 2: Track struct definitions for persistent registry
+        for program in &parsed_program.items {
+            if let outrun_parser::ItemKind::StructDefinition(struct_def) = &program.kind {
+                // Get struct name from first TypeIdentifier (simple struct names have length 1)
+                if let Some(first_id) = struct_def.name.first() {
+                    let struct_name = first_id.name.clone();
+                    self.session_struct_definitions.insert(struct_name);
+                    println!("📝 Registered struct definition: {}", first_id.name);
+                }
+            }
+        }
+
+        // Extract type information from let bindings if present  
+        for item in &parsed_program.items {
+            if let outrun_parser::ItemKind::LetBinding(let_binding) = &item.kind {
+                if let outrun_parser::Pattern::Identifier(identifier) = &let_binding.pattern {
+                    if let Some(ref type_info) = let_binding.expression.type_info {
+                        // Store the type for this variable
+                        let type_obj = outrun_typechecker::types::Type::concrete(
+                            &type_info.resolved_type,
+                        );
+                        self.session_variable_types.insert(identifier.name.clone(), type_obj);
+                    } else {
+                        // Try to infer type from the expression if it's a literal
+                        if let outrun_parser::ExpressionKind::Integer(_) = &let_binding.expression.kind {
+                            let type_obj = outrun_typechecker::types::Type::concrete(
+                                "Outrun.Core.Integer64",
+                            );
+                            self.session_variable_types.insert(identifier.name.clone(), type_obj);
                         }
                     }
                 }
-
-                (false, desugared_program)
             }
-            Err(CompilerError::Typecheck(boxed_err)) => {
-                // Check if this is a variable-not-found error (can be either UndefinedVariable or AmbiguousType)
-                let variable_name =
-                    if let outrun_typechecker::TypecheckError::InferenceError(inference_err) =
-                        boxed_err.as_ref()
-                    {
-                        match inference_err {
-                            // Handle AmbiguousType with "Unknown identifier" message
-                            outrun_typechecker::InferenceError::AmbiguousType {
-                                suggestions,
-                                ..
-                            } => suggestions.iter().find_map(|s| {
-                                if s.starts_with("Unknown identifier: ") {
-                                    Some(s.trim_start_matches("Unknown identifier: ").to_string())
-                                } else {
-                                    None
-                                }
-                            }),
-                            // Also handle UndefinedVariable (in case typechecker uses this in the future)
-                            outrun_typechecker::InferenceError::UndefinedVariable {
-                                variable_name,
-                                ..
-                            } => Some(variable_name.clone()),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    };
-
-                if let Some(var_name) = variable_name {
-                    // Check if we have this variable in our interpreter context
-                    if self.context.get_variable(&var_name).is_ok() {
-                        // We have the variable! We need to handle this carefully.
-                        // If the expression is just a simple variable reference, we can skip typechecking.
-                        // But if it contains operators, we need to compile it properly with variable context.
-
-                        // Parse the expression first to check what it contains
-                        let parsed_program = parse_program(expression_code)?;
-
-                        // Check if this is a simple variable reference or a complex expression
-                        let needs_full_compilation =
-                            if let Some(first_item) = parsed_program.items.first() {
-                                match &first_item.kind {
-                                    outrun_parser::ItemKind::Expression(expr) => {
-                                        // Check if the expression contains operators that need desugaring
-                                        expression_contains_operators(expr)
-                                    }
-                                    _ => false,
-                                }
-                            } else {
-                                false
-                            };
-
-                        if needs_full_compilation {
-                            // The expression contains operators that need proper compilation
-                            // The session context should handle this now via compile_repl_expression_with_context
-                            return Err(TestHarnessError::Internal {
-                                message: format!(
-                                    "Variable '{}' found in interpreter but compilation still failed. \
-                                     This may indicate a type mismatch or other compilation issue.",
-                                    var_name
-                                ),
-                            });
-                        } else {
-                            // Simple variable reference - we can skip typechecking
-                            self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
-                                core_compilation.dispatch_table.clone(),
-                                core_compilation.function_registry.clone(),
-                                core_compilation.universal_dispatch.clone(),
-                                core_compilation.type_registry.clone(),
-                            ));
-                            (true, parsed_program)
-                        }
-                    } else {
-                        // We don't have the variable either - propagate the original error
-                        return Err(TestHarnessError::Compiler {
-                            source: Box::new(CompilerError::Typecheck(boxed_err)),
-                        });
-                    }
-                } else {
-                    // Other typecheck error - propagate it
-                    return Err(TestHarnessError::Compiler {
-                        source: Box::new(CompilerError::Typecheck(boxed_err)),
-                    });
-                }
-            }
-            Err(e) => {
-                // Other compilation errors - propagate them
-                return Err(TestHarnessError::Compiler {
-                    source: Box::new(e),
-                });
-            }
-        };
+        }
 
         // Process all items in the program
         let mut last_value = crate::Value::Boolean(true);
@@ -396,6 +372,236 @@ impl InterpreterSession {
         }
 
         Ok((last_value, last_type_info))
+    }
+
+    /// Detect type redefinitions between candidate package and previous compilation
+    fn detect_type_redefinitions(
+        candidate_package: &Package,
+        previous_compilation: &Option<CompilationResult>
+    ) -> Result<std::collections::HashSet<String>, TestHarnessError> {
+        let mut redefined_types = std::collections::HashSet::new();
+        
+        if let Some(prev_comp) = previous_compilation {
+            // Compare struct definitions in new package vs previous compilation
+            for program in &candidate_package.programs {
+                for item in &program.items {
+                    if let outrun_parser::ItemKind::StructDefinition(struct_def) = &item.kind {
+                        // Get struct name from first TypeIdentifier (simple struct names have length 1)
+                        let type_name = if let Some(first_id) = struct_def.name.first() {
+                            first_id.name.clone()
+                        } else {
+                            continue; // Skip empty name (shouldn't happen but be safe)
+                        };
+                        
+                        // Check if this type existed before (simple heuristic for now)
+                        // In a full implementation, we'd compare actual struct signatures
+                        for prev_program in &prev_comp.programs {
+                            for prev_item in &prev_program.items {
+                                if let outrun_parser::ItemKind::StructDefinition(prev_struct_def) = &prev_item.kind {
+                                    if let Some(prev_first_id) = prev_struct_def.name.first() {
+                                        if prev_first_id.name == type_name {
+                                        // Found same type name - assume it's a redefinition
+                                        // TODO: Add content-based comparison here
+                                        redefined_types.insert(type_name.clone());
+                                        break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(redefined_types)
+    }
+
+    /// Find variables affected by type redefinitions
+    fn find_affected_variables(
+        redefined_types: &std::collections::HashSet<String>,
+        session_variable_types: &std::collections::HashMap<String, outrun_typechecker::types::Type>
+    ) -> Result<Vec<String>, TestHarnessError> {
+        let mut affected_variables = Vec::new();
+        
+        // Check session variable types against redefined types
+        for (var_name, var_type) in session_variable_types {
+            if Self::type_references_redefined_struct(var_type, redefined_types) {
+                affected_variables.push(var_name.clone());
+            }
+        }
+        
+        Ok(affected_variables)
+    }
+
+    /// Check if a type references any of the redefined struct types
+    fn type_references_redefined_struct(
+        var_type: &outrun_typechecker::types::Type,
+        redefined_types: &std::collections::HashSet<String>
+    ) -> bool {
+        match var_type {
+            outrun_typechecker::types::Type::Concrete { name, args, .. } => {
+                // Direct reference to redefined type
+                if redefined_types.contains(name.as_str()) {
+                    return true;
+                }
+                // Check type arguments recursively
+                args.iter().any(|arg| Self::type_references_redefined_struct(arg, redefined_types))
+            },
+            // TODO: Add support for other Type variants as needed
+            _ => false
+        }
+    }
+
+    /// Warn user and invalidate affected variables
+    fn warn_and_invalidate_variables(
+        &mut self,
+        affected_variables: &[String]
+    ) -> Result<(), TestHarnessError> {
+        for var_name in affected_variables {
+            // Remove from interpreter context  
+            if let Ok(_removed_value) = self.context.remove_variable(var_name) {
+                // Remove from session type tracking
+                self.session_variable_types.remove(var_name);
+                
+                // Log warning for user
+                eprintln!("⚠️  Variable '{}' removed due to type redefinition. Please recreate it with the new type definition.", var_name);
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Phase 4: Enhanced fallback approach with better error handling
+    fn try_simple_variable_fallback(
+        &mut self, 
+        expression_code: &str,
+        parsed_program: &outrun_parser::Program,
+        compiler_error: &CompilerError
+    ) -> Result<(Value, Option<String>), TestHarnessError> {
+        eprintln!("🔄 Attempting variable fallback for expression: {}", expression_code);
+        // Check if this is a variable-not-found error
+        let variable_name = if let CompilerError::Typecheck(boxed_err) = compiler_error {
+            if let outrun_typechecker::TypecheckError::InferenceError(inference_err) = boxed_err.as_ref() {
+                match inference_err {
+                    // Handle AmbiguousType with "Unknown identifier" message
+                    outrun_typechecker::InferenceError::AmbiguousType { suggestions, .. } => {
+                        suggestions.iter().find_map(|s| {
+                            if s.starts_with("Unknown identifier: ") {
+                                Some(s.trim_start_matches("Unknown identifier: ").to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    },
+                    // Also handle UndefinedVariable (in case typechecker uses this in the future)
+                    outrun_typechecker::InferenceError::UndefinedVariable { variable_name, .. } => {
+                        Some(variable_name.clone())
+                    },
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(var_name) = variable_name {
+            // Check if we have this variable in our interpreter context
+            if self.context.get_variable(&var_name).is_ok() {
+                // Check if this is a simple variable reference or complex expression
+                let needs_full_compilation = if let Some(first_item) = parsed_program.items.first() {
+                    match &first_item.kind {
+                        outrun_parser::ItemKind::Expression(expr) => {
+                            expression_contains_operators(expr)
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+
+                if needs_full_compilation {
+                    // Complex expression - can't handle with fallback
+                    return Err(TestHarnessError::Internal {
+                        message: format!(
+                            "Variable '{}' found in interpreter but compilation still failed. \
+                             This may indicate a type mismatch or other compilation issue.",
+                            var_name
+                        ),
+                    });
+                } else {
+                    // Simple variable reference - use core compilation evaluator
+                    let core_compilation = self.core_compilation.as_ref().unwrap();
+                    self.evaluator = Some(ExpressionEvaluator::with_universal_dispatch(
+                        core_compilation.dispatch_table.clone(),
+                        core_compilation.function_registry.clone(),
+                        core_compilation.universal_dispatch.clone(),
+                        core_compilation.type_registry.clone(),
+                    ));
+
+                    // Process the program items
+                    let mut last_value = crate::Value::Boolean(true);
+                    let mut last_type_info: Option<String> = None;
+
+                    for item in &parsed_program.items {
+                        match &item.kind {
+                            outrun_parser::ItemKind::Expression(expr) => {
+                                let evaluator = self.evaluator.as_ref().unwrap();
+                                last_value = evaluator.evaluate(expr, &mut self.context)?;
+                                last_type_info = expr.type_info.as_ref().map(|ti| ti.resolved_type.clone());
+                            }
+                            _ => {
+                                return Err(TestHarnessError::Internal {
+                                    message: "Only simple expressions supported in fallback mode".to_string(),
+                                });
+                            }
+                        }
+                    }
+
+                    return Ok((last_value, last_type_info));
+                }
+            }
+        }
+
+        // Phase 4: Enhanced error reporting for compilation failures
+        eprintln!("❌ Fallback approach unsuccessful. Original compilation error: {}", compiler_error);
+        
+        // Check if this is a dependency cycle issue
+        if format!("{}", compiler_error).contains("cycle") || format!("{}", compiler_error).contains("recursive") {
+            // Try to extract type information for better error reporting
+            let affected_types = self.extract_types_from_error_message(&format!("{}", compiler_error));
+            
+            return Err(TestHarnessError::DependencyCycle {
+                cycle_description: format!("Compilation failed due to potential dependency cycle: {}", compiler_error),
+                affected_types,
+            });
+        }
+        
+        // Provide enhanced session compilation error with context
+        Err(TestHarnessError::Internal {
+            message: format!("Session compilation failed: {}. Session state preserved.", compiler_error),
+        })
+    }
+    
+    /// Phase 4: Extract type names from error messages for better diagnostics
+    fn extract_types_from_error_message(&self, error_message: &str) -> Vec<String> {
+        let mut types = Vec::new();
+        
+        // Simple heuristic to extract type names from error messages
+        // Look for capitalized words that might be type names
+        for word in error_message.split_whitespace() {
+            let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if clean_word.len() > 1 && clean_word.chars().next().unwrap().is_uppercase() {
+                // Also check if it's one of our known struct definitions
+                if self.session_struct_definitions.contains(clean_word) {
+                    types.push(clean_word.to_string());
+                }
+            }
+        }
+        
+        types
     }
 
     /// Evaluate a let binding and return the bound value
@@ -608,15 +814,61 @@ impl InterpreterSession {
             })
     }
 
-    /// Clear all variables from the test context
+    /// Clear all variables from the test context with enhanced memory cleanup
     pub fn clear_variables(&mut self) {
+        // Phase 4: Enhanced session cleanup with validation
+        self.validate_session_state_before_clear();
+        
+        // Explicit memory cleanup before reset
+        self.cleanup_session_memory();
+        
+        // Reset all session state
         self.context = InterpreterContext::new();
-        // Reset the session package
         self.session_package = Package::new("test_session".to_string());
-        // Clear session variable types to force use of standard compilation
         self.session_variable_types.clear();
-        // Clear cached evaluator to force recompilation with correct dispatch table
+        self.session_compilation = None;
         self.evaluator = None;
+        self.session_struct_definitions.clear();
+        
+        // Log session reset for debugging
+        eprintln!("🔄 Session state cleared and reset successfully");
+    }
+    
+    /// Validate session state integrity before major operations
+    fn validate_session_state_before_clear(&self) {
+        let context_vars = self.context.get_available_variables().len();
+        let session_types = self.session_variable_types.len();
+        let struct_defs = self.session_struct_definitions.len();
+        let programs = self.session_package.programs.len();
+        
+        // Log session state summary for debugging
+        eprintln!("📊 Session state before clear: {} vars, {} types, {} structs, {} programs", 
+                 context_vars, session_types, struct_defs, programs);
+                 
+        // Check for potential memory issues
+        if programs > 100 {
+            eprintln!("⚠️  Large session detected: {} programs. Consider periodic clearing.", programs);
+        }
+    }
+    
+    /// Clean up session memory before reset
+    fn cleanup_session_memory(&mut self) {
+        // Force cleanup of large data structures
+        if self.session_package.programs.len() > 10 {
+            eprintln!("🧹 Cleaning up {} accumulated programs", self.session_package.programs.len());
+        }
+        
+        // Clear evaluator cache first to free dispatch tables
+        if self.evaluator.is_some() {
+            eprintln!("🧹 Clearing cached evaluator and dispatch tables");
+            self.evaluator = None;
+        }
+        
+        // Clear compilation cache
+        if self.session_compilation.is_some() {
+            eprintln!("🧹 Clearing cached compilation result");
+            self.session_compilation = None;
+        }
     }
 
     /// Get the current context (for advanced testing scenarios)
@@ -628,11 +880,169 @@ impl InterpreterSession {
     pub fn context_mut(&mut self) -> &mut InterpreterContext {
         &mut self.context
     }
+    
+    /// Phase 4: Validate current session state for integrity
+    pub fn validate_session_state(&self) -> Result<(), TestHarnessError> {
+        // Check for consistency between context variables and session variable types
+        let context_vars = self.context.get_available_variables();
+        let missing_types: Vec<_> = context_vars.iter()
+            .filter(|var| !self.session_variable_types.contains_key(*var))
+            .collect();
+            
+        if !missing_types.is_empty() {
+            return Err(TestHarnessError::SessionValidationFailed {
+                validation_error: format!("Variables without type tracking: {:?}", missing_types),
+                session_state_summary: self.get_session_summary(),
+            });
+        }
+        
+        // Check for struct definitions without corresponding types
+        let orphaned_structs: Vec<_> = self.session_struct_definitions.iter()
+            .filter(|struct_name| {
+                // Check if any variables have this struct type
+                !self.session_variable_types.values().any(|var_type| {
+                    match var_type {
+                        outrun_typechecker::types::Type::Concrete { name, .. } => {
+                            name.as_str().contains(struct_name.as_str())
+                        },
+                        _ => false
+                    }
+                })
+            })
+            .collect();
+            
+        if orphaned_structs.len() > 10 {  // Only warn for many orphaned structs
+            eprintln!("⚠️  Found {} struct definitions without corresponding variables. Consider session cleanup.", 
+                     orphaned_structs.len());
+        }
+        
+        Ok(())
+    }
+    
+    /// Get a summary of current session state
+    pub fn get_session_summary(&self) -> String {
+        format!("Session: {} vars, {} types, {} structs, {} programs",
+               self.context.get_available_variables().len(),
+               self.session_variable_types.len(),
+               self.session_struct_definitions.len(),
+               self.session_package.programs.len())
+    }
+    
+    /// Phase 4: Check for potential memory issues in session
+    pub fn check_session_memory_usage(&self) -> Result<(), TestHarnessError> {
+        let program_count = self.session_package.programs.len();
+        let variable_count = self.session_variable_types.len();
+        let struct_count = self.session_struct_definitions.len();
+        
+        // Rough memory usage estimation (very conservative)
+        let estimated_bytes = (program_count * 1024) + (variable_count * 256) + (struct_count * 512);
+        const MEMORY_LIMIT: usize = 10 * 1024 * 1024; // 10MB rough limit
+        
+        if estimated_bytes > MEMORY_LIMIT {
+            return Err(TestHarnessError::SessionMemoryLimit {
+                current_size: estimated_bytes,
+                limit: MEMORY_LIMIT,
+                suggested_action: "Consider calling clear_variables() to reset session state".to_string(),
+            });
+        }
+        
+        if program_count > 50 {
+            eprintln!("⚠️  Session has {} accumulated programs. Performance may degrade.", program_count);
+        }
+        
+        Ok(())
+    }
 }
 
 impl Default for InterpreterSession {
     fn default() -> Self {
         Self::new().expect("Failed to create default test harness")
+    }
+}
+
+// Phase 4: Enhanced session management utilities
+impl InterpreterSession {
+    /// Create a new session with validation and error recovery
+    pub fn new_with_validation() -> Result<Self, TestHarnessError> {
+        let session = Self::new()?;
+        
+        // Validate initial state
+        session.validate_session_state()?;
+        
+        eprintln!("✅ New interpreter session created and validated");
+        Ok(session)
+    }
+    
+    /// Evaluate with enhanced error handling and session recovery
+    pub fn evaluate_with_recovery(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
+        // Phase 4: Pre-evaluation validation
+        if let Err(validation_error) = self.validate_session_state() {
+            eprintln!("⚠️  Session validation warning: {}", validation_error);
+            // Continue anyway for now, but log the issue
+        }
+        
+        // Check memory usage before evaluation
+        self.check_session_memory_usage()?;
+        
+        // Attempt normal evaluation
+        match self.evaluate(expression_code) {
+            Ok(value) => {
+                // Post-evaluation validation
+                if let Err(post_validation_error) = self.validate_session_state() {
+                    eprintln!("⚠️  Post-evaluation session inconsistency: {}", post_validation_error);
+                }
+                Ok(value)
+            },
+            Err(evaluation_error) => {
+                // Enhanced error recovery
+                eprintln!("❌ Evaluation failed: {}. Checking session integrity...", evaluation_error);
+                
+                // Check if session state is still valid after failure
+                match self.validate_session_state() {
+                    Ok(()) => {
+                        eprintln!("✅ Session state remains valid after evaluation failure");
+                        Err(evaluation_error)
+                    },
+                    Err(_validation_error) => {
+                        eprintln!("💥 Session state corrupted after evaluation failure. Attempting recovery...");
+                        
+                        // Attempt automatic recovery
+                        if let Err(recovery_error) = self.attempt_session_recovery() {
+                            Err(TestHarnessError::SessionStateCorruption {
+                                issue: format!("Evaluation failed and session recovery failed: {}", recovery_error),
+                                recovery_action: "Session has been reset. Please retry operation.".to_string(),
+                            })
+                        } else {
+                            eprintln!("🔧 Session recovery successful. Original error was: {}", evaluation_error);
+                            Err(evaluation_error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Attempt to recover from session state corruption
+    fn attempt_session_recovery(&mut self) -> Result<(), TestHarnessError> {
+        eprintln!("🔧 Attempting session recovery...");
+        
+        // Strategy 1: Clear cached evaluator and try to rebuild
+        self.evaluator = None;
+        
+        // Strategy 2: If that fails, clear compilation cache
+        if self.validate_session_state().is_err() {
+            self.session_compilation = None;
+            eprintln!("🔧 Cleared compilation cache for recovery");
+        }
+        
+        // Strategy 3: Last resort - full session reset
+        if self.validate_session_state().is_err() {
+            eprintln!("🔧 Full session reset required for recovery");
+            self.clear_variables();
+        }
+        
+        // Final validation
+        self.validate_session_state()
     }
 }
 

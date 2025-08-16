@@ -414,7 +414,7 @@ impl ExpressionEvaluator {
                         Value::List { list, .. } => {
                             // Append all elements from the spread list to our result
                             // We need to traverse the spread list and prepend each element
-                            let elements = self.collect_list_elements(&list);
+                            let elements = self.collect_list_elements(list);
                             // Add elements in reverse since we're building in reverse
                             for element in elements.into_iter().rev() {
                                 result_list = crate::value::List::Cons {

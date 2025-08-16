@@ -102,6 +102,22 @@ impl InterpreterContext {
         self.variable_environment.list_all()
     }
 
+    /// Remove a variable from the current environment (for type invalidation)
+    pub fn remove_variable(&mut self, name: &str) -> Result<Value, InterpreterError> {
+        self.variable_environment.remove(name)
+            .ok_or_else(|| InterpreterError::VariableNotFound { 
+                name: name.to_string() 
+            })
+    }
+
+    /// Get all available variable names (for error reporting)
+    pub fn get_available_variables(&self) -> Vec<String> {
+        self.variable_environment.list_all()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    }
+
     /// Push a new variable scope (for function calls, let bindings, etc.)
     pub fn push_scope(&mut self) {
         self.variable_environment.push_scope();
@@ -190,6 +206,16 @@ impl VariableEnvironment {
     /// Check if any scope contains a variable
     fn contains(&self, name: &str) -> bool {
         self.get(name).is_some()
+    }
+
+    /// Remove a variable from environment (searches all scopes)
+    fn remove(&mut self, name: &str) -> Option<Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(value) = scope.remove(name) {
+                return Some(value);
+            }
+        }
+        None
     }
 
     /// Push a new scope
