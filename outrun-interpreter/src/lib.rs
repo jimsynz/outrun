@@ -81,4 +81,5 @@ mod tests {
     mod test_equality_auto_impl;
     mod test_function_dispatch;
     mod test_pipeline_integration;
+    mod test_spread_operator;
 }

@@ -384,28 +384,67 @@ impl ExpressionEvaluator {
 
         // Evaluate elements in reverse order to build the list correctly
         for element in list_literal.elements.iter().rev() {
-            let element_value = match element {
-                outrun_parser::ListElement::Expression(expr) => self.evaluate(expr, context)?,
-                outrun_parser::ListElement::Spread(_) => {
-                    // TODO: Implement spread operator support
-                    return Err(EvaluationError::UnsupportedExpression {
-                        expr_type: "spread_operator".to_string(),
-                        span: list_literal.span,
-                    });
+            match element {
+                outrun_parser::ListElement::Expression(expr) => {
+                    let element_value = self.evaluate(expr, context)?;
+                    // Prepend to the list (builds in reverse order)
+                    result_list = crate::value::List::Cons {
+                        head: element_value,
+                        tail: std::rc::Rc::new(result_list),
+                    };
                 }
-            };
+                outrun_parser::ListElement::Spread(identifier) => {
+                    // Evaluate the spread identifier to get a list
+                    let spread_value = context.get_variable(&identifier.name)?;
 
-            // Prepend to the list (builds in reverse order)
-            result_list = crate::value::List::Cons {
-                head: element_value,
-                tail: std::rc::Rc::new(result_list),
-            };
+                    // Ensure it's a list
+                    match spread_value {
+                        Value::List { list, .. } => {
+                            // Append all elements from the spread list to our result
+                            // We need to traverse the spread list and prepend each element
+                            let elements = self.collect_list_elements(&list);
+                            // Add elements in reverse since we're building in reverse
+                            for element in elements.into_iter().rev() {
+                                result_list = crate::value::List::Cons {
+                                    head: element,
+                                    tail: std::rc::Rc::new(result_list),
+                                };
+                            }
+                        }
+                        _ => {
+                            return Err(EvaluationError::TypeMismatch {
+                                expected: "List".to_string(),
+                                found: spread_value.type_name().to_string(),
+                                span: list_literal.span,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         Ok(Value::List {
             list: std::rc::Rc::new(result_list),
             element_type_info: None,
         })
+    }
+
+    /// Helper to collect all elements from a list into a vector
+    fn collect_list_elements(&self, list: &crate::value::List) -> Vec<Value> {
+        let mut elements = Vec::new();
+        let mut current = list;
+
+        loop {
+            match current {
+                crate::value::List::Empty => break,
+                crate::value::List::Cons { head, tail } => {
+                    elements.push(head.clone());
+                    current = tail;
+                }
+            }
+        }
+
+        elements
     }
 
     /// Evaluate a tuple literal by evaluating all elements
@@ -631,12 +670,42 @@ impl ExpressionEvaluator {
                     named_args.push((name.name.clone(), arg_value.clone()));
                     arg_values.push(arg_value);
                 }
-                outrun_parser::Argument::Spread { .. } => {
-                    // TODO: Handle spread arguments properly
-                    return Err(EvaluationError::UnsupportedExpression {
-                        expr_type: "spread_argument".to_string(),
-                        span,
-                    });
+                outrun_parser::Argument::Spread { expression, .. } => {
+                    // Evaluate the spread expression to get a map or struct
+                    let spread_value = self.evaluate(expression, context)?;
+
+                    match spread_value {
+                        Value::Map { entries, .. } => {
+                            // Spread all key-value pairs from the map as named arguments
+                            for (key, value) in entries.iter() {
+                                // Map keys should be strings for named arguments
+                                if let Value::String(key_str) = key {
+                                    named_args.push((key_str.clone(), value.clone()));
+                                    arg_values.push(value.clone());
+                                } else {
+                                    return Err(EvaluationError::TypeMismatch {
+                                        expected: "String keys in spread map".to_string(),
+                                        found: key.type_name().to_string(),
+                                        span,
+                                    });
+                                }
+                            }
+                        }
+                        Value::Struct { fields, .. } => {
+                            // Spread all fields from the struct as named arguments
+                            for (field_name, field_value) in fields.iter() {
+                                named_args.push((field_name.clone(), field_value.clone()));
+                                arg_values.push(field_value.clone());
+                            }
+                        }
+                        _ => {
+                            return Err(EvaluationError::TypeMismatch {
+                                expected: "Map or Struct for spread arguments".to_string(),
+                                found: spread_value.type_name().to_string(),
+                                span,
+                            });
+                        }
+                    }
                 }
             };
         }
@@ -962,12 +1031,48 @@ impl ExpressionEvaluator {
                     })?;
                     fields.insert(name.name.clone(), field_value);
                 }
-                outrun_parser::StructLiteralField::Spread(_) => {
-                    // TODO: Implement spread syntax
-                    return Err(EvaluationError::UnsupportedExpression {
-                        expr_type: "struct_spread".to_string(),
-                        span,
-                    });
+                outrun_parser::StructLiteralField::Spread(identifier) => {
+                    // Get the value to spread
+                    let spread_value = context.get_variable(&identifier.name)?;
+
+                    // It should be a struct or map
+                    match spread_value {
+                        Value::Struct {
+                            fields: spread_fields,
+                            ..
+                        } => {
+                            // Merge all fields from the spread struct
+                            // Note: later fields override earlier ones in case of conflicts
+                            for (field_name, field_value) in spread_fields.iter() {
+                                fields
+                                    .entry(field_name.clone())
+                                    .or_insert_with(|| field_value.clone());
+                            }
+                        }
+                        Value::Map { entries, .. } => {
+                            // Spread from a map - keys must be strings
+                            for (key, value) in entries.iter() {
+                                if let Value::String(key_str) = key {
+                                    fields
+                                        .entry(key_str.clone())
+                                        .or_insert_with(|| value.clone());
+                                } else {
+                                    return Err(EvaluationError::TypeMismatch {
+                                        expected: "String keys in spread map".to_string(),
+                                        found: key.type_name().to_string(),
+                                        span,
+                                    });
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(EvaluationError::TypeMismatch {
+                                expected: "Struct or Map for spread".to_string(),
+                                found: spread_value.type_name().to_string(),
+                                span,
+                            });
+                        }
+                    }
                 }
             }
         }
