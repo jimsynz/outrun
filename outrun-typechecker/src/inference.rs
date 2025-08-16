@@ -1741,7 +1741,10 @@ impl TypeInferenceEngine {
             .map(|name| generic_context.get(name).unwrap().clone())
             .collect();
 
-        self.set_generic_parameter_context(generic_context);
+        self.set_generic_parameter_context(generic_context.clone());
+
+        // Extract protocol args from the protocol spec
+        let protocol_args = self.extract_type_spec_args(&impl_block.protocol_spec)?;
 
         // Set Self binding context for impl block
         let old_self_context = self.current_self_context.clone();
@@ -1749,7 +1752,7 @@ impl TypeInferenceEngine {
             implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
             protocol_name: ModuleName::new(&protocol_name),
-            protocol_args: vec![], // TODO: Extract from protocol spec if needed
+            protocol_args,
         };
         self.current_self_context = new_context;
 
@@ -1877,6 +1880,19 @@ impl TypeInferenceEngine {
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".")
+    }
+
+    fn extract_type_spec_args(&mut self, type_spec: &TypeSpec) -> Result<Vec<Type>, TypecheckError> {
+        // Extract generic arguments from the TypeSpec
+        if let Some(generic_args) = &type_spec.generic_args {
+            generic_args
+                .args
+                .iter()
+                .map(|arg| self.convert_type_annotation(arg))
+                .collect()
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     /// Extract generic parameter names from struct definition
@@ -2180,8 +2196,8 @@ impl TypeInferenceEngine {
             return_type,
             body: Some(func_def.body.clone()), // Store function body for evaluation
             span: Some(func_def.span),
-            generic_parameters: Vec::new(), // TODO: Handle top-level generic functions
-            is_generic: false,
+            generic_parameters: Vec::new(), // Top-level functions don't have generics (by language design)
+            is_generic: false, // Functions in structs/impls inherit parent generics instead
         };
 
         // Get mutable reference to function registry
@@ -2213,7 +2229,7 @@ impl TypeInferenceEngine {
             );
 
             let template_visibility = crate::constraints::FunctionVisibility::Public;
-            let available_generics = Vec::new(); // TODO: Handle top-level generic functions
+            let available_generics = Vec::new(); // Top-level functions don't have generics (by language design)
 
             if let Some(constraint_solver) = &mut self.constraint_solver_with_backtracking {
                 if let Err(e) = constraint_solver.generate_public_function_template(
@@ -2446,19 +2462,29 @@ impl TypeInferenceEngine {
                 return_type: self
                     .convert_type_annotation(&function.return_type)
                     .unwrap_or_else(|_| Type::concrete("Unknown")), // Fallback for conversion errors
-                body: None,       // TODO: Convert Block to Expression when needed
+                body: None,       // Body not needed for type checking (stored separately for runtime)
                 is_static: false, // impl block functions are not static
                 span: Some(function.span),
             };
             impl_functions.push(func_def);
         }
 
+        // Extract generic bindings from the impl block
+        let impl_generic_params = self.extract_impl_block_generic_parameters(impl_block);
+        let generic_context = self.create_generic_context_from_names(&impl_generic_params);
+        
+        // Extract type variables for generic_bindings
+        let generic_bindings: Vec<Type> = impl_generic_params
+            .iter()
+            .map(|name| generic_context.get(name).unwrap().clone())
+            .collect();
+
         // Create implementation module for unified registry
         let impl_type_module = crate::types::TypeModule::Implementation {
             name: impl_module_name.clone(),
             implementing_type: implementing_type_module.clone(),
             protocol: protocol_module.clone(),
-            generic_bindings: Vec::new(), // TODO: Handle generic parameters
+            generic_bindings,
             functions: impl_functions,
             source_location: impl_block.span,
             defining_module: defining_module.clone(),
@@ -2620,11 +2646,22 @@ impl TypeInferenceEngine {
 
         // Set Self binding context for impl block type checking
         let old_self_context = self.current_self_context.clone();
+        // Extract protocol args from the protocol spec
+        let protocol_args = if let Some(ref protocol_spec) = impl_block.protocol_spec.generic_args {
+            protocol_spec
+                .args
+                .iter()
+                .map(|arg| self.convert_type_annotation(arg))
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            Vec::new()
+        };
+
         self.current_self_context = SelfBindingContext::Implementation {
             implementing_type: crate::types::ModuleName::new(&type_name),
             implementing_args,
             protocol_name: ModuleName::new(&protocol_name),
-            protocol_args: vec![], // TODO: Extract from protocol spec if needed
+            protocol_args,
         };
 
         for function in &impl_block.functions {
