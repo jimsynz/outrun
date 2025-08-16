@@ -4616,7 +4616,11 @@ impl TypeInferenceEngine {
         if !existing_clauses.is_empty() {
             // Check if any existing clause matches our guards
             for &clause_id in existing_clauses {
-                if let Some(_) = self.universal_dispatch_registry.get_clause(clause_id) {
+                if self
+                    .universal_dispatch_registry
+                    .get_clause(clause_id)
+                    .is_some()
+                {
                     // For now, just use the first one
                     // TODO: Match guards properly
                     return clause_id;

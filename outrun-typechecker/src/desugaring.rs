@@ -687,9 +687,8 @@ impl DesugaringEngine {
         // Extract the function call from the final expression
         if let ExpressionKind::FunctionCall(func_call) = result.kind {
             // Record the transformation for debugging
-            self.transformations.push(format!(
-                "String interpolation → String.concat + Display.to_string calls"
-            ));
+            self.transformations
+                .push("String interpolation → String.concat + Display.to_string calls".to_string());
 
             Ok(Some(func_call))
         } else {
