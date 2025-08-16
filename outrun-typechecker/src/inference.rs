@@ -5013,13 +5013,13 @@ impl TypeInferenceEngine {
                         InferenceError::DivisionOptionMismatch {
                             first_self_type: first_type.clone(),
                             conflicting_self_type: candidate.clone(),
-                            span: None, // TODO: Add span information
+                            span: crate::error::to_source_span(Some(function_call.span)),
                         }
                     } else {
                         InferenceError::SelfTypeUnificationFailure {
                             first_self_type: first_type.clone(),
                             conflicting_self_type: candidate.clone(),
-                            span: None, // TODO: Add span information
+                            span: crate::error::to_source_span(Some(function_call.span)),
                         }
                     };
 
