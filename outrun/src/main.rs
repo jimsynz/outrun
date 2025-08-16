@@ -80,10 +80,6 @@ enum Commands {
         /// Show type information with results
         #[arg(long, short = 't')]
         show_types: bool,
-
-        /// Enable verbose error messages
-        #[arg(long, short = 'v')]
-        verbose: bool,
     },
 }
 
@@ -121,9 +117,8 @@ fn main() {
             expression,
             file,
             show_types,
-            verbose,
         }) => {
-            handle_eval_command(expression, file, show_types, verbose);
+            handle_eval_command(expression, file, show_types);
         }
         None => {
             // No subcommand provided, show help
@@ -1070,7 +1065,6 @@ fn handle_eval_command(
     expression: Option<String>,
     file: Option<PathBuf>,
     show_types: bool,
-    verbose: bool,
 ) {
     use outrun_interpreter::InterpreterSession;
 
@@ -1126,12 +1120,9 @@ fn handle_eval_command(
             }
             Err(e) => {
                 // Use miette's beautiful error reporting for evaluation errors
-                let report = miette::Report::new(e).with_source_code(miette::NamedSource::new("<expression>", line.to_string()));
-                if verbose {
-                    eprintln!("{report:?}");
-                } else {
-                    eprintln!("{report:?}");
-                }
+                let report = miette::Report::new(e)
+                    .with_source_code(miette::NamedSource::new("<expression>", line.to_string()));
+                eprintln!("{report:?}");
                 process::exit(1);
             }
         }

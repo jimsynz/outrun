@@ -198,8 +198,8 @@ impl ExpressionEvaluator {
                 let content = literal
                     .parts
                     .iter()
-                    .filter_map(|part| match part {
-                        outrun_parser::StringPart::Text { content, .. } => Some(content.clone()),
+                    .map(|part| match part {
+                        outrun_parser::StringPart::Text { content, .. } => content.clone(),
                         outrun_parser::StringPart::Interpolation { .. } => {
                             unreachable!("String interpolation should have been desugared before interpretation")
                         }

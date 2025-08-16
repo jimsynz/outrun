@@ -646,8 +646,7 @@ impl TypeInferenceEngine {
                                     type_name: type_name.to_string(),
                                     expected_arity: *existing,
                                     found_arity: expected_arity,
-                                    span: crate::error::to_source_span(Some(span))
-                                        .unwrap_or_else(|| miette::SourceSpan::from(0..0)),
+                                    span: miette::SourceSpan::from(0..0),
                                 },
                             ));
                         }
@@ -3471,475 +3470,261 @@ impl TypeInferenceEngine {
 
         match &mut expression.kind {
             ExpressionKind::FunctionCall(func_call) => {
-                // Convert dependency results to argument types
-                let arg_types: Vec<Option<Type>> = dependency_results
-                    .iter()
-                    .map(|result| Some(result.inferred_type.clone()))
-                    .collect();
-
-                // Use existing function call inference with precomputed argument types
-                let mut mutable_context = context.clone();
-                self.infer_function_call_with_precomputed_args(
-                    func_call,
-                    &mut mutable_context,
-                    &arg_types,
-                )
+                self.infer_function_call_dependencies(func_call, context, dependency_results)
             }
 
-            ExpressionKind::List(_) => {
-                // All elements have been processed, infer list type from element types
-                if dependency_results.is_empty() {
-                    // Empty list - use generic List<T> with fresh type variable
-                    let element_type = Type::variable(self.fresh_type_var(), Level(0));
-                    Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete(
-                            "Outrun.Core.List",
-                            vec![element_type],
-                        ),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
-                } else {
-                    // Non-empty list - all elements should have the same type
-                    let first_element_type = &dependency_results[0].inferred_type;
-
-                    // Check that all elements have compatible types
-                    for (i, result) in dependency_results.iter().enumerate().skip(1) {
-                        if !self.types_are_compatible(first_element_type, &result.inferred_type) {
-                            return Err(TypecheckError::InferenceError(
-                                InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
-                                        "List element {} has type {}, but expected {}",
-                                        i, result.inferred_type, first_element_type
-                                    )],
-                                },
-                            ));
-                        }
-                    }
-
-                    Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete(
-                            "Outrun.Core.List",
-                            vec![first_element_type.clone()],
-                        ),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
-                }
-            }
+            ExpressionKind::List(_) => self.infer_list_dependencies(expression, dependency_results),
 
             ExpressionKind::Tuple(_) => {
-                // Tuple type is the product of all element types
-                let element_types: Vec<Type> = dependency_results
-                    .iter()
-                    .map(|result| result.inferred_type.clone())
-                    .collect();
-
-                Ok(InferenceResult {
-                    inferred_type: Type::Tuple {
-                        element_types,
-                        span: Some(expression.span),
-                    },
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
+                self.infer_tuple_dependencies(expression, dependency_results)
             }
 
-            ExpressionKind::Map(map_literal) => {
-                // Map type is Outrun.Core.Map<K, V> where K and V are inferred from entries
-                if dependency_results.is_empty() {
-                    // Empty map - check if we have an expected type
-                    if let Some(expected_type) = &context.expected_type {
-                        // Use the expected type directly
-                        Ok(InferenceResult {
-                            inferred_type: expected_type.clone(),
-                            constraints: Vec::new(),
-                            substitution: Substitution::new(),
-                        })
-                    } else {
-                        // Empty map without type hint gets fresh type variables
-                        let key_type = Type::variable(self.fresh_type_var(), Level(0));
-                        let value_type = Type::variable(self.fresh_type_var(), Level(0));
-                        Ok(InferenceResult {
-                            inferred_type: Type::generic_concrete(
-                                "Outrun.Core.Map",
-                                vec![key_type, value_type],
-                            ),
-                            constraints: Vec::new(),
-                            substitution: Substitution::new(),
-                        })
-                    }
-                } else {
-                    // Non-empty map - need to process entries correctly based on their types
-                    // dependency_results contains results in the order they were processed:
-                    // - Assignment entries contribute 2 results: [key, value]
-                    // - Shorthand entries contribute 1 result: [value] (key is inferred as Atom)
-
-                    let mut result_index = 0;
-                    let mut key_types = Vec::new();
-                    let mut value_types = Vec::new();
-
-                    for entry in &map_literal.entries {
-                        match entry {
-                            outrun_parser::MapEntry::Assignment { .. } => {
-                                // Assignment entry: key and value both from dependency_results
-                                if result_index + 1 < dependency_results.len() {
-                                    key_types.push(
-                                        dependency_results[result_index].inferred_type.clone(),
-                                    );
-                                    value_types.push(
-                                        dependency_results[result_index + 1].inferred_type.clone(),
-                                    );
-                                    result_index += 2;
-                                } else {
-                                    return Err(TypecheckError::InferenceError(
-                                        InferenceError::AmbiguousType {
-                                            span: to_source_span(Some(expression.span)),
-                                            suggestions: vec!["Internal error: insufficient dependency results for assignment entry".to_string()],
-                                        },
-                                    ));
-                                }
-                            }
-                            outrun_parser::MapEntry::Shorthand { .. } => {
-                                // Shorthand entry: key is Atom, value from dependency_results
-                                if result_index < dependency_results.len() {
-                                    key_types.push(Type::concrete("Outrun.Core.Atom"));
-                                    value_types.push(
-                                        dependency_results[result_index].inferred_type.clone(),
-                                    );
-                                    result_index += 1;
-                                } else {
-                                    return Err(TypecheckError::InferenceError(
-                                        InferenceError::AmbiguousType {
-                                            span: to_source_span(Some(expression.span)),
-                                            suggestions: vec!["Internal error: insufficient dependency results for shorthand entry".to_string()],
-                                        },
-                                    ));
-                                }
-                            }
-                            outrun_parser::MapEntry::Spread(_) => {
-                                // Skip spread entries for now
-                                continue;
-                            }
-                        }
-                    }
-
-                    if key_types.is_empty() || value_types.is_empty() {
-                        return Err(TypecheckError::InferenceError(
-                            InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expression.span)),
-                                suggestions: vec!["Map has no processable entries".to_string()],
-                            },
-                        ));
-                    }
-
-                    // Check that all keys have compatible types
-                    let first_key_type = &key_types[0];
-                    for (i, key_type) in key_types.iter().enumerate().skip(1) {
-                        if !self.types_are_compatible(first_key_type, key_type) {
-                            return Err(TypecheckError::InferenceError(
-                                InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
-                                        "Map key {} has type {}, but expected {}",
-                                        i, key_type, first_key_type
-                                    )],
-                                },
-                            ));
-                        }
-                    }
-
-                    // Check that all values have compatible types
-                    let first_value_type = &value_types[0];
-                    for (i, value_type) in value_types.iter().enumerate().skip(1) {
-                        if !self.types_are_compatible(first_value_type, value_type) {
-                            return Err(TypecheckError::InferenceError(
-                                InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
-                                        "Map value {} has type {}, but expected {}",
-                                        i, value_type, first_value_type
-                                    )],
-                                },
-                            ));
-                        }
-                    }
-
-                    Ok(InferenceResult {
-                        inferred_type: Type::generic_concrete(
-                            "Outrun.Core.Map",
-                            vec![first_key_type.clone(), first_value_type.clone()],
-                        ),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
-                }
-            }
+            ExpressionKind::Map(map_literal) => self.infer_map_dependencies(
+                expression.span,
+                map_literal,
+                context,
+                dependency_results,
+            ),
 
             ExpressionKind::Struct(struct_literal) => {
-                // Struct type is determined by the struct name and field types
-                let struct_name = struct_literal
-                    .type_path
-                    .iter()
-                    .map(|segment| segment.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                // CRITICAL FIX: Use expected type for bidirectional inference of generic parameters
-                if let Some(expected_type) = &context.expected_type {
-                    // Check if the expected type matches this struct name
-                    let expected_name = match expected_type {
-                        Type::Concrete { name, .. } => Some(name.as_str()),
-                        Type::Protocol { name, .. } => Some(name.as_str()),
-                        _ => None,
-                    };
-
-                    if let Some(expected_name) = expected_name {
-                        if expected_name == struct_name {
-                            // Use the expected type which includes generic parameters
-                            return Ok(InferenceResult {
-                                inferred_type: expected_type.clone(),
-                                constraints: Vec::new(),
-                                substitution: Substitution::new(),
-                            });
-                        }
-                    }
-
-                    // Expected type doesn't match, fall back to concrete type
-                    Ok(InferenceResult {
-                        inferred_type: Type::concrete(&struct_name),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
-                } else {
-                    // No expected type, use concrete struct type
-                    Ok(InferenceResult {
-                        inferred_type: Type::concrete(&struct_name),
-                        constraints: Vec::new(),
-                        substitution: Substitution::new(),
-                    })
-                }
+                self.infer_struct_dependencies(struct_literal, context, expression.span)
             }
 
             ExpressionKind::FieldAccess(field_access) => {
-                // dependency_results[0] = object
-                let object_type = &dependency_results[0].inferred_type;
-
-                // Use existing field access inference
-                let mut mutable_context = context.clone();
-                self.infer_field_access_type(
-                    object_type,
-                    &field_access.field.name,
-                    &mut mutable_context,
-                )
+                self.infer_field_access_dependencies(field_access, context, dependency_results)
             }
 
             ExpressionKind::Parenthesized(_) => {
-                // Parenthesized expressions just pass through the inner type
-                // dependency_results[0] = inner expression
-                Ok(InferenceResult {
-                    inferred_type: dependency_results[0].inferred_type.clone(),
-                    constraints: dependency_results[0].constraints.clone(),
-                    substitution: dependency_results[0].substitution.clone(),
-                })
+                self.infer_parenthesized_dependencies(dependency_results)
             }
 
             ExpressionKind::IfExpression(if_expr) => {
-                // dependency_results[0] = condition, [1] = then, [2] = else (if present)
-                let condition_type = &dependency_results[0].inferred_type;
-                let then_type = &dependency_results[1].inferred_type;
-                let else_type = if dependency_results.len() > 2 {
-                    Some(&dependency_results[2].inferred_type)
-                } else {
-                    None
-                };
-
-                // Verify condition is Boolean
-                let boolean_type = Type::concrete("Outrun.Core.Boolean");
-                if !self.types_are_compatible(condition_type, &boolean_type) {
-                    return Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: to_source_span(Some(if_expr.condition.span)),
-                            suggestions: vec![format!(
-                                "Expected Boolean, found {}",
-                                condition_type
-                            )],
-                        },
-                    ));
-                }
-
-                // Determine result type
-                let result_type = if let Some(else_type) = else_type {
-                    // Both branches present - they must be compatible
-                    if self.types_are_compatible(then_type, else_type) {
-                        then_type.clone()
-                    } else {
-                        return Err(TypecheckError::InferenceError(
-                            InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expression.span)),
-                                suggestions: vec![format!(
-                                    "If branches have incompatible types: {} vs {}",
-                                    then_type, else_type
-                                )],
-                            },
-                        ));
-                    }
-                } else {
-                    // No else branch - require Default implementation for then_type
-                    then_type.clone()
-                };
-
-                // Collect constraints from all dependency results
-                let mut all_constraints = Vec::new();
-                let mut combined_substitution = Substitution::new();
-
-                for dep_result in dependency_results.iter() {
-                    all_constraints.extend(dep_result.constraints.clone());
-                    combined_substitution = combined_substitution.compose(&dep_result.substitution);
-                }
-
-                // If no else branch, add Default constraint for then_type
-                if else_type.is_none() {
-                    match then_type {
-                        Type::Variable { var_id, .. } => {
-                            // For type variables, generate T: Default constraint
-                            all_constraints.push(Constraint::Implements {
-                                type_var: *var_id,
-                                protocol: ModuleName::new("Default"),
-                                span: Some(if_expr.condition.span),
-                            });
-                        }
-                        Type::Concrete { name, args, .. } => {
-                            // For concrete types, directly check if they implement Default
-                            if !self.type_registry.has_implementation_with_args(
-                                &ModuleName::new("Default"),
-                                name,
-                                args,
-                            ) {
-                                return Err(TypecheckError::InferenceError(
-                                    InferenceError::AmbiguousType {
-                                        span: to_source_span(Some(expression.span)),
-                                        suggestions: vec![format!(
-                                            "If expression without else branch requires the then-type to implement Default. Type {} does not implement Default, consider adding an else branch or implementing Default for this type.",
-                                            then_type
-                                        )],
-                                    },
-                                ));
-                            }
-                            // No constraints needed - we've already verified the implementation exists
-                        }
-                        _ => {
-                            // For other types (generic, protocol, etc.), we'll need more sophisticated handling
-                            // For now, let's be conservative and require an explicit else branch
-                            return Err(TypecheckError::InferenceError(
-                                InferenceError::AmbiguousType {
-                                    span: to_source_span(Some(expression.span)),
-                                    suggestions: vec![format!(
-                                        "If expression without else branch requires the then-type to implement Default. Type {} may not implement Default, consider adding an else branch.",
-                                        then_type
-                                    )],
-                                },
-                            ));
-                        }
-                    }
-                }
-
-                Ok(InferenceResult {
-                    inferred_type: result_type,
-                    constraints: all_constraints,
-                    substitution: combined_substitution,
-                })
-            }
-
-            ExpressionKind::CaseExpression(_) => {
-                // dependency_results[0] = scrutinee, [1..] = clause results
-
-                if dependency_results.len() < 2 {
-                    return Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![
-                                "Case expression must have at least one clause".to_string()
-                            ],
-                        },
-                    ));
-                }
-
-                // All clause results should have compatible types
-                let first_clause_type = &dependency_results[1].inferred_type;
-                for (i, result) in dependency_results.iter().enumerate().skip(2) {
-                    if !self.types_are_compatible(first_clause_type, &result.inferred_type) {
-                        return Err(TypecheckError::InferenceError(
-                            InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expression.span)),
-                                suggestions: vec![format!(
-                                    "Case clause {} has type {}, but expected {}",
-                                    i - 1,
-                                    result.inferred_type,
-                                    first_clause_type
-                                )],
-                            },
-                        ));
-                    }
-                }
-
-                // TODO: Add pattern matching validation against scrutinee_type
-
-                Ok(InferenceResult {
-                    inferred_type: first_clause_type.clone(),
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
-            }
-
-            ExpressionKind::AnonymousFunction(_) => {
-                // Anonymous functions create function types
-                // For now, create a generic function type
-                // TODO: Infer proper parameter and return types from clauses
-
-                if dependency_results.is_empty() {
-                    return Err(TypecheckError::InferenceError(
-                        InferenceError::AmbiguousType {
-                            span: to_source_span(Some(expression.span)),
-                            suggestions: vec![
-                                "Anonymous function must have at least one clause".to_string()
-                            ],
-                        },
-                    ));
-                }
-
-                // All clause bodies should have compatible return types
-                let first_return_type = &dependency_results[0].inferred_type;
-                for (i, result) in dependency_results.iter().enumerate().skip(1) {
-                    if !self.types_are_compatible(first_return_type, &result.inferred_type) {
-                        return Err(TypecheckError::InferenceError(
-                            InferenceError::AmbiguousType {
-                                span: to_source_span(Some(expression.span)),
-                                suggestions: vec![format!(
-                                    "Function clause {} returns {}, but expected {}",
-                                    i, result.inferred_type, first_return_type
-                                )],
-                            },
-                        ));
-                    }
-                }
-
-                // Create a simplified function type
-                // TODO: Extract proper parameter types from clause parameters
-                Ok(InferenceResult {
-                    inferred_type: Type::concrete("Function"), // Simplified
-                    constraints: Vec::new(),
-                    substitution: Substitution::new(),
-                })
+                self.infer_if_expression_dependencies(if_expr, expression.span, dependency_results)
             }
 
             _ => Err(TypecheckError::InferenceError(
                 InferenceError::AmbiguousType {
                     span: to_source_span(Some(expression.span)),
-                    suggestions: vec!["Expression type not supported with dependencies".to_string()],
+                    suggestions: vec![
+                        "Unsupported expression type for dependency-based inference".to_string()
+                    ],
                 },
             )),
+        }
+    }
+
+    fn infer_function_call_dependencies(
+        &mut self,
+        func_call: &mut outrun_parser::FunctionCall,
+        context: &InferenceContext,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Convert dependency results to argument types
+        let arg_types: Vec<Option<Type>> = dependency_results
+            .iter()
+            .map(|result| Some(result.inferred_type.clone()))
+            .collect();
+
+        // Use existing function call inference with precomputed argument types
+        let mut mutable_context = context.clone();
+        self.infer_function_call_with_precomputed_args(func_call, &mut mutable_context, &arg_types)
+    }
+
+    fn infer_list_dependencies(
+        &mut self,
+        expression: &Expression,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // All elements have been processed, infer list type from element types
+        if dependency_results.is_empty() {
+            // Empty list - use generic List<T> with fresh type variable
+            let element_type = Type::variable(self.fresh_type_var(), Level(0));
+            Ok(InferenceResult {
+                inferred_type: Type::generic_concrete("Outrun.Core.List", vec![element_type]),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
+        } else {
+            // Non-empty list - all elements should have the same type
+            let first_element_type = &dependency_results[0].inferred_type;
+
+            // Check that all elements have compatible types
+            for (i, result) in dependency_results.iter().enumerate().skip(1) {
+                if !self.types_are_compatible(first_element_type, &result.inferred_type) {
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(expression.span)),
+                            suggestions: vec![format!(
+                                "List element {} has type {}, but expected {}",
+                                i, result.inferred_type, first_element_type
+                            )],
+                        },
+                    ));
+                }
+            }
+
+            Ok(InferenceResult {
+                inferred_type: Type::generic_concrete(
+                    "Outrun.Core.List",
+                    vec![first_element_type.clone()],
+                ),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
+        }
+    }
+
+    fn infer_tuple_dependencies(
+        &mut self,
+        expression: &Expression,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Tuple type is the product of all element types
+        let element_types: Vec<Type> = dependency_results
+            .iter()
+            .map(|result| result.inferred_type.clone())
+            .collect();
+
+        Ok(InferenceResult {
+            inferred_type: Type::Tuple {
+                element_types,
+                span: Some(expression.span),
+            },
+            constraints: Vec::new(),
+            substitution: Substitution::new(),
+        })
+    }
+
+    fn infer_map_dependencies(
+        &mut self,
+        span: outrun_parser::Span,
+        map_literal: &outrun_parser::MapLiteral,
+        context: &InferenceContext,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Map type is Outrun.Core.Map<K, V> where K and V are inferred from entries
+        if dependency_results.is_empty() {
+            // Empty map - check if we have an expected type
+            if let Some(expected_type) = &context.expected_type {
+                // Use the expected type directly
+                Ok(InferenceResult {
+                    inferred_type: expected_type.clone(),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            } else {
+                // Empty map without type hint gets fresh type variables
+                let key_type = Type::variable(self.fresh_type_var(), Level(0));
+                let value_type = Type::variable(self.fresh_type_var(), Level(0));
+                Ok(InferenceResult {
+                    inferred_type: Type::generic_concrete(
+                        "Outrun.Core.Map",
+                        vec![key_type, value_type],
+                    ),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            }
+        } else {
+            // Non-empty map - need to process entries correctly based on their types
+            // dependency_results contains results in the order they were processed:
+            // - Assignment entries contribute 2 results: [key, value]
+            // - Shorthand entries contribute 1 result: [value] (key is inferred as Atom)
+
+            let mut result_index = 0;
+            let mut key_types = Vec::new();
+            let mut value_types = Vec::new();
+
+            for entry in &map_literal.entries {
+                match entry {
+                    outrun_parser::MapEntry::Assignment { .. } => {
+                        // Assignment entry: key and value both from dependency_results
+                        if result_index + 1 < dependency_results.len() {
+                            key_types.push(dependency_results[result_index].inferred_type.clone());
+                            value_types
+                                .push(dependency_results[result_index + 1].inferred_type.clone());
+                            result_index += 2;
+                        } else {
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(span)),
+                                    suggestions: vec!["Internal error: insufficient dependency results for assignment entry".to_string()],
+                                },
+                            ));
+                        }
+                    }
+                    outrun_parser::MapEntry::Shorthand { .. } => {
+                        // Shorthand entry: key is Atom, value from dependency_results
+                        if result_index < dependency_results.len() {
+                            key_types.push(Type::concrete("Outrun.Core.Atom"));
+                            value_types
+                                .push(dependency_results[result_index].inferred_type.clone());
+                            result_index += 1;
+                        } else {
+                            return Err(TypecheckError::InferenceError(
+                                InferenceError::AmbiguousType {
+                                    span: to_source_span(Some(span)),
+                                    suggestions: vec!["Internal error: insufficient dependency results for shorthand entry".to_string()],
+                                },
+                            ));
+                        }
+                    }
+                    outrun_parser::MapEntry::Spread(_) => {
+                        // Skip spread entries for now
+                        continue;
+                    }
+                }
+            }
+
+            if key_types.is_empty() || value_types.is_empty() {
+                return Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(Some(span)),
+                        suggestions: vec!["Map has no processable entries".to_string()],
+                    },
+                ));
+            }
+
+            // Check that all keys have compatible types
+            let first_key_type = &key_types[0];
+            for (i, key_type) in key_types.iter().enumerate().skip(1) {
+                if !self.types_are_compatible(first_key_type, key_type) {
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(span)),
+                            suggestions: vec![format!(
+                                "Map key {} has type {}, but expected {}",
+                                i, key_type, first_key_type
+                            )],
+                        },
+                    ));
+                }
+            }
+
+            // Check that all values have compatible types
+            let first_value_type = &value_types[0];
+            for (i, value_type) in value_types.iter().enumerate().skip(1) {
+                if !self.types_are_compatible(first_value_type, value_type) {
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(span)),
+                            suggestions: vec![format!(
+                                "Map value {} has type {}, but expected {}",
+                                i, value_type, first_value_type
+                            )],
+                        },
+                    ));
+                }
+            }
+
+            Ok(InferenceResult {
+                inferred_type: Type::generic_concrete(
+                    "Outrun.Core.Map",
+                    vec![first_key_type.clone(), first_value_type.clone()],
+                ),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
         }
     }
 
@@ -6755,6 +6540,185 @@ impl TypeInferenceEngine {
             }
             // Other types don't need substitution
             _ => Ok(ty),
+        }
+    }
+
+    fn infer_struct_dependencies(
+        &mut self,
+        struct_literal: &outrun_parser::StructLiteral,
+        context: &InferenceContext,
+        _span: outrun_parser::Span,
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Struct type is determined by the struct name and field types
+        let struct_name = struct_literal
+            .type_path
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+
+        // CRITICAL FIX: Use expected type for bidirectional inference of generic parameters
+        if let Some(expected_type) = &context.expected_type {
+            // Check if the expected type matches this struct name
+            let expected_name = match expected_type {
+                Type::Concrete { name, .. } => Some(name.as_str()),
+                Type::Protocol { name, .. } => Some(name.as_str()),
+                _ => None,
+            };
+
+            if let Some(expected_name) = expected_name {
+                if expected_name == struct_name {
+                    // Use the expected type which includes generic parameters
+                    return Ok(InferenceResult {
+                        inferred_type: expected_type.clone(),
+                        constraints: Vec::new(),
+                        substitution: Substitution::new(),
+                    });
+                }
+            }
+
+            // Expected type doesn't match, fall back to concrete type
+            Ok(InferenceResult {
+                inferred_type: Type::concrete(&struct_name),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
+        } else {
+            // No expected type, use concrete struct type
+            Ok(InferenceResult {
+                inferred_type: Type::concrete(&struct_name),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
+        }
+    }
+
+    fn infer_field_access_dependencies(
+        &mut self,
+        field_access: &outrun_parser::FieldAccess,
+        context: &InferenceContext,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // dependency_results[0] = object
+        let object_type = &dependency_results[0].inferred_type;
+
+        // Use existing field access inference
+        let mut mutable_context = context.clone();
+        self.infer_field_access_type(object_type, &field_access.field.name, &mut mutable_context)
+    }
+
+    fn infer_parenthesized_dependencies(
+        &mut self,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // Parenthesized expressions just pass through the inner type
+        // dependency_results[0] = inner expression
+        Ok(InferenceResult {
+            inferred_type: dependency_results[0].inferred_type.clone(),
+            constraints: dependency_results[0].constraints.clone(),
+            substitution: dependency_results[0].substitution.clone(),
+        })
+    }
+
+    fn infer_if_expression_dependencies(
+        &mut self,
+        if_expr: &outrun_parser::IfExpression,
+        span: outrun_parser::Span,
+        dependency_results: &[InferenceResult],
+    ) -> Result<InferenceResult, TypecheckError> {
+        // dependency_results[0] = condition, [1] = then, [2] = else (if present)
+        let condition_type = &dependency_results[0].inferred_type;
+        let then_type = &dependency_results[1].inferred_type;
+        let else_type = if dependency_results.len() > 2 {
+            Some(&dependency_results[2].inferred_type)
+        } else {
+            None
+        };
+
+        // Verify condition is Boolean
+        let boolean_type = Type::concrete("Outrun.Core.Boolean");
+        if !self.types_are_compatible(condition_type, &boolean_type) {
+            return Err(TypecheckError::InferenceError(
+                InferenceError::AmbiguousType {
+                    span: to_source_span(Some(if_expr.condition.span)),
+                    suggestions: vec![format!(
+                        "If condition must be Boolean, but got {}",
+                        condition_type
+                    )],
+                },
+            ));
+        }
+
+        // With else branch: both branches must have compatible types
+        if let Some(else_type) = else_type {
+            if self.types_are_compatible(then_type, else_type) {
+                Ok(InferenceResult {
+                    inferred_type: then_type.clone(),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                })
+            } else {
+                Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(Some(span)),
+                        suggestions: vec![format!(
+                            "If branches have incompatible types: {} vs {}",
+                            then_type, else_type
+                        )],
+                    },
+                ))
+            }
+        } else {
+            // Without else branch: the then-type must implement Default
+            // First, let's check if it's a type variable or generic - those might become Default later
+            if matches!(then_type, Type::Variable { .. }) {
+                // Type variable - just accept it for now, will be resolved later
+                return Ok(InferenceResult {
+                    inferred_type: then_type.clone(),
+                    constraints: Vec::new(),
+                    substitution: Substitution::new(),
+                });
+            }
+
+            // For concrete types, check if they implement Default
+            // Try to find the concrete type name and any generic arguments
+            let (name, _args) = match then_type {
+                Type::Concrete { name, args, .. } => (name.clone(), args.clone()),
+                Type::Protocol { name, args, .. } => (name.clone(), args.clone()),
+                _ => {
+                    // For other types (like Tuple), assume they don't have Default
+                    return Err(TypecheckError::InferenceError(
+                        InferenceError::AmbiguousType {
+                            span: to_source_span(Some(span)),
+                            suggestions: vec![format!(
+                                "If expression without else branch requires the then-type to implement Default. Type {} does not appear to implement Default.",
+                                then_type
+                            )],
+                        },
+                    ));
+                }
+            };
+
+            // Check if this type implements Default
+            let default_module = ModuleName::new("Default");
+            if !self.type_satisfies_protocol(&name, &default_module) {
+                return Err(TypecheckError::InferenceError(
+                    InferenceError::AmbiguousType {
+                        span: to_source_span(Some(span)),
+                        suggestions: vec![format!(
+                            "If expression without else branch requires the then-type to implement Default. Type {} does not implement Default, consider adding an else branch or implementing Default for this type.",
+                            then_type
+                        )],
+                    },
+                ));
+            }
+
+            // Type implements Default, so the if expression has the same type as the then branch
+            Ok(InferenceResult {
+                inferred_type: then_type.clone(),
+                constraints: Vec::new(),
+                substitution: Substitution::new(),
+            })
         }
     }
 }

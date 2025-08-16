@@ -173,7 +173,7 @@ pub struct ReplStats {
 #[derive(Debug)]
 pub enum ReplResult {
     /// Successfully evaluated expression
-    Value { 
+    Value {
         value: Value,
         type_name: Option<String>,
     },
@@ -418,7 +418,8 @@ impl ReplSession {
                 Some(&"on") => {
                     self.config.show_types = true;
                     Ok(ReplResult::Command {
-                        message: "Type display enabled - will show type information with results".to_string(),
+                        message: "Type display enabled - will show type information with results"
+                            .to_string(),
                     })
                 }
                 Some(&"off") => {
@@ -447,11 +448,11 @@ impl ReplSession {
             ReplResult::Value { value, type_name } => {
                 // Display the value
                 println!("{}", value.display());
-                
+
                 // Show type information if enabled
                 if self.config.show_types {
                     if let Some(type_name) = type_name {
-                        println!(":: {}", type_name);
+                        println!(":: {type_name}");
                     } else {
                         // Fallback to the basic type name if no type info available
                         println!(":: {}", value.type_name());

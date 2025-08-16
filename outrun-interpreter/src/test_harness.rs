@@ -108,7 +108,7 @@ pub enum TestHarnessError {
     #[diagnostic(transparent)]
     Compiler {
         #[from]
-        source: Box<CompilerError>
+        source: Box<CompilerError>,
     },
 
     #[error("Assertion failed: expected {expected}, but got {actual}")]
@@ -181,7 +181,10 @@ impl InterpreterSession {
     }
 
     /// Execute an Outrun expression and return both the result and type information
-    pub fn evaluate_with_type_info(&mut self, expression_code: &str) -> Result<(Value, Option<String>), TestHarnessError> {
+    pub fn evaluate_with_type_info(
+        &mut self,
+        expression_code: &str,
+    ) -> Result<(Value, Option<String>), TestHarnessError> {
         // Precompile core library on first use
         if self.core_compilation.is_none() {
             self.core_compilation = Some(CompilationResult::precompile_core_library()?);
@@ -353,16 +356,20 @@ impl InterpreterSession {
                     // Evaluate the expression with our interpreter
                     let evaluator = self.evaluator.as_ref().unwrap(); // Should always be Some by this point
                     last_value = evaluator.evaluate(expr, &mut self.context)?;
-                    
+
                     // Extract type information from the expression
                     last_type_info = expr.type_info.as_ref().map(|ti| ti.resolved_type.clone());
                 }
                 outrun_parser::ItemKind::LetBinding(let_binding) => {
                     // Handle let bindings - works whether we skip typecheck or not
                     last_value = self.evaluate_let_binding(let_binding)?;
-                    
+
                     // Extract type information from the let binding expression
-                    last_type_info = let_binding.expression.type_info.as_ref().map(|ti| ti.resolved_type.clone());
+                    last_type_info = let_binding
+                        .expression
+                        .type_info
+                        .as_ref()
+                        .map(|ti| ti.resolved_type.clone());
                 }
                 outrun_parser::ItemKind::StructDefinition(_) => {
                     // Struct definitions are handled during compilation, nothing to do at runtime
