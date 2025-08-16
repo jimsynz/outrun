@@ -754,56 +754,6 @@ fn create_miette_report_with_source_context(
     Ok(())
 }
 
-// TODO: Re-implement with new typechecker API
-// fn typecheck_core_library() -> Result<()> {
-//     println!("🔬 TYPE CHECKING CORE LIBRARY:");
-//     println!("{}", "=".repeat(60));
-
-//     // Load and compile just the core library
-//     let collection = outrun_typechecker::core_library::load_core_library_collection();
-//     let mut compiler_env = outrun_typechecker::CompilerEnvironment::new();
-
-//     match compiler_env.compile_collection(collection) {
-//         Ok(result) => {
-//             println!("✅ Core library type checking successful!");
-
-//             // Debug print the typed AST
-//             if !result.typed_programs.is_empty() {
-//                 println!("\n📋 CORE LIBRARY TYPED AST DEBUG:");
-//                 println!("{}", "-".repeat(40));
-//                 for (filename, typed_program) in &result.typed_programs {
-//                     println!("\n🗂️ File: {filename}");
-//                     println!("{typed_program:#?}");
-//                 }
-//             }
-
-//             println!("\n📊 COMPILATION SUMMARY:");
-//             println!("{}", "-".repeat(40));
-//             println!("• Protocols: {}", result.protocols.len());
-//             println!("• Structs: {}", result.structs.len());
-//             println!("• Implementations: {}", result.implementations.len());
-//             println!("• Functions: {}", compiler_env.function_count());
-//             println!("• Typed Programs: {}", result.typed_programs.len());
-
-//             Ok(())
-//         }
-//         Err(errors) => {
-//             println!("❌ Core library type checking failed!");
-//             println!("{}", "-".repeat(40));
-
-//             for error in &errors {
-//                 eprintln!("{error:?}");
-//                 eprintln!();
-//             }
-
-//             Err(miette::miette!(
-//                 "Core library type checking failed with {} errors",
-//                 errors.len()
-//             ))
-//         }
-//     }
-// }
-
 fn handle_typecheck_command(files: Vec<PathBuf>, expr: Option<String>, core_lib: bool) {
     if core_lib {
         // Type check the core library using new typechecker API
@@ -998,26 +948,39 @@ fn typecheck_single_file(file_path: &PathBuf) -> Result<()> {
         println!("{}", "-".repeat(40));
         print_ast(&ast);
 
-        // TODO: Re-implement with new typechecker API
-        // Now try to type check it
+        // Now try to type check it using new CompilationResult API
         println!("\n🔬 TYPE CHECKING RESULTS:");
         println!("{}", "=".repeat(60));
 
-        // Use new typechecker API
-        use outrun_typechecker::typecheck_program;
-        let mut ast = ast; // Make mutable for new API
-        match typecheck_program(&mut ast) {
-            Ok(()) => {
+        // Use new typechecker API with CompilationResult
+        let mut package = outrun_typechecker::Package::new(source_name.clone());
+        package.add_program(ast);
+
+        match CompilationResult::compile_package(&mut package) {
+            Ok(result) => {
                 println!("✅ Type checking successful!");
-                println!("\n📋 TYPED AST DEBUG:");
+                println!("\n📊 TYPE CHECKING SUMMARY:");
                 println!("{}", "-".repeat(40));
-                println!("{ast:#?}");
+                println!(
+                    "• Function Registry: {} entries",
+                    result.function_registry.function_count()
+                );
+                println!(
+                    "• Protocol Registry: {} implementations",
+                    result.type_registry.implementation_count()
+                );
+                println!("• Dispatch Table: {} entries", result.dispatch_table.len());
             }
             Err(error) => {
-                println!("❌ Type checking failed: {error}");
+                println!("❌ Type checking failed!");
                 println!("{}", "-".repeat(40));
 
-                eprintln!("{error:?}");
+                // Try to create a beautiful miette report with source context
+                if let Err(report_error) = create_miette_report_with_source_context(&error) {
+                    // Fallback to basic error display if we can't create a rich report
+                    eprintln!("Error creating detailed report: {report_error}");
+                    eprintln!("{error:?}");
+                }
 
                 return Err(miette::miette!("Type checking failed: {error}"));
             }
@@ -1061,11 +1024,7 @@ fn handle_repl_command(show_types: bool, verbose: bool, context: Option<PathBuf>
     }
 }
 
-fn handle_eval_command(
-    expression: Option<String>,
-    file: Option<PathBuf>,
-    show_types: bool,
-) {
+fn handle_eval_command(expression: Option<String>, file: Option<PathBuf>, show_types: bool) {
     use outrun_interpreter::InterpreterSession;
 
     // Get the expression to evaluate

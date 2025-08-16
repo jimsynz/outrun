@@ -1882,7 +1882,10 @@ impl TypeInferenceEngine {
             .join(".")
     }
 
-    fn extract_type_spec_args(&mut self, type_spec: &TypeSpec) -> Result<Vec<Type>, TypecheckError> {
+    fn extract_type_spec_args(
+        &mut self,
+        type_spec: &TypeSpec,
+    ) -> Result<Vec<Type>, TypecheckError> {
         // Extract generic arguments from the TypeSpec
         if let Some(generic_args) = &type_spec.generic_args {
             generic_args
@@ -2462,7 +2465,7 @@ impl TypeInferenceEngine {
                 return_type: self
                     .convert_type_annotation(&function.return_type)
                     .unwrap_or_else(|_| Type::concrete("Unknown")), // Fallback for conversion errors
-                body: None,       // Body not needed for type checking (stored separately for runtime)
+                body: None, // Body not needed for type checking (stored separately for runtime)
                 is_static: false, // impl block functions are not static
                 span: Some(function.span),
             };
@@ -2472,7 +2475,7 @@ impl TypeInferenceEngine {
         // Extract generic bindings from the impl block
         let impl_generic_params = self.extract_impl_block_generic_parameters(impl_block);
         let generic_context = self.create_generic_context_from_names(&impl_generic_params);
-        
+
         // Extract type variables for generic_bindings
         let generic_bindings: Vec<Type> = impl_generic_params
             .iter()
