@@ -968,6 +968,14 @@ impl TypeInferenceEngine {
         self.update_error_context();
     }
 
+    /// Bind multiple variables from previous REPL context for variable persistence
+    pub fn bind_previous_variables(&mut self, variable_types: &std::collections::HashMap<String, crate::types::Type>) {
+        for (name, var_type) in variable_types {
+            self.symbol_table.insert(name.clone(), var_type.clone());
+        }
+        self.update_error_context();
+    }
+
     /// Type check a complete program using new phase structure
     #[allow(clippy::result_large_err)]
     pub fn typecheck_program(&mut self, program: &mut Program) -> Result<(), TypecheckError> {
@@ -2707,7 +2715,23 @@ impl TypeInferenceEngine {
 
         // Use iterative inference to process the expression
         // This ensures function calls get their universal_clause_ids set properly
-        self.infer_expression(&mut let_binding.expression, &mut context)?;
+        let value_result = self.infer_expression(&mut let_binding.expression, &mut context)?;
+
+        // CRITICAL FIX: Add the variable to the symbol table for REPL persistence
+        // This was the missing piece that caused "Cannot infer type: ambiguous expression" errors
+        match &let_binding.pattern {
+            outrun_parser::Pattern::Identifier(identifier) => {
+                let var_name = identifier.name.clone();
+                
+                // Add the variable to the symbol table
+                self.symbol_table
+                    .insert(var_name, value_result.inferred_type);
+            }
+            _ => {
+                // TODO: Handle more complex patterns (tuples, structs, etc.)
+                // For now, just skip complex patterns
+            }
+        }
 
         Ok(())
     }

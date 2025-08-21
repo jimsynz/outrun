@@ -124,11 +124,33 @@ pub struct CompilationResult {
     pub defined_modules: HashSet<ModuleName>,
     /// Universal dispatch registry for clause-based function calls
     pub universal_dispatch: UniversalDispatchRegistry,
+    /// Variable types for REPL context persistence
+    pub variable_types: std::collections::HashMap<String, crate::types::Type>,
     /// Current file being processed (for diagnostic context)
     current_file: std::cell::RefCell<Option<String>>,
 }
 
 impl CompilationResult {
+    /// Create an isolated copy with independent registries for session isolation
+    /// This creates new Rc instances with cloned registry contents to prevent cross-session contamination
+    pub fn create_isolated_copy(&self) -> Self {
+        Self {
+            // Create new Rc with deep-cloned contents for true isolation
+            type_registry: std::rc::Rc::new((*self.type_registry).clone()),
+            function_registry: std::rc::Rc::new((*self.function_registry).clone()),
+            
+            // Clone other fields normally
+            dispatch_table: self.dispatch_table.clone(),
+            monomorphisation_table: self.monomorphisation_table.clone(),
+            package_name: self.package_name.clone(),
+            programs: self.programs.clone(),
+            local_modules: self.local_modules.clone(),
+            defined_modules: self.defined_modules.clone(),
+            universal_dispatch: self.universal_dispatch.clone(),
+            variable_types: self.variable_types.clone(),
+            current_file: std::cell::RefCell::new(None), // Fresh cell for isolation
+        }
+    }
     /// Pre-compile the core library for REPL optimization
     /// This creates a reusable CompilationResult that can be used as a dependency for all REPL expressions
     pub fn precompile_core_library() -> Result<CompilationResult, CompilerError> {
@@ -142,7 +164,7 @@ impl CompilationResult {
             let engine = crate::inference::TypeInferenceEngine::bootstrap();
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
             let core_result =
-                Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine)?;
+                Self::compile_package_internal(&mut core_package_std, engine, desugaring_engine, std::collections::HashMap::new())?;
 
             Ok(core_result)
         } else {
@@ -199,7 +221,7 @@ impl CompilationResult {
             let desugaring_engine = crate::desugaring::DesugaringEngine::new();
 
             // Compile with the pre-configured engine
-            Self::compile_package_internal(&mut expr_package, engine, desugaring_engine)
+            Self::compile_package_internal(&mut expr_package, engine, desugaring_engine, precompiled_core.variable_types.clone())
         } else {
             // No session context - use standard compilation
             Self::compile_with_dependencies(&mut expr_package, vec![precompiled_core.clone()])
@@ -232,9 +254,34 @@ impl CompilationResult {
             }
         }
 
-        // Use the standard compile_with_dependencies method
+        // Create modified dependencies that include previous variable types  
+        // This is the KEY to fixing REPL variable persistence
+        let mut modified_dependencies = dependencies;
+        
+        // If we have previous variable types, we need to create a temporary CompilationResult
+        // that contains those variable types so they get merged in compile_with_dependencies
+        if let Some(previous) = previous_compilation {
+            // Create a synthetic CompilationResult containing previous variable types
+            // This will be merged with other dependencies in compile_with_dependencies
+            let variable_context_result = CompilationResult {
+                type_registry: previous.type_registry.clone(),
+                function_registry: previous.function_registry.clone(), 
+                dispatch_table: previous.dispatch_table.clone(),
+                monomorphisation_table: previous.monomorphisation_table.clone(),
+                package_name: "___repl_context___".to_string(), // Special name to avoid conflicts
+                programs: vec![],
+                local_modules: std::collections::HashSet::new(),
+                defined_modules: std::collections::HashSet::new(),
+                universal_dispatch: previous.universal_dispatch.clone(),
+                variable_types: previous.variable_types.clone(), // KEY: This preserves variables
+                current_file: std::cell::RefCell::new(None),
+            };
+            modified_dependencies.push(variable_context_result);
+        }
+        
+        // Use the standard compile_with_dependencies method with variable types included
         // Package self-redefinition is allowed - conflicts only apply across different packages
-        Self::compile_with_dependencies(package, dependencies)
+        Self::compile_with_dependencies(package, modified_dependencies)
     }
 
     /// Extract modules and their content digests for change detection during hot reloading
@@ -372,6 +419,7 @@ impl CompilationResult {
         let desugaring_engine = DesugaringEngine::new();
 
         // Phase 0: Merge dependency registries into engine before processing user package
+        let mut merged_variable_types = std::collections::HashMap::new();
         for dependency in &dependencies {
             // Check for module conflicts before merging
             Self::check_module_conflicts(&dependency.defined_modules, &HashSet::new())?;
@@ -382,7 +430,14 @@ impl CompilationResult {
                 dependency.function_registry.clone(),
                 dependency.universal_dispatch.clone(),
             )?;
+
+            // Merge variable types from dependencies (dependencies override previous ones)
+            merged_variable_types.extend(dependency.variable_types.clone());
         }
+
+        // Phase 0.1: Initialize TypeChecker with merged variable types for REPL persistence
+        // This is the KEY fix that enables "let x = 42" followed by "x" to work
+        engine.bind_previous_variables(&merged_variable_types);
 
         // Phase 0.5: Comprehensive module conflict detection
         // Collect all dependency programs for detailed conflict checking
@@ -421,7 +476,7 @@ impl CompilationResult {
         }
 
         // Continue with standard compilation phases
-        Self::compile_package_internal(package, engine, desugaring_engine)
+        Self::compile_package_internal(package, engine, desugaring_engine, merged_variable_types)
     }
 
     /// Create from a single package
@@ -447,14 +502,16 @@ impl CompilationResult {
             eprintln!("Warning: Could not find core library, proceeding without it");
         }
 
-        Self::compile_package_internal(package, engine, desugaring_engine)
+        Self::compile_package_internal(package, engine, desugaring_engine, std::collections::HashMap::new())
     }
+
 
     /// Internal shared compilation logic used by both compile_package and compile_with_dependencies
     fn compile_package_internal(
         package: &mut Package,
         mut engine: TypeInferenceEngine,
         mut desugaring_engine: DesugaringEngine,
+        dependency_variable_types: std::collections::HashMap<String, crate::types::Type>,
     ) -> Result<CompilationResult, CompilerError> {
         // Phase 1: Desugar all operators into protocol function calls
         for program in package.programs.iter_mut() {
@@ -536,6 +593,14 @@ impl CompilationResult {
         // Phase 10: Collect module information for conflict prevention and orphan rule checking
         let (local_modules, defined_modules) = Self::collect_module_info(&package.programs);
 
+        // Phase 11: Extract and merge variable types from both dependencies and current type checking
+        let mut final_variable_types = dependency_variable_types;
+        // Extract newly inferred variable types from the TypeInferenceEngine's symbol table
+        // These are variables defined by let bindings in the current package
+        for (name, var_type) in &engine.symbol_table {
+            final_variable_types.insert(name.clone(), var_type.clone());
+        }
+
         Ok(CompilationResult {
             type_registry: engine.type_registry_rc(),
             function_registry: engine.function_registry_rc(),
@@ -546,6 +611,7 @@ impl CompilationResult {
             local_modules,
             defined_modules,
             universal_dispatch: engine.universal_dispatch_registry().clone(),
+            variable_types: final_variable_types,
             current_file: std::cell::RefCell::new(None),
         })
     }

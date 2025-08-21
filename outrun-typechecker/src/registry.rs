@@ -500,6 +500,11 @@ impl TypeRegistry {
                 .count(),
         }
     }
+    
+    /// Get the number of registered modules (for debugging)
+    pub fn len(&self) -> usize {
+        self.modules.len()
+    }
 }
 
 impl Default for TypeRegistry {
