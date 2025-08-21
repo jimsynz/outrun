@@ -76,6 +76,12 @@ pub enum EvaluationError {
         reason: String,
         span: outrun_parser::Span,
     },
+
+    #[error("Undefined type: {type_name}")]
+    UndefinedType {
+        type_name: String,
+        span: outrun_parser::Span,
+    },
 }
 
 /// Expression evaluator for the new interpreter system
@@ -254,12 +260,11 @@ impl ExpressionEvaluator {
             }
 
             // Unary operations should be desugared to function calls by the typechecker
-            ExpressionKind::UnaryOp(_) => {
-                Err(EvaluationError::Runtime {
-                    message: "UnaryOp should have been desugared to FunctionCall by typechecker".to_string(),
-                    span,
-                })
-            }
+            ExpressionKind::UnaryOp(_) => Err(EvaluationError::Runtime {
+                message: "UnaryOp should have been desugared to FunctionCall by typechecker"
+                    .to_string(),
+                span,
+            }),
 
             // Parenthesized expressions - just evaluate the inner expression
             ExpressionKind::Parenthesized(inner) => self.evaluate(inner, context),
@@ -438,7 +443,7 @@ impl ExpressionEvaluator {
         // Extract element type information from the list type if available
         let element_type_info = type_info.cloned();
         // TODO: Properly extract generic type parameter T from List<T>
-        
+
         Ok(Value::List {
             list: std::rc::Rc::new(result_list),
             element_type_info,
@@ -473,7 +478,7 @@ impl ExpressionEvaluator {
         // Evaluate all elements
         let mut elements = Vec::new();
         let mut element_type_info = Vec::new();
-        
+
         for element in &tuple_literal.elements {
             let element_value = self.evaluate(element, context)?;
             elements.push(element_value);
@@ -597,7 +602,6 @@ impl ExpressionEvaluator {
         }
     }
 
-
     /// Universal clause-based dispatch - the future of function dispatch
     fn dispatch_clauses(
         &self,
@@ -688,7 +692,6 @@ impl ExpressionEvaluator {
             span,
         })
     }
-
 
     /// Universal guard evaluation system
     fn evaluate_all_guards(
@@ -897,7 +900,6 @@ impl ExpressionEvaluator {
         Ok(())
     }
 
-
     /// Evaluate a struct literal to create a struct value
     fn evaluate_struct_literal(
         &self,
@@ -906,7 +908,6 @@ impl ExpressionEvaluator {
         span: outrun_parser::Span,
         type_info: Option<&outrun_parser::ParsedTypeInfo>,
     ) -> Result<Value, EvaluationError> {
-
         let mut fields = std::collections::HashMap::new();
 
         for field in &struct_literal.fields {
@@ -971,14 +972,33 @@ impl ExpressionEvaluator {
             }
         }
 
-        // Create a struct value - for now use a simple representation
-        // TODO: This should create proper typed struct values
+        // Build the type name from the type path
         let type_name = struct_literal
             .type_path
             .iter()
             .map(|segment| segment.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
+
+        // Validate that the struct type exists
+        // IMPORTANT: Even if we have type_info from the typechecker, we still need to validate
+        // because the typechecker may attach type info for undefined types (bug in typechecker)
+        // Always check if the struct type exists in the registry
+        if let Some(type_registry) = &self.type_registry {
+            // Check if this type exists in the type registry
+            if type_registry.get_module(&type_name).is_none() {
+                return Err(EvaluationError::UndefinedType {
+                    type_name: type_name.clone(),
+                    span,
+                });
+            }
+        } else if type_info.is_none() || type_info.as_ref().is_none_or(|ti| ti.resolved_type.is_empty()) {
+            // No type registry and no type info - we can't validate, so reject the struct literal
+            return Err(EvaluationError::UndefinedType {
+                type_name: type_name.clone(),
+                span,
+            });
+        }
 
         Ok(Value::Struct {
             type_name,
