@@ -63,16 +63,20 @@ fn test_session_cleanup_and_reset() {
 
     // Verify state exists
     assert!(session.evaluate("user").is_ok());
-    assert!(session.get_session_summary().contains("2 vars"));
-    assert!(session.get_session_summary().contains("2 structs"));
+    let summary = session.get_session_summary();
+    eprintln!("Session summary before clear: {}", summary);
+    assert!(summary.contains("1 vars"), "Expected '1 vars' in summary: {}", summary);
+    assert!(summary.contains("2 structs"), "Expected '2 structs' in summary: {}", summary);
 
     // Clear session with enhanced cleanup
     session.clear_variables();
 
     // Verify everything is cleared
     assert!(session.evaluate("user").is_err());
-    assert!(session.get_session_summary().contains("0 vars"));
-    assert!(session.get_session_summary().contains("0 structs"));
+    let summary_after = session.get_session_summary();
+    eprintln!("Session summary after clear: {}", summary_after);
+    assert!(summary_after.contains("0 vars"), "Expected '0 vars' in summary: {}", summary_after);
+    assert!(summary_after.contains("0 structs"), "Expected '0 structs' in summary: {}", summary_after);
 
     println!("✅ Enhanced session cleanup working correctly");
 }

@@ -104,15 +104,17 @@ impl InterpreterContext {
 
     /// Remove a variable from the current environment (for type invalidation)
     pub fn remove_variable(&mut self, name: &str) -> Result<Value, InterpreterError> {
-        self.variable_environment.remove(name)
-            .ok_or_else(|| InterpreterError::VariableNotFound { 
-                name: name.to_string() 
+        self.variable_environment
+            .remove(name)
+            .ok_or_else(|| InterpreterError::VariableNotFound {
+                name: name.to_string(),
             })
     }
 
     /// Get all available variable names (for error reporting)
     pub fn get_available_variables(&self) -> Vec<String> {
-        self.variable_environment.list_all()
+        self.variable_environment
+            .list_all()
             .into_iter()
             .map(|(name, _)| name)
             .collect()

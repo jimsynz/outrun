@@ -2,6 +2,7 @@
 
 use crate::context::InterpreterContext;
 use crate::evaluator::ExpressionEvaluator;
+use crate::test_harness::InterpreterSession;
 use crate::value::Value;
 use outrun_parser::parse_expression;
 
@@ -73,27 +74,21 @@ fn test_list_spread_empty() {
 
 #[test]
 fn test_struct_spread_basic() {
-    let mut context = InterpreterContext::new();
-
-    // Set up a struct to spread
-    let mut base_fields = std::collections::HashMap::new();
-    base_fields.insert("x".to_string(), Value::integer(10));
-    base_fields.insert("y".to_string(), Value::integer(20));
-
-    let base_struct = Value::Struct {
-        type_name: "Point".to_string(),
-        fields: base_fields,
-        type_info: None,
-    };
-    context
-        .define_variable("base".to_string(), base_struct)
+    // Use InterpreterSession to properly define the Point struct
+    let mut session = InterpreterSession::new().unwrap();
+    
+    // Define the Point struct properly
+    session
+        .evaluate("struct Point(x: Integer64, y: Integer64, z: Integer64) {}")
+        .unwrap();
+    
+    // Create a base Point instance
+    session
+        .evaluate("let base = Point { x: 10, y: 20, z: 0 }")
         .unwrap();
 
-    // Parse expression with spread: Point { z: 30, ..base }
-    let expr = parse_expression("Point { z: 30, ..base }").unwrap();
-
-    let evaluator = ExpressionEvaluator::new();
-    let result = evaluator.evaluate(&expr, &mut context).unwrap();
+    // Create a new Point with spread
+    let result = session.evaluate("Point { z: 30, ..base }").unwrap();
 
     // Verify the result has all three fields
     match result {
