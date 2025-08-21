@@ -798,35 +798,35 @@ fn generate_type_conversion_suggestions(expected: &Type, found: &Type) -> Vec<St
     match (expected, found) {
         // String to Integer conversion
         (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
-            if exp.as_str() == "Integer64" && fnd.as_str() == "String" =>
+            if exp.as_str() == "Outrun.Core.Integer64" && fnd.as_str() == "Outrun.Core.String" =>
         {
             suggestions.push("String.to_integer(value)".to_string());
         }
 
         // Integer to String conversion
         (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
-            if exp.as_str() == "String" && fnd.as_str() == "Integer64" =>
+            if exp.as_str() == "Outrun.Core.String" && fnd.as_str() == "Outrun.Core.Integer64" =>
         {
-            suggestions.push("Integer64.to_string(value)".to_string());
+            suggestions.push("Integer.to_string(value)".to_string());
         }
 
         // Float to Integer conversion
         (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
-            if exp.as_str() == "Integer64" && fnd.as_str() == "Float64" =>
+            if exp.as_str() == "Outrun.Core.Integer64" && fnd.as_str() == "Outrun.Core.Float64" =>
         {
-            suggestions.push("Float64.to_integer(value)".to_string());
+            suggestions.push("Float.to_integer(value)".to_string());
         }
 
         // Integer to Float conversion
         (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
-            if exp.as_str() == "Float64" && fnd.as_str() == "Integer64" =>
+            if exp.as_str() == "Outrun.Core.Float64" && fnd.as_str() == "Outrun.Core.Integer64" =>
         {
-            suggestions.push("Integer64.to_float(value)".to_string());
+            suggestions.push("Integer.to_float(value)".to_string());
         }
 
         // Boolean to String conversion
         (Type::Concrete { name: exp, .. }, Type::Concrete { name: fnd, .. })
-            if exp.as_str() == "String" && fnd.as_str() == "Boolean" =>
+            if exp.as_str() == "Outrun.Core.String" && fnd.as_str() == "Outrun.Core.Boolean" =>
         {
             suggestions.push("Boolean.to_string(value)".to_string());
         }
