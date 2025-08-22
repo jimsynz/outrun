@@ -67,7 +67,7 @@ unless(user.banned?, {
 
 ### 🏗️ Module System
 
-Modules are types! The file system maps directly to the module hierarchy:
+Modules are types! The file system maps directly to the module hierarchy by convention:
 
 ```
 src/
@@ -82,11 +82,11 @@ src/
 ```outrun
 # Explicit error handling with Result and Option
 case maybe_user {
-    when Option.some?(maybe_user) -> {
-        let user = Option.unwrap(maybe_user)
+    user when Option.some?(user) -> {
+        let user = Option.unwrap(user)
         process_user(user: user)
     }
-    when Option.none?(maybe_user) -> handle_missing_user()
+    none when Option.none?(none) -> handle_missing_user()
 }
 ```
 
@@ -215,7 +215,6 @@ Outrun is in active development and we welcome contributions! Check out:
 
 - [`LANGUAGE_SPEC.md`](LANGUAGE_SPEC.md) - Complete language specification
 - [`GRAMMAR.bnf`](GRAMMAR.bnf) - Formal grammar definition
-- [`CLAUDE.md`](CLAUDE.md) - Development guide and project structure
 
 ### Areas Needing Help
 
@@ -257,7 +256,7 @@ _Built with 💜 for the future of programming_
 
 ```
 ┌─────────────────────────────────────┐
-│  "In the year 2025, the machines   │
+│  "In the year 2025, the machines    │
 │   learned to code themselves...     │
 │   But they still couldn't catch     │
 │   the Outrun."                      │
@@ -267,4 +266,4 @@ _Built with 💜 for the future of programming_
 └─────────────────────────────────────┘
 ```
 
-[![Built with Outrun](https://img.shields.io/badge/Built%20with-Outrun-ff6b9d?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjRkY2QjlEIi8+Cjwvc3ZnPgo=)](https://github.com/your-org/outrun)
+[![Built with Outrun](https://img.shields.io/badge/Built%20with-Outrun-ff6b9d?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjRkY2QjlEIi8+Cjwvc3ZnPgo=)](https://harton.dev/outrun/outrun)
