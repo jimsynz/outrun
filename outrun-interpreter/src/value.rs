@@ -150,7 +150,26 @@ impl Value {
         }
     }
 
-    /// Get the type name of this value for dispatch
+    /// Get the display name for this value's type
+    /// 
+    /// Returns a human-readable string describing the type of this value.
+    /// Used by the REPL for displaying type information with the `/types` command.
+    /// 
+    /// # Returns
+    /// 
+    /// A static string slice with the type name (e.g., "Integer64", "String", "List")
+    /// 
+    /// # Example
+    /// 
+    /// ```
+    /// use outrun_interpreter::Value;
+    /// 
+    /// let val = Value::integer(42);
+    /// assert_eq!(val.type_name(), "Integer64");
+    /// 
+    /// let list = Value::empty_list();
+    /// assert_eq!(list.type_name(), "List");
+    /// ```
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Integer64(_) => "Integer64",
@@ -176,6 +195,25 @@ impl Value {
     }
 
     /// Get a display representation for REPL output
+    /// 
+    /// Returns a formatted string representation of the value suitable for
+    /// displaying to users in the REPL. This format is designed to be
+    /// human-readable and closely matches Outrun's literal syntax where possible.
+    /// 
+    /// # Returns
+    /// 
+    /// A `String` containing the formatted representation of the value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use outrun_interpreter::Value;
+    /// 
+    /// assert_eq!(Value::integer(42).display(), "42");
+    /// assert_eq!(Value::string("hello".to_string()).display(), "\"hello\"");
+    /// assert_eq!(Value::atom("ok".to_string()).display(), ":ok");
+    /// assert_eq!(Value::empty_list().display(), "[]");
+    /// ```
     pub fn display(&self) -> String {
         match self {
             Value::Integer64(n) => n.to_string(),
