@@ -701,9 +701,9 @@ impl OutrunParser {
         let span = Self::span_from_pair(&pair);
         let mut inner_pairs = pair.into_inner();
 
-        // First pair should be the type identifier
+        // First pair should be the module path (which can be a single type or qualified path)
         let type_pair = inner_pairs.next().unwrap();
-        let type_name = Self::parse_type_identifier(type_pair)?;
+        let type_path = Self::parse_module_path(type_pair)?;
 
         // Next should be struct_field_patterns
         let mut fields = Vec::new();
@@ -719,7 +719,7 @@ impl OutrunParser {
         }
 
         Ok(StructPattern {
-            type_path: vec![type_name],
+            type_path,
             fields,
             span,
         })

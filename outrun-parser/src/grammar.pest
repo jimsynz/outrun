@@ -279,7 +279,8 @@ literal_pattern = { boolean | integer | float | string | atom }
 tuple_pattern = { "(" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ ")" }
 
 // Struct destructuring pattern: Type { field1: pattern1, field2 }
-struct_pattern = { type_identifier ~ "{" ~ struct_field_patterns? ~ "}" }
+// Supports qualified paths like Outrun.Option.Some { value }
+struct_pattern = { module_path ~ "{" ~ struct_field_patterns? ~ "}" }
 struct_field_patterns = { struct_field_pattern ~ ("," ~ struct_field_pattern)* ~ ","? }
 struct_field_pattern = { identifier ~ (":" ~ pattern)? } // field or field: pattern
 
