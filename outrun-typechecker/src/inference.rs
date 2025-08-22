@@ -10,7 +10,7 @@ use crate::{
     },
     error::{
         to_source_span, ErrorContext, InferenceError, TypecheckError,
-        UnificationError as OriginalUnificationError,
+        UnificationError, UnificationError as OriginalUnificationError,
     },
     registry::{ProtocolRegistry, TypeRegistry},
     types::{Constraint, Level, ModuleName, SelfBindingContext, Substitution, Type, TypeVarId},
@@ -2756,7 +2756,7 @@ impl TypeInferenceEngine {
     /// Direct case expression processing that bypasses the task system to handle pattern bindings correctly
     fn infer_case_expression_direct(
         &mut self,
-        case_expr: &outrun_parser::CaseExpression,
+        case_expr: &mut outrun_parser::CaseExpression,
         context: &mut InferenceContext,
     ) -> Result<InferenceResult, TypecheckError> {
         // First, infer the scrutinee type
@@ -2768,7 +2768,7 @@ impl TypeInferenceEngine {
         let mut all_constraints = context.constraints.clone();
 
         // Process each clause with pattern bindings
-        for clause in &case_expr.clauses {
+        for clause in &mut case_expr.clauses {
             // Create a new context for this clause
             let mut clause_context = context.clone();
 
@@ -2781,18 +2781,21 @@ impl TypeInferenceEngine {
             }
 
             // Process guard if present
-            if let Some(guard_expr) = &clause.guard {
-                let mut guard_expr_mut = guard_expr.clone();
-                self.infer_expression(&mut guard_expr_mut, &mut clause_context)?;
+            if let Some(guard_expr) = &mut clause.guard {
+                self.infer_expression(guard_expr, &mut clause_context)?;
             }
 
             // Process clause result
-            let mut clause_result_expr = match &clause.result {
-                outrun_parser::CaseResult::Expression(expr) => (**expr).clone(),
+            match &mut clause.result {
+                outrun_parser::CaseResult::Expression(expr) => {
+                    let clause_result = self.infer_expression(expr, &mut clause_context)?;
+                    clause_result_types.push(clause_result.inferred_type);
+                    all_constraints.extend(clause_result.constraints);
+                }
                 outrun_parser::CaseResult::Block(block) => {
                     // For blocks, we need to create an expression from the block
                     // For now, just return a fresh type variable
-                    outrun_parser::Expression {
+                    let mut block_expr = outrun_parser::Expression {
                         kind: outrun_parser::ExpressionKind::Boolean(
                             outrun_parser::BooleanLiteral {
                                 value: true,
@@ -2801,21 +2804,37 @@ impl TypeInferenceEngine {
                         ),
                         span: block.span,
                         type_info: None,
-                    }
+                    };
+                    let clause_result = self.infer_expression(&mut block_expr, &mut clause_context)?;
+                    clause_result_types.push(clause_result.inferred_type);
+                    all_constraints.extend(clause_result.constraints);
                 }
-            };
-
-            let clause_result =
-                self.infer_expression(&mut clause_result_expr, &mut clause_context)?;
-            clause_result_types.push(clause_result.inferred_type);
-            all_constraints.extend(clause_result.constraints);
+            }
         }
 
-        // The result type is the type of the first clause (they should all be compatible)
-        let result_type = clause_result_types
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| Type::variable(self.fresh_type_var(), Level(0)));
+        // Check that all clause result types are compatible
+        let result_type = if clause_result_types.is_empty() {
+            Type::variable(self.fresh_type_var(), Level(0))
+        } else {
+            let first_type = clause_result_types[0].clone();
+            
+            // Verify all subsequent clause types are compatible with the first
+            for (idx, clause_type) in clause_result_types.iter().skip(1).enumerate() {
+                if !self.types_are_compatible(&first_type, clause_type) {
+                    return Err(TypecheckError::UnificationError(
+                        UnificationError::TypeMismatch {
+                            expected: first_type.clone(),
+                            found: clause_type.clone(),
+                            expected_context: Some("first case clause".to_string()),
+                            found_context: Some(format!("case clause {}", idx + 2)),
+                            span: to_source_span(Some(case_expr.span)),
+                        },
+                    ));
+                }
+            }
+            
+            first_type
+        };
 
         // Check exhaustiveness of patterns using proper type compatibility
         // We need to extract the type compatibility logic to avoid borrowing issues
@@ -2966,7 +2985,7 @@ impl TypeInferenceEngine {
         use outrun_parser::ExpressionKind;
 
         // Special case: Handle case expressions directly to avoid task system issues with pattern bindings
-        if let ExpressionKind::CaseExpression(case_expr) = &expression.kind {
+        if let ExpressionKind::CaseExpression(case_expr) = &mut expression.kind {
             return self.infer_case_expression_direct(case_expr, context);
         }
 
