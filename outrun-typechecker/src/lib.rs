@@ -304,7 +304,7 @@ impl CompilationResult {
         dependencies: Vec<CompilationResult>,
     ) -> Result<CompilationResult, CompilerError> {
         // Extract dependencies from previous compilation if from same package
-        let (actual_dependencies, save_dependencies, warn_on_changes) = 
+        let (actual_dependencies, warn_on_changes) = 
             if let Some(prev) = previous_compilation {
                 if prev.package_name == package.package_name {
                     // Same package - extract its dependencies and enable change detection
@@ -333,15 +333,15 @@ impl CompilationResult {
                         };
                         extracted_deps.push(dep_result);
                     }
-                    // Use extracted deps and save provided ones
-                    (extracted_deps, dependencies, true)
+                    // Use extracted deps from previous compilation
+                    (extracted_deps, true)
                 } else {
                     // Different package - use provided dependencies
-                    (dependencies.clone(), dependencies, false)
+                    (dependencies, false)
                 }
             } else {
                 // No previous compilation - use provided dependencies
-                (dependencies.clone(), dependencies, false)
+                (dependencies, false)
             };
         
         // Compile with extracted or provided dependencies
