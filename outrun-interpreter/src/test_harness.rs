@@ -136,7 +136,28 @@ pub struct InterpreterSession {
 }
 
 impl InterpreterSession {
-    /// Create a new interpreter session
+    /// Create a new interpreter session for REPL or testing
+    /// 
+    /// Creates a fresh interpreter context with no variables defined and no
+    /// core library loaded. The session maintains state across multiple evaluations,
+    /// allowing for persistent variables and type definitions.
+    /// 
+    /// # Returns
+    /// 
+    /// A new `InterpreterSession` ready for evaluating Outrun expressions.
+    /// 
+    /// # Errors
+    /// 
+    /// Currently always succeeds, but returns `Result` for future compatibility.
+    /// 
+    /// # Example
+    /// 
+    /// ```ignore
+    /// use outrun_interpreter::InterpreterSession;
+    /// 
+    /// let mut session = InterpreterSession::new()?;
+    /// let result = session.evaluate("42")?;
+    /// ```
     pub fn new() -> Result<Self, TestHarnessError> {
         let context = InterpreterContext::new();
         let session_id = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -152,12 +173,68 @@ impl InterpreterSession {
     }
 
     /// Execute an Outrun expression and return the result using the full pipeline
+    /// 
+    /// Parses, type-checks, and evaluates an Outrun expression. The session maintains
+    /// all variable bindings and type definitions across calls, making this suitable
+    /// for REPL-style interaction.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `expression_code` - Outrun source code to evaluate
+    /// 
+    /// # Returns
+    /// 
+    /// The evaluated `Value` resulting from executing the expression.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - Parsing fails (syntax errors)
+    /// - Type checking fails (type mismatches, undefined references)
+    /// - Runtime evaluation fails (division by zero, pattern match failures)
+    /// 
+    /// # Example
+    /// 
+    /// ```ignore
+    /// let mut session = InterpreterSession::new()?;
+    /// let result = session.evaluate("1 + 2")?;
+    /// assert_eq!(result, Value::integer(3));
+    /// ```
     pub fn evaluate(&mut self, expression_code: &str) -> Result<Value, TestHarnessError> {
         let (value, _type_info) = self.evaluate_with_type_info(expression_code)?;
         Ok(value)
     }
 
-    /// Execute an Outrun expression and return both the result and type information
+    /// Execute an expression and return both the value and its type information
+    /// 
+    /// This is the primary evaluation method used by the REPL. It performs the full
+    /// compilation pipeline (parse → typecheck → evaluate) and returns both the
+    /// runtime value and the compile-time type information.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `expression_code` - Outrun source code to evaluate
+    /// 
+    /// # Returns
+    /// 
+    /// A tuple of:
+    /// - The evaluated `Value`
+    /// - A string representation of the value's type (e.g., "Integer64", "List<String>")
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if any phase of the pipeline fails:
+    /// - Parse errors (invalid syntax)
+    /// - Type errors (type mismatches, undefined variables/functions)
+    /// - Runtime errors (division by zero, pattern match failures)
+    /// 
+    /// # Example
+    /// 
+    /// ```ignore
+    /// let mut session = InterpreterSession::new()?;
+    /// let (value, type_str) = session.evaluate_with_type_info("[1, 2, 3]")?;
+    /// assert_eq!(type_str, "List<Integer64>");
+    /// ```
     pub fn evaluate_with_type_info(
         &mut self,
         expression_code: &str,
@@ -485,7 +562,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific integer value
-    pub fn assert_evaluates_to_integer(
+    pub(crate) fn assert_evaluates_to_integer(
         &mut self,
         expression_code: &str,
         expected: i64,
@@ -506,7 +583,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific boolean value
-    pub fn assert_evaluates_to_boolean(
+    pub(crate) fn assert_evaluates_to_boolean(
         &mut self,
         expression_code: &str,
         expected: bool,
@@ -527,7 +604,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific string value
-    pub fn assert_evaluates_to_string(
+    pub(crate) fn assert_evaluates_to_string(
         &mut self,
         expression_code: &str,
         expected: &str,
@@ -548,7 +625,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific atom value
-    pub fn assert_evaluates_to_atom(
+    pub(crate) fn assert_evaluates_to_atom(
         &mut self,
         expression_code: &str,
         expected: &str,
@@ -569,7 +646,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to an empty list
-    pub fn assert_evaluates_to_empty_list(
+    pub(crate) fn assert_evaluates_to_empty_list(
         &mut self,
         expression_code: &str,
     ) -> Result<(), TestHarnessError> {
@@ -591,7 +668,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a list with specific head and tail
-    pub fn assert_evaluates_to_list_with_head(
+    pub(crate) fn assert_evaluates_to_list_with_head(
         &mut self,
         expression_code: &str,
         expected_head: Value,
@@ -623,7 +700,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert the result matches a general expectation
-    pub fn assert_evaluates_to_value(
+    pub(crate) fn assert_evaluates_to_value(
         &mut self,
         expression_code: &str,
         expected: Value,
@@ -641,7 +718,7 @@ impl InterpreterSession {
     }
 
     /// Set up a variable in the test context for use in subsequent expressions
-    pub fn define_variable(&mut self, name: &str, value: Value) -> Result<(), TestHarnessError> {
+    pub(crate) fn define_variable(&mut self, name: &str, value: Value) -> Result<(), TestHarnessError> {
         self.context
             .define_variable(name.to_string(), value)
             .map_err(|e| TestHarnessError::Setup {
@@ -650,7 +727,7 @@ impl InterpreterSession {
     }
 
     /// Get a variable from the test context
-    pub fn get_variable(&self, name: &str) -> Result<&Value, TestHarnessError> {
+    pub(crate) fn get_variable(&self, name: &str) -> Result<&Value, TestHarnessError> {
         self.context
             .get_variable(name)
             .map_err(|_| TestHarnessError::VariableNotFound {
@@ -659,7 +736,7 @@ impl InterpreterSession {
     }
 
     /// Clear all variables from the test context with enhanced memory cleanup
-    pub fn clear_variables(&mut self) {
+    pub(crate) fn clear_variables(&mut self) {
         // Phase 4: Enhanced session cleanup with validation
         self.validate_session_state_before_clear();
 
@@ -724,13 +801,30 @@ impl InterpreterSession {
         }
     }
 
-    /// Get the current context (for advanced testing scenarios)
+    /// Get read-only access to the interpreter context
+    /// 
+    /// Provides access to the underlying interpreter context, which contains
+    /// all variable bindings, loaded compilation results, and execution state.
+    /// This is primarily used by the REPL for introspection commands like
+    /// listing variables.
+    /// 
+    /// # Returns
+    /// 
+    /// A reference to the `InterpreterContext` containing the session state.
+    /// 
+    /// # Example
+    /// 
+    /// ```ignore
+    /// let session = InterpreterSession::new()?;
+    /// let context = session.context();
+    /// let variables = context.get_available_variables();
+    /// ```
     pub fn context(&self) -> &InterpreterContext {
         &self.context
     }
 
     /// Get mutable access to the context (for advanced testing scenarios)  
-    pub fn context_mut(&mut self) -> &mut InterpreterContext {
+    pub(crate) fn context_mut(&mut self) -> &mut InterpreterContext {
         &mut self.context
     }
 
@@ -782,7 +876,7 @@ impl InterpreterSession {
     }
 
     /// Get a summary of current session state
-    pub fn get_session_summary(&self) -> String {
+    pub(crate) fn get_session_summary(&self) -> String {
         let compilation_types = self.session_compilation.as_ref().map(|c| c.variable_types.len()).unwrap_or(0);
         format!(
             "Session: {} vars, {} types, {} structs, {} programs",
@@ -794,7 +888,7 @@ impl InterpreterSession {
     }
 
     /// Phase 4: Check for potential memory issues in session
-    pub fn check_session_memory_usage(&self) -> Result<(), TestHarnessError> {
+    pub(crate) fn check_session_memory_usage(&self) -> Result<(), TestHarnessError> {
         let program_count = self.session_package.programs.len();
         let variable_count = self.session_compilation.as_ref().map(|c| c.variable_types.len()).unwrap_or(0);
         let struct_count = self.session_struct_definitions.len();
@@ -834,7 +928,7 @@ impl Default for InterpreterSession {
 // Phase 4: Enhanced session management utilities
 impl InterpreterSession {
     /// Create a new session with validation and error recovery
-    pub fn new_with_validation() -> Result<Self, TestHarnessError> {
+    pub(crate) fn new_with_validation() -> Result<Self, TestHarnessError> {
         let session = Self::new()?;
 
         // Validate initial state
@@ -845,7 +939,7 @@ impl InterpreterSession {
     }
 
     /// Evaluate with enhanced error handling and session recovery
-    pub fn evaluate_with_recovery(
+    pub(crate) fn evaluate_with_recovery(
         &mut self,
         expression_code: &str,
     ) -> Result<Value, TestHarnessError> {
