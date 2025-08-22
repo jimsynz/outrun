@@ -56,12 +56,13 @@ pub enum Value {
     /// Struct values created by protocol functions
     /// This represents concrete types like Outrun.Option.Some<T>
     Struct {
-        /// Type name for dispatch and pattern matching
-        type_name: String,
+        /// Fully qualified type name including generic parameters
+        /// e.g., "Outrun.Option.Some<Outrun.Core.Integer64>"
+        qualified_type_name: String,
         /// Field values by name
         fields: HashMap<String, Value>,
-        /// Type information from typechecker v3
-        type_info: Option<outrun_parser::ParsedTypeInfo>,
+        /// Complete type information from typechecker v3
+        type_info: outrun_parser::ParsedTypeInfo,
     },
 
     /// Function values (for higher-order functions and captures)
@@ -194,6 +195,59 @@ impl Value {
         }
     }
 
+    /// Helper method to check if this is an Option Some variant
+    pub fn is_option_some(&self) -> bool {
+        matches!(self, Value::Struct { qualified_type_name, .. } if qualified_type_name.starts_with("Outrun.Option.Some"))
+    }
+
+    /// Helper method to check if this is an Option None variant
+    pub fn is_option_none(&self) -> bool {
+        matches!(self, Value::Struct { qualified_type_name, .. } if qualified_type_name.starts_with("Outrun.Option.None"))
+    }
+
+    /// Helper method to check if this is a Result Ok variant
+    pub fn is_result_ok(&self) -> bool {
+        matches!(self, Value::Struct { qualified_type_name, .. } if qualified_type_name.starts_with("Outrun.Result.Ok"))
+    }
+
+    /// Helper method to check if this is a Result Err variant
+    pub fn is_result_err(&self) -> bool {
+        matches!(self, Value::Struct { qualified_type_name, .. } if qualified_type_name.starts_with("Outrun.Result.Err"))
+    }
+
+    /// Helper method to extract the value from Option Some
+    pub fn unwrap_option_some(&self) -> Option<&Value> {
+        match self {
+            Value::Struct { qualified_type_name, fields, .. } 
+                if qualified_type_name.starts_with("Outrun.Option.Some") => {
+                fields.get("value")
+            }
+            _ => None
+        }
+    }
+
+    /// Helper method to extract the value from Result Ok
+    pub fn unwrap_result_ok(&self) -> Option<&Value> {
+        match self {
+            Value::Struct { qualified_type_name, fields, .. } 
+                if qualified_type_name.starts_with("Outrun.Result.Ok") => {
+                fields.get("value")
+            }
+            _ => None
+        }
+    }
+
+    /// Helper method to extract the error from Result Err
+    pub fn unwrap_result_err(&self) -> Option<&Value> {
+        match self {
+            Value::Struct { qualified_type_name, fields, .. } 
+                if qualified_type_name.starts_with("Outrun.Result.Err") => {
+                fields.get("error")
+            }
+            _ => None
+        }
+    }
+
     /// Get a display representation for REPL output
     /// 
     /// Returns a formatted string representation of the value suitable for
@@ -225,13 +279,27 @@ impl Value {
             Value::Map { entries, .. } => format_map(entries),
             Value::Tuple { elements, .. } => format_tuple(elements),
             Value::Struct {
-                type_name, fields, ..
+                qualified_type_name, fields, ..
             } => {
-                format!("{}{{ {} }}", type_name, format_fields(fields))
+                let fields_str = format_fields(fields);
+                if fields_str.is_empty() {
+                    format!("{}{{ }}", qualified_type_name)
+                } else {
+                    format!("{}{{ {} }}", qualified_type_name, fields_str)
+                }
             }
             Value::Function { name, .. } => format!("<function {}>", name),
         }
     }
+}
+
+/// Helper function to format a collection with a given delimiter and wrapper
+fn format_collection<T, F>(items: &[T], formatter: F, open: &str, close: &str, separator: &str) -> String
+where
+    F: Fn(&T) -> String,
+{
+    let formatted: Vec<String> = items.iter().map(formatter).collect();
+    format!("{}{}{}", open, formatted.join(separator), close)
 }
 
 /// Format a list for display
@@ -254,11 +322,13 @@ fn format_list(list: &List) -> String {
 
 /// Format a map for display
 fn format_map(entries: &[(Value, Value)]) -> String {
-    let formatted_entries: Vec<String> = entries
-        .iter()
-        .map(|(k, v)| format!("{}: {}", k.display(), v.display()))
-        .collect();
-    format!("{{{}}}", formatted_entries.join(", "))
+    format_collection(
+        entries,
+        |(k, v)| format!("{}: {}", k.display(), v.display()),
+        "{",
+        "}",
+        ", "
+    )
 }
 
 /// Format struct fields for display
@@ -272,8 +342,7 @@ fn format_fields(fields: &HashMap<String, Value>) -> String {
 
 /// Format a tuple for display
 fn format_tuple(elements: &[Value]) -> String {
-    let formatted_elements: Vec<String> = elements.iter().map(|v| v.display()).collect();
-    format!("({})", formatted_elements.join(", "))
+    format_collection(elements, |v| v.display(), "(", ")", ", ")
 }
 
 impl List {

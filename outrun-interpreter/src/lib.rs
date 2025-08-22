@@ -22,6 +22,11 @@ pub mod pattern;
 pub mod test_harness;
 pub mod value;
 
+// Include tests directory with all test modules
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+pub mod tests;
+
 // Re-export public API
 pub use context::{InterpreterContext, InterpreterError};
 pub use evaluator::{EvaluationError, ExpressionEvaluator};
@@ -60,31 +65,3 @@ pub fn evaluate_from_string(
     Ok(result)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_basic_interpreter_creation() {
-        let context = InterpreterContext::new();
-        // Basic smoke test - ensure we can create the interpreter components
-        assert!(context.is_empty()); // Should start with empty context
-    }
-
-    mod test_pattern_matching;
-
-    // Include acceptance tests
-    mod test_acceptance_basic_literals;
-    mod test_acceptance_expressions;
-    mod test_acceptance_pattern_matching;
-    mod test_complex_arithmetic;
-    mod test_equality_auto_impl;
-    mod test_function_dispatch;
-    mod test_pipeline_integration;
-    mod test_repl_context_persistence;
-    mod test_spread_operator;
-    // Phase 3: Enhanced test coverage
-    mod test_comprehensive_repl_scenarios;
-    // Phase 4: Error handling and edge cases
-    mod test_phase4_error_handling;
-}

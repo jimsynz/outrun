@@ -40,6 +40,29 @@ pub enum IntrinsicError {
     InvalidOperation { message: String, span: Span },
 }
 
+/// Helper function to validate argument count for intrinsics
+fn validate_arg_count(
+    function_name: &str,
+    args: &[Value],
+    expected: usize,
+    span: Span,
+) -> Result<(), IntrinsicError> {
+    if args.len() != expected {
+        Err(IntrinsicError::InvalidOperation {
+            message: format!(
+                "{} expects {} argument{}, got {}",
+                function_name,
+                expected,
+                if expected == 1 { "" } else { "s" },
+                args.len()
+            ),
+            span,
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// Handler for intrinsic function execution
 pub struct IntrinsicsHandler {
     /// Registry of available intrinsic functions mapped to their execution functions
@@ -106,6 +129,7 @@ impl IntrinsicsHandler {
         self.register("Outrun.Intrinsic.f64_div", intrinsic_divide_float64);
 
         // List operations
+        self.register("Outrun.Intrinsic.list_empty", intrinsic_list_empty);
         self.register("Outrun.Intrinsic.list_head", intrinsic_list_head);
         self.register("Outrun.Intrinsic.list_tail", intrinsic_list_tail);
         self.register("Outrun.Intrinsic.list_prepend", intrinsic_list_prepend);
@@ -153,12 +177,7 @@ impl Default for IntrinsicsHandler {
 
 // Integer arithmetic intrinsics
 fn intrinsic_add_integer64(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
-    if args.len() != 2 {
-        return Err(IntrinsicError::InvalidOperation {
-            message: format!("add_integer64 expects 2 arguments, got {}", args.len()),
-            span,
-        });
-    }
+    validate_arg_count("add_integer64", args, 2, span)?;
 
     match (&args[0], &args[1]) {
         (Value::Integer64(a), Value::Integer64(b)) => Ok(Value::integer(a + b)),
@@ -171,12 +190,7 @@ fn intrinsic_add_integer64(args: &[Value], span: Span) -> Result<Value, Intrinsi
 }
 
 fn intrinsic_subtract_integer64(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
-    if args.len() != 2 {
-        return Err(IntrinsicError::InvalidOperation {
-            message: format!("subtract_integer64 expects 2 arguments, got {}", args.len()),
-            span,
-        });
-    }
+    validate_arg_count("subtract_integer64", args, 2, span)?;
 
     match (&args[0], &args[1]) {
         (Value::Integer64(a), Value::Integer64(b)) => Ok(Value::integer(a - b)),
@@ -189,12 +203,7 @@ fn intrinsic_subtract_integer64(args: &[Value], span: Span) -> Result<Value, Int
 }
 
 fn intrinsic_multiply_integer64(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
-    if args.len() != 2 {
-        return Err(IntrinsicError::InvalidOperation {
-            message: format!("multiply_integer64 expects 2 arguments, got {}", args.len()),
-            span,
-        });
-    }
+    validate_arg_count("multiply_integer64", args, 2, span)?;
 
     match (&args[0], &args[1]) {
         (Value::Integer64(a), Value::Integer64(b)) => Ok(Value::integer(a * b)),
@@ -207,12 +216,7 @@ fn intrinsic_multiply_integer64(args: &[Value], span: Span) -> Result<Value, Int
 }
 
 fn intrinsic_divide_integer64(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
-    if args.len() != 2 {
-        return Err(IntrinsicError::InvalidOperation {
-            message: format!("divide_integer64 expects 2 arguments, got {}", args.len()),
-            span,
-        });
-    }
+    validate_arg_count("divide_integer64", args, 2, span)?;
 
     match (&args[0], &args[1]) {
         (Value::Integer64(a), Value::Integer64(b)) => {
@@ -231,12 +235,7 @@ fn intrinsic_divide_integer64(args: &[Value], span: Span) -> Result<Value, Intri
 }
 
 fn intrinsic_modulo_integer64(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
-    if args.len() != 2 {
-        return Err(IntrinsicError::InvalidOperation {
-            message: format!("modulo_integer64 expects 2 arguments, got {}", args.len()),
-            span,
-        });
-    }
+    validate_arg_count("modulo_integer64", args, 2, span)?;
 
     match (&args[0], &args[1]) {
         (Value::Integer64(a), Value::Integer64(b)) => {
@@ -334,6 +333,17 @@ fn intrinsic_divide_float64(args: &[Value], span: Span) -> Result<Value, Intrins
 }
 
 // List operation intrinsics
+fn intrinsic_list_empty(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
+    if !args.is_empty() {
+        return Err(IntrinsicError::InvalidOperation {
+            message: format!("list_empty expects 0 arguments, got {}", args.len()),
+            span,
+        });
+    }
+    
+    Ok(Value::empty_list())
+}
+
 fn intrinsic_list_head(args: &[Value], span: Span) -> Result<Value, IntrinsicError> {
     if args.len() != 1 {
         return Err(IntrinsicError::InvalidOperation {
@@ -396,8 +406,11 @@ fn intrinsic_list_prepend(args: &[Value], span: Span) -> Result<Value, Intrinsic
         });
     }
 
-    let element = &args[0];
-    match &args[1] {
+    // The protocol dispatch seems to pass arguments in the order they appear in the call
+    // So List.prepend(list: x, elem: y) passes [x, y] to the intrinsic
+    let list_arg = &args[0];
+    let element = &args[1];
+    match list_arg {
         Value::List {
             list,
             element_type_info,
@@ -409,8 +422,8 @@ fn intrinsic_list_prepend(args: &[Value], span: Span) -> Result<Value, Intrinsic
             })
         }
         v => Err(IntrinsicError::TypeMismatch {
-            expected: "any, List".to_string(),
-            found: format!("any, {}", v.type_name()),
+            expected: "List, any".to_string(),
+            found: format!("{}, any", v.type_name()),
             span,
         }),
     }
@@ -847,8 +860,9 @@ mod tests {
         let span = Span::new(0, 0);
 
         // Test list prepend
+        // Note: Due to the intrinsic argument ordering bug, we pass list first, element second
         let empty_list = Value::empty_list();
-        let args = vec![Value::integer(42), empty_list];
+        let args = vec![empty_list, Value::integer(42)];
         let result = handler
             .execute_intrinsic("Outrun.Intrinsic.list_prepend", &args, span)
             .unwrap();

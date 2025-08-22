@@ -854,10 +854,11 @@ impl ExpressionEvaluator {
                 }
 
                 // Create and return the struct value
+                // TODO: Get full qualified type name with generics from compilation result
                 Ok(Value::Struct {
-                    type_name: struct_name.clone(),
+                    qualified_type_name: struct_name.clone(),
                     fields,
-                    type_info: None,
+                    type_info: outrun_parser::ParsedTypeInfo::new(struct_name.clone()),
                 })
             }
             FunctionBody::ProtocolImplementation {
@@ -1001,9 +1002,9 @@ impl ExpressionEvaluator {
         }
 
         Ok(Value::Struct {
-            type_name,
+            qualified_type_name: type_name.clone(),
             fields,
-            type_info: type_info.cloned(),
+            type_info: type_info.cloned().unwrap_or_else(|| outrun_parser::ParsedTypeInfo::new(type_name)),
         })
     }
 
