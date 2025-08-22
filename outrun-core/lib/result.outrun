@@ -48,8 +48,8 @@ protocol Result<T, E> {
     }
 
     @Doc(content: "Check if this Result represents success")
-    def ok?(self: Self): Boolean
+    def ok?(value: Self): Boolean
 
     @Doc(content: "Check if this Result represents failure")
-    def err?(self: Self): Boolean
+    def err?(value: Self): Boolean
 }

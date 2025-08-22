@@ -21,3 +21,14 @@ This type is typically created using the `Result.err/1` constructor function
 rather than being constructed directly.
 """)
 struct Outrun.Result.Err<E>(error: E)
+
+# Implementation of Result protocol for Err variant
+impl Result<T, E> for Outrun.Result.Err<E> {
+    def ok?(value: Self): Boolean {
+        false  # Err never represents success
+    }
+
+    def err?(value: Self): Boolean {
+        true  # Err always represents an error
+    }
+}

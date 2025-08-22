@@ -21,3 +21,14 @@ This type is typically created using the `Result.ok/1` constructor function
 rather than being constructed directly.
 """)
 struct Outrun.Result.Ok<T>(value: T)
+
+# Implementation of Result protocol for Ok variant
+impl Result<T, E> for Outrun.Result.Ok<T> {
+    def ok?(value: Self): Boolean {
+        true  # Ok always represents success
+    }
+
+    def err?(value: Self): Boolean {
+        false  # Ok is never an error
+    }
+}
