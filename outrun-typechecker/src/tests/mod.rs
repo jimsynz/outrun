@@ -50,3 +50,4 @@ pub mod test_self_type_resolution;
 pub mod test_tuple_type_inference;
 pub mod test_tuple_types_basic;
 pub mod test_unified_package_processing;
+pub mod test_hot_reloading;

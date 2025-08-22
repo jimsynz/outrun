@@ -126,6 +126,18 @@ pub struct CompilationResult {
     pub universal_dispatch: UniversalDispatchRegistry,
     /// Variable types for REPL context persistence
     pub variable_types: std::collections::HashMap<String, crate::types::Type>,
+    
+    // Hot reloading support fields
+    /// Package-specific registries (this package only, not dependencies)
+    pub package_type_registry: Option<std::rc::Rc<TypeRegistry>>,
+    /// Package-specific function registry (this package only, not dependencies)
+    pub package_function_registry: Option<std::rc::Rc<FunctionRegistry>>,
+    /// Package-specific universal dispatch (this package only, not dependencies)
+    pub package_universal_dispatch: Option<UniversalDispatchRegistry>,
+    /// Separate dependency registries for hot reloading
+    pub dependency_registries: Vec<(String, std::rc::Rc<TypeRegistry>, std::rc::Rc<FunctionRegistry>, UniversalDispatchRegistry)>,
+    /// Content hash for change detection during hot reloading
+    pub package_content_hash: u64,
     /// Current file being processed (for diagnostic context)
     current_file: std::cell::RefCell<Option<String>>,
 }
@@ -148,6 +160,13 @@ impl CompilationResult {
             defined_modules: self.defined_modules.clone(),
             universal_dispatch: self.universal_dispatch.clone(),
             variable_types: self.variable_types.clone(),
+            package_type_registry: self.package_type_registry.as_ref()
+                .map(|reg| std::rc::Rc::new((**reg).clone())),
+            package_function_registry: self.package_function_registry.as_ref()
+                .map(|reg| std::rc::Rc::new((**reg).clone())),
+            package_universal_dispatch: self.package_universal_dispatch.clone(),
+            dependency_registries: self.dependency_registries.clone(),
+            package_content_hash: self.package_content_hash,
             current_file: std::cell::RefCell::new(None), // Fresh cell for isolation
         }
     }
@@ -284,53 +303,79 @@ impl CompilationResult {
         previous_compilation: Option<&CompilationResult>,
         dependencies: Vec<CompilationResult>,
     ) -> Result<CompilationResult, CompilerError> {
-        // If we have a previous compilation from the same package, check for module redefinitions
-        if let Some(prev) = previous_compilation {
-            if prev.package_name == package.package_name {
-                // Same package - check for module redefinitions and warn only if content changed
+        // Extract dependencies from previous compilation if from same package
+        let (actual_dependencies, save_dependencies, warn_on_changes) = 
+            if let Some(prev) = previous_compilation {
+                if prev.package_name == package.package_name {
+                    // Same package - extract its dependencies and enable change detection
+                    let mut extracted_deps = vec![];
+                    
+                    // Use dependency registries from previous compilation
+                    for (dep_name, type_reg, func_reg, universal_dispatch) in &prev.dependency_registries {
+                        // Reconstruct minimal CompilationResult for each dependency
+                        let dep_result = CompilationResult {
+                            type_registry: type_reg.clone(),
+                            function_registry: func_reg.clone(),
+                            dispatch_table: DispatchTable::new(), // Will be rebuilt
+                            monomorphisation_table: MonomorphisationTable::new(),
+                            package_name: dep_name.clone(),
+                            programs: vec![], // Dependencies don't need programs for merging
+                            local_modules: HashSet::new(),
+                            defined_modules: HashSet::new(),
+                            universal_dispatch: universal_dispatch.clone(),
+                            variable_types: prev.variable_types.clone(),
+                            package_type_registry: None,
+                            package_function_registry: None,
+                            package_universal_dispatch: None,
+                            dependency_registries: vec![],
+                            package_content_hash: 0,
+                            current_file: std::cell::RefCell::new(None),
+                        };
+                        extracted_deps.push(dep_result);
+                    }
+                    // Use extracted deps and save provided ones
+                    (extracted_deps, dependencies, true)
+                } else {
+                    // Different package - use provided dependencies
+                    (dependencies.clone(), dependencies, false)
+                }
+            } else {
+                // No previous compilation - use provided dependencies
+                (dependencies.clone(), dependencies, false)
+            };
+        
+        // Compile with extracted or provided dependencies
+        let mut result = Self::compile_with_dependencies(package, actual_dependencies)?;
+        
+        // Perform change detection if recompiling same package
+        if warn_on_changes {
+            if let Some(prev) = previous_compilation {
                 let prev_module_digests = Self::extract_package_module_digests(&prev.programs);
-                let new_module_digests = Self::extract_package_module_digests(&package.programs);
-
+                let new_module_digests = Self::extract_package_module_digests(&result.programs);
+                
                 for (module_id, new_digest) in &new_module_digests {
                     if let Some(prev_digest) = prev_module_digests.get(module_id) {
-                        // Module exists in both versions - check if content actually changed
                         if prev_digest != new_digest {
-                            // Module was redefined with different content
-                            // This is allowed for hot reloading scenarios
+                            eprintln!(
+                                "⚠️  Hot reload: package {} redefined module {}",
+                                package.package_name,
+                                module_id.as_str()
+                            );
                         }
                     }
                 }
             }
         }
-
-        // Create modified dependencies that include previous variable types  
-        // This is the KEY to fixing REPL variable persistence
-        let mut modified_dependencies = dependencies;
         
-        // If we have previous variable types, we need to create a temporary CompilationResult
-        // that contains those variable types so they get merged in compile_with_dependencies
-        if let Some(previous) = previous_compilation {
-            // Create a synthetic CompilationResult containing previous variable types
-            // This will be merged with other dependencies in compile_with_dependencies
-            let variable_context_result = CompilationResult {
-                type_registry: previous.type_registry.clone(),
-                function_registry: previous.function_registry.clone(), 
-                dispatch_table: previous.dispatch_table.clone(),
-                monomorphisation_table: previous.monomorphisation_table.clone(),
-                package_name: "___repl_context___".to_string(), // Special name to avoid conflicts
-                programs: vec![],
-                local_modules: std::collections::HashSet::new(),
-                defined_modules: std::collections::HashSet::new(),
-                universal_dispatch: previous.universal_dispatch.clone(),
-                variable_types: previous.variable_types.clone(), // KEY: This preserves variables
-                current_file: std::cell::RefCell::new(None),
-            };
-            modified_dependencies.push(variable_context_result);
-        }
+        // Store package-specific registries for future hot reloading
+        result.package_type_registry = Some(result.type_registry.clone());
+        result.package_function_registry = Some(result.function_registry.clone());
+        result.package_universal_dispatch = Some(result.universal_dispatch.clone());
         
-        // Use the standard compile_with_dependencies method with variable types included
-        // Package self-redefinition is allowed - conflicts only apply across different packages
-        Self::compile_with_dependencies(package, modified_dependencies)
+        // Don't overwrite dependency_registries - it was already set by compile_with_dependencies
+        // The save_dependencies would overwrite with the wrong value (e.g., empty vec when extracting)
+        
+        Ok(result)
     }
 
     /// Extract modules and their content digests for change detection during hot reloading
@@ -401,6 +446,49 @@ impl CompilationResult {
         hasher.finish()
     }
 
+    /// Compute a content hash for the entire package
+    fn compute_package_content_hash(programs: &[outrun_parser::Program]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash the number of programs
+        programs.len().hash(&mut hasher);
+        
+        // Hash each program's content
+        for program in programs {
+            // Hash the number of items
+            program.items.len().hash(&mut hasher);
+            
+            // Hash each item
+            for item in &program.items {
+                match &item.kind {
+                    outrun_parser::ItemKind::StructDefinition(struct_def) => {
+                        "struct".hash(&mut hasher);
+                        Self::compute_struct_digest(struct_def).hash(&mut hasher);
+                    }
+                    outrun_parser::ItemKind::ProtocolDefinition(protocol_def) => {
+                        "protocol".hash(&mut hasher);
+                        Self::compute_protocol_digest(protocol_def).hash(&mut hasher);
+                    }
+                    outrun_parser::ItemKind::FunctionDefinition(func_def) => {
+                        "function".hash(&mut hasher);
+                        func_def.name.name.hash(&mut hasher);
+                        func_def.parameters.len().hash(&mut hasher);
+                    }
+                    outrun_parser::ItemKind::ImplBlock(impl_block) => {
+                        "impl".hash(&mut hasher);
+                        impl_block.protocol_spec.to_string().hash(&mut hasher);
+                        impl_block.type_spec.to_string().hash(&mut hasher);
+                    }
+                    _ => {
+                        "other".hash(&mut hasher);
+                    }
+                }
+            }
+        }
+        
+        hasher.finish()
+    }
+    
     /// Compute a digest/hash of a protocol definition's content
     fn compute_protocol_digest(protocol_def: &outrun_parser::ProtocolDefinition) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -524,34 +612,51 @@ impl CompilationResult {
             // println!("📦 Using pre-compiled core library from dependencies");
         }
 
-        // Continue with standard compilation phases
-        Self::compile_package_internal(package, engine, desugaring_engine, merged_variable_types)
+        // Continue with standard compilation phases, passing dependencies through for storage
+        let mut result = Self::compile_package_internal(package, engine, desugaring_engine, merged_variable_types)?;
+        
+        // Store dependency registries for hot reloading
+        result.dependency_registries = dependencies.into_iter()
+            .filter(|dep| dep.package_name != package.package_name) // Don't include self
+            .map(|dep| (
+                dep.package_name.clone(),
+                dep.type_registry.clone(),
+                dep.function_registry.clone(),
+                dep.universal_dispatch.clone()
+            ))
+            .collect();
+            
+        Ok(result)
     }
 
     /// Create from a single package
     pub fn compile_package(package: &mut Package) -> Result<CompilationResult, CompilerError> {
-        let engine = TypeInferenceEngine::new();
-        let desugaring_engine = DesugaringEngine::new();
-
-        // Phase 0: Integrate core library into the package (unified processing)
-        if let Some(core_package) = package::load_core_library_package()? {
-            let core_package_std = Package::from_loaded_package(core_package);
-
-            // Prepend core library programs to ensure they're processed first
-            let mut integrated_programs = core_package_std.programs;
-            integrated_programs.append(&mut package.programs);
-            package.programs = integrated_programs;
-
-            // DEBUG: Commented out for performance
-            // println!(
-            //     "📦 Integrated core library: {} total programs",
-            //     package.programs.len()
-            // );
+        // Phase 0: Load core library as a dependency (not merged into package)
+        let dependencies = if let Some(core_package) = package::load_core_library_package()? {
+            let mut core_package_std = Package::from_loaded_package(core_package);
+            core_package_std.package_name = "outrun-core".to_string();
+            
+            // Compile core library as a separate dependency
+            let engine = TypeInferenceEngine::bootstrap();
+            let desugaring_engine = DesugaringEngine::new();
+            let core_result = Self::compile_package_internal(
+                &mut core_package_std, 
+                engine, 
+                desugaring_engine, 
+                std::collections::HashMap::new()
+            )?;
+            
+            // Validate core types exist
+            Self::validate_core_types(&core_result.type_registry)?;
+            
+            vec![core_result]
         } else {
             eprintln!("Warning: Could not find core library, proceeding without it");
-        }
-
-        Self::compile_package_internal(package, engine, desugaring_engine, std::collections::HashMap::new())
+            vec![]
+        };
+        
+        // Compile the user package with core library as dependency
+        Self::compile_with_dependencies(package, dependencies)
     }
 
 
@@ -650,6 +755,9 @@ impl CompilationResult {
             final_variable_types.insert(name.clone(), var_type.clone());
         }
 
+        // Calculate package content hash for change detection
+        let package_content_hash = Self::compute_package_content_hash(&package.programs);
+        
         Ok(CompilationResult {
             type_registry: engine.type_registry_rc(),
             function_registry: engine.function_registry_rc(),
@@ -661,6 +769,12 @@ impl CompilationResult {
             defined_modules,
             universal_dispatch: engine.universal_dispatch_registry().clone(),
             variable_types: final_variable_types,
+            // For now, package-specific registries are None - will be populated in hot reloading scenarios
+            package_type_registry: None,
+            package_function_registry: None,
+            package_universal_dispatch: None,
+            dependency_registries: vec![],
+            package_content_hash,
             current_file: std::cell::RefCell::new(None),
         })
     }
