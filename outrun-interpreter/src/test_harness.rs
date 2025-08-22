@@ -18,6 +18,25 @@ use thiserror::Error;
 /// Counter for generating unique session IDs
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+// Use thread_local! instead of lazy_static! because CompilationResult contains Rc types
+// which are not Send/Sync. Each test thread gets its own cached compilation.
+thread_local! {
+    /// Pre-compiled core library cached per test thread for performance
+    static CORE_COMPILATION: std::cell::RefCell<Option<CompilationResult>> = std::cell::RefCell::new(None);
+}
+
+/// Get the cached core compilation or initialize it if needed
+fn get_core_compilation() -> Result<CompilationResult, CompilerError> {
+    CORE_COMPILATION.with(|cache| {
+        let mut cache_ref = cache.borrow_mut();
+        if cache_ref.is_none() {
+            eprintln!("🚀 Compiling core library once for this test thread...");
+            *cache_ref = Some(CompilationResult::precompile_core_library()?);
+        }
+        Ok(cache_ref.as_ref().unwrap().clone())
+    })
+}
+
 /// Errors that can occur during test harness operations
 #[derive(Debug, Error, Diagnostic)]
 pub enum TestHarnessError {
@@ -251,7 +270,7 @@ impl InterpreterSession {
 
         // SESSION ISOLATION FIX: Each session should only depend on core library, never other sessions
         // This ensures complete session isolation by preventing any cross-session state sharing
-        let dependencies = vec![CompilationResult::precompile_core_library()?];
+        let dependencies = vec![get_core_compilation()?];
 
         // Before attempting recompilation, detect type redefinitions and invalidate variables
         let redefined_types =
@@ -295,8 +314,8 @@ impl InterpreterSession {
                 }
             }
 
-            // Create a variable context result using fresh core library as base
-            let mut variable_context_result = CompilationResult::precompile_core_library()?;
+            // Create a variable context result using cached core library as base
+            let mut variable_context_result = get_core_compilation()?;
             variable_context_result.package_name = "___manual_vars___".to_string();
             variable_context_result.programs = vec![];
             variable_context_result.local_modules = std::collections::HashSet::new();
