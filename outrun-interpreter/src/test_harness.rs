@@ -144,8 +144,6 @@ pub struct InterpreterSession {
     evaluator: Option<ExpressionEvaluator>,
     /// Interpreter context with variables and state
     context: InterpreterContext,
-    /// Pre-compiled core library (compiled once for efficiency)
-    core_compilation: Option<CompilationResult>,
     /// Session package that accumulates all evaluations for variable persistence
     session_package: Package,
     /// Current session compilation result (persists type definitions)
@@ -184,7 +182,6 @@ impl InterpreterSession {
         Ok(Self {
             evaluator: None,
             context,
-            core_compilation: None,
             session_package: Package::new(format!("session_{}", session_id)),
             session_compilation: None,
             session_struct_definitions: std::collections::HashSet::new(),
@@ -581,6 +578,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific integer value
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_integer(
         &mut self,
         expression_code: &str,
@@ -602,6 +600,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific boolean value
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_boolean(
         &mut self,
         expression_code: &str,
@@ -623,6 +622,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific string value
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_string(
         &mut self,
         expression_code: &str,
@@ -644,6 +644,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a specific atom value
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_atom(
         &mut self,
         expression_code: &str,
@@ -665,6 +666,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to an empty list
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_empty_list(
         &mut self,
         expression_code: &str,
@@ -687,6 +689,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert it evaluates to a list with specific head and tail
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_list_with_head(
         &mut self,
         expression_code: &str,
@@ -719,6 +722,7 @@ impl InterpreterSession {
     }
 
     /// Execute code and assert the result matches a general expectation
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn assert_evaluates_to_value(
         &mut self,
         expression_code: &str,
@@ -737,6 +741,7 @@ impl InterpreterSession {
     }
 
     /// Set up a variable in the test context for use in subsequent expressions
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn define_variable(&mut self, name: &str, value: Value) -> Result<(), TestHarnessError> {
         self.context
             .define_variable(name.to_string(), value)
@@ -746,6 +751,7 @@ impl InterpreterSession {
     }
 
     /// Get a variable from the test context
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn get_variable(&self, name: &str) -> Result<&Value, TestHarnessError> {
         self.context
             .get_variable(name)
@@ -755,6 +761,7 @@ impl InterpreterSession {
     }
 
     /// Clear all variables from the test context with enhanced memory cleanup
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn clear_variables(&mut self) {
         // Phase 4: Enhanced session cleanup with validation
         self.validate_session_state_before_clear();
@@ -768,7 +775,6 @@ impl InterpreterSession {
         self.session_package = Package::new(format!("session_{}", session_id));
         self.session_compilation = None;
         self.evaluator = None;
-        self.core_compilation = None;  // Clear core library to truly reset session
         self.session_struct_definitions.clear();
 
         // Log session reset for debugging
@@ -776,6 +782,7 @@ impl InterpreterSession {
     }
 
     /// Validate session state integrity before major operations
+    #[allow(dead_code)]  // Internal helper
     fn validate_session_state_before_clear(&self) {
         let context_vars = self.context.get_available_variables().len();
         let compilation_types = self.session_compilation.as_ref().map(|c| c.variable_types.len()).unwrap_or(0);
@@ -798,6 +805,7 @@ impl InterpreterSession {
     }
 
     /// Clean up session memory before reset
+    #[allow(dead_code)]  // Internal helper
     fn cleanup_session_memory(&mut self) {
         // Force cleanup of large data structures
         if self.session_package.programs.len() > 10 {
@@ -842,7 +850,8 @@ impl InterpreterSession {
         &self.context
     }
 
-    /// Get mutable access to the context (for advanced testing scenarios)  
+    /// Get mutable access to the context (for advanced testing scenarios)
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn context_mut(&mut self) -> &mut InterpreterContext {
         &mut self.context
     }
@@ -907,6 +916,7 @@ impl InterpreterSession {
     }
 
     /// Phase 4: Check for potential memory issues in session
+    #[allow(dead_code)]  // Available for test use
     pub(crate) fn check_session_memory_usage(&self) -> Result<(), TestHarnessError> {
         let program_count = self.session_package.programs.len();
         let variable_count = self.session_compilation.as_ref().map(|c| c.variable_types.len()).unwrap_or(0);
@@ -945,6 +955,7 @@ impl Default for InterpreterSession {
 }
 
 // Phase 4: Enhanced session management utilities
+#[cfg(test)]
 impl InterpreterSession {
     /// Create a new session with validation and error recovery
     pub(crate) fn new_with_validation() -> Result<Self, TestHarnessError> {

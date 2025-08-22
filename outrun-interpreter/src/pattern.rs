@@ -148,9 +148,32 @@ impl PatternMatcher {
         context: &InterpreterContext,
     ) -> PatternMatchResult {
         match value {
-            Value::Struct { fields, .. } => {
-                // For now, we'll do basic struct matching
-                // TODO: Add proper type path matching when type system is integrated
+            Value::Struct { qualified_type_name, fields, .. } => {
+                // Check if the struct's type matches the pattern's type path
+                let pattern_type_path = pattern.type_path
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                
+                // For generic types, we need to check the base type without parameters
+                // e.g., "Outrun.Option.Some<Integer64>" should match pattern "Outrun.Option.Some"
+                let base_type_name = if let Some(idx) = qualified_type_name.find('<') {
+                    &qualified_type_name[..idx]
+                } else {
+                    qualified_type_name.as_str()
+                };
+                
+                if base_type_name != pattern_type_path {
+                    return Err(PatternMatchError::MatchFailed {
+                        message: format!(
+                            "Struct type mismatch: expected {}, found {}",
+                            pattern_type_path, base_type_name
+                        ),
+                        pattern_span: pattern.span,
+                        value_span: None,
+                    });
+                }
 
                 let mut all_bindings = HashMap::new();
 
