@@ -1090,9 +1090,10 @@ Case statements use **unified pattern matching** with optional guards. All case 
 
 #### Unified Case Expression Syntax
 
-Case expressions support all pattern types with optional guards in a single, consistent syntax:
+Case expressions support all pattern types with optional guards in a single, consistent syntax. Struct patterns support both simple type names and fully qualified paths:
 
 ```outrun
+# Simple struct patterns (for types in scope)
 result = case user {
     User { name } when String.equal?(value: name, other: "Marty") -> :is_marty
     User { name } when String.length(string: name) > 10 -> :long_name
@@ -1100,6 +1101,12 @@ result = case user {
     Guest { session_id } -> :guest
     Admin { permissions } when List.contains?(list: permissions, item: :admin) -> :admin_user
     other -> :unknown_user  # Identifier pattern catches anything
+}
+
+# Qualified struct patterns (for disambiguation or external types)
+result = case option {
+    Outrun.Option.Some { value } -> value
+    Outrun.Option.None {} -> 0
 }
 
 # Pattern matching with complex destructuring and guards
@@ -1115,8 +1122,10 @@ result = case data {
 
 # Pattern types: struct, tuple, list, value, and identifier patterns
 result = case value {
-    # Struct destructuring
+    # Struct destructuring (simple and qualified)
     User { name, email } when String.contains?(string: email, substring: "@") -> "valid user"
+    Outrun.Result.Ok { value: data } -> "success: #{data}"
+    Outrun.Result.Err { error } -> "error: #{error}"
 
     # Tuple destructuring
     (x, y) when Integer.positive?(value: x) && Integer.positive?(value: y) -> "positive coordinates"
@@ -1213,9 +1222,11 @@ Case expressions use Outrun's **unified destructuring pattern system**. The same
 
 - **Identifier patterns**: `data`, `_` - match anything and bind to that variable
 - **Value patterns**: `42`, `"hello"` - match exact literal values
-- **Struct patterns**: `User { name, email }` - destructure struct fields into variables
+- **Struct patterns**: `User { name, email }` or `Outrun.Option.Some { value }` - destructure struct fields into variables (supports qualified paths)
 - **Tuple patterns**: `(x, y, z)` - destructure tuple elements into variables
 - **List patterns**: `[head, ..tail]` - destructure list with head/tail syntax
+
+**Note on Option/Result patterns**: Outrun's Option and Result types are regular user-defined structs, not special language constructs. Pattern matching on them uses standard struct patterns with qualified type paths (e.g., `Outrun.Option.Some { value }`). Guard functions like `Option.some?()` provide predicate-based matching when needed.
 
 See **Unified Destructuring Patterns** section below for complete details and examples.
 
@@ -1283,9 +1294,13 @@ case user_input {
 **3. Struct Patterns** - Destructure struct fields:
 
 ```outrun
-# In let bindings
+# In let bindings (simple type names)
 let User { name, email } = fetch_user()          # Extracts name and email
-let Config { database: db } = load_config()     # Extracts database field as 'db'
+let Config { database: db } = load_config()      # Extracts database field as 'db'
+
+# In let bindings (qualified type paths)
+let Outrun.Option.Some { value } = get_option()  # Extracts value from Some variant
+let Http.Response.Ok { status, body } = response # Extracts from qualified type
 
 # In case statements
 case user_data {
@@ -1586,12 +1601,12 @@ def default_timeout(): Duration { DEFAULT_TIMEOUT }
 user = User {
     id: UUID.new(),
     email: "james@example.com",
-    name: Some("James")
+    name: Option.some(value: "James")
 }
 
 # Shorthand syntax when variable name matches field name
 let email = "james@example.com"
-let name = Some("James")
+let name = Option.some(value: "James")
 user = User {
     id: UUID.new(),
     email,                          # Equivalent to email: email
@@ -1602,7 +1617,7 @@ user = User {
 user = User {
     id: UUID.new(),
     email,                          # Shorthand
-    name: Some("Different Name")    # Explicit
+    name: Option.some(value: "Different Name")    # Explicit
 }
 
 # Struct update syntax
@@ -1617,6 +1632,105 @@ updated_user = User {
 ```outrun
 email = user.email
 first_element = tuple.0
+```
+
+## Option and Result Types
+
+### Core Library Types
+
+Option and Result are **regular user-defined structs** in Outrun's core library, not special language constructs. They follow the same patterns as any other struct:
+
+```outrun
+# Option type - represents optional values
+struct Outrun.Option.Some<T>(value: T) {}
+struct Outrun.Option.None<T>() {}
+
+protocol Option<T> {
+    def some(value: T): Outrun.Option.Some<T>
+    def none(): Outrun.Option.None<T>
+    def map<U>(self: Self, mapper: fn(T) -> U): Option<U>
+    def unwrap_or(self: Self, default: T): T
+    # ... other methods
+}
+
+# Result type - represents success or failure
+struct Outrun.Result.Ok<T, E>(value: T) {}
+struct Outrun.Result.Err<T, E>(error: E) {}
+
+protocol Result<T, E> {
+    def ok(value: T): Outrun.Result.Ok<T, E>
+    def err(error: E): Outrun.Result.Err<T, E>
+    def map<U>(self: Self, mapper: fn(T) -> U): Result<U, E>
+    def unwrap_or(self: Self, default: T): T
+    # ... other methods
+}
+```
+
+### Creating Option and Result Values
+
+Since Option and Result are regular structs, they're created through protocol functions:
+
+```outrun
+# Creating Option values
+let some_value = Option.some(value: 42)         # Creates Outrun.Option.Some<Integer64>
+let none_value = Option.none()                   # Creates Outrun.Option.None<T>
+
+# Creating Result values
+let success = Result.ok(value: "data")           # Creates Outrun.Result.Ok<String, E>
+let failure = Result.err(error: "not found")     # Creates Outrun.Result.Err<T, String>
+
+# NOT VALID - no special constructor syntax
+# let opt = Some(42)        # ❌ This syntax doesn't exist
+# let res = Ok("success")   # ❌ This syntax doesn't exist
+```
+
+### Pattern Matching on Option and Result
+
+Pattern matching uses standard struct patterns with qualified type paths:
+
+```outrun
+# Pattern matching on Option
+result = case optional_value {
+    Outrun.Option.Some { value } -> "found: #{value}"
+    Outrun.Option.None {} -> "nothing found"
+}
+
+# Pattern matching on Result
+outcome = case computation_result {
+    Outrun.Result.Ok { value: data } -> process(data: data)
+    Outrun.Result.Err { error: msg } -> log_error(message: msg)
+}
+
+# Destructuring in let bindings
+let Outrun.Option.Some { value: x } = get_option()  # Extracts value
+let Outrun.Result.Ok { value } = try_operation()    # Extracts success value
+
+# Using guards for more complex matching
+result = case user_option {
+    opt when Option.some?(value: opt) -> Option.unwrap(value: opt)
+    _ -> "no user"
+}
+```
+
+### Working with Option and Result
+
+These types provide rich APIs through their protocol implementations:
+
+```outrun
+# Chaining operations with Option
+user_name = fetch_user(id: 123)
+    |> Option.map(mapper: fn(u) { u.name })
+    |> Option.unwrap_or(default: "Unknown")
+
+# Error handling with Result
+final_value = parse_input(text: input)
+    |> Result.map(mapper: fn(n) { n * 2 })
+    |> Result.map_err(mapper: fn(e) { "Parse error: #{e}" })
+    |> Result.unwrap_or(default: 0)
+
+# Converting between Option and Result
+option_value = Option.some(value: 42)
+result_value = Option.ok_or(value: option_value, error: "missing value")
 ```
 
 ## Module System
@@ -1786,7 +1900,7 @@ struct MyApp() {}
 impl Application for MyApp {
     def start(args: List<String>): Result<(), ApplicationError> {
         # Application logic
-        Ok(())
+        Result.ok(value: ())
     }
 }
 ```

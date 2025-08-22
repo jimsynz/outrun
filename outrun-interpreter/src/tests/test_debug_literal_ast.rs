@@ -39,6 +39,7 @@ fn test_debug_literal_ast_transformation() {
         }
     }
     
-    println!("\nDispatch table has {} entries", compilation_result.dispatch_table.dispatch_map.len());
-    println!("Universal dispatch has {} clauses", compilation_result.universal_dispatch.clauses.len());
+    // Debug information about dispatch tables (implementation details may vary)
+    println!("\nDispatch table loaded");
+    println!("Universal dispatch loaded");
 }
